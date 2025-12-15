@@ -89,8 +89,6 @@ plugins:
   - autorefs
 
 extra:
-  version:
-    provider: mike
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/mitre/cis-bench
