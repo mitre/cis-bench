@@ -50,16 +50,13 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+      - name: Check formatting with Black
+        uses: psf/black@stable
+        with:
+          options: "--check --diff"
 
-      - name: Check formatting
-        run: python -m black --check --diff .
-
-      - name: Lint
-        run: python -m ruff check .
+      - name: Lint with Ruff
+        uses: chartboost/ruff-action@v1
 
   security:
     name: Security Scan
@@ -73,10 +70,10 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install bandit[toml]
-
       - name: Run Bandit
-        run: bandit -c pyproject.toml -r src/cis_bench/
+        uses: mdegis/bandit-action@v1
+        with:
+          path: "src/cis_bench/"
+          level: high
+          confidence: high
+          exit_zero: false
