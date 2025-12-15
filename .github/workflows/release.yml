@@ -1,7 +1,10 @@
 name: Release
 
 on:
-  push:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
     branches:
       - main
 
@@ -9,6 +12,7 @@ jobs:
   release:
     name: Semantic Release
     runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     concurrency: release
     permissions:
       id-token: write  # REQUIRED for PyPI trusted publishing

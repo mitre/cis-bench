@@ -129,9 +129,10 @@ cython_debug/
 cookies.txt
 navtree.json
 
-# Project-specific: Output directories
-output/
-benchmarks/
+# Project-specific: Output directories (root level only)
+/output/
+/benchmarks/
+/benchmark_*.json
 
 # Project-specific: Internal documentation (not for repo)
 CLAUDE.md
@@ -144,16 +145,16 @@ PROJECT_SETUP_PLAN.md
 SESSION_PLAN.md
 *-backup/
 
-# Project-specific: Temporary/scratch files
-*.tmp
-*.bak
-debug*.html
-alma_linux*.html
-benchmark.yaml
-rhel_stig_parsed.json
-cis-cci-mapping.json
-redownload_samples.py
-dry_run_plan.*
+# Project-specific: Temporary/scratch files (root level only)
+/*.tmp
+/*.bak
+/debug*.html
+/alma_linux*.html
+/benchmark.yaml
+/rhel_stig_parsed.json
+/cis-cci-mapping.json
+/redownload_samples.py
+/dry_run_plan.*
 
 # Project-specific: Old/archived code
 /archive/
