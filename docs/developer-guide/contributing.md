@@ -9,19 +9,83 @@ Thank you for contributing to CIS Benchmark CLI!
 - **For testing:** See [Testing Guide](TESTING.md)
 - **For data flow:** See [Data Flow Pipeline](data-flow-pipeline.md)
 
+## Git Workflow
+
+**IMPORTANT: This project uses semantic-release for automated versioning.**
+
+### Branch-Based Development (Required)
+
+**DO NOT commit directly to `main`**. Always work on feature/fix branches:
+
+```bash
+# Create a feature branch
+git checkout -b feat/add-new-capability
+
+# Or a fix branch
+git checkout -b fix/resolve-bug
+
+# Make changes and commit
+git commit -m "feat: add new capability"
+
+# Push branch to GitHub
+git push origin feat/add-new-capability
+
+# Create Pull Request to main
+gh pr create --title "Add new capability" --body "Description..."
+```
+
+### Why Branch-Based Development?
+
+- **Semantic-release** runs on `main` and creates version commits
+- Working directly on `main` causes constant rebase conflicts
+- PRs allow code review before merging to `main`
+- Clean git history with automated releases
+
+### Conventional Commits
+
+All commits must follow [Conventional Commits](https://www.conventionalcommits.org/):
+
+- `feat:` - New feature (minor version bump)
+- `fix:` - Bug fix (patch version bump)
+- `docs:` - Documentation only
+- `chore:` - Maintenance tasks
+- `refactor:` - Code refactoring
+- `test:` - Test changes
+
 ## Development Setup
 
 ### Prerequisites
 
-- Python 3.8 or higher
+- **Python 3.12+** (modern Python)
+- **uv** (fast Python package manager)
 - Git
 
-### Setup
+### Setup with uv (Recommended)
+
+```bash
+# Install uv
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Clone repository
+git clone https://github.com/mitre/cis-bench.git
+cd cis-bench
+
+# Install dependencies (creates .venv automatically)
+uv sync --all-extras
+
+# Install pre-commit hooks
+uv run pre-commit install
+
+# Verify setup
+uv run pytest tests/
+```
+
+### Alternative: Setup with pip
 
 ```bash
 # Clone repository
 git clone https://github.com/mitre/cis-bench.git
-cd cis-benchmark-cli
+cd cis-bench
 
 # Create virtual environment
 python3 -m venv venv
