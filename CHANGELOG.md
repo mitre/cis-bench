@@ -1,6 +1,18 @@
 # CHANGELOG
 
 
+## v0.1.0 (2025-12-15)
+
+### Features
+
+- Initial PyPI release
+  ([`0f6440e`](https://github.com/mitre/cis-bench/commit/0f6440ef20dd69a478c7201b4b7b621e3dea5444))
+
+Enable automated PyPI publishing via trusted publisher
+
+Authored by: Aaron Lippold <lippold@gmail.com>
+
+
 ## v0.0.4 (2025-12-15)
 
 ### Bug Fixes
@@ -59,6 +71,9 @@ Ensures tools are found after pip install
 Authored by: Aaron Lippold <lippold@gmail.com>
 
 ### Chores
+
+- Release 0.0.4
+  ([`24085cb`](https://github.com/mitre/cis-bench/commit/24085cb7fb3e5e2b43dbddfecaaf3c5ddb5313fd))
 
 - Update pre-commit hooks and fix formatting
   ([`526aaf6`](https://github.com/mitre/cis-bench/commit/526aaf6b00baa1a56c2dae69a1663018001ec7e7))
