@@ -27,7 +27,10 @@
 ## Quick Start
 
 ```bash
-# 1. Install from PyPI
+# 1. Install from PyPI (using modern uv - recommended)
+uv tool install cis-bench
+
+# Or using pip
 pip install cis-bench
 
 # 2. Login (one-time)
