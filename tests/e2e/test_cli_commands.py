@@ -302,9 +302,9 @@ class TestDownloadCommand:
 
             # Verify the failure was handled gracefully
             assert result.exit_code == 1, f"Expected exit code 1, got {result.exit_code}"
-            assert (
-                "Export failed" in result.output
-            ), f"Expected 'Export failed' in output: {result.output}"
+            assert "Export failed" in result.output, (
+                f"Expected 'Export failed' in output: {result.output}"
+            )
 
 
 # ============================================================================

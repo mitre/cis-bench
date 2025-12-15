@@ -84,9 +84,9 @@ def test_disa_export_has_vuln_discussion(disa_export_file):
     """Test DISA export has VulnDiscussion structure."""
     content = disa_export_file.read_text()
 
-    assert (
-        "&lt;VulnDiscussion&gt;" in content or "<VulnDiscussion>" in content
-    ), "VulnDiscussion tags not found in descriptions"
+    assert "&lt;VulnDiscussion&gt;" in content or "<VulnDiscussion>" in content, (
+        "VulnDiscussion tags not found in descriptions"
+    )
 
 
 def test_disa_export_has_dublin_core(disa_export_file):

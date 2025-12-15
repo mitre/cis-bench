@@ -93,9 +93,7 @@ class Recommendation(BaseModel):
     )
 
     # ============ Hierarchical Structure ============
-    parent: ParentReference | None = Field(
-        None, description="Parent recommendation in hierarchy"
-    )
+    parent: ParentReference | None = Field(None, description="Parent recommendation in hierarchy")
 
     artifacts: list[Artifact] = Field(
         default_factory=list, description="Test artifacts for automated compliance checking"
@@ -118,13 +116,9 @@ class Recommendation(BaseModel):
         None, description="Additional information and notes (HTML format)"
     )
 
-    default_value: str | None = Field(
-        None, description="Default configuration value (HTML format)"
-    )
+    default_value: str | None = Field(None, description="Default configuration value (HTML format)")
 
-    artifact_equation: str | None = Field(
-        None, description="Artifact equation logic (HTML format)"
-    )
+    artifact_equation: str | None = Field(None, description="Artifact equation logic (HTML format)")
 
     references: str | None = Field(
         None, description="External references and citations (HTML format)"

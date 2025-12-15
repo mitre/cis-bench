@@ -274,9 +274,9 @@ class TestCISXCCDFExport:
             file_size = Path(output_path).stat().st_size
 
             # With 322 recommendations and full metadata, should be > 1 MB
-            assert (
-                file_size > 1_000_000
-            ), f"File size {file_size} seems too small for 322 recs with metadata"
+            assert file_size > 1_000_000, (
+                f"File size {file_size} seems too small for 322 recs with metadata"
+            )
 
             # But not unreasonably large (< 5 MB)
             assert file_size < 5_000_000, f"File size {file_size} seems too large"

@@ -152,6 +152,7 @@ Automated releases on main branch:
 
 1. Go to [PyPI Publishing](https://pypi.org/manage/account/publishing/)
 2. Add new pending publisher:
+
    - **PyPI Project Name:** `cis-bench`
    - **Owner:** `mitre`
    - **Repository:** `cis-bench`

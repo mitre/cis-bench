@@ -363,4 +363,3 @@ cis-bench search "ubuntu"
 ```
 
 ---
-

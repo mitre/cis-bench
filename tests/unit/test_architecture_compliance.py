@@ -50,33 +50,33 @@ class TestArchitectureCompliance:
 
         # Check all have xccdf_type specified
         for element_name, element_spec in config.rule_elements.items():
-            assert (
-                "xccdf_type" in element_spec
-            ), f"Element '{element_name}' missing xccdf_type specification"
+            assert "xccdf_type" in element_spec, (
+                f"Element '{element_name}' missing xccdf_type specification"
+            )
 
         # Check group_elements
         assert config.group_elements, "Missing group_elements in config"
         for element_name, element_spec in config.group_elements.items():
-            assert (
-                "xccdf_type" in element_spec
-            ), f"Group element '{element_name}' missing xccdf_type specification"
+            assert "xccdf_type" in element_spec, (
+                f"Group element '{element_name}' missing xccdf_type specification"
+            )
 
     def test_loop_driven_construction(self, mapping_engine_file):
         """MappingEngine must construct elements by looping config, not listing fields."""
         source = mapping_engine_file.read_text()
 
         # Check for loop patterns in new methods
-        assert (
-            "for field_name, field_mapping in self.config.field_mappings.items()" in source
-        ), "map_rule() doesn't loop through config.field_mappings"
+        assert "for field_name, field_mapping in self.config.field_mappings.items()" in source, (
+            "map_rule() doesn't loop through config.field_mappings"
+        )
 
-        assert (
-            "for element_name, element_config in self.config.group_elements.items()" in source
-        ), "map_group() doesn't loop through config.group_elements"
+        assert "for element_name, element_config in self.config.group_elements.items()" in source, (
+            "map_group() doesn't loop through config.group_elements"
+        )
 
-        assert (
-            "for element_name, element_config in self.config.benchmark.items()" in source
-        ), "map_benchmark() doesn't loop through config.benchmark"
+        assert "for element_name, element_config in self.config.benchmark.items()" in source, (
+            "map_benchmark() doesn't loop through config.benchmark"
+        )
 
     def test_no_hard_coded_field_checks_in_new_methods(self, mapping_engine_file):
         """New methods must NOT check field names like 'if field_name == title'.
@@ -171,9 +171,9 @@ class TestArchitectureCompliance:
                 f"Architecture test FAILED - not truly config-driven"
             )
 
-            assert (
-                rec.title not in title_text
-            ), "Config change ignored! Still using old source. Architecture test FAILED."
+            assert rec.title not in title_text, (
+                "Config change ignored! Still using old source. Architecture test FAILED."
+            )
 
         finally:
             Path(temp_config).unlink()
@@ -185,15 +185,15 @@ class TestArchitectureCompliance:
         engine = MappingEngine(disa_config_path)
 
         # Check DRY helpers
-        assert hasattr(
-            engine, "_construct_typed_element"
-        ), "Missing DRY helper: _construct_typed_element"
+        assert hasattr(engine, "_construct_typed_element"), (
+            "Missing DRY helper: _construct_typed_element"
+        )
 
         assert hasattr(engine, "_is_list_field"), "Missing DRY helper: _is_list_field"
 
-        assert hasattr(
-            engine, "_element_name_to_type_name"
-        ), "Missing DRY helper: _element_name_to_type_name"
+        assert hasattr(engine, "_element_name_to_type_name"), (
+            "Missing DRY helper: _element_name_to_type_name"
+        )
 
         assert hasattr(engine, "_build_field_value"), "Missing DRY helper: _build_field_value"
 

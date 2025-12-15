@@ -183,7 +183,6 @@ select = [
 ignore = [
     "E501",  # line too long (handled by formatter)
     "S101",  # Allow assert in tests
-    "S320",  # lxml XML parsing (we parse XML we generate ourselves - acceptable risk)
 ]
 
 [tool.ruff.lint.per-file-ignores]

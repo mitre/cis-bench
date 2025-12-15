@@ -59,6 +59,7 @@ metadata:
   description: "PCI-DSS compliant XCCDF export"
   xccdf_version: "1.2"  # Use "1.1.4" for DISA/DoD compatibility
   target_tools:
+
     - "PCI Compliance Tools"
     - "OpenSCAP"
 

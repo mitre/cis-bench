@@ -333,4 +333,3 @@ cis-bench get 23598 --offline --format xccdf
 ```
 
 ---
-
