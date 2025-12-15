@@ -1,0 +1,2766 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Command-line tool for fetching, managing, and exporting CIS benchmarks">
+      
+      
+        <meta name="author" content="MITRE SAF Team">
+      
+      
+        <link rel="canonical" href="https://mitre.github.io/cis-bench/technical-reference/XCCDF_STYLES/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.0">
+    
+    
+      
+        <title>XCCDF Export Styles - Complete Specification - CIS Benchmark CLI</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.618322db.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#xccdf-export-styles-complete-specification" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="CIS Benchmark CLI" class="md-header__button md-logo" aria-label="CIS Benchmark CLI" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            CIS Benchmark CLI
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              XCCDF Export Styles - Complete Specification
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/mitre/cis-bench" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    mitre/cis-bench
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../getting-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Getting Started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../user-guide/workflows/" class="md-tabs__link">
+          
+  
+  
+  User Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../developer-guide/contributing/" class="md-tabs__link">
+          
+  
+  
+  Developer Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../mapping-engine-design.md" class="md-tabs__link">
+          
+  
+  
+  Technical Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../about/design-philosophy/" class="md-tabs__link">
+          
+  
+  
+  About
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="CIS Benchmark CLI" class="md-nav__button md-logo" aria-label="CIS Benchmark CLI" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    CIS Benchmark CLI
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/mitre/cis-bench" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    mitre/cis-bench
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/workflows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    End-to-End Workflows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/commands-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Commands Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/catalog-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Catalog System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/xccdf-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XCCDF Export
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developer Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Developer Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../developer-guide/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../developer-guide/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../developer-guide/data-flow-pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Flow Pipeline
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../developer-guide/mapping-engine-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MappingEngine User Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../developer-guide/testing.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../developer-guide/how-to-add-xccdf-style/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    How To Add XCCDF Style
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Technical Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Technical Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mapping-engine-design.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mapping Engine Design
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data-model.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../yaml-config-reference.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    YAML Config Syntax
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../xccdf-styles.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XCCDF Styles Comparison
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cis-inspec-profile-style-guide.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    InSpec Profile Style Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    About
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    About
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../about/design-philosophy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design Philosophy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../about/licensing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Licensing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../about/use-cases.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Use Cases
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../about/future-features.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Future Features
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../about/release-process/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Release Process
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../about/glossary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Glossary
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#style-selection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Style Selection
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#style-1-disadod-xccdf-stig-compatible" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Style 1: DISA/DoD XCCDF (STIG-Compatible)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Style 1: DISA/DoD XCCDF (STIG-Compatible)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#purpose" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Purpose
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#target-tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Target Tools
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#complete-rule-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Complete Rule Structure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cis-field-disa-element-mapping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CIS Field DISA Element Mapping
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#attributes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Attributes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cci-nist-deduplication-algorithm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CCI + NIST Deduplication Algorithm
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#why-this-normalization-is-correct" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why This Normalization Is Correct
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#style-2-cis-native-xccdf-clean-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Style 2: CIS Native XCCDF (Clean Format)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Style 2: CIS Native XCCDF (Clean Format)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#purpose_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Purpose
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#target-tools_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Target Tools
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#complete-rule-structure_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Complete Rule Structure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cis-field-cis-native-element-mapping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CIS Field CIS Native Element Mapping
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#differences-from-disa-style" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Differences from DISA Style
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cci-nist-deduplication-algorithm-disa-style-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CCI + NIST Deduplication Algorithm (DISA Style Only)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="CCI + NIST Deduplication Algorithm (DISA Style Only)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#purpose_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Purpose
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#algorithm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Algorithm
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nist-control-matching-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        NIST Control Matching Rules
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#edge-cases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Edge Cases
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#implementation-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Implementation Notes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#comparison-matrix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Comparison Matrix
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#implementation-plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Implementation Plan
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Implementation Plan">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#phase-1-disa-style-exporter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 1: DISA Style Exporter
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-2-cis-native-exporter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 2: CIS Native Exporter
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-3-cli-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 3: CLI Integration
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing-strategy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing Strategy
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Testing Strategy">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#disa-style-validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DISA Style Validation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cis-style-validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CIS Style Validation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#comparison-test" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Comparison Test
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#future-enhancements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Future Enhancements
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Future Enhancements">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#v11-style-auto-detection-on-import" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v1.1 - Style Auto-Detection on Import
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v12-hybrid-style" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v1.2 - Hybrid Style
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v13-custom-styles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v1.3 - Custom Styles
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="xccdf-export-styles-complete-specification">XCCDF Export Styles - Complete Specification<a class="headerlink" href="#xccdf-export-styles-complete-specification" title="Permanent link">&para;</a></h1>
+<div class="admonition info">
+<p class="admonition-title">Documentation Path</p>
+</div>
+<p><strong>You are here:</strong> Technical Reference &gt; XCCDF Styles Comparison</p>
+<p><strong>For practical usage:</strong> See <a href="../../user-guide/workflows/">Workflows</a> | <a href="../../user-guide/commands-reference/">Commands Reference</a></p>
+<h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
+<p>CIS Benchmark CLI supports TWO <a href="../../about/glossary/#xccdf">XCCDF</a> export <a href="../../about/glossary/#style">styles</a>:</p>
+<ol>
+<li><strong>DISA/DoD Style</strong> - STIG-compatible for DoD compliance tools (Uses XCCDF 1.1.4)</li>
+<li><strong>CIS Native Style</strong> - Clean CIS-centric format for general XCCDF tools (Uses XCCDF 1.2)</li>
+</ol>
+<p><strong>XCCDF Version Difference</strong>:</p>
+<ul>
+<li>DISA STIGs use XCCDF 1.1.4 (NOT 1.2)</li>
+<li>XCCDF 1.1.4 allows simple IDs (<code>CIS-6_1_1</code>)</li>
+<li>XCCDF 1.2 requires pattern IDs (<code>xccdf_org.cisecurity_rule_*</code>)</li>
+<li>Config specifies version, MappingEngine loads appropriate models</li>
+</ul>
+<p>Both styles use different XCCDF versions AND different conventions for mapping CIS Benchmark concepts to XCCDF elements.</p>
+<h2 id="style-selection">Style Selection<a class="headerlink" href="#style-selection" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># DISA/DoD STIG-compatible export</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>cis-bench<span class="w"> </span><span class="nb">export</span><span class="w"> </span>benchmark.json<span class="w"> </span>--format<span class="w"> </span>xccdf<span class="w"> </span>--style<span class="w"> </span>disa
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="c1"># CIS native clean export</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>cis-bench<span class="w"> </span><span class="nb">export</span><span class="w"> </span>benchmark.json<span class="w"> </span>--format<span class="w"> </span>xccdf<span class="w"> </span>--style<span class="w"> </span>cis
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="c1"># Default: DISA style (most compatible)</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>cis-bench<span class="w"> </span><span class="nb">export</span><span class="w"> </span>benchmark.json<span class="w"> </span>--format<span class="w"> </span>xccdf
+</code></pre></div>
+<hr />
+<h2 id="style-1-disadod-xccdf-stig-compatible">Style 1: DISA/DoD XCCDF (STIG-Compatible)<a class="headerlink" href="#style-1-disadod-xccdf-stig-compatible" title="Permanent link">&para;</a></h2>
+<h3 id="purpose">Purpose<a class="headerlink" href="#purpose" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Compatible with DoD STIG tools and workflows</li>
+<li>Uses DISA STIG conventions</li>
+<li>Includes CCI (Control Correlation Identifiers) for NIST 800-53 mapping</li>
+<li>Follows STIG element structure and naming</li>
+</ul>
+<h3 id="target-tools">Target Tools<a class="headerlink" href="#target-tools" title="Permanent link">&para;</a></h3>
+<ul>
+<li>DISA SCAP Compliance Checker (SCC)</li>
+<li>OpenSCAP (DoD configurations)</li>
+<li>DISA STIG Viewer</li>
+<li>Nessus (Government configurations)</li>
+<li>Any tool expecting DISA STIG format</li>
+</ul>
+<h3 id="complete-rule-structure">Complete Rule Structure<a class="headerlink" href="#complete-rule-structure" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">&lt;Rule</span><span class="w"> </span><span class="na">id=</span><span class="s">&quot;xccdf_cis_almalinux8_rule_3_1_1&quot;</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="na">severity=</span><span class="s">&quot;medium&quot;</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="na">weight=</span><span class="s">&quot;10.0&quot;</span><span class="nt">&gt;</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="cm">&lt;!-- STIG ID (maps to CIS ref) --&gt;</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="nt">&lt;version&gt;</span>3.1.1<span class="nt">&lt;/version&gt;</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="cm">&lt;!-- Title --&gt;</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="nt">&lt;title&gt;</span>Ensure<span class="w"> </span>kubeconfig<span class="w"> </span>file<span class="w"> </span>permissions<span class="w"> </span>are<span class="w"> </span>set<span class="w"> </span>to<span class="w"> </span>644<span class="w"> </span>or<span class="w"> </span>more<span class="w"> </span>restrictive<span class="nt">&lt;/title&gt;</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="cm">&lt;!-- Description with DISA embedded XML tags --&gt;</span>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="nt">&lt;description&gt;</span>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="ni">&amp;lt;</span>VulnDiscussion<span class="ni">&amp;gt;</span>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>If<span class="w"> </span>kubelet<span class="w"> </span>is<span class="w"> </span>running,<span class="w"> </span>and<span class="w"> </span>if<span class="w"> </span>it<span class="w"> </span>is<span class="w"> </span>configured<span class="w"> </span>by<span class="w"> </span>a<span class="w"> </span>kubeconfig<span class="w"> </span>file,<span class="w"> </span>ensure
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>that<span class="w"> </span>the<span class="w"> </span>proxy<span class="w"> </span>kubeconfig<span class="w"> </span>file<span class="w"> </span>has<span class="w"> </span>permissions<span class="w"> </span>of<span class="w"> </span>644<span class="w"> </span>or<span class="w"> </span>more<span class="w"> </span>restrictive.
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>
+<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>Improper<span class="w"> </span>access<span class="w"> </span>permissions<span class="w"> </span>could<span class="w"> </span>allow<span class="w"> </span>unauthorized<span class="w"> </span>users<span class="w"> </span>to<span class="w"> </span>access
+<a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>sensitive<span class="w"> </span>configuration<span class="w"> </span>data.
+<a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a><span class="ni">&amp;lt;</span>/VulnDiscussion<span class="ni">&amp;gt;</span>
+<a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a><span class="ni">&amp;lt;</span>FalsePositives<span class="ni">&amp;gt;&amp;lt;</span>/FalsePositives<span class="ni">&amp;gt;</span>
+<a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a><span class="ni">&amp;lt;</span>FalseNegatives<span class="ni">&amp;gt;&amp;lt;</span>/FalseNegatives<span class="ni">&amp;gt;</span>
+<a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a><span class="ni">&amp;lt;</span>Documentable<span class="ni">&amp;gt;</span>false<span class="ni">&amp;lt;</span>/Documentable<span class="ni">&amp;gt;</span>
+<a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a><span class="ni">&amp;lt;</span>Mitigations<span class="ni">&amp;gt;</span>Additional<span class="w"> </span>configuration<span class="w"> </span>notes<span class="w"> </span>if<span class="w"> </span>present<span class="ni">&amp;lt;</span>/Mitigations<span class="ni">&amp;gt;</span>
+<a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a><span class="ni">&amp;lt;</span>SeverityOverrideGuidance<span class="ni">&amp;gt;&amp;lt;</span>/SeverityOverrideGuidance<span class="ni">&amp;gt;</span>
+<a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a><span class="ni">&amp;lt;</span>PotentialImpacts<span class="ni">&amp;gt;</span>None<span class="w"> </span>expected<span class="ni">&amp;lt;</span>/PotentialImpacts<span class="ni">&amp;gt;</span>
+<a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a><span class="ni">&amp;lt;</span>ThirdPartyTools<span class="ni">&amp;gt;&amp;lt;</span>/ThirdPartyTools<span class="ni">&amp;gt;</span>
+<a id="__codelineno-1-27" name="__codelineno-1-27" href="#__codelineno-1-27"></a><span class="ni">&amp;lt;</span>MitigationControl<span class="ni">&amp;gt;&amp;lt;</span>/MitigationControl<span class="ni">&amp;gt;</span>
+<a id="__codelineno-1-28" name="__codelineno-1-28" href="#__codelineno-1-28"></a><span class="ni">&amp;lt;</span>Responsibility<span class="ni">&amp;gt;&amp;lt;</span>/Responsibility<span class="ni">&amp;gt;</span>
+<a id="__codelineno-1-29" name="__codelineno-1-29" href="#__codelineno-1-29"></a><span class="ni">&amp;lt;</span>IAControls<span class="ni">&amp;gt;&amp;lt;</span>/IAControls<span class="ni">&amp;gt;</span>
+<a id="__codelineno-1-30" name="__codelineno-1-30" href="#__codelineno-1-30"></a><span class="nt">&lt;/description&gt;</span>
+<a id="__codelineno-1-31" name="__codelineno-1-31" href="#__codelineno-1-31"></a>
+<a id="__codelineno-1-32" name="__codelineno-1-32" href="#__codelineno-1-32"></a><span class="cm">&lt;!-- CCIs (from cis-cci-mapping.json) - DoD standard for NIST mapping --&gt;</span>
+<a id="__codelineno-1-33" name="__codelineno-1-33" href="#__codelineno-1-33"></a><span class="nt">&lt;ident</span><span class="w"> </span><span class="na">system=</span><span class="s">&quot;http://cyber.mil/cci&quot;</span><span class="nt">&gt;</span>CCI-000381<span class="nt">&lt;/ident&gt;</span>
+<a id="__codelineno-1-34" name="__codelineno-1-34" href="#__codelineno-1-34"></a><span class="nt">&lt;ident</span><span class="w"> </span><span class="na">system=</span><span class="s">&quot;http://cyber.mil/cci&quot;</span><span class="nt">&gt;</span>CCI-000382<span class="nt">&lt;/ident&gt;</span>
+<a id="__codelineno-1-35" name="__codelineno-1-35" href="#__codelineno-1-35"></a><span class="nt">&lt;ident</span><span class="w"> </span><span class="na">system=</span><span class="s">&quot;http://cyber.mil/cci&quot;</span><span class="nt">&gt;</span>CCI-000380<span class="nt">&lt;/ident&gt;</span>
+<a id="__codelineno-1-36" name="__codelineno-1-36" href="#__codelineno-1-36"></a>
+<a id="__codelineno-1-37" name="__codelineno-1-37" href="#__codelineno-1-37"></a><span class="cm">&lt;!-- NIST controls NOT covered by CCIs (after deduplication) --&gt;</span>
+<a id="__codelineno-1-38" name="__codelineno-1-38" href="#__codelineno-1-38"></a><span class="nt">&lt;reference</span><span class="w"> </span><span class="na">href=</span><span class="s">&quot;https://csrc.nist.gov/Projects/risk-management/sp800-53-controls&quot;</span><span class="nt">&gt;</span>
+<a id="__codelineno-1-39" name="__codelineno-1-39" href="#__codelineno-1-39"></a><span class="nt">&lt;dc:identifier&gt;</span>SI-3<span class="nt">&lt;/dc:identifier&gt;</span>
+<a id="__codelineno-1-40" name="__codelineno-1-40" href="#__codelineno-1-40"></a><span class="nt">&lt;/reference&gt;</span>
+<a id="__codelineno-1-41" name="__codelineno-1-41" href="#__codelineno-1-41"></a><span class="nt">&lt;reference</span><span class="w"> </span><span class="na">href=</span><span class="s">&quot;https://csrc.nist.gov/Projects/risk-management/sp800-53-controls&quot;</span><span class="nt">&gt;</span>
+<a id="__codelineno-1-42" name="__codelineno-1-42" href="#__codelineno-1-42"></a><span class="nt">&lt;dc:identifier&gt;</span>MP-7<span class="nt">&lt;/dc:identifier&gt;</span>
+<a id="__codelineno-1-43" name="__codelineno-1-43" href="#__codelineno-1-43"></a><span class="nt">&lt;/reference&gt;</span>
+<a id="__codelineno-1-44" name="__codelineno-1-44" href="#__codelineno-1-44"></a>
+<a id="__codelineno-1-45" name="__codelineno-1-45" href="#__codelineno-1-45"></a><span class="cm">&lt;!-- Remediation (STIG convention) --&gt;</span>
+<a id="__codelineno-1-46" name="__codelineno-1-46" href="#__codelineno-1-46"></a><span class="nt">&lt;fixtext</span><span class="w"> </span><span class="na">fixref=</span><span class="s">&quot;F-3_1_1&quot;</span><span class="nt">&gt;</span>
+<a id="__codelineno-1-47" name="__codelineno-1-47" href="#__codelineno-1-47"></a>Run<span class="w"> </span>the<span class="w"> </span>following<span class="w"> </span>command:
+<a id="__codelineno-1-48" name="__codelineno-1-48" href="#__codelineno-1-48"></a>chmod<span class="w"> </span>644<span class="w"> </span>/var/lib/kubelet/kubeconfig
+<a id="__codelineno-1-49" name="__codelineno-1-49" href="#__codelineno-1-49"></a><span class="nt">&lt;/fixtext&gt;</span>
+<a id="__codelineno-1-50" name="__codelineno-1-50" href="#__codelineno-1-50"></a><span class="nt">&lt;fix</span><span class="w"> </span><span class="na">id=</span><span class="s">&quot;F-3_1_1&quot;</span><span class="nt">/&gt;</span>
+<a id="__codelineno-1-51" name="__codelineno-1-51" href="#__codelineno-1-51"></a>
+<a id="__codelineno-1-52" name="__codelineno-1-52" href="#__codelineno-1-52"></a><span class="cm">&lt;!-- Check/Audit (STIG convention) --&gt;</span>
+<a id="__codelineno-1-53" name="__codelineno-1-53" href="#__codelineno-1-53"></a><span class="nt">&lt;check</span><span class="w"> </span><span class="na">system=</span><span class="s">&quot;C-3_1_1&quot;</span><span class="nt">&gt;</span>
+<a id="__codelineno-1-54" name="__codelineno-1-54" href="#__codelineno-1-54"></a><span class="nt">&lt;check-content&gt;</span>
+<a id="__codelineno-1-55" name="__codelineno-1-55" href="#__codelineno-1-55"></a>Run<span class="w"> </span>the<span class="w"> </span>following<span class="w"> </span>command:
+<a id="__codelineno-1-56" name="__codelineno-1-56" href="#__codelineno-1-56"></a>stat<span class="w"> </span>-c<span class="w"> </span>%a<span class="w"> </span>/var/lib/kubelet/kubeconfig
+<a id="__codelineno-1-57" name="__codelineno-1-57" href="#__codelineno-1-57"></a>
+<a id="__codelineno-1-58" name="__codelineno-1-58" href="#__codelineno-1-58"></a>Verify<span class="w"> </span>permissions<span class="w"> </span>are<span class="w"> </span>644<span class="w"> </span>or<span class="w"> </span>more<span class="w"> </span>restrictive.
+<a id="__codelineno-1-59" name="__codelineno-1-59" href="#__codelineno-1-59"></a><span class="nt">&lt;/check-content&gt;</span>
+<a id="__codelineno-1-60" name="__codelineno-1-60" href="#__codelineno-1-60"></a><span class="nt">&lt;/check&gt;</span>
+<a id="__codelineno-1-61" name="__codelineno-1-61" href="#__codelineno-1-61"></a>
+<a id="__codelineno-1-62" name="__codelineno-1-62" href="#__codelineno-1-62"></a><span class="cm">&lt;!-- Additional metadata (CIS-specific, standard XCCDF elements) --&gt;</span>
+<a id="__codelineno-1-63" name="__codelineno-1-63" href="#__codelineno-1-63"></a><span class="nt">&lt;metadata&gt;</span>
+<a id="__codelineno-1-64" name="__codelineno-1-64" href="#__codelineno-1-64"></a><span class="nt">&lt;cis-control</span><span class="w"> </span><span class="na">version=</span><span class="s">&quot;8&quot;</span><span class="w"> </span><span class="na">id=</span><span class="s">&quot;4.8&quot;</span><span class="nt">&gt;</span>
+<a id="__codelineno-1-65" name="__codelineno-1-65" href="#__codelineno-1-65"></a>Uninstall<span class="w"> </span>or<span class="w"> </span>Disable<span class="w"> </span>Unnecessary<span class="w"> </span>Services<span class="w"> </span>on<span class="w"> </span>Enterprise<span class="w"> </span>Assets<span class="w"> </span>and<span class="w"> </span>Software
+<a id="__codelineno-1-66" name="__codelineno-1-66" href="#__codelineno-1-66"></a><span class="nt">&lt;/cis-control&gt;</span>
+<a id="__codelineno-1-67" name="__codelineno-1-67" href="#__codelineno-1-67"></a><span class="nt">&lt;cis-control</span><span class="w"> </span><span class="na">version=</span><span class="s">&quot;7&quot;</span><span class="w"> </span><span class="na">id=</span><span class="s">&quot;9.2&quot;</span><span class="nt">&gt;</span>
+<a id="__codelineno-1-68" name="__codelineno-1-68" href="#__codelineno-1-68"></a>Ensure<span class="w"> </span>Only<span class="w"> </span>Approved<span class="w"> </span>Ports,<span class="w"> </span>Protocols<span class="w"> </span>and<span class="w"> </span>Services<span class="w"> </span>Are<span class="w"> </span>Running
+<a id="__codelineno-1-69" name="__codelineno-1-69" href="#__codelineno-1-69"></a><span class="nt">&lt;/cis-control&gt;</span>
+<a id="__codelineno-1-70" name="__codelineno-1-70" href="#__codelineno-1-70"></a><span class="nt">&lt;profile&gt;</span>Level<span class="w"> </span>1<span class="w"> </span>-<span class="w"> </span>Server<span class="nt">&lt;/profile&gt;</span>
+<a id="__codelineno-1-71" name="__codelineno-1-71" href="#__codelineno-1-71"></a><span class="nt">&lt;profile&gt;</span>Level<span class="w"> </span>1<span class="w"> </span>-<span class="w"> </span>Workstation<span class="nt">&lt;/profile&gt;</span>
+<a id="__codelineno-1-72" name="__codelineno-1-72" href="#__codelineno-1-72"></a><span class="nt">&lt;mitre-technique&gt;</span>T1068<span class="nt">&lt;/mitre-technique&gt;</span>
+<a id="__codelineno-1-73" name="__codelineno-1-73" href="#__codelineno-1-73"></a><span class="nt">&lt;mitre-tactic&gt;</span>TA0001<span class="nt">&lt;/mitre-tactic&gt;</span>
+<a id="__codelineno-1-74" name="__codelineno-1-74" href="#__codelineno-1-74"></a><span class="nt">&lt;mitre-mitigation&gt;</span>M1022<span class="nt">&lt;/mitre-mitigation&gt;</span>
+<a id="__codelineno-1-75" name="__codelineno-1-75" href="#__codelineno-1-75"></a><span class="nt">&lt;/metadata&gt;</span>
+<a id="__codelineno-1-76" name="__codelineno-1-76" href="#__codelineno-1-76"></a>
+<a id="__codelineno-1-77" name="__codelineno-1-77" href="#__codelineno-1-77"></a><span class="nt">&lt;/Rule&gt;</span>
+</code></pre></div>
+<h3 id="cis-field-disa-element-mapping">CIS Field DISA Element Mapping<a class="headerlink" href="#cis-field-disa-element-mapping" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>CIS Field</th>
+<th>DISA Element</th>
+<th>Location</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ref</td>
+<td><code>&lt;version&gt;</code></td>
+<td>Direct</td>
+<td>CIS 3.1.1 STIG ID equivalent</td>
+</tr>
+<tr>
+<td>title</td>
+<td><code>&lt;title&gt;</code></td>
+<td>Direct</td>
+<td>Unchanged</td>
+</tr>
+<tr>
+<td>description</td>
+<td><code>&lt;description&gt;</code> VulnDiscussion (first part)</td>
+<td>Embedded</td>
+<td>Strip HTML tags</td>
+</tr>
+<tr>
+<td>rationale</td>
+<td><code>&lt;description&gt;</code> VulnDiscussion (second part)</td>
+<td>Embedded</td>
+<td>Strip HTML tags, append to description</td>
+</tr>
+<tr>
+<td>impact</td>
+<td><code>&lt;description&gt;</code> PotentialImpacts</td>
+<td>Embedded</td>
+<td>Strip HTML tags</td>
+</tr>
+<tr>
+<td>additional_info</td>
+<td><code>&lt;description&gt;</code> Mitigations</td>
+<td>Embedded</td>
+<td>If present</td>
+</tr>
+<tr>
+<td>remediation</td>
+<td><code>&lt;fixtext&gt;</code></td>
+<td>Direct</td>
+<td>Strip HTML, preserve code blocks</td>
+</tr>
+<tr>
+<td>audit</td>
+<td><code>&lt;check&gt;&lt;check-content&gt;</code></td>
+<td>Nested</td>
+<td>Strip HTML, preserve code blocks</td>
+</tr>
+<tr>
+<td>cis_controls</td>
+<td><code>&lt;metadata&gt;</code> cis-control</td>
+<td>Custom</td>
+<td>CIS-specific metadata</td>
+</tr>
+<tr>
+<td>mitre_mapping</td>
+<td><code>&lt;metadata&gt;</code> mitre-*</td>
+<td>Custom</td>
+<td>Techniques, tactics, mitigations</td>
+</tr>
+<tr>
+<td>profiles</td>
+<td><code>&lt;metadata&gt;</code> profile</td>
+<td>Custom</td>
+<td>Level 1/2, Server/Workstation</td>
+</tr>
+<tr>
+<td>nist_controls (via CCI mapping)</td>
+<td><code>&lt;ident system="http://cyber.mil/cci"&gt;</code></td>
+<td>Direct</td>
+<td>Primary + supporting CCIs</td>
+</tr>
+<tr>
+<td>nist_controls (extras)</td>
+<td><code>&lt;reference&gt;&lt;dc:identifier&gt;</code></td>
+<td>Direct</td>
+<td>Only if NOT covered by CCIs</td>
+</tr>
+</tbody>
+</table>
+<h3 id="attributes">Attributes<a class="headerlink" href="#attributes" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Value</th>
+<th>Reasoning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Rule/@severity</td>
+<td>"medium"</td>
+<td>CIS has no severity concept, default to medium (CAT II equivalent)</td>
+</tr>
+<tr>
+<td>Rule/@weight</td>
+<td>"10.0"</td>
+<td>DISA standard weight</td>
+</tr>
+<tr>
+<td>Rule/@id</td>
+<td><code>xccdf_cis_{platform}_rule_{ref}</code></td>
+<td>Synthetic ID, CIS-prefixed</td>
+</tr>
+<tr>
+<td>fixtext/@fixref</td>
+<td><code>F-{ref}</code></td>
+<td>Links to fix element</td>
+</tr>
+<tr>
+<td>fix/@id</td>
+<td><code>F-{ref}</code></td>
+<td>Matches fixref</td>
+</tr>
+<tr>
+<td>check/@system</td>
+<td><code>C-{ref}</code></td>
+<td>Synthetic check ID</td>
+</tr>
+</tbody>
+</table>
+<h3 id="cci-nist-deduplication-algorithm">CCI + NIST Deduplication Algorithm<a class="headerlink" href="#cci-nist-deduplication-algorithm" title="Permanent link">&para;</a></h3>
+<p><strong>Goal</strong>: Use CCIs (DoD standard) where available, add NIST references only for extras</p>
+<p><strong>Input</strong>:</p>
+<ul>
+<li>CIS Control from recommendation: "4.8"</li>
+<li>CIS nist_controls: ["CM-7", "SI-3", "MP-7"]</li>
+<li>CCI mapping for 4.8:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p">{</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nt">&quot;primary_cci&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;cci&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;CCI-000381&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;nist&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;CM-7.1&quot;</span><span class="p">},</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="nt">&quot;supporting_ccis&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="p">{</span><span class="nt">&quot;cci&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;CCI-000382&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;nist&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;CM-7.3&quot;</span><span class="p">},</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="p">{</span><span class="nt">&quot;cci&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;CCI-000380&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;nist&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;CM-7.2&quot;</span><span class="p">}</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="p">]</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="p">}</span>
+</code></pre></div></li>
+</ul>
+<p><strong>Step 1</strong>: Extract all CCIs from mapping
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>CCIs: [CCI-000381, CCI-000382, CCI-000380]
+</code></pre></div></p>
+<p><strong>Step 2</strong>: Determine which NIST controls each CCI covers
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>CCI-000381 CM-7.1 covers &quot;CM-7&quot;
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>CCI-000382 CM-7.3 covers &quot;CM-7&quot;
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>CCI-000380 CM-7.2 covers &quot;CM-7&quot;
+</code></pre></div></p>
+<p><strong>Step 3</strong>: Check each CIS-cited NIST control
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>For &quot;CM-7&quot;: Covered by CCIs (CCI-000381, 382, 380)
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>For &quot;SI-3&quot;: NOT in any CCI mapping
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>For &quot;MP-7&quot;: NOT in any CCI mapping
+</code></pre></div></p>
+<p><strong>Step 4</strong>: Build output
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="cm">&lt;!-- Add ALL CCIs from mapping (they cover CM-7) --&gt;</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="nt">&lt;ident</span><span class="w"> </span><span class="na">system=</span><span class="s">&quot;http://cyber.mil/cci&quot;</span><span class="nt">&gt;</span>CCI-000381<span class="nt">&lt;/ident&gt;</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="nt">&lt;ident</span><span class="w"> </span><span class="na">system=</span><span class="s">&quot;http://cyber.mil/cci&quot;</span><span class="nt">&gt;</span>CCI-000382<span class="nt">&lt;/ident&gt;</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="nt">&lt;ident</span><span class="w"> </span><span class="na">system=</span><span class="s">&quot;http://cyber.mil/cci&quot;</span><span class="nt">&gt;</span>CCI-000380<span class="nt">&lt;/ident&gt;</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="cm">&lt;!-- Add extras as references (not covered by CCIs) --&gt;</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="nt">&lt;reference&gt;</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="nt">&lt;dc:identifier&gt;</span>SI-3<span class="nt">&lt;/dc:identifier&gt;</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="nt">&lt;/reference&gt;</span>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="nt">&lt;reference&gt;</span>
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="nt">&lt;dc:identifier&gt;</span>MP-7<span class="nt">&lt;/dc:identifier&gt;</span>
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="nt">&lt;/reference&gt;</span>
+</code></pre></div></p>
+<p><strong>Matching Logic for NIST Controls</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">nist_control_matches</span><span class="p">(</span><span class="n">cited</span><span class="p">,</span> <span class="n">cci_mapped</span><span class="p">):</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="sd">&quot;&quot;&quot;Check if CCI-mapped control covers cited control.</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="sd">Examples:</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="sd">cited=&quot;CM-7&quot;, cci_mapped=&quot;CM-7.1&quot; True</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="sd">cited=&quot;CM-7&quot;, cci_mapped=&quot;CM-7&quot; True</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="sd">cited=&quot;CM-7.1&quot;, cci_mapped=&quot;CM-7&quot; False (too broad)</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="sd">cited=&quot;CM-7(5)&quot;, cci_mapped=&quot;CM-7.1&quot; False (different enhancement)</span>
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="sd">Logic: Strip enhancement numbers, check if cci_mapped starts with cited</span>
+<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a><span class="n">cited_base</span> <span class="o">=</span> <span class="n">cited</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;(&#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span> <span class="c1"># &quot;CM-7(5)&quot; &quot;CM-7&quot;</span>
+<a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a><span class="n">cci_base</span> <span class="o">=</span> <span class="n">cci_mapped</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;(&#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span> <span class="c1"># &quot;CM-7(5)&quot; &quot;CM-7&quot;</span>
+<a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a>
+<a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a><span class="c1"># CM-7.1 covers CM-7, but not vice versa</span>
+<a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a><span class="k">return</span> <span class="n">cci_base</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="n">cited_base</span><span class="p">)</span>
+</code></pre></div></p>
+<h3 id="why-this-normalization-is-correct">Why This Normalization Is Correct<a class="headerlink" href="#why-this-normalization-is-correct" title="Permanent link">&para;</a></h3>
+<p><strong>Respects source material</strong>: Uses exactly what CIS authors cited
+<strong>DoD compliant</strong>: Uses CCI (standard DoD method)
+<strong>No duplication</strong>: CM-7 not stated twice
+<strong>No invention</strong>: Does not add NIST controls CIS didn't cite
+<strong>Preserves extras</strong>: CIS-specific NIST citations become references
+<strong>Tool compatible</strong>: DISA tools understand CCIs, ignore CIS metadata</p>
+<hr />
+<h2 id="style-2-cis-native-xccdf-clean-format">Style 2: CIS Native XCCDF (Clean Format)<a class="headerlink" href="#style-2-cis-native-xccdf-clean-format" title="Permanent link">&para;</a></h2>
+<h3 id="purpose_1">Purpose<a class="headerlink" href="#purpose_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Clean, CIS-centric XCCDF export</li>
+<li>No DoD baggage (no CCI, no VMS tags)</li>
+<li>Optimized for non-DoD XCCDF tools</li>
+<li>Preserves all CIS-specific data</li>
+</ul>
+<h3 id="target-tools_1">Target Tools<a class="headerlink" href="#target-tools_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li>OpenSCAP (commercial/non-DoD)</li>
+<li>Generic XCCDF validators</li>
+<li>Custom compliance tools</li>
+<li>Research/analysis tools</li>
+</ul>
+<h3 id="complete-rule-structure_1">Complete Rule Structure<a class="headerlink" href="#complete-rule-structure_1" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nt">&lt;Rule</span><span class="w"> </span><span class="na">id=</span><span class="s">&quot;xccdf_org.cisecurity.benchmarks_rule_3_1_1&quot;</span><span class="nt">&gt;</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="cm">&lt;!-- CIS Reference --&gt;</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="nt">&lt;version&gt;</span>3.1.1<span class="nt">&lt;/version&gt;</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="cm">&lt;!-- Title --&gt;</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="nt">&lt;title&gt;</span>Ensure<span class="w"> </span>kubeconfig<span class="w"> </span>file<span class="w"> </span>permissions<span class="w"> </span>are<span class="w"> </span>set<span class="w"> </span>to<span class="w"> </span>644<span class="w"> </span>or<span class="w"> </span>more<span class="w"> </span>restrictive<span class="nt">&lt;/title&gt;</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="cm">&lt;!-- Clean separated content (no embedded XML tags) --&gt;</span>
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="nt">&lt;description&gt;</span>
+<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a>If<span class="w"> </span>kubelet<span class="w"> </span>is<span class="w"> </span>running,<span class="w"> </span>and<span class="w"> </span>if<span class="w"> </span>it<span class="w"> </span>is<span class="w"> </span>configured<span class="w"> </span>by<span class="w"> </span>a<span class="w"> </span>kubeconfig<span class="w"> </span>file,<span class="w"> </span>ensure
+<a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a>that<span class="w"> </span>the<span class="w"> </span>proxy<span class="w"> </span>kubeconfig<span class="w"> </span>file<span class="w"> </span>has<span class="w"> </span>permissions<span class="w"> </span>of<span class="w"> </span>644<span class="w"> </span>or<span class="w"> </span>more<span class="w"> </span>restrictive.
+<a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a><span class="nt">&lt;/description&gt;</span>
+<a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a>
+<a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a><span class="nt">&lt;rationale&gt;</span>
+<a id="__codelineno-8-16" name="__codelineno-8-16" href="#__codelineno-8-16"></a>Improper<span class="w"> </span>access<span class="w"> </span>permissions<span class="w"> </span>could<span class="w"> </span>allow<span class="w"> </span>unauthorized<span class="w"> </span>users<span class="w"> </span>to<span class="w"> </span>access
+<a id="__codelineno-8-17" name="__codelineno-8-17" href="#__codelineno-8-17"></a>sensitive<span class="w"> </span>configuration<span class="w"> </span>data.
+<a id="__codelineno-8-18" name="__codelineno-8-18" href="#__codelineno-8-18"></a><span class="nt">&lt;/rationale&gt;</span>
+<a id="__codelineno-8-19" name="__codelineno-8-19" href="#__codelineno-8-19"></a>
+<a id="__codelineno-8-20" name="__codelineno-8-20" href="#__codelineno-8-20"></a><span class="cm">&lt;!-- Impact as warning (XCCDF standard for caveats) --&gt;</span>
+<a id="__codelineno-8-21" name="__codelineno-8-21" href="#__codelineno-8-21"></a><span class="nt">&lt;warning</span><span class="w"> </span><span class="na">category=</span><span class="s">&quot;general&quot;</span><span class="nt">&gt;</span>
+<a id="__codelineno-8-22" name="__codelineno-8-22" href="#__codelineno-8-22"></a>None<span class="w"> </span>expected
+<a id="__codelineno-8-23" name="__codelineno-8-23" href="#__codelineno-8-23"></a><span class="nt">&lt;/warning&gt;</span>
+<a id="__codelineno-8-24" name="__codelineno-8-24" href="#__codelineno-8-24"></a>
+<a id="__codelineno-8-25" name="__codelineno-8-25" href="#__codelineno-8-25"></a><span class="cm">&lt;!-- Direct NIST 800-53 references --&gt;</span>
+<a id="__codelineno-8-26" name="__codelineno-8-26" href="#__codelineno-8-26"></a><span class="nt">&lt;reference</span><span class="w"> </span><span class="na">href=</span><span class="s">&quot;https://csrc.nist.gov/Projects/risk-management/sp800-53-controls&quot;</span><span class="nt">&gt;</span>
+<a id="__codelineno-8-27" name="__codelineno-8-27" href="#__codelineno-8-27"></a><span class="nt">&lt;dc:title&gt;</span>NIST<span class="w"> </span>SP<span class="w"> </span>800-53<span class="nt">&lt;/dc:title&gt;</span>
+<a id="__codelineno-8-28" name="__codelineno-8-28" href="#__codelineno-8-28"></a><span class="nt">&lt;dc:identifier&gt;</span>CM-7<span class="nt">&lt;/dc:identifier&gt;</span>
+<a id="__codelineno-8-29" name="__codelineno-8-29" href="#__codelineno-8-29"></a><span class="nt">&lt;/reference&gt;</span>
+<a id="__codelineno-8-30" name="__codelineno-8-30" href="#__codelineno-8-30"></a><span class="nt">&lt;reference</span><span class="w"> </span><span class="na">href=</span><span class="s">&quot;https://csrc.nist.gov/Projects/risk-management/sp800-53-controls&quot;</span><span class="nt">&gt;</span>
+<a id="__codelineno-8-31" name="__codelineno-8-31" href="#__codelineno-8-31"></a><span class="nt">&lt;dc:title&gt;</span>NIST<span class="w"> </span>SP<span class="w"> </span>800-53<span class="nt">&lt;/dc:title&gt;</span>
+<a id="__codelineno-8-32" name="__codelineno-8-32" href="#__codelineno-8-32"></a><span class="nt">&lt;dc:identifier&gt;</span>SI-3<span class="nt">&lt;/dc:identifier&gt;</span>
+<a id="__codelineno-8-33" name="__codelineno-8-33" href="#__codelineno-8-33"></a><span class="nt">&lt;/reference&gt;</span>
+<a id="__codelineno-8-34" name="__codelineno-8-34" href="#__codelineno-8-34"></a><span class="nt">&lt;reference</span><span class="w"> </span><span class="na">href=</span><span class="s">&quot;https://csrc.nist.gov/Projects/risk-management/sp800-53-controls&quot;</span><span class="nt">&gt;</span>
+<a id="__codelineno-8-35" name="__codelineno-8-35" href="#__codelineno-8-35"></a><span class="nt">&lt;dc:title&gt;</span>NIST<span class="w"> </span>SP<span class="w"> </span>800-53<span class="nt">&lt;/dc:title&gt;</span>
+<a id="__codelineno-8-36" name="__codelineno-8-36" href="#__codelineno-8-36"></a><span class="nt">&lt;dc:identifier&gt;</span>MP-7<span class="nt">&lt;/dc:identifier&gt;</span>
+<a id="__codelineno-8-37" name="__codelineno-8-37" href="#__codelineno-8-37"></a><span class="nt">&lt;/reference&gt;</span>
+<a id="__codelineno-8-38" name="__codelineno-8-38" href="#__codelineno-8-38"></a>
+<a id="__codelineno-8-39" name="__codelineno-8-39" href="#__codelineno-8-39"></a><span class="cm">&lt;!-- CIS-specific metadata (standard XCCDF metadata element) --&gt;</span>
+<a id="__codelineno-8-40" name="__codelineno-8-40" href="#__codelineno-8-40"></a><span class="nt">&lt;metadata&gt;</span>
+<a id="__codelineno-8-41" name="__codelineno-8-41" href="#__codelineno-8-41"></a><span class="cm">&lt;!-- Profiles --&gt;</span>
+<a id="__codelineno-8-42" name="__codelineno-8-42" href="#__codelineno-8-42"></a><span class="nt">&lt;cis-profile&gt;</span>Level<span class="w"> </span>1<span class="w"> </span>-<span class="w"> </span>Server<span class="nt">&lt;/cis-profile&gt;</span>
+<a id="__codelineno-8-43" name="__codelineno-8-43" href="#__codelineno-8-43"></a><span class="nt">&lt;cis-profile&gt;</span>Level<span class="w"> </span>1<span class="w"> </span>-<span class="w"> </span>Workstation<span class="nt">&lt;/cis-profile&gt;</span>
+<a id="__codelineno-8-44" name="__codelineno-8-44" href="#__codelineno-8-44"></a>
+<a id="__codelineno-8-45" name="__codelineno-8-45" href="#__codelineno-8-45"></a><span class="cm">&lt;!-- CIS Controls v8 --&gt;</span>
+<a id="__codelineno-8-46" name="__codelineno-8-46" href="#__codelineno-8-46"></a><span class="nt">&lt;cis-control</span><span class="w"> </span><span class="na">version=</span><span class="s">&quot;8&quot;</span><span class="nt">&gt;</span>
+<a id="__codelineno-8-47" name="__codelineno-8-47" href="#__codelineno-8-47"></a><span class="nt">&lt;control-id&gt;</span>4.8<span class="nt">&lt;/control-id&gt;</span>
+<a id="__codelineno-8-48" name="__codelineno-8-48" href="#__codelineno-8-48"></a><span class="nt">&lt;title&gt;</span>Uninstall<span class="w"> </span>or<span class="w"> </span>Disable<span class="w"> </span>Unnecessary<span class="w"> </span>Services<span class="w"> </span>on<span class="w"> </span>Enterprise<span class="w"> </span>Assets<span class="w"> </span>and<span class="w"> </span>Software<span class="nt">&lt;/title&gt;</span>
+<a id="__codelineno-8-49" name="__codelineno-8-49" href="#__codelineno-8-49"></a><span class="nt">&lt;ig1&gt;</span>false<span class="nt">&lt;/ig1&gt;</span>
+<a id="__codelineno-8-50" name="__codelineno-8-50" href="#__codelineno-8-50"></a><span class="nt">&lt;ig2&gt;</span>true<span class="nt">&lt;/ig2&gt;</span>
+<a id="__codelineno-8-51" name="__codelineno-8-51" href="#__codelineno-8-51"></a><span class="nt">&lt;ig3&gt;</span>true<span class="nt">&lt;/ig3&gt;</span>
+<a id="__codelineno-8-52" name="__codelineno-8-52" href="#__codelineno-8-52"></a><span class="nt">&lt;/cis-control&gt;</span>
+<a id="__codelineno-8-53" name="__codelineno-8-53" href="#__codelineno-8-53"></a>
+<a id="__codelineno-8-54" name="__codelineno-8-54" href="#__codelineno-8-54"></a><span class="cm">&lt;!-- CIS Controls v7 --&gt;</span>
+<a id="__codelineno-8-55" name="__codelineno-8-55" href="#__codelineno-8-55"></a><span class="nt">&lt;cis-control</span><span class="w"> </span><span class="na">version=</span><span class="s">&quot;7&quot;</span><span class="nt">&gt;</span>
+<a id="__codelineno-8-56" name="__codelineno-8-56" href="#__codelineno-8-56"></a><span class="nt">&lt;control-id&gt;</span>9.2<span class="nt">&lt;/control-id&gt;</span>
+<a id="__codelineno-8-57" name="__codelineno-8-57" href="#__codelineno-8-57"></a><span class="nt">&lt;title&gt;</span>Ensure<span class="w"> </span>Only<span class="w"> </span>Approved<span class="w"> </span>Ports,<span class="w"> </span>Protocols<span class="w"> </span>and<span class="w"> </span>Services<span class="w"> </span>Are<span class="w"> </span>Running<span class="nt">&lt;/title&gt;</span>
+<a id="__codelineno-8-58" name="__codelineno-8-58" href="#__codelineno-8-58"></a><span class="nt">&lt;ig1&gt;</span>false<span class="nt">&lt;/ig1&gt;</span>
+<a id="__codelineno-8-59" name="__codelineno-8-59" href="#__codelineno-8-59"></a><span class="nt">&lt;ig2&gt;</span>true<span class="nt">&lt;/ig2&gt;</span>
+<a id="__codelineno-8-60" name="__codelineno-8-60" href="#__codelineno-8-60"></a><span class="nt">&lt;ig3&gt;</span>true<span class="nt">&lt;/ig3&gt;</span>
+<a id="__codelineno-8-61" name="__codelineno-8-61" href="#__codelineno-8-61"></a><span class="nt">&lt;/cis-control&gt;</span>
+<a id="__codelineno-8-62" name="__codelineno-8-62" href="#__codelineno-8-62"></a>
+<a id="__codelineno-8-63" name="__codelineno-8-63" href="#__codelineno-8-63"></a><span class="cm">&lt;!-- MITRE ATT&amp;CK --&gt;</span>
+<a id="__codelineno-8-64" name="__codelineno-8-64" href="#__codelineno-8-64"></a><span class="nt">&lt;mitre-attack&gt;</span>
+<a id="__codelineno-8-65" name="__codelineno-8-65" href="#__codelineno-8-65"></a><span class="nt">&lt;technique&gt;</span>T1068<span class="nt">&lt;/technique&gt;</span>
+<a id="__codelineno-8-66" name="__codelineno-8-66" href="#__codelineno-8-66"></a><span class="nt">&lt;technique&gt;</span>T1203<span class="nt">&lt;/technique&gt;</span>
+<a id="__codelineno-8-67" name="__codelineno-8-67" href="#__codelineno-8-67"></a><span class="nt">&lt;tactic&gt;</span>TA0001<span class="nt">&lt;/tactic&gt;</span>
+<a id="__codelineno-8-68" name="__codelineno-8-68" href="#__codelineno-8-68"></a><span class="nt">&lt;mitigation&gt;</span>M1022<span class="nt">&lt;/mitigation&gt;</span>
+<a id="__codelineno-8-69" name="__codelineno-8-69" href="#__codelineno-8-69"></a><span class="nt">&lt;/mitre-attack&gt;</span>
+<a id="__codelineno-8-70" name="__codelineno-8-70" href="#__codelineno-8-70"></a>
+<a id="__codelineno-8-71" name="__codelineno-8-71" href="#__codelineno-8-71"></a><span class="cm">&lt;!-- Assessment type --&gt;</span>
+<a id="__codelineno-8-72" name="__codelineno-8-72" href="#__codelineno-8-72"></a><span class="nt">&lt;assessment-status&gt;</span>Automated<span class="nt">&lt;/assessment-status&gt;</span>
+<a id="__codelineno-8-73" name="__codelineno-8-73" href="#__codelineno-8-73"></a>
+<a id="__codelineno-8-74" name="__codelineno-8-74" href="#__codelineno-8-74"></a><span class="cm">&lt;!-- Artifacts (if present) --&gt;</span>
+<a id="__codelineno-8-75" name="__codelineno-8-75" href="#__codelineno-8-75"></a><span class="nt">&lt;artifacts&gt;</span>
+<a id="__codelineno-8-76" name="__codelineno-8-76" href="#__codelineno-8-76"></a><span class="nt">&lt;artifact</span><span class="w"> </span><span class="na">id=</span><span class="s">&quot;1.1.1.1.1&quot;</span><span class="w"> </span><span class="na">status=</span><span class="s">&quot;draft&quot;</span><span class="nt">&gt;</span>
+<a id="__codelineno-8-77" name="__codelineno-8-77" href="#__codelineno-8-77"></a>Script<span class="w"> </span>Check<span class="w"> </span>Engine<span class="w"> </span>Check<span class="w"> </span>&quot;nix_module_chk_v3.sh&quot;...
+<a id="__codelineno-8-78" name="__codelineno-8-78" href="#__codelineno-8-78"></a><span class="nt">&lt;/artifact&gt;</span>
+<a id="__codelineno-8-79" name="__codelineno-8-79" href="#__codelineno-8-79"></a><span class="nt">&lt;/artifacts&gt;</span>
+<a id="__codelineno-8-80" name="__codelineno-8-80" href="#__codelineno-8-80"></a><span class="nt">&lt;/metadata&gt;</span>
+<a id="__codelineno-8-81" name="__codelineno-8-81" href="#__codelineno-8-81"></a>
+<a id="__codelineno-8-82" name="__codelineno-8-82" href="#__codelineno-8-82"></a><span class="cm">&lt;!-- Remediation --&gt;</span>
+<a id="__codelineno-8-83" name="__codelineno-8-83" href="#__codelineno-8-83"></a><span class="nt">&lt;fixtext&gt;</span>
+<a id="__codelineno-8-84" name="__codelineno-8-84" href="#__codelineno-8-84"></a>Run<span class="w"> </span>the<span class="w"> </span>following<span class="w"> </span>command:
+<a id="__codelineno-8-85" name="__codelineno-8-85" href="#__codelineno-8-85"></a>chmod<span class="w"> </span>644<span class="w"> </span>/var/lib/kubelet/kubeconfig
+<a id="__codelineno-8-86" name="__codelineno-8-86" href="#__codelineno-8-86"></a><span class="nt">&lt;/fixtext&gt;</span>
+<a id="__codelineno-8-87" name="__codelineno-8-87" href="#__codelineno-8-87"></a>
+<a id="__codelineno-8-88" name="__codelineno-8-88" href="#__codelineno-8-88"></a><span class="cm">&lt;!-- Audit/Check --&gt;</span>
+<a id="__codelineno-8-89" name="__codelineno-8-89" href="#__codelineno-8-89"></a><span class="nt">&lt;check&gt;</span>
+<a id="__codelineno-8-90" name="__codelineno-8-90" href="#__codelineno-8-90"></a><span class="nt">&lt;check-content&gt;</span>
+<a id="__codelineno-8-91" name="__codelineno-8-91" href="#__codelineno-8-91"></a>Run<span class="w"> </span>the<span class="w"> </span>following<span class="w"> </span>command:
+<a id="__codelineno-8-92" name="__codelineno-8-92" href="#__codelineno-8-92"></a>stat<span class="w"> </span>-c<span class="w"> </span>%a<span class="w"> </span>/var/lib/kubelet/kubeconfig
+<a id="__codelineno-8-93" name="__codelineno-8-93" href="#__codelineno-8-93"></a>
+<a id="__codelineno-8-94" name="__codelineno-8-94" href="#__codelineno-8-94"></a>Verify<span class="w"> </span>the<span class="w"> </span>permissions<span class="w"> </span>are<span class="w"> </span>644<span class="w"> </span>or<span class="w"> </span>more<span class="w"> </span>restrictive.
+<a id="__codelineno-8-95" name="__codelineno-8-95" href="#__codelineno-8-95"></a><span class="nt">&lt;/check-content&gt;</span>
+<a id="__codelineno-8-96" name="__codelineno-8-96" href="#__codelineno-8-96"></a><span class="nt">&lt;/check&gt;</span>
+<a id="__codelineno-8-97" name="__codelineno-8-97" href="#__codelineno-8-97"></a>
+<a id="__codelineno-8-98" name="__codelineno-8-98" href="#__codelineno-8-98"></a><span class="nt">&lt;/Rule&gt;</span>
+</code></pre></div>
+<h3 id="cis-field-cis-native-element-mapping">CIS Field CIS Native Element Mapping<a class="headerlink" href="#cis-field-cis-native-element-mapping" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>CIS Field</th>
+<th>CIS Native Element</th>
+<th>Location</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ref</td>
+<td><code>&lt;version&gt;</code></td>
+<td>Direct</td>
+<td>CIS reference number</td>
+</tr>
+<tr>
+<td>title</td>
+<td><code>&lt;title&gt;</code></td>
+<td>Direct</td>
+<td>Unchanged</td>
+</tr>
+<tr>
+<td>description</td>
+<td><code>&lt;description&gt;</code></td>
+<td>Direct</td>
+<td>Clean, no embedded tags</td>
+</tr>
+<tr>
+<td>rationale</td>
+<td><code>&lt;rationale&gt;</code></td>
+<td>Direct</td>
+<td>Separate element</td>
+</tr>
+<tr>
+<td>impact</td>
+<td><code>&lt;warning category="general"&gt;</code></td>
+<td>Direct</td>
+<td>XCCDF standard for impacts</td>
+</tr>
+<tr>
+<td>additional_info</td>
+<td><code>&lt;metadata&gt;</code> additional-info</td>
+<td>Custom</td>
+<td>If present</td>
+</tr>
+<tr>
+<td>remediation</td>
+<td><code>&lt;fixtext&gt;</code></td>
+<td>Direct</td>
+<td>Same as DISA</td>
+</tr>
+<tr>
+<td>audit</td>
+<td><code>&lt;check&gt;&lt;check-content&gt;</code></td>
+<td>Nested</td>
+<td>Same as DISA</td>
+</tr>
+<tr>
+<td>profiles</td>
+<td><code>&lt;metadata&gt;</code> cis-profile</td>
+<td>Custom</td>
+<td>Level/workload tags</td>
+</tr>
+<tr>
+<td>cis_controls</td>
+<td><code>&lt;metadata&gt;</code> cis-control</td>
+<td>Custom</td>
+<td>v7/v8 with IG groups</td>
+</tr>
+<tr>
+<td>mitre_mapping</td>
+<td><code>&lt;metadata&gt;</code> mitre-attack</td>
+<td>Custom</td>
+<td>Techniques/tactics/mitigations</td>
+</tr>
+<tr>
+<td>nist_controls</td>
+<td><code>&lt;reference&gt;&lt;dc:identifier&gt;</code></td>
+<td>Direct</td>
+<td>All NIST controls (no CCI)</td>
+</tr>
+<tr>
+<td>artifacts</td>
+<td><code>&lt;metadata&gt;</code> artifacts</td>
+<td>Custom</td>
+<td>Test artifacts</td>
+</tr>
+<tr>
+<td>assessment_status</td>
+<td><code>&lt;metadata&gt;</code> assessment-status</td>
+<td>Custom</td>
+<td>Automated/Manual</td>
+</tr>
+</tbody>
+</table>
+<h3 id="differences-from-disa-style">Differences from DISA Style<a class="headerlink" href="#differences-from-disa-style" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Aspect</th>
+<th>DISA Style</th>
+<th>CIS Native Style</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Description structure</strong></td>
+<td>Embedded XML tags (VulnDiscussion, etc.)</td>
+<td>Clean separate elements</td>
+</tr>
+<tr>
+<td><strong>NIST mapping</strong></td>
+<td>Via CCIs (<code>&lt;ident&gt;</code>)</td>
+<td>Direct references</td>
+</tr>
+<tr>
+<td><strong>CIS Controls</strong></td>
+<td>In metadata only</td>
+<td>In metadata</td>
+</tr>
+<tr>
+<td><strong>MITRE</strong></td>
+<td>In metadata</td>
+<td>In metadata</td>
+</tr>
+<tr>
+<td><strong>Rationale</strong></td>
+<td>Embedded in VulnDiscussion</td>
+<td>Separate <code>&lt;rationale&gt;</code> element</td>
+</tr>
+<tr>
+<td><strong>Impact</strong></td>
+<td>Embedded as PotentialImpacts</td>
+<td><code>&lt;warning&gt;</code> element</td>
+</tr>
+<tr>
+<td><strong>Complexity</strong></td>
+<td>Higher (DoD conventions)</td>
+<td>Lower (clean structure)</td>
+</tr>
+<tr>
+<td><strong>Target audience</strong></td>
+<td>DoD/Government</td>
+<td>Commercial/General</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="cci-nist-deduplication-algorithm-disa-style-only">CCI + NIST Deduplication Algorithm (DISA Style Only)<a class="headerlink" href="#cci-nist-deduplication-algorithm-disa-style-only" title="Permanent link">&para;</a></h2>
+<h3 id="purpose_2">Purpose<a class="headerlink" href="#purpose_2" title="Permanent link">&para;</a></h3>
+<p>Avoid duplicating NIST control references when CCIs already provide that mapping.</p>
+<h3 id="algorithm">Algorithm<a class="headerlink" href="#algorithm" title="Permanent link">&para;</a></h3>
+<p><strong>Input</strong>:</p>
+<ul>
+<li><code>cis_controls</code>: List of CIS Control objects from recommendation</li>
+<li><code>nist_controls</code>: List of NIST control IDs cited by CIS authors (e.g., ["CM-7", "SI-3"])</li>
+<li><code>cis_cci_mapping</code>: Loaded from cis-cci-mapping.json</li>
+</ul>
+<p><strong>Process</strong>:</p>
+<p><strong>Step 1</strong>: For each CIS Control, look up CCI mapping
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="k">for</span> <span class="n">cis_ctrl</span> <span class="ow">in</span> <span class="n">recommendation</span><span class="o">.</span><span class="n">cis_controls</span><span class="p">:</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="n">cis_id</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">cis_ctrl</span><span class="o">.</span><span class="n">version</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">cis_ctrl</span><span class="o">.</span><span class="n">control</span><span class="si">}</span><span class="s2">&quot;</span> <span class="c1"># &quot;8.4.8&quot; or &quot;7.9.2&quot;</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="n">mapping</span> <span class="o">=</span> <span class="n">cis_cci_mapping</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">cis_id</span><span class="p">)</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="k">if</span> <span class="n">mapping</span><span class="p">:</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="c1"># Collect CCIs</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="n">all_ccis</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">mapping</span><span class="p">[</span><span class="s1">&#39;primary_cci&#39;</span><span class="p">][</span><span class="s1">&#39;cci&#39;</span><span class="p">])</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="n">all_ccis</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="n">s</span><span class="p">[</span><span class="s1">&#39;cci&#39;</span><span class="p">]</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">mapping</span><span class="p">[</span><span class="s1">&#39;supporting_ccis&#39;</span><span class="p">]])</span>
+</code></pre></div></p>
+<p><strong>Step 2</strong>: Build CCI NIST reverse map
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">cci_to_nist</span> <span class="o">=</span> <span class="p">{}</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="k">for</span> <span class="n">mapping</span> <span class="ow">in</span> <span class="n">cis_cci_mapping</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="c1"># From primary</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="n">cci_to_nist</span><span class="p">[</span><span class="n">mapping</span><span class="p">[</span><span class="s1">&#39;primary_cci&#39;</span><span class="p">][</span><span class="s1">&#39;cci&#39;</span><span class="p">]]</span> <span class="o">=</span> <span class="n">extract_nist</span><span class="p">(</span><span class="n">mapping</span><span class="p">[</span><span class="s1">&#39;primary_cci&#39;</span><span class="p">])</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="c1"># From supporting</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="k">for</span> <span class="n">supp</span> <span class="ow">in</span> <span class="n">mapping</span><span class="p">[</span><span class="s1">&#39;supporting_ccis&#39;</span><span class="p">]:</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="n">cci_to_nist</span><span class="p">[</span><span class="n">supp</span><span class="p">[</span><span class="s1">&#39;cci&#39;</span><span class="p">]]</span> <span class="o">=</span> <span class="n">extract_nist</span><span class="p">(</span><span class="n">supp</span><span class="p">)</span>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="c1"># Extract NIST from CCI mapping entry</span>
+<a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a><span class="k">def</span><span class="w"> </span><span class="nf">extract_nist</span><span class="p">(</span><span class="n">cci_entry</span><span class="p">):</span>
+<a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a><span class="c1"># Could be in &#39;nist&#39; field or need to parse from reasoning</span>
+<a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a><span class="c1"># Return base control: &quot;CM-7.1&quot; &quot;CM-7&quot;</span>
+</code></pre></div></p>
+<p><strong>Step 3</strong>: Check which cited NIST controls are covered by CCIs
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="n">covered_nist</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="k">for</span> <span class="n">cci</span> <span class="ow">in</span> <span class="n">all_ccis</span><span class="p">:</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="n">nist_ctrl</span> <span class="o">=</span> <span class="n">cci_to_nist</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">cci</span><span class="p">)</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="k">if</span> <span class="n">nist_ctrl</span><span class="p">:</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="n">base</span> <span class="o">=</span> <span class="n">nist_ctrl</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;(&#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;.&#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span> <span class="c1"># &quot;CM-7(5)&quot; &quot;CM-7&quot;</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="n">covered_nist</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">base</span><span class="p">)</span>
+</code></pre></div></p>
+<p><strong>Step 4</strong>: Find NIST controls NOT covered by CCIs
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="n">extra_nist</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="k">for</span> <span class="n">cited</span> <span class="ow">in</span> <span class="n">recommendation</span><span class="o">.</span><span class="n">nist_controls</span><span class="p">:</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="n">cited_base</span> <span class="o">=</span> <span class="n">cited</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;(&#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;.&#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="k">if</span> <span class="n">cited_base</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">covered_nist</span><span class="p">:</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="n">extra_nist</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">cited</span><span class="p">)</span>
+</code></pre></div></p>
+<p><strong>Output</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="cm">&lt;!-- All CCIs (cover CM-7) --&gt;</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="nt">&lt;ident&gt;</span>CCI-000381<span class="nt">&lt;/ident&gt;</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="nt">&lt;ident&gt;</span>CCI-000382<span class="nt">&lt;/ident&gt;</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="nt">&lt;ident&gt;</span>CCI-000380<span class="nt">&lt;/ident&gt;</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a><span class="cm">&lt;!-- Extras not covered by CCIs --&gt;</span>
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a><span class="nt">&lt;reference&gt;&lt;dc:identifier&gt;</span>SI-3<span class="nt">&lt;/dc:identifier&gt;&lt;/reference&gt;</span>
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a><span class="nt">&lt;reference&gt;&lt;dc:identifier&gt;</span>MP-7<span class="nt">&lt;/dc:identifier&gt;&lt;/reference&gt;</span>
+</code></pre></div></p>
+<h3 id="nist-control-matching-rules">NIST Control Matching Rules<a class="headerlink" href="#nist-control-matching-rules" title="Permanent link">&para;</a></h3>
+<p><strong>Matching is hierarchical</strong>:</p>
+<ul>
+<li>CCI maps to "CM-7.1" <strong>covers</strong> citation of "CM-7"</li>
+<li>CCI maps to "CM-7" does <strong>NOT cover</strong> citation of "CM-7.1" (too specific)</li>
+<li>CCI maps to "CM-7(5)" <strong>covers</strong> "CM-7" but not "CM-7(4)" (different enhancement)</li>
+</ul>
+<p><strong>Base matching</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">cci_covers_citation</span><span class="p">(</span><span class="n">cci_nist_control</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">cited_nist_control</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="sd">&quot;&quot;&quot;Check if CCI-mapped control covers the cited control.</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="sd">Examples:</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="sd">(&quot;CM-7.1&quot;, &quot;CM-7&quot;) True</span>
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="sd">(&quot;CM-7&quot;, &quot;CM-7&quot;) True</span>
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="sd">(&quot;CM-7&quot;, &quot;CM-7.1&quot;) False (CCI too broad)</span>
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="sd">(&quot;CM-7.1&quot;, &quot;CM-7.1&quot;) True</span>
+<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a><span class="sd">(&quot;CM-7.1&quot;, &quot;CM-7.2&quot;) False (different sub-control)</span>
+<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a><span class="c1"># Normalize: remove enhancements</span>
+<a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a><span class="n">cited_base</span> <span class="o">=</span> <span class="n">cited_nist_control</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;(&#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+<a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a><span class="n">cci_base</span> <span class="o">=</span> <span class="n">cci_nist_control</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;(&#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+<a id="__codelineno-14-14" name="__codelineno-14-14" href="#__codelineno-14-14"></a>
+<a id="__codelineno-14-15" name="__codelineno-14-15" href="#__codelineno-14-15"></a><span class="c1"># Check if CCI control starts with cited</span>
+<a id="__codelineno-14-16" name="__codelineno-14-16" href="#__codelineno-14-16"></a><span class="c1"># &quot;CM-7.1&quot;.startswith(&quot;CM-7&quot;) True</span>
+<a id="__codelineno-14-17" name="__codelineno-14-17" href="#__codelineno-14-17"></a><span class="k">return</span> <span class="n">cci_base</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="n">cited_base</span><span class="p">)</span>
+</code></pre></div></p>
+<h3 id="edge-cases">Edge Cases<a class="headerlink" href="#edge-cases" title="Permanent link">&para;</a></h3>
+<p><strong>Case 1</strong>: CIS cites "CM-7" but CCI maps to "CM-7(5)"</p>
+<ul>
+<li>Match: CM-7(5) covers CM-7? <strong>YES</strong> (enhancement of CM-7)</li>
+<li>Action: Use CCI</li>
+</ul>
+<p><strong>Case 2</strong>: CIS cites "CM-7.1" but CCI maps to "CM-7"</p>
+<ul>
+<li>Match: CM-7 covers CM-7.1? <strong>NO</strong> (too general)</li>
+<li>Action: Add CM-7.1 as reference (CCI doesn't cover specific sub-control)</li>
+</ul>
+<p><strong>Case 3</strong>: CIS has no CIS Controls (old benchmark)</p>
+<ul>
+<li>No CCI mapping available</li>
+<li>Action: Add all NIST controls as references</li>
+</ul>
+<p><strong>Case 4</strong>: CCI mapping not found for CIS Control</p>
+<ul>
+<li>Mapping incomplete</li>
+<li>Action: Add all NIST controls as references, log warning</li>
+</ul>
+<h3 id="implementation-notes">Implementation Notes<a class="headerlink" href="#implementation-notes" title="Permanent link">&para;</a></h3>
+<p><strong>CCI Mapping File</strong>: Bundle cis-cci-mapping.json with tool
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="c1"># Load once at module import</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="n">CCI_MAPPING_FILE</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="vm">__file__</span><span class="p">)</span><span class="o">.</span><span class="n">parent</span> <span class="o">/</span> <span class="s1">&#39;data&#39;</span> <span class="o">/</span> <span class="s1">&#39;cis-cci-mapping.json&#39;</span>
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a>
+<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a><span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">CCI_MAPPING_FILE</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a><span class="n">CIS_CCI_MAPPING</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+</code></pre></div></p>
+<p><strong>Lookup function</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">get_ccis_for_cis_control</span><span class="p">(</span><span class="n">cis_version</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">cis_control_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="sd">&quot;&quot;&quot;Get all CCIs for a CIS control.</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="sd">Args:</span>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="sd">cis_version: 7 or 8</span>
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a><span class="sd">cis_control_id: &quot;4.8&quot;, &quot;10.3&quot;, etc.</span>
+<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a>
+<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a><span class="sd">Returns:</span>
+<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a><span class="sd">List of CCI identifiers [&quot;CCI-000381&quot;, &quot;CCI-000382&quot;, ...]</span>
+<a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a><span class="sd">&quot;&quot;&quot;</span>
+<a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a><span class="c1"># CCI mapping uses just control number, not version-prefixed</span>
+<a id="__codelineno-16-12" name="__codelineno-16-12" href="#__codelineno-16-12"></a><span class="c1"># Both v7 and v8 might map to same CCIs (NIST doesn&#39;t change)</span>
+<a id="__codelineno-16-13" name="__codelineno-16-13" href="#__codelineno-16-13"></a>
+<a id="__codelineno-16-14" name="__codelineno-16-14" href="#__codelineno-16-14"></a><span class="n">mapping</span> <span class="o">=</span> <span class="n">CIS_CCI_MAPPING</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">cis_control_id</span><span class="p">)</span>
+<a id="__codelineno-16-15" name="__codelineno-16-15" href="#__codelineno-16-15"></a><span class="k">if</span> <span class="ow">not</span> <span class="n">mapping</span><span class="p">:</span>
+<a id="__codelineno-16-16" name="__codelineno-16-16" href="#__codelineno-16-16"></a><span class="k">return</span> <span class="p">[]</span>
+<a id="__codelineno-16-17" name="__codelineno-16-17" href="#__codelineno-16-17"></a>
+<a id="__codelineno-16-18" name="__codelineno-16-18" href="#__codelineno-16-18"></a><span class="n">ccis</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-16-19" name="__codelineno-16-19" href="#__codelineno-16-19"></a><span class="k">if</span> <span class="n">mapping</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;primary_cci&#39;</span><span class="p">):</span>
+<a id="__codelineno-16-20" name="__codelineno-16-20" href="#__codelineno-16-20"></a><span class="n">ccis</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">mapping</span><span class="p">[</span><span class="s1">&#39;primary_cci&#39;</span><span class="p">][</span><span class="s1">&#39;cci&#39;</span><span class="p">])</span>
+<a id="__codelineno-16-21" name="__codelineno-16-21" href="#__codelineno-16-21"></a>
+<a id="__codelineno-16-22" name="__codelineno-16-22" href="#__codelineno-16-22"></a><span class="k">for</span> <span class="n">supp</span> <span class="ow">in</span> <span class="n">mapping</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;supporting_ccis&#39;</span><span class="p">,</span> <span class="p">[]):</span>
+<a id="__codelineno-16-23" name="__codelineno-16-23" href="#__codelineno-16-23"></a><span class="n">ccis</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">supp</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;cci&#39;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">supp</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;cci_id&#39;</span><span class="p">))</span>
+<a id="__codelineno-16-24" name="__codelineno-16-24" href="#__codelineno-16-24"></a>
+<a id="__codelineno-16-25" name="__codelineno-16-25" href="#__codelineno-16-25"></a><span class="k">return</span> <span class="n">ccis</span>
+</code></pre></div></p>
+<hr />
+<h2 id="comparison-matrix">Comparison Matrix<a class="headerlink" href="#comparison-matrix" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>DISA Style</th>
+<th>CIS Native Style</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Use case</strong></td>
+<td>DoD compliance, STIG viewers</td>
+<td>General compliance, analysis</td>
+</tr>
+<tr>
+<td><strong>NIST mapping</strong></td>
+<td>CCIs (DoD standard)</td>
+<td>Direct references</td>
+</tr>
+<tr>
+<td><strong>Description</strong></td>
+<td>VulnDiscussion + legacy tags</td>
+<td>Clean description + rationale</td>
+</tr>
+<tr>
+<td><strong>CIS Controls</strong></td>
+<td>Metadata only</td>
+<td>Metadata (primary)</td>
+</tr>
+<tr>
+<td><strong>MITRE</strong></td>
+<td>Metadata</td>
+<td>Metadata</td>
+</tr>
+<tr>
+<td><strong>Profiles</strong></td>
+<td>Metadata</td>
+<td>Metadata</td>
+</tr>
+<tr>
+<td><strong>Validation</strong></td>
+<td>DISA STIG tools</td>
+<td>Generic XCCDF tools</td>
+</tr>
+<tr>
+<td><strong>File size</strong></td>
+<td>Smaller (no duplicated NIST)</td>
+<td>Slightly larger</td>
+</tr>
+<tr>
+<td><strong>Complexity</strong></td>
+<td>Higher</td>
+<td>Lower</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="implementation-plan">Implementation Plan<a class="headerlink" href="#implementation-plan" title="Permanent link">&para;</a></h2>
+<h3 id="phase-1-disa-style-exporter">Phase 1: DISA Style Exporter<a class="headerlink" href="#phase-1-disa-style-exporter" title="Permanent link">&para;</a></h3>
+<ol>
+<li>Add <code>cci_mappings: List[str]</code> to Pydantic Recommendation model</li>
+<li>Create <code>cis_bench/utils/cci_lookup.py</code> - Load and query cis-cci-mapping.json</li>
+<li>
+<p>Enhance <code>cis_bench/exporters/xccdf_exporter.py</code>:</p>
+</li>
+<li>
+<p>Add CCI lookup</p>
+</li>
+<li>Implement deduplication algorithm</li>
+<li>Add <code>&lt;ident&gt;</code> elements</li>
+<li>Structure description with VulnDiscussion/PotentialImpacts/Mitigations</li>
+<li>Add fixtext, fix, check elements</li>
+<li>Add severity, weight attributes</li>
+<li>Test with DISA tools</li>
+</ol>
+<h3 id="phase-2-cis-native-exporter">Phase 2: CIS Native Exporter<a class="headerlink" href="#phase-2-cis-native-exporter" title="Permanent link">&para;</a></h3>
+<ol>
+<li>Create <code>cis_bench/exporters/xccdf_cis_exporter.py</code></li>
+<li>Clean structure (no embedded tags)</li>
+<li>Separate rationale element</li>
+<li>Direct NIST references (all of them)</li>
+<li>Rich metadata with CIS/MITRE data</li>
+<li>Test validation</li>
+</ol>
+<h3 id="phase-3-cli-integration">Phase 3: CLI Integration<a class="headerlink" href="#phase-3-cli-integration" title="Permanent link">&para;</a></h3>
+<ol>
+<li>Add <code>--style disa|cis</code> flag to export command</li>
+<li>Default to DISA (broader compatibility)</li>
+<li>Document both in README</li>
+</ol>
+<hr />
+<h2 id="testing-strategy">Testing Strategy<a class="headerlink" href="#testing-strategy" title="Permanent link">&para;</a></h2>
+<h3 id="disa-style-validation">DISA Style Validation<a class="headerlink" href="#disa-style-validation" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="c1"># Export</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>cis-bench<span class="w"> </span><span class="nb">export</span><span class="w"> </span>benchmark.json<span class="w"> </span>--format<span class="w"> </span>xccdf<span class="w"> </span>--style<span class="w"> </span>disa<span class="w"> </span>-o<span class="w"> </span>disa_output.xml
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="c1"># Parse with stig_parser (should work!)</span>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;from stig_parser import convert_xccdf; ...&quot;</span>
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>
+<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a><span class="c1"># Validate structure</span>
+<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a><span class="nb">cd</span><span class="w"> </span>schemas
+<a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a><span class="nv">XML_CATALOG_FILES</span><span class="o">=</span>catalog.xml<span class="w"> </span>xmllint<span class="w"> </span>--schema<span class="w"> </span>xccdf_1.2.xsd<span class="w"> </span>../disa_output.xml<span class="w"> </span>--noout
+</code></pre></div>
+<h3 id="cis-style-validation">CIS Style Validation<a class="headerlink" href="#cis-style-validation" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="c1"># Export</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>cis-bench<span class="w"> </span><span class="nb">export</span><span class="w"> </span>benchmark.json<span class="w"> </span>--format<span class="w"> </span>xccdf<span class="w"> </span>--style<span class="w"> </span>cis<span class="w"> </span>-o<span class="w"> </span>cis_output.xml
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a><span class="c1"># Validate</span>
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>xmllint<span class="w"> </span>--schema<span class="w"> </span>xccdf_1.2.xsd<span class="w"> </span>cis_output.xml<span class="w"> </span>--noout
+<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a>
+<a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a><span class="c1"># Check for CIS metadata</span>
+<a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a>grep<span class="w"> </span>-o<span class="w"> </span><span class="s1">&#39;&lt;cis-control&#39;</span><span class="w"> </span>cis_output.xml<span class="w"> </span><span class="p">|</span><span class="w"> </span>wc<span class="w"> </span>-l<span class="w"> </span><span class="c1"># Should find CIS controls</span>
+</code></pre></div>
+<h3 id="comparison-test">Comparison Test<a class="headerlink" href="#comparison-test" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="c1"># Export same benchmark in both styles</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>cis-bench<span class="w"> </span><span class="nb">export</span><span class="w"> </span>alma8.json<span class="w"> </span>--format<span class="w"> </span>xccdf<span class="w"> </span>--style<span class="w"> </span>disa<span class="w"> </span>-o<span class="w"> </span>alma8_disa.xml
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>cis-bench<span class="w"> </span><span class="nb">export</span><span class="w"> </span>alma8.json<span class="w"> </span>--format<span class="w"> </span>xccdf<span class="w"> </span>--style<span class="w"> </span>cis<span class="w"> </span>-o<span class="w"> </span>alma8_cis.xml
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a><span class="c1"># Compare</span>
+<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a>diff<span class="w"> </span>&lt;<span class="o">(</span>xmllint<span class="w"> </span>--format<span class="w"> </span>alma8_disa.xml<span class="o">)</span><span class="w"> </span>&lt;<span class="o">(</span>xmllint<span class="w"> </span>--format<span class="w"> </span>alma8_cis.xml<span class="o">)</span>
+<a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a>
+<a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a><span class="c1"># Should show:</span>
+<a id="__codelineno-19-9" name="__codelineno-19-9" href="#__codelineno-19-9"></a><span class="c1"># - DISA has &lt;ident&gt; elements</span>
+<a id="__codelineno-19-10" name="__codelineno-19-10" href="#__codelineno-19-10"></a><span class="c1"># - DISA has VulnDiscussion structure</span>
+<a id="__codelineno-19-11" name="__codelineno-19-11" href="#__codelineno-19-11"></a><span class="c1"># - CIS has separate &lt;rationale&gt;</span>
+<a id="__codelineno-19-12" name="__codelineno-19-12" href="#__codelineno-19-12"></a><span class="c1"># - CIS has more &lt;reference&gt; elements (no CCI deduplication)</span>
+</code></pre></div>
+<hr />
+<h2 id="future-enhancements">Future Enhancements<a class="headerlink" href="#future-enhancements" title="Permanent link">&para;</a></h2>
+<h3 id="v11-style-auto-detection-on-import">v1.1 - Style Auto-Detection on Import<a class="headerlink" href="#v11-style-auto-detection-on-import" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Parse existing XCCDF</li>
+<li>Detect: Has CCIs? DISA style</li>
+<li>Detect: Has <code>&lt;rationale&gt;</code>? CIS style</li>
+<li>Round-trip: Import Modify Export in same style</li>
+</ul>
+<h3 id="v12-hybrid-style">v1.2 - Hybrid Style<a class="headerlink" href="#v12-hybrid-style" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Best of both worlds</li>
+<li>CCIs AND direct NIST references (explicit redundancy for maximum compatibility)</li>
+<li>User choice: <code>--style hybrid</code></li>
+</ul>
+<h3 id="v13-custom-styles">v1.3 - Custom Styles<a class="headerlink" href="#v13-custom-styles" title="Permanent link">&para;</a></h3>
+<ul>
+<li>User-defined XCCDF templates (Jinja2)</li>
+<li>Corporate branding</li>
+<li>Custom metadata namespaces</li>
+</ul>
+<hr />
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/mitre/cis-bench" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.7a47a382.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.e71a0d61.min.js"></script>
+      
+        <script src="https://unpkg.com/mermaid@10/dist/mermaid.min.js"></script>
+      
+    
+  </body>
+</html>

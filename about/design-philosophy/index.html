@@ -1,0 +1,2397 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Command-line tool for fetching, managing, and exporting CIS benchmarks">
+      
+      
+        <meta name="author" content="MITRE SAF Team">
+      
+      
+        <link rel="canonical" href="https://mitre.github.io/cis-bench/about/design-philosophy/">
+      
+      
+        <link rel="prev" href="../../developer-guide/how-to-add-xccdf-style/">
+      
+      
+        <link rel="next" href="../licensing/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.0">
+    
+    
+      
+        <title>Design Philosophy - CIS Benchmark CLI</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.618322db.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#design-philosophy" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="CIS Benchmark CLI" class="md-header__button md-logo" aria-label="CIS Benchmark CLI" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            CIS Benchmark CLI
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Design Philosophy
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/mitre/cis-bench" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    mitre/cis-bench
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../getting-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Getting Started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../user-guide/workflows/" class="md-tabs__link">
+          
+  
+  
+  User Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../developer-guide/contributing/" class="md-tabs__link">
+          
+  
+  
+  Developer Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../technical-reference/mapping-engine-design.md" class="md-tabs__link">
+          
+  
+  
+  Technical Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="./" class="md-tabs__link">
+          
+  
+  
+  About
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="CIS Benchmark CLI" class="md-nav__button md-logo" aria-label="CIS Benchmark CLI" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    CIS Benchmark CLI
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/mitre/cis-bench" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    mitre/cis-bench
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/workflows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    End-to-End Workflows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/commands-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Commands Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/catalog-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Catalog System
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/xccdf-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XCCDF Export
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developer Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Developer Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../developer-guide/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../developer-guide/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../developer-guide/data-flow-pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Flow Pipeline
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../developer-guide/mapping-engine-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MappingEngine User Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../developer-guide/testing.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../developer-guide/how-to-add-xccdf-style/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    How To Add XCCDF Style
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Technical Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Technical Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../technical-reference/mapping-engine-design.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mapping Engine Design
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../technical-reference/data-model.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../technical-reference/yaml-config-reference.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    YAML Config Syntax
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../technical-reference/xccdf-styles.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    XCCDF Styles Comparison
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../technical-reference/cis-inspec-profile-style-guide.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    InSpec Profile Style Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    About
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    About
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design Philosophy
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design Philosophy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#core-principles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Core Principles
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Core Principles">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-config-driven-over-hard-coded" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Config-Driven Over Hard-Coded
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-enhanced-xccdf-format-preserving-all-available-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Enhanced XCCDF Format - Preserving All Available Data
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-we-implemented-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How We Implemented It
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="How We Implemented It">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#namespace-design" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Namespace Design
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Structure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#compatibility-testing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Compatibility Testing
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#standards-references" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Standards References
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Standards References">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#xccdf-specification-nist-sp-800-126-rev-3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        XCCDF Specification (NIST SP 800-126 Rev. 3)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xml-namespaces-best-practices-w3c" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        XML Namespaces Best Practices (W3C)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dublin-core-for-references-rfc-5013" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dublin Core for References (RFC 5013)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-strategy-pattern-for-html-adaptation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Strategy Pattern for HTML Adaptation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-factory-pattern-for-exporters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Factory Pattern for Exporters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-session-based-authentication" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Session-Based Authentication
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-database-caching-for-instant-re-export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Database Caching for Instant Re-Export
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-parallel-processing-where-it-matters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Parallel Processing Where It Matters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#8-validation-at-multiple-layers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Validation at Multiple Layers
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#extensibility-framework" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Extensibility Framework
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing-philosophy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing Philosophy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Summary
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#related-documentation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Related Documentation
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../licensing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Licensing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../use-cases.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Use Cases
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../future-features.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Future Features
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../release-process/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Release Process
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../glossary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Glossary
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#core-principles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Core Principles
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Core Principles">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-config-driven-over-hard-coded" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Config-Driven Over Hard-Coded
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-enhanced-xccdf-format-preserving-all-available-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Enhanced XCCDF Format - Preserving All Available Data
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-we-implemented-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How We Implemented It
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="How We Implemented It">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#namespace-design" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Namespace Design
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Structure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#compatibility-testing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Compatibility Testing
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#standards-references" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Standards References
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Standards References">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#xccdf-specification-nist-sp-800-126-rev-3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        XCCDF Specification (NIST SP 800-126 Rev. 3)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xml-namespaces-best-practices-w3c" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        XML Namespaces Best Practices (W3C)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dublin-core-for-references-rfc-5013" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dublin Core for References (RFC 5013)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-strategy-pattern-for-html-adaptation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Strategy Pattern for HTML Adaptation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-factory-pattern-for-exporters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Factory Pattern for Exporters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-session-based-authentication" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Session-Based Authentication
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-database-caching-for-instant-re-export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Database Caching for Instant Re-Export
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-parallel-processing-where-it-matters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Parallel Processing Where It Matters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#8-validation-at-multiple-layers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Validation at Multiple Layers
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#extensibility-framework" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Extensibility Framework
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing-philosophy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing Philosophy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Summary
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#related-documentation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Related Documentation
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="design-philosophy">Design Philosophy<a class="headerlink" href="#design-philosophy" title="Permanent link">&para;</a></h1>
+<p><strong>Why we built CIS Benchmark CLI the way we did</strong></p>
+<p>This document explains our architectural choices and design philosophy to help contributors understand the framework and build on it effectively.</p>
+<hr />
+<h2 id="core-principles">Core Principles<a class="headerlink" href="#core-principles" title="Permanent link">&para;</a></h2>
+<h3 id="1-config-driven-over-hard-coded">1. Config-Driven Over Hard-Coded<a class="headerlink" href="#1-config-driven-over-hard-coded" title="Permanent link">&para;</a></h3>
+<p><strong>Decision:</strong> XCCDF field mappings defined in YAML configuration files, not Python code.</p>
+<p><strong>Rationale:</strong></p>
+<ul>
+<li>Adding new XCCDF styles doesn't require code changes</li>
+<li>Field mappings can be tested independently</li>
+<li>Non-developers can create custom export formats</li>
+<li>Clear separation between data (YAML) and logic (Python)</li>
+</ul>
+<p><strong>See:</strong> <a href="../../developer-guide/mapping-engine-guide/">MappingEngine User Guide</a></p>
+<hr />
+<h3 id="2-enhanced-xccdf-format-preserving-all-available-data">2. Enhanced XCCDF Format - Preserving All Available Data<a class="headerlink" href="#2-enhanced-xccdf-format-preserving-all-available-data" title="Permanent link">&para;</a></h3>
+<p><strong>What we do:</strong> CIS-style XCCDF exports include MITRE ATT&amp;CK and NIST mappings in addition to standard CIS Controls.</p>
+<p><strong>Why:</strong> CIS WorkBench contains valuable compliance data (MITRE ATT&amp;CK, NIST SP 800-53) that official CIS XCCDF exports don't include yet. We preserve this data using XCCDF's extensibility mechanism.</p>
+<p><strong>How it works:</strong></p>
+<p><strong>1. Data Source</strong></p>
+<p>The MITRE and NIST mappings are <strong>official CIS data</strong> - they exist on the WorkBench website. We extract and preserve this data in our XCCDF exports.</p>
+<p><strong>2. Standards Compliance</strong></p>
+<p>From <strong>NIST SP 800-126 Rev. 3</strong> (XCCDF Specification):</p>
+<blockquote>
+<p>"XCCDF was designed to be extended through the use of XML namespaces.
+Benchmark authors may add elements from other namespaces to extend
+XCCDF documents with additional metadata or functionality."</p>
+</blockquote>
+<p><strong>Best Practice</strong>: Use separate namespaces for extensions so:</p>
+<ul>
+<li>Standard parsers can validate core XCCDF</li>
+<li>Tools can ignore unknown elements gracefully</li>
+<li>Extensions don't break compatibility</li>
+</ul>
+<p><strong>3. Industry Precedent</strong></p>
+<p>XCCDF extensions are standard practice in the industry:</p>
+<ul>
+<li><strong>DISA STIGs</strong>: Add <code>&lt;VulnDiscussion&gt;</code> and CCI mappings (not in base XCCDF)</li>
+<li><strong>CIS themselves</strong>: Add custom <code>controls:cis_controls</code> namespace</li>
+<li><strong>Red Hat</strong>: Adds CPE applicability extensions</li>
+<li><strong>SCAP tools</strong>: Add tool-specific metadata blocks</li>
+</ul>
+<p><strong>4. Implementation Approach</strong></p>
+<p>We follow XML/XCCDF best practices for extensions:</p>
+<p><strong>Use proper namespaces</strong> for extensions
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>xmlns:enhanced=&quot;http://cisecurity.org/xccdf/enhanced/1.0&quot;
+</code></pre></div></p>
+<p><strong>Keep core XCCDF valid</strong> - Base structure follows spec
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">&lt;xccdf:Benchmark</span><span class="w"> </span><span class="na">xmlns:xccdf=</span><span class="s">&quot;http://checklists.nist.gov/xccdf/1.2&quot;</span><span class="nt">&gt;</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="cm">&lt;!-- Standard XCCDF elements --&gt;</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="nt">&lt;/xccdf:Benchmark&gt;</span>
+</code></pre></div></p>
+<p><strong>Document extensions</strong> - Clear schema and namespace
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="cm">&lt;!-- Enhanced metadata in separate namespace --&gt;</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nt">&lt;xccdf:metadata&gt;</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="nt">&lt;controls:cis_controls&gt;</span>...<span class="nt">&lt;/controls:cis_controls&gt;</span><span class="w"> </span><span class="cm">&lt;!-- CIS official --&gt;</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="nt">&lt;enhanced:mitre&gt;</span>...<span class="nt">&lt;/enhanced:mitre&gt;</span><span class="w"> </span><span class="cm">&lt;!-- Our extension --&gt;</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="nt">&lt;/xccdf:metadata&gt;</span>
+</code></pre></div></p>
+<p><strong>Graceful degradation</strong> - Tools that don't understand extensions ignore them</p>
+<ul>
+<li>CIS-CAT: Reads CIS Controls, ignores MITRE</li>
+<li>OpenSCAP: Reads XCCDF structure, ignores custom metadata</li>
+<li>SCC: Processes rules, ignores unknown elements</li>
+</ul>
+<p><strong>5. What Users Get</strong></p>
+<p>Our enhanced format provides more comprehensive data:</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>CIS Official</th>
+<th>Our Enhanced</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CIS Controls v7/v8</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>XCCDF 1.2 structure</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>CIS Profiles</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>MITRE ATT&amp;CK</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>NIST SP 800-53</td>
+<td>(mostly)</td>
+<td></td>
+</tr>
+<tr>
+<td>DoD RMF compatible</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Works with CIS-CAT</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p><strong>We're more comprehensive</strong> without breaking compatibility.</p>
+<hr />
+<h2 id="how-we-implemented-it">How We Implemented It<a class="headerlink" href="#how-we-implemented-it" title="Permanent link">&para;</a></h2>
+<h3 id="namespace-design">Namespace Design<a class="headerlink" href="#namespace-design" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">&lt;xccdf:Benchmark</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="na">xmlns:xccdf=</span><span class="s">&quot;http://checklists.nist.gov/xccdf/1.2&quot;</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="na">xmlns:xhtml=</span><span class="s">&quot;http://www.w3.org/1999/xhtml&quot;</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="na">xmlns:controls=</span><span class="s">&quot;http://cisecurity.org/controls&quot;</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="na">xmlns:cc6=</span><span class="s">&quot;http://cisecurity.org/20-cc/v6.1&quot;</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="na">xmlns:cc7=</span><span class="s">&quot;http://cisecurity.org/20-cc/v7.0&quot;</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="na">xmlns:cc8=</span><span class="s">&quot;http://cisecurity.org/20-cc/v8.0&quot;</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="na">xmlns:dc=</span><span class="s">&quot;http://purl.org/dc/elements/1.1/&quot;</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="na">xmlns:enhanced=</span><span class="s">&quot;http://cisecurity.org/xccdf/enhanced/1.0&quot;</span><span class="nt">&gt;</span>
+</code></pre></div>
+<p><strong>Breakdown:</strong></p>
+<ul>
+<li><code>xccdf</code>, <code>xhtml</code> - Standard NIST namespaces (required)</li>
+<li><code>controls</code>, <code>cc6</code>, <code>cc7</code>, <code>cc8</code> - CIS official namespaces</li>
+<li><code>dc</code> - Dublin Core for NIST references (W3C standard)</li>
+<li><code>enhanced</code> - <strong>Our extension namespace</strong> for MITRE/custom metadata</li>
+</ul>
+<h3 id="structure">Structure<a class="headerlink" href="#structure" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">&lt;xccdf:Rule</span><span class="w"> </span><span class="na">id=</span><span class="s">&quot;...&quot;</span><span class="nt">&gt;</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nt">&lt;xccdf:title&gt;</span>...<span class="nt">&lt;/xccdf:title&gt;</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="nt">&lt;xccdf:description&gt;</span>...<span class="nt">&lt;/xccdf:description&gt;</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="cm">&lt;!-- NIST references (using standard Dublin Core) --&gt;</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="nt">&lt;xccdf:reference</span><span class="w"> </span><span class="na">href=</span><span class="s">&quot;https://csrc.nist.gov/...&quot;</span><span class="nt">&gt;</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="nt">&lt;dc:title&gt;</span>NIST<span class="w"> </span>SP<span class="w"> </span>800-53<span class="nt">&lt;/dc:title&gt;</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="nt">&lt;dc:identifier&gt;</span>AU-2<span class="nt">&lt;/dc:identifier&gt;</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="nt">&lt;/xccdf:reference&gt;</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="nt">&lt;xccdf:metadata&gt;</span>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="cm">&lt;!-- CIS official structure (100% compatible) --&gt;</span>
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="nt">&lt;controls:cis_controls</span><span class="w"> </span><span class="na">xmlns:controls=</span><span class="s">&quot;http://cisecurity.org/controls&quot;</span><span class="nt">&gt;</span>
+<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="nt">&lt;controls:framework</span><span class="w"> </span><span class="na">urn=</span><span class="s">&quot;urn:cisecurity.org:controls:8.0&quot;</span><span class="nt">&gt;</span>
+<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="nt">&lt;controls:safeguard</span><span class="w"> </span><span class="na">title=</span><span class="s">&quot;...&quot;</span><span class="w"> </span><span class="na">urn=</span><span class="s">&quot;...&quot;</span><span class="nt">&gt;</span>
+<a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a><span class="nt">&lt;controls:implementation_groups</span><span class="w"> </span><span class="na">ig1=</span><span class="s">&quot;true&quot;</span><span class="w"> </span><span class="na">ig2=</span><span class="s">&quot;true&quot;</span><span class="w"> </span><span class="na">ig3=</span><span class="s">&quot;true&quot;</span><span class="nt">/&gt;</span>
+<a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a><span class="nt">&lt;controls:asset_type&gt;</span>Users<span class="nt">&lt;/controls:asset_type&gt;</span>
+<a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a><span class="nt">&lt;controls:security_function&gt;</span>Protect<span class="nt">&lt;/controls:security_function&gt;</span>
+<a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a><span class="nt">&lt;/controls:safeguard&gt;</span>
+<a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a><span class="nt">&lt;/controls:framework&gt;</span>
+<a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a><span class="nt">&lt;/controls:cis_controls&gt;</span>
+<a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a>
+<a id="__codelineno-4-23" name="__codelineno-4-23" href="#__codelineno-4-23"></a><span class="cm">&lt;!-- OUR EXTENSIONS (clearly marked) --&gt;</span>
+<a id="__codelineno-4-24" name="__codelineno-4-24" href="#__codelineno-4-24"></a><span class="nt">&lt;enhanced:mitre</span><span class="w"> </span><span class="na">xmlns:enhanced=</span><span class="s">&quot;http://cisecurity.org/xccdf/enhanced/1.0&quot;</span><span class="nt">&gt;</span>
+<a id="__codelineno-4-25" name="__codelineno-4-25" href="#__codelineno-4-25"></a><span class="nt">&lt;enhanced:technique</span><span class="w"> </span><span class="na">id=</span><span class="s">&quot;T1565.001&quot;</span><span class="nt">&gt;</span>Data<span class="w"> </span>Manipulation<span class="nt">&lt;/enhanced:technique&gt;</span>
+<a id="__codelineno-4-26" name="__codelineno-4-26" href="#__codelineno-4-26"></a><span class="nt">&lt;enhanced:tactic</span><span class="w"> </span><span class="na">id=</span><span class="s">&quot;TA0040&quot;</span><span class="nt">&gt;</span>Impact<span class="nt">&lt;/enhanced:tactic&gt;</span>
+<a id="__codelineno-4-27" name="__codelineno-4-27" href="#__codelineno-4-27"></a><span class="nt">&lt;enhanced:mitigation</span><span class="w"> </span><span class="na">id=</span><span class="s">&quot;M1022&quot;</span><span class="nt">&gt;</span>Restrict<span class="w"> </span>File<span class="w"> </span>and<span class="w"> </span>Directory<span class="w"> </span>Permissions<span class="nt">&lt;/enhanced:mitigation&gt;</span>
+<a id="__codelineno-4-28" name="__codelineno-4-28" href="#__codelineno-4-28"></a><span class="nt">&lt;/enhanced:mitre&gt;</span>
+<a id="__codelineno-4-29" name="__codelineno-4-29" href="#__codelineno-4-29"></a>
+<a id="__codelineno-4-30" name="__codelineno-4-30" href="#__codelineno-4-30"></a><span class="cm">&lt;!-- CIS Profiles (our extension - CIS uses &lt;Profile&gt; elements instead) --&gt;</span>
+<a id="__codelineno-4-31" name="__codelineno-4-31" href="#__codelineno-4-31"></a><span class="nt">&lt;enhanced:profiles&gt;</span>
+<a id="__codelineno-4-32" name="__codelineno-4-32" href="#__codelineno-4-32"></a><span class="nt">&lt;enhanced:profile&gt;</span>Level<span class="w"> </span>1<span class="w"> </span>-<span class="w"> </span>Server<span class="nt">&lt;/enhanced:profile&gt;</span>
+<a id="__codelineno-4-33" name="__codelineno-4-33" href="#__codelineno-4-33"></a><span class="nt">&lt;enhanced:profile&gt;</span>Level<span class="w"> </span>1<span class="w"> </span>-<span class="w"> </span>Workstation<span class="nt">&lt;/enhanced:profile&gt;</span>
+<a id="__codelineno-4-34" name="__codelineno-4-34" href="#__codelineno-4-34"></a><span class="nt">&lt;/enhanced:profiles&gt;</span>
+<a id="__codelineno-4-35" name="__codelineno-4-35" href="#__codelineno-4-35"></a><span class="nt">&lt;/xccdf:metadata&gt;</span>
+<a id="__codelineno-4-36" name="__codelineno-4-36" href="#__codelineno-4-36"></a>
+<a id="__codelineno-4-37" name="__codelineno-4-37" href="#__codelineno-4-37"></a><span class="cm">&lt;!-- CIS Controls ident elements (CIS official pattern) --&gt;</span>
+<a id="__codelineno-4-38" name="__codelineno-4-38" href="#__codelineno-4-38"></a><span class="nt">&lt;xccdf:ident</span><span class="w"> </span><span class="na">cc8:controlURI=</span><span class="s">&quot;http://cisecurity.org/20-cc/v8.0/control/3/subcontrol/14&quot;</span>
+<a id="__codelineno-4-39" name="__codelineno-4-39" href="#__codelineno-4-39"></a><span class="na">system=</span><span class="s">&quot;http://cisecurity.org/20-cc/v8.0&quot;</span><span class="nt">/&gt;</span>
+<a id="__codelineno-4-40" name="__codelineno-4-40" href="#__codelineno-4-40"></a><span class="nt">&lt;xccdf:ident</span><span class="w"> </span><span class="na">cc7:controlURI=</span><span class="s">&quot;http://cisecurity.org/20-cc/v7.0/control/14/subcontrol/9&quot;</span>
+<a id="__codelineno-4-41" name="__codelineno-4-41" href="#__codelineno-4-41"></a><span class="na">system=</span><span class="s">&quot;http://cisecurity.org/20-cc/v7.0&quot;</span><span class="nt">/&gt;</span>
+<a id="__codelineno-4-42" name="__codelineno-4-42" href="#__codelineno-4-42"></a>
+<a id="__codelineno-4-43" name="__codelineno-4-43" href="#__codelineno-4-43"></a><span class="nt">&lt;xccdf:rationale&gt;</span>...<span class="nt">&lt;/xccdf:rationale&gt;</span>
+<a id="__codelineno-4-44" name="__codelineno-4-44" href="#__codelineno-4-44"></a><span class="nt">&lt;xccdf:fixtext&gt;</span>...<span class="nt">&lt;/xccdf:fixtext&gt;</span>
+<a id="__codelineno-4-45" name="__codelineno-4-45" href="#__codelineno-4-45"></a><span class="nt">&lt;/xccdf:Rule&gt;</span>
+</code></pre></div>
+<h3 id="compatibility-testing">Compatibility Testing<a class="headerlink" href="#compatibility-testing" title="Permanent link">&para;</a></h3>
+<p><strong>Tools to test against:</strong>
+1. <strong>xmllint</strong>: Validate XML structure
+2. <strong>OpenSCAP</strong>: Validate XCCDF 1.2 schema
+3. <strong>CIS-CAT</strong>: Import and assess (if available)
+4. <strong>SCAP Validator</strong>: NIST validation tool
+5. <strong>SCC (SCAP Compliance Checker)</strong>: DoD tool</p>
+<p><strong>Expected results:</strong></p>
+<ul>
+<li>Core XCCDF validates</li>
+<li>CIS Controls structure recognized</li>
+<li>Unknown elements ignored gracefully</li>
+<li>No validation errors</li>
+</ul>
+<hr />
+<h2 id="standards-references">Standards References<a class="headerlink" href="#standards-references" title="Permanent link">&para;</a></h2>
+<h3 id="xccdf-specification-nist-sp-800-126-rev-3">XCCDF Specification (NIST SP 800-126 Rev. 3)<a class="headerlink" href="#xccdf-specification-nist-sp-800-126-rev-3" title="Permanent link">&para;</a></h3>
+<p><strong>Section 6.1: Extensibility</strong></p>
+<blockquote>
+<p>"XCCDF supports extensibility through several mechanisms:
+- Use of foreign namespaces in metadata blocks
+- Custom elements from other namespaces
+- Custom attributes on existing elements</p>
+<p>Tools should ignore elements and attributes they do not understand."</p>
+</blockquote>
+<p><strong>Section 6.2.5: metadata Element</strong></p>
+<blockquote>
+<p>"The metadata element is a general-purpose container for additional
+information about a benchmark or rule. It may contain any number of
+elements from any namespace."</p>
+</blockquote>
+<h3 id="xml-namespaces-best-practices-w3c">XML Namespaces Best Practices (W3C)<a class="headerlink" href="#xml-namespaces-best-practices-w3c" title="Permanent link">&para;</a></h3>
+<p><strong>Use URIs that you control</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>xmlns:enhanced=&quot;http://cisecurity.org/xccdf/enhanced/1.0&quot;
+</code></pre></div>
+(We're positioning this as a CIS-aligned extension)</p>
+<p><strong>Document your schema</strong>
+Create <code>enhanced-metadata.xsd</code> defining our extensions</p>
+<p><strong>Version your namespace</strong>
+<code>/1.0</code> allows for future evolution</p>
+<h3 id="dublin-core-for-references-rfc-5013">Dublin Core for References (RFC 5013)<a class="headerlink" href="#dublin-core-for-references-rfc-5013" title="Permanent link">&para;</a></h3>
+<p><strong>Standard metadata vocabulary</strong> for references
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nt">&lt;dc:title&gt;</span>NIST<span class="w"> </span>SP<span class="w"> </span>800-53<span class="nt">&lt;/dc:title&gt;</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="nt">&lt;dc:identifier&gt;</span>AU-2<span class="nt">&lt;/dc:identifier&gt;</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="nt">&lt;dc:publisher&gt;</span>NIST<span class="nt">&lt;/dc:publisher&gt;</span>
+</code></pre></div></p>
+<p><strong>Current Implementation:</strong></p>
+<ul>
+<li><code>enhanced:</code> namespace for MITRE/custom metadata</li>
+<li>CIS Controls in official <code>controls:</code> structure</li>
+<li>Dublin Core for NIST references</li>
+<li>318 CIS Controls metadata blocks</li>
+<li>296 MITRE ATT&amp;CK blocks</li>
+<li>Tested with OpenSCAP, SCC</li>
+</ul>
+<p><strong>Result:</strong> More comprehensive than CIS official while maintaining full compatibility.</p>
+<hr />
+<h3 id="3-strategy-pattern-for-html-adaptation">3. Strategy Pattern for HTML Adaptation<a class="headerlink" href="#3-strategy-pattern-for-html-adaptation" title="Permanent link">&para;</a></h3>
+<p><strong>What we built:</strong> Pluggable HTML parsing strategies that adapt to CIS WorkBench HTML changes without modifying core code.</p>
+<p><strong>Why:</strong>
+CIS WorkBench updates their HTML structure periodically. Hard-coding the parser would break when HTML changes.</p>
+<p><strong>How it works:</strong></p>
+<ul>
+<li>Abstract interface (<code>ScraperStrategy</code>)</li>
+<li>Versioned implementations (<code>v1_current.py</code>, <code>v2_january2026.py</code>, etc.)</li>
+<li>Auto-detection selects correct strategy</li>
+<li>Old benchmarks still work with old strategies</li>
+</ul>
+<p><strong>Benefit:</strong> HTML changes don't break existing functionality.</p>
+<p><strong>See:</strong> <a href="../../developer-guide/data-flow-pipeline/#stage-1-html-extraction">Data Flow Pipeline - Stage 1</a></p>
+<hr />
+<h3 id="4-factory-pattern-for-exporters">4. Factory Pattern for Exporters<a class="headerlink" href="#4-factory-pattern-for-exporters" title="Permanent link">&para;</a></h3>
+<p><strong>What we built:</strong> Factory Pattern for runtime exporter selection.</p>
+<p><strong>Why:</strong></p>
+<ul>
+<li>Easy to add new export formats</li>
+<li>Consistent interface (BaseExporter)</li>
+<li>Runtime format selection</li>
+<li>Testable in isolation</li>
+</ul>
+<p><strong>Implementation:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">exporter</span> <span class="o">=</span> <span class="n">ExporterFactory</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="s1">&#39;xccdf&#39;</span><span class="p">,</span> <span class="n">style</span><span class="o">=</span><span class="s1">&#39;disa&#39;</span><span class="p">)</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="n">exporter</span><span class="o">.</span><span class="n">export</span><span class="p">(</span><span class="n">benchmark</span><span class="p">,</span> <span class="n">output_path</span><span class="p">)</span>
+</code></pre></div></p>
+<p><strong>Benefit:</strong> Add CSV, JSON, Markdown, XCCDF without modifying core code.</p>
+<hr />
+<h3 id="5-session-based-authentication">5. Session-Based Authentication<a class="headerlink" href="#5-session-based-authentication" title="Permanent link">&para;</a></h3>
+<p><strong>What we built:</strong> One-time login with persistent session cookies.</p>
+<p><strong>Why:</strong></p>
+<ul>
+<li>UX improvement (no <code>--browser</code> on every command)</li>
+<li>Faster (no repeated cookie extraction)</li>
+<li>More reliable (validates session before use)</li>
+</ul>
+<p><strong>Implementation:</strong></p>
+<ul>
+<li><code>cis-bench auth login</code> saves to <code>~/.cis-bench/session.cookies</code></li>
+<li>All commands auto-load saved session</li>
+<li>Validates on use, prompts to re-auth if expired</li>
+</ul>
+<p><strong>Benefit:</strong> Better user experience, fewer failures.</p>
+<p><strong>See:</strong> <a href="../../user-guide/workflows/#scenario-1-export-almalinux-10-for-openscap-scanning">Workflows - Scenario 1</a></p>
+<hr />
+<h3 id="6-database-caching-for-instant-re-export">6. Database Caching for Instant Re-Export<a class="headerlink" href="#6-database-caching-for-instant-re-export" title="Permanent link">&para;</a></h3>
+<p><strong>What we built:</strong> SQLite database that caches downloaded benchmarks for instant re-export.</p>
+<p><strong>Why:</strong></p>
+<ul>
+<li>Export to multiple formats without re-downloading</li>
+<li>Instant re-export (2 seconds vs 2 minutes)</li>
+<li>Track what's downloaded</li>
+<li>Support export by ID (<code>cis-bench export 23598 --format xccdf</code>)</li>
+</ul>
+<p><strong>Implementation:</strong></p>
+<ul>
+<li>SQLite database at <code>~/.cis-bench/catalog.db</code></li>
+<li><code>downloaded_benchmarks</code> table with full JSON</li>
+<li>Export command checks database first</li>
+</ul>
+<p><strong>Benefit:</strong> Dramatically faster workflow for multi-format exports.</p>
+<hr />
+<h3 id="7-parallel-processing-where-it-matters">7. Parallel Processing Where It Matters<a class="headerlink" href="#7-parallel-processing-where-it-matters" title="Permanent link">&para;</a></h3>
+<p><strong>What we built:</strong> Threaded catalog scraping with sequential exports.</p>
+<p><strong>Why:</strong></p>
+<ul>
+<li>Catalog scraping is network-bound (66 pages, ~10 min sequential)</li>
+<li>Threading reduces time to ~2 min (5x faster)</li>
+<li>Exports are CPU-bound and fast enough (~2 sec/benchmark)</li>
+<li>No need to complicate with threading overhead</li>
+</ul>
+<p><strong>Implementation:</strong></p>
+<ul>
+<li>10 pages per batch</li>
+<li>5 concurrent threads</li>
+<li>Retry logic with exponential backoff</li>
+<li>Failure threshold (abort if &gt;10% fail)</li>
+</ul>
+<p><strong>Benefit:</strong> Catalog refresh is fast, code stays simple.</p>
+<hr />
+<h3 id="8-validation-at-multiple-layers">8. Validation at Multiple Layers<a class="headerlink" href="#8-validation-at-multiple-layers" title="Permanent link">&para;</a></h3>
+<p><strong>What we built:</strong> Five-layer validation pipeline.</p>
+<p><strong>Validation layers:</strong>
+1. <strong>HTML parsing</strong> - Strategy validates structure
+2. <strong>Pydantic models</strong> - Field validation and type checking
+3. <strong>xsdata models</strong> - XCCDF structure compliance
+4. <strong>XML schema</strong> - Optional xmllint validation
+5. <strong>DISA conventions</strong> - STIG requirement checking</p>
+<p><strong>Rationale:</strong></p>
+<ul>
+<li>Catch errors early (fail fast)</li>
+<li>Clear error messages (which stage failed)</li>
+<li>Confidence in output quality</li>
+<li>Easier debugging</li>
+</ul>
+<p><strong>Benefit:</strong> Invalid data never reaches output.</p>
+<hr />
+<h2 id="extensibility-framework">Extensibility Framework<a class="headerlink" href="#extensibility-framework" title="Permanent link">&para;</a></h2>
+<p>The system is designed for extension without modification:</p>
+<p><strong>Adding Features:</strong></p>
+<ul>
+<li><strong>New export format</strong> Create exporter class, register with factory</li>
+<li><strong>New XCCDF style</strong> Create YAML config file only</li>
+<li><strong>New transformation</strong> Register in base_style.yaml</li>
+<li><strong>New HTML version</strong> Create strategy class</li>
+<li><strong>New field</strong> Add to Pydantic model + YAML config</li>
+</ul>
+<p><strong>NOT needed:</strong></p>
+<ul>
+<li>Modify core exporter code</li>
+<li>Change MappingEngine logic</li>
+<li>Update WorkbenchScraper</li>
+<li>Rewrite tests</li>
+</ul>
+<p><strong>See:</strong> <a href="../../developer-guide/mapping-engine-guide/">MappingEngine User Guide</a> for how-to guides</p>
+<hr />
+<h2 id="testing-philosophy">Testing Philosophy<a class="headerlink" href="#testing-philosophy" title="Permanent link">&para;</a></h2>
+<p><strong>Principle:</strong> Test behavior, not implementation.</p>
+<p><strong>Approach:</strong></p>
+<ul>
+<li>Unit tests: Isolated functions</li>
+<li>Integration tests: Component interactions</li>
+<li>E2E tests: Complete workflows</li>
+<li>Architecture tests: Validate patterns (no hard-coded fields, etc.)</li>
+</ul>
+<p><strong>Coverage:</strong> 512 tests, all passing</p>
+<p><strong>See:</strong> <a href="../../developer-guide/TESTING/">Testing Guide</a></p>
+<hr />
+<h2 id="summary">Summary<a class="headerlink" href="#summary" title="Permanent link">&para;</a></h2>
+<p>The CIS Benchmark CLI is built on these principles:</p>
+<ol>
+<li><strong>Config-Driven</strong> - Behavior defined in YAML, not code</li>
+<li><strong>Standards-Compliant</strong> - XCCDF, Dublin Core, XML namespaces</li>
+<li><strong>Extensible</strong> - Add features without modifying core</li>
+<li><strong>Validated</strong> - Multiple validation layers</li>
+<li><strong>User-Focused</strong> - Session persistence, caching, progress bars</li>
+<li><strong>Maintainable</strong> - Clear patterns, comprehensive tests</li>
+<li><strong>Enhanced</strong> - Include all available data (MITRE, NIST)</li>
+</ol>
+<p>These decisions create a <strong>professional, maintainable, extensible</strong> system that provides more value than alternatives while maintaining compatibility with standard tools.</p>
+<hr />
+<h2 id="related-documentation">Related Documentation<a class="headerlink" href="#related-documentation" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="../../developer-guide/architecture/">Architecture Overview</a> - System design</li>
+<li><a href="../../developer-guide/data-flow-pipeline/">Data Flow Pipeline</a> - Complete transformation process</li>
+<li><a href="../../developer-guide/mapping-engine-guide/">MappingEngine User Guide</a> - Config-driven exports</li>
+<li><a href="../../developer-guide/contributing/">Contributing</a> - How to extend the system</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/mitre/cis-bench" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.7a47a382.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.e71a0d61.min.js"></script>
+      
+        <script src="https://unpkg.com/mermaid@10/dist/mermaid.min.js"></script>
+      
+    
+  </body>
+</html>
