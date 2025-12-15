@@ -149,21 +149,6 @@ show_missing = true
 [tool.coverage.html]
 directory = "htmlcov"
 
-[tool.black]
-line-length = 100
-target-version = ['py312', 'py313']
-include = '\.pyi?$'
-extend-exclude = '''
-/(
-    \.git
-  | \.venv
-  | build
-  | dist
-  | \.eggs
-  | .*\.egg-info
-)/
-'''
-
 [tool.ruff]
 line-length = 100
 src = ["src"]

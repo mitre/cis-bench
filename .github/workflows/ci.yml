@@ -7,21 +7,14 @@ on:
     branches: [main]
 
 jobs:
-  format:
-    name: Check Formatting
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: psf/black@stable
-        with:
-          use_pyproject: true
-
-  lint:
-    name: Lint with Ruff
+  ruff:
+    name: Lint and Format
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/ruff-action@v3
+        with:
+          args: 'check --output-format=github'
 
   security:
     name: Security Scan
@@ -29,10 +22,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      - name: Install dependencies
-        run: uv pip install --system bandit[toml]
+      - name: Install project with dev dependencies
+        run: uv sync --all-extras
       - name: Run Bandit
-        run: bandit -c pyproject.toml -r src/cis_bench/
+        run: uv run bandit -c pyproject.toml -r src/cis_bench/
 
   test:
     name: Test Python ${{ matrix.python-version }}
