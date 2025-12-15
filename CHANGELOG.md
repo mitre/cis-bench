@@ -1,7 +1,63 @@
 # CHANGELOG
 
 
+## v0.2.0 (2025-12-15)
+
+### Bug Fixes
+
+- Add --all-extras to all uv run commands in CI
+  ([`e9f5443`](https://github.com/mitre/cis-bench/commit/e9f544368a9bfae11fa5207fa5f8eb12413be299))
+
+- Ensures dev dependencies (pytest, ruff, etc.) are installed - Fixes 'pytest: command not found'
+  errors
+
+Authored by: Aaron Lippold <lippold@gmail.com>
+
+- Docs deploy only after successful release
+  ([`6393d9f`](https://github.com/mitre/cis-bench/commit/6393d9fec59dffda8400f0fdbaafc42076acdb2e))
+
+- Change docs workflow to depend on Release success, not CI - Ensures documentation matches
+  published PyPI version - Prevents docs updates for failed releases - Add PyPI version badge to
+  README - Update Python version badge to 3.12+ - Add CI status badge - Update installation to use
+  PyPI package
+
+Authored by: Aaron Lippold <lippold@gmail.com>
+
+- Use --frozen instead of --locked in CI workflows
+  ([`d7d3129`](https://github.com/mitre/cis-bench/commit/d7d3129b59a2544a25226afd3532f15be0cad2da))
+
+- Change from --locked to --frozen for uv commands - --frozen allows metadata updates while using
+  lock file - Fixes lockfile update errors in CI - Simplify security job to use uv run --with bandit
+
+Authored by: Aaron Lippold <lippold@gmail.com>
+
+### Features
+
+- Complete migration to uv package manager
+  ([`fb30489`](https://github.com/mitre/cis-bench/commit/fb3048978bc79f8da423db717ad7c4c1575c2cc4))
+
+- Update CI workflow to use setup-uv@v7 with caching - Use uv sync --locked for reproducible builds
+  - Use uv run for all commands (pytest, ruff, bandit) - Remove ruff-action, use uv run ruff instead
+  - Add uv.lock for dependency locking - Update README to recommend uv installation - Faster CI runs
+  (10-100x faster than pip) - Consistent with modern Python ecosystem (2025)
+
+Authored by: Aaron Lippold <lippold@gmail.com>
+
+- Migrate to uv for dependency management
+  ([`edfbb7c`](https://github.com/mitre/cis-bench/commit/edfbb7c55b37d334fe228f03d1863633f6256ca1))
+
+- Add uv.lock for reproducible builds - Update README to recommend uv for installation - Align local
+  development with CI (already uses uv) - 10-100x faster than pip - Better dependency resolution
+
+Authored by: Aaron Lippold <lippold@gmail.com>
+
+
 ## v0.1.0 (2025-12-15)
+
+### Chores
+
+- Release 0.1.0
+  ([`42b6a0e`](https://github.com/mitre/cis-bench/commit/42b6a0e0c09926967887c63e31b35e7b87fc0536))
 
 ### Features
 
