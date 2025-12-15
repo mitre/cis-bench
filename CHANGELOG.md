@@ -1,6 +1,84 @@
 # CHANGELOG
 
 
+## v0.0.4 (2025-12-15)
+
+### Bug Fixes
+
+- Add missing test fixtures and fix workflow dependencies
+  ([`7d53bc8`](https://github.com/mitre/cis-bench/commit/7d53bc8882d15f66a7d96e79f193b904be1585e6))
+
+- Fix .gitignore to only exclude root-level outputs, not test fixtures - Add missing test data
+  files: - tests/fixtures/benchmarks/almalinux_complete.json (2MB fixture) -
+  tests/fixtures/benchmarks/almalinux_10recs_sample.json - src/cis_bench/data/cis-cci-mapping.json
+  (CCI lookup data) - Fix workflow ordering: - Release workflow now runs AFTER CI completes
+  successfully - Docs workflow now runs AFTER CI completes successfully - Prevents
+  releases/deployments with failing tests - CI must pass before any Release or Docs deployment
+
+Authored by: Aaron Lippold <lippold@gmail.com>
+
+- Remove black, use only ruff for linting and formatting
+  ([`52b5d78`](https://github.com/mitre/cis-bench/commit/52b5d78101fdf29456a2ba34594bd2b259c80e6f))
+
+- Remove psf/black from CI workflow - Remove [tool.black] config section - Use only
+  astral-sh/ruff-action@v3 (handles both linting and formatting) - Fix security scan to use uv sync
+  and uv run bandit - Eliminates black/ruff formatting conflicts
+
+Authored by: Aaron Lippold <lippold@gmail.com>
+
+- Use dev dependencies in CI for consistent tool versions
+  ([`4616b79`](https://github.com/mitre/cis-bench/commit/4616b7985d68d3d2022bff6dfb0bb5f5632749bf))
+
+- Install package with [dev] extras instead of manually installing black/ruff - Ensures CI uses same
+  tool versions as local development - Prevents version mismatch between local checks and CI checks
+
+Authored by: Aaron Lippold <lippold@gmail.com>
+
+- Use official GitHub Actions for linting and formatting
+  ([`62e389f`](https://github.com/mitre/cis-bench/commit/62e389f494b680624a0d309a3c643a66e47264a3))
+
+- Use psf/black@stable action for formatting checks - Use chartboost/ruff-action for linting - Use
+  mdegis/bandit-action for security scanning - Eliminates PATH issues with manually installed tools
+
+Authored by: Aaron Lippold <lippold@gmail.com>
+
+- Use proper GitHub Actions pattern for CI
+  ([`5d8a92b`](https://github.com/mitre/cis-bench/commit/5d8a92bd6756dacc68cc4726f5087f6bdfdd51b9))
+
+Based on working examples from established projects: - Use psf/black@stable with use_pyproject: true
+  - Use astral-sh/ruff-action@v3 (official action) - Use astral-sh/setup-uv@v5 for UV setup - Use uv
+  sync for dependency installation - Separate jobs for format, lint, security, and test
+
+Authored by: Aaron Lippold <lippold@gmail.com>
+
+- Use python -m prefix for black and ruff in CI
+  ([`2922267`](https://github.com/mitre/cis-bench/commit/2922267e792fb03c9d67fef448154537cf133b46))
+
+Ensures tools are found after pip install
+
+Authored by: Aaron Lippold <lippold@gmail.com>
+
+### Chores
+
+- Update pre-commit hooks and fix formatting
+  ([`526aaf6`](https://github.com/mitre/cis-bench/commit/526aaf6b00baa1a56c2dae69a1663018001ec7e7))
+
+- Update pre-commit hooks to latest versions: - pre-commit-hooks: v5.0.0 → v6.0.0 - ruff: v0.8.4 →
+  v0.14.9 - bandit: 1.7.10 → 1.9.2 - Remove S320 references (rule removed from ruff) - Install
+  pre-commit hooks (.git/hooks/pre-commit) - Remove invalid JSON fixture (unused) - Auto-format
+  files with latest ruff-format - Auto-fix markdown list formatting - All pre-commit hooks now
+  passing
+
+Authored by: Aaron Lippold <lippold@gmail.com>
+
+- Update setup.py Python version requirement
+  ([`6a88a60`](https://github.com/mitre/cis-bench/commit/6a88a6034e0ce00a8626d3fcf422d0b914982bb1))
+
+- Update python_requires to >=3.12 to match pyproject.toml
+
+Authored by: Aaron Lippold <lippold@gmail.com>
+
+
 ## v0.0.3 (2025-12-15)
 
 ### Bug Fixes
@@ -27,6 +105,11 @@ Authored by: Aaron Lippold <lippold@gmail.com>
   black ✓, ruff ✓, bandit ✓, tests ✓ (512 passed)
 
 Authored by: Aaron Lippold <lippold@gmail.com>
+
+### Chores
+
+- Release 0.0.3
+  ([`51973ce`](https://github.com/mitre/cis-bench/commit/51973ce1b1488fe093364036355dca87f4ca2488))
 
 
 ## v0.0.2 (2025-12-15)
