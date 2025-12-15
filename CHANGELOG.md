@@ -1,7 +1,28 @@
 # CHANGELOG
 
 
+## v0.2.2 (2025-12-15)
+
+### Documentation
+
+- Add community health files and document gitflow workflow
+  ([`8b13420`](https://github.com/mitre/cis-bench/commit/8b1342033e8cb9a36ede5ae38df8ad0c03133528))
+
+- Add SECURITY.md (vulnerability disclosure policy) - Add CODE_OF_CONDUCT.md (Contributor Covenant)
+  - Rename LICENSE to LICENSE.md (standard naming) - Update contributing.md with gitflow workflow
+  documentation - Document branch-based development (required for semantic-release) - Add
+  conventional commit guidelines - Update setup instructions to use uv - Explain why we don't commit
+  directly to main
+
+Authored by: Aaron Lippold <lippold@gmail.com>
+
+
 ## v0.2.1 (2025-12-15)
+
+### Chores
+
+- Release 0.2.1
+  ([`e4e1d11`](https://github.com/mitre/cis-bench/commit/e4e1d11d99978c487ad04909c2ea6e485c58027c))
 
 ### Documentation
 
