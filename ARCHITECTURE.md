@@ -47,55 +47,41 @@ Professional Python package:
 
 #### Component Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ CIS Benchmark CLI │
-│ (cis-bench) │
-└─────────────────────────────────────────────────────────────────┘
- │
- ┌────────────────┼────────────────┐
- │ │ │
- ▼ ▼ ▼
- ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
- │ Fetcher │ │ Exporters │ │ CLI │
- │ Module │ │ Module │ │ Module │
- └──────────────┘ └──────────────┘ └──────────────┘
- │ │ │
- ┌───────┴────────┐ │ ┌───────┴────────┐
- │ │ │ │ │
- ▼ ▼ │ ▼ ▼
- ┌──────────┐ ┌──────────┐ │ ┌──────────┐ ┌──────────┐
- │WorkBench │ │Strategies│ │ │ Commands │ │ Output │
- │ Scraper │◄───│ Pattern │ │ │ (Click) │ │ (Rich) │
- └──────────┘ └──────────┘ │ └──────────┘ └──────────┘
- │ │ │
- │ ┌────┴────┐ │
- │ │ v1_2025 │ │
- │ │ Future │ │
- │ └─────────┘ │
- │ │
- ▼ ▼
- ┌──────────┐ ┌──────────────┐
- │ Auth │ │ Factory │
- │ Manager │ │ Pattern │
- └──────────┘ └──────────────┘
- │ │
- │ ┌────┴─────┐
- │ │ │
- │ ▼ ▼
- │ ┌─────────┐ ┌─────────┐
- ▼ │ YAML │ │ XCCDF │
- ┌──────────┐ │ CSV │ │(xsdata) │
- │ browser- │ │Markdown │ └─────────┘
- │ cookie3 │ └─────────┘
- └──────────┘
- │
- ▼
- ┌──────────┐
- │ Chrome │
- │ Firefox │
- │ Safari │
- └──────────┘
+```mermaid
+graph TB
+    CLI[CIS Benchmark CLI<br/>cis-bench]
+
+    CLI --> Fetcher[Fetcher Module]
+    CLI --> Exporters[Exporters Module]
+    CLI --> CLIMod[CLI Module]
+
+    Fetcher --> WorkBench[WorkBench Scraper]
+    Fetcher --> Strategies[Strategies Pattern]
+
+    Strategies --> V1[v1_2025]
+    Strategies --> Future[Future]
+
+    WorkBench --> Auth[Auth Manager]
+    Auth --> BrowserCookie[browser-cookie3]
+
+    BrowserCookie --> Chrome[Chrome]
+    BrowserCookie --> Firefox[Firefox]
+    BrowserCookie --> Safari[Safari]
+
+    Exporters --> Factory[Factory Pattern]
+
+    Factory --> YAML[YAML]
+    Factory --> CSV[CSV]
+    Factory --> Markdown[Markdown]
+    Factory --> XCCDF[XCCDF xsdata]
+
+    CLIMod --> Commands[Commands Click]
+    CLIMod --> Output[Output Rich]
+
+    style CLI fill:#e1f5ff,stroke:#333,stroke-width:2px
+    style Fetcher fill:#fff4e1,stroke:#333,stroke-width:2px
+    style Exporters fill:#e8f5e9,stroke:#333,stroke-width:2px
+    style CLIMod fill:#f3e5f5,stroke:#333,stroke-width:2px
 ```
 
 #### Configuration-Based XCCDF Mapping Layer
@@ -111,9 +97,24 @@ The CIS Benchmark CLI employs a configuration-driven approach to XCCDF mapping, 
 - Clear separation of concerns
 
 **Architecture Flow:**
-```
-Pydantic Benchmark Config (YAML) MappingEngine XCCDF Models XML
- (Native CIS) (Rules) (Transforms) (xsdata) (Valid)
+```mermaid
+graph LR
+    A[Pydantic Benchmark<br/>Native CIS]
+    B[Config YAML<br/>Rules]
+    C[MappingEngine<br/>Transforms]
+    D[XCCDF Models<br/>xsdata]
+    E[XML<br/>Valid]
+
+    A --> C
+    B --> C
+    C --> D
+    D --> E
+
+    style A fill:#e1f5ff,stroke:#333,stroke-width:2px
+    style B fill:#fff9c4,stroke:#333,stroke-width:2px
+    style C fill:#ffccbc,stroke:#333,stroke-width:2px
+    style D fill:#c8e6c9,stroke:#333,stroke-width:2px
+    style E fill:#b2dfdb,stroke:#333,stroke-width:2px
 ```
 
 **Available Configurations:**
@@ -172,364 +173,251 @@ See: `docs/MAPPING_ENGINE_DESIGN.md` for complete specification
 
 #### Data Flow with JSON Schema (Canonical Format)
 
-```
-User Command: cis-bench download 22605 --browser chrome --format xccdf
- │
- ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ 1. CLI Layer (Click) │
-│ - Parse arguments │
-│ - Validate options │
-└─────────────────────────────────────────────────────────────────┘
- │
- ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ 2. Auth Manager │
-│ - Extract cookies from Chrome via browser-cookie3 │
-│ - Create authenticated requests.Session │
-└─────────────────────────────────────────────────────────────────┘
- │
- ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ 3. WorkbenchScraper │
-│ a. GET benchmark page Extract title │
-│ b. GET navtree API Parse JSON Get rec URLs │
-│ c. For each recommendation: │
-│ - GET recommendation page │
-│ - Detect HTML strategy (auto) │
-│ - Extract fields using strategy │
-└─────────────────────────────────────────────────────────────────┘
- │
- ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ 4. Strategy Pattern │
-│ ┌──────────────────────────────────────────┐ │
-│ │ StrategyDetector.detect_strategy(html) │ │
-│ │ Checks v1_2025_10.is_compatible() │ │
-│ │ Returns WorkbenchV1Strategy │ │
-│ └──────────────────────────────────────────┘ │
-│ │ │
-│ ▼ │
-│ ┌──────────────────────────────────────────┐ │
-│ │ WorkbenchV1Strategy.extract_data(html) │ │
-│ │ Uses element ID selectors │ │
-│ │ Returns: {assessment, description, │ │
-│ │ rationale, audit, ...} │ │
-│ └──────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────┘
- │
- ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ 5. Data Aggregation and Validation │
-│ - Combine navtree metadata + scraped content │
-│ - Result: List[Recommendation] │
-│ - VALIDATE against our JSON Schema │
-│ - Save as JSON (canonical format) │
-└─────────────────────────────────────────────────────────────────┘
- │
- ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ 5a. JSON Schema Validation (cis_bench/models/schema.json) │
-│ │
-│ { │
-│ "$schema": "http://json-schema.org/draft-07/schema#", │
-│ "type": "object", │
-│ "properties": { │
-│ "title": {"type": "string"}, │
-│ "benchmark_id": {"type": "string"}, │
-│ "recommendations": { │
-│ "type": "array", │
-│ "items": { │
-│ "type": "object", │
-│ "required": ["ref", "title", "url"], │
-│ "properties": { │
-│ "ref": {"type": "string"}, │
-│ "title": {"type": "string"}, │
-│ "description": {"type": ["string", "null"]}, │
-│ # ... all fields defined │
-│ } │
-│ } │
-│ } │
-│ } │
-│ } │
-│ │
-│ Data validates Proceed to export │
-│ Validation fails Error with details │
-└─────────────────────────────────────────────────────────────────┘
- │
- ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ 6. Export via Factory (Maps from our schema target format) │
-│ ExporterFactory.create('xccdf') │
-│ │ │
-│ ▼ │
-│ XCCDFExporter (uses xsdata models) │
-│ │ │
-│ ▼ │
-│ cis_bench.models.xccdf.Benchmark (from NIST XSD) │
-│ │ │
-│ ▼ │
-│ benchmark.to_xml() Valid XCCDF 1.2 XML │
-└─────────────────────────────────────────────────────────────────┘
- │
- ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ 7. Output (Rich) │
-│ - Progress bars during download │
-│ - Success message with file path │
-│ - Table showing benchmark stats │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+sequenceDiagram
+    participant User
+    participant CLI as CLI Layer (Click)
+    participant Auth as Auth Manager
+    participant Scraper as WorkbenchScraper
+    participant Strategy as Strategy Pattern
+    participant Validation as JSON Schema Validation
+    participant Exporter as Export via Factory
+    participant Output as Output (Rich)
+
+    User->>CLI: cis-bench download 22605 --browser chrome --format xccdf
+    CLI->>CLI: Parse arguments & validate options
+
+    CLI->>Auth: Extract cookies from Chrome
+    Auth->>Auth: browser-cookie3 extraction
+    Auth-->>CLI: Authenticated requests.Session
+
+    CLI->>Scraper: fetch_benchmark(22605)
+    Scraper->>Scraper: GET benchmark page → Extract title
+    Scraper->>Scraper: GET navtree API → Parse JSON → Get rec URLs
+
+    loop For each recommendation
+        Scraper->>Strategy: GET recommendation page
+        Strategy->>Strategy: Detect HTML strategy (auto)
+        Strategy->>Strategy: Extract fields using strategy
+        Strategy-->>Scraper: Recommendation data
+    end
+
+    Scraper->>Validation: Validate against JSON Schema
+
+    alt Validation succeeds
+        Validation->>Validation: Save as JSON (canonical format)
+        Validation-->>Scraper: Valid data
+    else Validation fails
+        Validation-->>Scraper: Error with details
+    end
+
+    Scraper->>Exporter: ExporterFactory.create('xccdf')
+    Exporter->>Exporter: Map to xsdata XCCDF models
+    Exporter->>Exporter: benchmark.to_xml() → Valid XCCDF 1.2 XML
+    Exporter-->>Output: XCCDF file path
+
+    Output->>User: Success message with stats
 ```
 
 #### Strategy Pattern Flow (HTML Adaptation)
 
-```
-When CIS WorkBench HTML Changes:
-════════════════════════════════════════════════════════════════
+```mermaid
+graph TB
+    subgraph "When CIS WorkBench HTML Changes"
+        A[HTML Change<br/>Element IDs different]
+        B{Old Approach}
+        C[Scraper fails ❌]
 
-OLD APPROACH (Breaks immediately):
- HTML Change Element IDs different Scraper fails
+        A --> B
+        B --> C
+    end
 
-NEW APPROACH (Resilient):
+    subgraph "New Approach: Resilient Strategy Pattern"
+        D[Step 1: Create New Strategy]
+        E[Step 2: Register Strategy]
+        F[Step 3: Auto-Detection]
 
-┌─────────────────────────────────────────────────────────────────┐
-│ Step 1: Create New Strategy │
-│ │
-│ class WorkbenchV2Strategy(ScraperStrategy): │
-│ version = "v2_2026_01" │
-│ selectors = { │
-│ "assessment": {"class": "new-assessment-class"}, │
-│ # ... new selectors │
-│ } │
-└─────────────────────────────────────────────────────────────────┘
- │
- ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ Step 2: Register Strategy │
-│ │
-│ # In strategies/__init__.py │
-│ from .v2_new import WorkbenchV2Strategy │
-│ │
-│ # Auto-registered via import │
-│ StrategyDetector.strategies = [ │
-│ WorkbenchV2Strategy(), # Newest first │
-│ WorkbenchV1Strategy(), # Fallback │
-│ ] │
-└─────────────────────────────────────────────────────────────────┘
- │
- ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ Step 3: Auto-Detection │
-│ │
-│ scraper.fetch_recommendation(url) │
-│ │ │
-│ ▼ │
-│ StrategyDetector.detect_strategy(html) │
-│ │ │
-│ ├─► Try v2.is_compatible(html) YES │
-│ │ Use WorkbenchV2Strategy │
-│ │ │
-│ ├─► Try v1.is_compatible(html) NO │
-│ │ Skip │
-│ │ │
-│ ▼ │
-│ Return: WorkbenchV2Strategy instance │
-└─────────────────────────────────────────────────────────────────┘
+        D --> |class WorkbenchV2Strategy| E
+        E --> |StrategyDetector.strategies| F
+        F --> G{Try v2.is_compatible?}
+        G --> |YES| H[Use WorkbenchV2Strategy ✅]
+        G --> |NO| I{Try v1.is_compatible?}
+        I --> |YES| J[Use WorkbenchV1Strategy ✅]
+        I --> |NO| K[Skip]
+    end
 
-Result: Tool continues working with new HTML!
+    H --> L[Tool continues working!]
+    J --> L
+
+    style A fill:#ffebee,stroke:#333,stroke-width:2px
+    style C fill:#ffcdd2,stroke:#333,stroke-width:2px
+    style H fill:#c8e6c9,stroke:#333,stroke-width:2px
+    style J fill:#c8e6c9,stroke:#333,stroke-width:2px
+    style L fill:#81c784,stroke:#333,stroke-width:3px
 ```
 
 #### Factory Pattern Flow (Export Formats)
 
-```
-Adding New Export Format:
-════════════════════════════════════════════════════════════════
+```mermaid
+graph TB
+    subgraph "Adding New Export Format"
+        A[Step 1: Create Exporter Class]
+        B[Step 2: Register with Factory]
+        C[Step 3: Automatically Available in CLI]
 
-┌─────────────────────────────────────────────────────────────────┐
-│ Step 1: Create Exporter Class │
-│ │
-│ class PDFExporter(BaseExporter): │
-│ def export(self, data, output_path): │
-│ # Convert to PDF │
-│ pass │
-│ │
-│ def get_file_extension(self): │
-│ return "pdf" │
-│ │
-│ def format_name(self): │
-│ return "PDF" │
-└─────────────────────────────────────────────────────────────────┘
- │
- ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ Step 2: Register with Factory │
-│ │
-│ # At bottom of pdf_exporter.py │
-│ ExporterFactory.register('pdf', PDFExporter) │
-└─────────────────────────────────────────────────────────────────┘
- │
- ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ Step 3: Automatically Available in CLI │
-│ │
-│ $ cis-bench export benchmark.json --format pdf │
-│ │
-│ CLI automatically knows about PDF format! │
-│ No CLI code changes needed! │
-└─────────────────────────────────────────────────────────────────┘
+        A --> |class PDFExporter BaseExporter| B
+        B --> |ExporterFactory.register'pdf'| C
+        C --> D[$ cis-bench export --format pdf]
+        D --> E[CLI automatically knows PDF!<br/>No CLI code changes needed! ✅]
+    end
 
-Current Registered Formats:
- ┌────────────────────────────────────────┐
- │ ExporterFactory._exporters = { │
- │ 'json': JSONExporter, │
- │ 'yaml': YAMLExporter, │
- │ 'csv': CSVExporter, │
- │ 'markdown': MarkdownExporter, │
- │ 'md': MarkdownExporter, │
- │ 'xccdf': XCCDFExporter, │
- │ 'xml': XCCDFExporter, │
- │ 'pdf': PDFExporter, New! │
- │ } │
- └────────────────────────────────────────┘
+    subgraph "Current Registered Formats"
+        F[ExporterFactory._exporters]
+        F --> G[json: JSONExporter]
+        F --> H[yaml: YAMLExporter]
+        F --> I[csv: CSVExporter]
+        F --> J[markdown: MarkdownExporter]
+        F --> K[xccdf: XCCDFExporter]
+        F --> L[pdf: PDFExporter NEW!]
+    end
+
+    E -.-> F
+
+    style A fill:#e3f2fd,stroke:#333,stroke-width:2px
+    style B fill:#fff9c4,stroke:#333,stroke-width:2px
+    style C fill:#f1f8e9,stroke:#333,stroke-width:2px
+    style E fill:#c8e6c9,stroke:#333,stroke-width:3px
+    style L fill:#ffccbc,stroke:#333,stroke-width:2px
 ```
 
 #### Package Dependency Graph
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ cis_bench Package │
-└─────────────────────────────────────────────────────────────────┘
- │
- ┌────────────────────────┼────────────────────────┐
- │ │ │
- ▼ ▼ ▼
-┌──────────────┐ ┌──────────────┐ ┌──────────────┐
-│ models │ │ fetcher │ │ exporters │
-│ │ │ │ │ │
-│ benchmark │ │ workbench │ │ base │
-│ ├─xccdf/ │◄───────│ ├─auth │ │ ├─json │
-│ └─*.py │ │ └─strat/ │ │ ├─yaml │
-│ (xsdata │ │ ├─base│ │ ├─csv │
-│ generated) │ │ ├─v1 │ │ ├─md │
-└──────────────┘ │ └─det │ │ └─xccdf──┼──┐
- ▲ └──────────────┘ └──────────────┘ │
- │ │ │ │
- │ │ │ │
- └────────────────────────┴────────────────────────┴───────┘
- │
- ▼
- ┌──────────────┐
- │ cli │
- │ │
- │ app │
- │ commands/ │
- │ ├─download │
- │ ├─export │
- │ ├─list │
- │ └─info │
- └──────────────┘
- │
- ▼
- ┌──────────────┐
- │ User │
- │ (Terminal) │
- └──────────────┘
+```mermaid
+graph TB
+    CIS[cis_bench Package]
 
-External Dependencies:
- ┌──────────────────────────────────────────────────┐
- │ requests, beautifulsoup4, browser-cookie3 │
- │ click, rich, questionary │
- │ xsdata, lxml, pyyaml │
- └──────────────────────────────────────────────────┘
+    CIS --> Models[models]
+    CIS --> Fetcher[fetcher]
+    CIS --> Exporters[exporters]
+
+    Models --> Benchmark[benchmark]
+    Models --> XCCDF[xccdf/]
+    XCCDF --> Generated[*.py<br/>xsdata generated]
+
+    Fetcher --> Workbench[workbench]
+    Fetcher --> Auth[auth]
+    Fetcher --> StratDir[strategies/]
+
+    StratDir --> Base[base]
+    StratDir --> V1[v1]
+    StratDir --> Detector[detector]
+
+    Exporters --> BaseExp[base]
+    Exporters --> JSON[json]
+    Exporters --> YAML[yaml]
+    Exporters --> CSV[csv]
+    Exporters --> MD[markdown]
+    Exporters --> XCCDFExp[xccdf]
+
+    XCCDFExp --> Models
+    Workbench --> Models
+
+    CIS --> CLI[cli]
+    CLI --> App[app]
+    CLI --> CommandsDir[commands/]
+
+    CommandsDir --> Download[download]
+    CommandsDir --> Export[export]
+    CommandsDir --> List[list]
+    CommandsDir --> Info[info]
+
+    CLI --> User[User Terminal]
+
+    subgraph "External Dependencies"
+        ExtDep[requests, beautifulsoup4<br/>browser-cookie3, click<br/>rich, questionary<br/>xsdata, lxml, pyyaml]
+    end
+
+    Fetcher -.-> ExtDep
+    Exporters -.-> ExtDep
+    CLI -.-> ExtDep
+
+    style CIS fill:#e1f5ff,stroke:#333,stroke-width:3px
+    style Models fill:#fff4e1,stroke:#333,stroke-width:2px
+    style Fetcher fill:#e8f5e9,stroke:#333,stroke-width:2px
+    style Exporters fill:#f3e5f5,stroke:#333,stroke-width:2px
+    style CLI fill:#ffebee,stroke:#333,stroke-width:2px
 ```
 
 #### Complete Workflow Sequence
 
-```
-User runs: cis-bench download 22605 --browser chrome --format xccdf
-═══════════════════════════════════════════════════════════════════════
+```mermaid
+sequenceDiagram
+    participant User
+    participant CLI
+    participant Auth as AuthManager
+    participant Scraper as WorkbenchScraper
+    participant Strategy as StrategyDetector
+    participant Factory as ExporterFactory
+    participant XCCDF as XCCDFExporter
+    participant Output as Rich Console
 
-┌─ Phase 1: Authentication ─────────────────────────────────────────┐
-│ │
-│ CLI AuthManager.get_session(browser='chrome') │
-│ │ │
-│ ├─ browser_cookie3.chrome(domain='workbench.cisecurity') │
-│ │ │
-│ ├─ Read Chrome SQLite DB │
-│ │ ~/.../Chrome/Default/Cookies │
-│ │ │
-│ └─ Return authenticated requests.Session │
-│ │
-└───────────────────────────────────────────────────────────────────┘
- │
- ▼
-┌─ Phase 2: Fetch Benchmark ────────────────────────────────────────┐
-│ │
-│ WorkbenchScraper(session) │
-│ │ │
-│ ├─ GET /benchmarks/22605 │
-│ │ └─ Extract: "CIS Amazon EKS Benchmark v1.8.0" │
-│ │ │
-│ ├─ GET /api/v1/benchmarks/22605/navtree │
-│ │ └─ Parse JSON 50 recommendation URLs │
-│ │ │
-│ └─ For each recommendation (with Rich progress bar): │
-│ ┌───────────────────────────────────────────────────┐ │
-│ │ GET /sections/X/recommendations/Y │ │
-│ │ │ │ │
-│ │ ├─ HTML response │ │
-│ │ │ │ │
-│ │ ├─ StrategyDetector.detect_strategy(html) │ │
-│ │ │ ├─ Check v1_2025_10.is_compatible() │ │
-│ │ │ └─ Use WorkbenchV1Strategy │ │
-│ │ │ │ │
-│ │ └─ strategy.extract_recommendation(html) │ │
-│ │ └─ Find elements by ID │ │
-│ │ └─ Return: {assessment, description, ...} │ │
-│ └───────────────────────────────────────────────────┘ │
-│ │
-│ Result: {title, recommendations: [...50 items...]} │
-│ │
-└───────────────────────────────────────────────────────────────────┘
- │
- ▼
-┌─ Phase 3: Export via Factory ─────────────────────────────────────┐
-│ │
-│ ExporterFactory.create('xccdf') │
-│ │ │
-│ └─ Returns: XCCDFExporter instance │
-│ │
-│ XCCDFExporter.export(data, 'output.xml') │
-│ │ │
-│ ├─ Map our data xsdata XCCDF models │
-│ │ from cis_bench.models.xccdf import Benchmark, Rule │
-│ │ │
-│ │ benchmark = Benchmark( │
-│ │ id="cis_eks", │
-│ │ status=[Status("draft")], │
-│ │ title="CIS Amazon EKS...", │
-│ │ version="1.8.0" │
-│ │ ) │
-│ │ │
-│ │ For each recommendation: │
-│ │ rule = Rule(id=..., title=..., description=...) │
-│ │ benchmark.rule.append(rule) │
-│ │ │
-│ └─ benchmark.to_xml(pretty_print=True) │
-│ └─ NIST XCCDF 1.2 compliant XML │
-│ │
-└───────────────────────────────────────────────────────────────────┘
- │
- ▼
-┌─ Phase 4: Output ─────────────────────────────────────────────────┐
-│ │
-│ Rich Console Output: │
-│ │
-│ Downloaded 50 recommendations │
-│ Exported to XCCDF: output.xml (245 KB) │
-│ Validated against NIST schema │
-│ │
-└───────────────────────────────────────────────────────────────────┘
+    Note over User,Output: User runs: cis-bench download 22605 --browser chrome --format xccdf
+
+    rect rgb(230, 240, 255)
+        Note over CLI,Auth: Phase 1: Authentication
+        User->>CLI: Execute command
+        CLI->>Auth: get_session(browser='chrome')
+        Auth->>Auth: browser_cookie3.chrome(domain='workbench.cisecurity')
+        Auth->>Auth: Read Chrome SQLite DB ~/.../Chrome/Default/Cookies
+        Auth-->>CLI: Authenticated requests.Session
+    end
+
+    rect rgb(240, 255, 230)
+        Note over Scraper,Strategy: Phase 2: Fetch Benchmark
+        CLI->>Scraper: fetch_benchmark(22605)
+        Scraper->>Scraper: GET /benchmarks/22605
+        Scraper->>Scraper: Extract: "CIS Amazon EKS Benchmark v1.8.0"
+        Scraper->>Scraper: GET /api/v1/benchmarks/22605/navtree
+        Scraper->>Scraper: Parse JSON → 50 recommendation URLs
+
+        loop For each recommendation (with Rich progress bar)
+            Scraper->>Scraper: GET /sections/X/recommendations/Y
+            Scraper->>Strategy: detect_strategy(html)
+            Strategy->>Strategy: Check v1_2025_10.is_compatible()
+            Strategy-->>Scraper: Use WorkbenchV1Strategy
+            Scraper->>Scraper: strategy.extract_recommendation(html)
+            Scraper->>Scraper: Find elements by ID
+        end
+
+        Scraper-->>CLI: {title, recommendations: [...50 items...]}
+    end
+
+    rect rgb(255, 240, 230)
+        Note over Factory,XCCDF: Phase 3: Export via Factory
+        CLI->>Factory: create('xccdf')
+        Factory-->>CLI: XCCDFExporter instance
+        CLI->>XCCDF: export(data, 'output.xml')
+        XCCDF->>XCCDF: Map to xsdata XCCDF models
+        XCCDF->>XCCDF: from cis_bench.models.xccdf import Benchmark, Rule
+        XCCDF->>XCCDF: Create Benchmark(id, status, title, version)
+
+        loop For each recommendation
+            XCCDF->>XCCDF: rule = Rule(id, title, description)
+            XCCDF->>XCCDF: benchmark.rule.append(rule)
+        end
+
+        XCCDF->>XCCDF: benchmark.to_xml(pretty_print=True)
+        XCCDF-->>CLI: NIST XCCDF 1.2 compliant XML
+    end
+
+    rect rgb(240, 240, 255)
+        Note over Output,User: Phase 4: Output
+        CLI->>Output: Display results
+        Output->>Output: Downloaded 50 recommendations
+        Output->>Output: Exported to XCCDF: output.xml (245 KB)
+        Output->>Output: Validated against NIST schema
+        Output-->>User: Success message with stats
+    end
 ```
 
 #### Strategy Pattern in Action
@@ -608,78 +496,46 @@ Time to fix when HTML changes: 15-30 minutes
 
 #### XCCDF Generation Flow (xsdata)
 
-```
-Using xsdata for Schema-Compliant XCCDF:
-═══════════════════════════════════════════════════════════════
+```mermaid
+graph TB
+    subgraph "One-Time Setup"
+        A[1. Download NIST schema]
+        B[2. Generate Python models]
+        C[3. Result: Python dataclasses<br/>with XML serialization]
 
-┌─ One-Time Setup ──────────────────────────────────────────────┐
-│ │
-│ 1. Download NIST schema: │
-│ xccdf_1.2.xsd from csrc.nist.gov │
-│ │
-│ 2. Generate Python models: │
-│ $ xsdata xccdf_1.2.xsd --package cis_bench.models.xccdf │
-│ │
-│ 3. Result: Python dataclasses with XML serialization │
-│ ┌────────────────────────────────────────────────┐ │
-│ │ cis_bench/models/xccdf/xccdf_1_2.py │ │
-│ │ │ │
-│ │ @dataclass │ │
-│ │ class Benchmark: │ │
-│ │ id: str │ │
-│ │ status: List[Status] │ │
-│ │ title: str │ │
-│ │ version: str │ │
-│ │ rule: List[Rule] = field(default_factory=list)│ │
-│ │ │ │
-│ │ def to_xml(self) -> str: │ │
-│ │ # Auto-generated serialization │ │
-│ └────────────────────────────────────────────────┘ │
-└───────────────────────────────────────────────────────────────┘
- │
- ▼
-┌─ Runtime Usage ───────────────────────────────────────────────┐
-│ │
-│ from cis_bench.models.xccdf import Benchmark, Rule, Status │
-│ │
-│ # Create schema-compliant objects │
-│ benchmark = Benchmark( │
-│ id="cis_eks_benchmark", │
-│ status=[Status(value="draft")], │
-│ title="CIS Amazon EKS Benchmark v1.8.0", │
-│ version="1.8.0" │
-│ ) │
-│ │
-│ # Add rules (auto-validated by dataclass) │
-│ for rec in recommendations: │
-│ rule = Rule( │
-│ id=f"rule_{rec['ref'].replace('.', '_')}", │
-│ title=rec['title'], │
-│ description=rec['description'] │
-│ ) │
-│ benchmark.rule.append(rule) │
-│ │
-│ # Export to XML (xsdata handles serialization) │
-│ xml_output = benchmark.to_xml(pretty_print=True) │
-│ │
-│ # Result: Valid XCCDF 1.2 XML │
-│ │
-└───────────────────────────────────────────────────────────────┘
- │
- ▼
-┌─ Validation ──────────────────────────────────────────────────┐
-│ │
-│ $ xmllint --schema xccdf_1.2.xsd output.xml --noout │
-│ │
-│ output.xml validates │
-│ │
-│ Compatible with: │
-│ - OpenSCAP │
-│ - SCAP Compliance Checker (SCC) │
-│ - Nessus │
-│ - Any XCCDF 1.2 compliant tool │
-│ │
-└───────────────────────────────────────────────────────────────┘
+        A --> |xccdf_1.2.xsd from csrc.nist.gov| B
+        B --> |$ xsdata xccdf_1.2.xsd<br/>--package cis_bench.models.xccdf| C
+
+        C --> D[@dataclass<br/>class Benchmark:<br/>id, status, title, version, rule]
+        D --> E[def to_xml: Auto-generated serialization]
+    end
+
+    subgraph "Runtime Usage"
+        F[Import xsdata models]
+        G[Create schema-compliant objects]
+        H[Add rules auto-validated]
+        I[Export to XML]
+
+        F --> |from cis_bench.models.xccdf<br/>import Benchmark, Rule, Status| G
+        G --> |benchmark = Benchmark<br/>id, status, title, version| H
+
+        H --> |for rec in recommendations:<br/>rule = Rule<br/>benchmark.rule.append| I
+        I --> |xml_output = benchmark.to_xml<br/>pretty_print=True| J[Valid XCCDF 1.2 XML]
+    end
+
+    E -.-> F
+
+    subgraph "Validation"
+        J --> K[$ xmllint --schema xccdf_1.2.xsd output.xml]
+        K --> L[output.xml validates ✅]
+        L --> M[Compatible with:<br/>OpenSCAP, SCAP Compliance Checker<br/>Nessus, Any XCCDF 1.2 tool]
+    end
+
+    style A fill:#e3f2fd,stroke:#333,stroke-width:2px
+    style C fill:#c8e6c9,stroke:#333,stroke-width:2px
+    style J fill:#fff9c4,stroke:#333,stroke-width:2px
+    style L fill:#81c784,stroke:#333,stroke-width:3px
+    style M fill:#a5d6a7,stroke:#333,stroke-width:2px
 ```
 
 ### High-Level Design Principles
@@ -1327,17 +1183,6 @@ def download(benchmark_ids, browser, output_dir, format):
 - `cis-bench list` - Show downloaded benchmarks
 - `cis-bench info` - Show benchmark details
 - Future: `diff`, `analyze`, `validate`, etc.
-
-## Next Steps
-
-1. Review this architecture document
-2. Get approval on:
-
- - Package name (`cis-benchmark-cli`)
- - CLI command (`cis-bench`)
- - Overall structure
-3. Execute Phase 1 Phase 2 Phase 3 Phase 4
-4. Ship v1.0
 
 ---
 
