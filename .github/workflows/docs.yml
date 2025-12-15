@@ -2,7 +2,7 @@ name: Deploy Documentation
 
 on:
   workflow_run:
-    workflows: ["CI"]
+    workflows: ["Release"]
     types:
       - completed
     branches:

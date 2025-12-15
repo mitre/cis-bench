@@ -2,8 +2,9 @@
 
 > Professional command-line tool for downloading and managing CIS security benchmarks from CIS WorkBench
 
-[![Python Version](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-512%20passing-brightgreen.svg)](tests/)
+[![PyPI version](https://img.shields.io/pypi/v/cis-bench.svg)](https://pypi.org/project/cis-bench/)
+[![Python Version](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![CI](https://github.com/mitre/cis-bench/actions/workflows/ci.yml/badge.svg)](https://github.com/mitre/cis-bench/actions/workflows/ci.yml)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
@@ -26,8 +27,8 @@
 ## Quick Start
 
 ```bash
-# 1. Install
-pip install -e .
+# 1. Install from PyPI
+pip install cis-bench
 
 # 2. Login (one-time)
 cis-bench auth login --browser chrome
