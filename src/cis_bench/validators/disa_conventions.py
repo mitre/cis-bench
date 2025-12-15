@@ -5,7 +5,6 @@ Validates that XCCDF output follows DISA STIG conventions v1.10.0
 
 import logging
 import re
-from typing import List, Tuple
 
 from lxml import etree
 
@@ -30,7 +29,7 @@ class DISAConventionsValidator:
         self.errors = []
         self.warnings = []
 
-    def validate(self) -> Tuple[bool, List[str], List[str]]:
+    def validate(self) -> tuple[bool, list[str], list[str]]:
         """Run all validation checks.
 
         Returns:

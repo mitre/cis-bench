@@ -11,7 +11,7 @@ authors = [
 ]
 readme = "README.md"
 license = {text = "Apache-2.0"}
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 
 classifiers = [
     "Development Status :: 5 - Production/Stable",
@@ -19,9 +19,8 @@ classifiers = [
     "Intended Audience :: System Administrators",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Security",
     "Topic :: System :: Systems Administration",
     "Topic :: Utilities",
@@ -152,7 +151,7 @@ directory = "htmlcov"
 
 [tool.black]
 line-length = 100
-target-version = ['py310', 'py311', 'py312']
+target-version = ['py312', 'py313']
 include = '\.pyi?$'
 extend-exclude = '''
 /(
@@ -168,7 +167,7 @@ extend-exclude = '''
 [tool.ruff]
 line-length = 100
 src = ["src"]
-target-version = "py310"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = [
@@ -194,9 +193,10 @@ ignore = [
 "fetch.py" = ["B023"]  # Legacy script - not fixing
 "src/cis_bench/cli/commands/download.py" = ["B023"]  # Loop variable in callback is intentional
 "src/cis_bench/cli/app.py" = ["E402"]  # Imports after function to avoid circular imports with Click
+"src/cis_bench/cli/commands/auth.py" = ["S603"]  # subprocess calls secured: URL validated, full paths via shutil.which(), no shell=True
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false  # Gradually enable

@@ -9,7 +9,6 @@ import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -19,14 +18,14 @@ class CCIMapping:
     """A single CCI with its NIST control mapping."""
 
     cci: str
-    nist_control: Optional[str] = None
-    confidence: Optional[float] = None
+    nist_control: str | None = None
+    confidence: float | None = None
 
 
 class CCILookupService:
     """Service for looking up CCIs and managing NIST deduplication."""
 
-    def __init__(self, mapping_file: Optional[Path] = None):
+    def __init__(self, mapping_file: Path | None = None):
         """Initialize CCI lookup service.
 
         Args:
@@ -44,7 +43,7 @@ class CCILookupService:
         logger.debug(f"Loaded {len(self._mapping_data)} CCI mapping entries")
 
         # Build reverse index: CCI → NIST control
-        self._cci_to_nist: Dict[str, str] = {}
+        self._cci_to_nist: dict[str, str] = {}
         self._build_reverse_index()
 
     def _build_reverse_index(self):
@@ -71,7 +70,7 @@ class CCILookupService:
                     if nist:
                         self._cci_to_nist[cci_id] = nist
 
-    def _extract_nist_from_cci_entry(self, cci_entry: dict) -> Optional[str]:
+    def _extract_nist_from_cci_entry(self, cci_entry: dict) -> str | None:
         """Extract NIST control from CCI entry."""
         # Could be explicit or in reasoning
         # For now, use pattern matching in reasoning
@@ -85,7 +84,7 @@ class CCILookupService:
 
     def get_ccis_for_cis_control(
         self, cis_control_id: str, extract: str = "all"
-    ) -> List[CCIMapping]:
+    ) -> list[CCIMapping]:
         """Get CCIs for a CIS control.
 
         Args:
@@ -131,7 +130,7 @@ class CCILookupService:
 
         return []
 
-    def get_nist_controls_covered_by_ccis(self, ccis: List[str]) -> Set[str]:
+    def get_nist_controls_covered_by_ccis(self, ccis: list[str]) -> set[str]:
         """Get all NIST controls covered by given CCIs.
 
         Args:
@@ -152,8 +151,8 @@ class CCILookupService:
         return covered
 
     def deduplicate_nist_controls(
-        self, cis_control_ids: List[str], cited_nist_controls: List[str], extract: str = "all"
-    ) -> Tuple[List[str], List[str]]:
+        self, cis_control_ids: list[str], cited_nist_controls: list[str], extract: str = "all"
+    ) -> tuple[list[str], list[str]]:
         """Determine CCIs to add vs NIST references to add.
 
         Args:

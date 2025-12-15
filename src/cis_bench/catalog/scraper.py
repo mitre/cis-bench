@@ -6,7 +6,6 @@ Scrapes benchmark listing pages and populates the catalog database.
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Optional
 
 import requests
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeRemainingColumn
@@ -34,7 +33,7 @@ class CatalogScraper:
         self.session.verify = False  # TODO: Add config for SSL verification
 
     def scrape_full_catalog(
-        self, max_pages: Optional[int] = None, rate_limit_seconds: float = 2.0
+        self, max_pages: int | None = None, rate_limit_seconds: float = 2.0
     ) -> dict:
         """Scrape all catalog pages from CIS WorkBench.
 
@@ -164,9 +163,9 @@ class CatalogScraper:
             "total_benchmarks": total_benchmarks,
             "pages_scraped": total_pages,
             "failed_pages": failed_pages,
-            "success_rate": (total_pages - len(failed_pages)) / total_pages
-            if total_pages > 0
-            else 0,
+            "success_rate": (
+                (total_pages - len(failed_pages)) / total_pages if total_pages > 0 else 0
+            ),
         }
 
         logger.info(f"Scrape complete: {total_benchmarks} benchmarks from {total_pages} pages")

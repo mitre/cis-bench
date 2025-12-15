@@ -7,7 +7,7 @@ import csv
 import json
 import sys
 from io import StringIO
-from typing import Any, List
+from typing import Any
 
 import yaml
 from rich.console import Console
@@ -28,7 +28,7 @@ def output_json(data: Any) -> None:
     sys.exit(0)
 
 
-def output_csv(data: List[dict], fields: List[str] = None) -> None:
+def output_csv(data: list[dict], fields: list[str] = None) -> None:
     """Output data as CSV to stdout.
 
     Args:
@@ -62,7 +62,7 @@ def output_yaml(data: Any) -> None:
 
 
 def output_data(
-    data: Any, format: str = "table", human_formatter_func=None, csv_fields: List[str] = None
+    data: Any, format: str = "table", human_formatter_func=None, csv_fields: list[str] = None
 ) -> None:
     """Output data in specified format.
 
@@ -92,7 +92,7 @@ def output_data(
         console.print(data)
 
 
-def output_results(results: List[dict], output_json_flag: bool, human_formatter_func=None) -> None:
+def output_results(results: list[dict], output_json_flag: bool, human_formatter_func=None) -> None:
     """Output results in JSON or human-friendly format.
 
     Args:

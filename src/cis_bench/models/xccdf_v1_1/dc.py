@@ -1,5 +1,4 @@
 from dataclasses import dataclass, field
-from typing import Optional, Union
 
 from cis_bench.models.xccdf_v1_1.xml import LangValue
 
@@ -12,7 +11,7 @@ class Contributor:
         name = "contributor"
         namespace = "http://purl.org/dc/elements/1.1/"
 
-    any_element: Optional[object] = field(
+    any_element: object | None = field(
         default=None,
         metadata={
             "type": "Wildcard",
@@ -27,7 +26,7 @@ class Coverage:
         name = "coverage"
         namespace = "http://purl.org/dc/elements/1.1/"
 
-    any_element: Optional[object] = field(
+    any_element: object | None = field(
         default=None,
         metadata={
             "type": "Wildcard",
@@ -42,7 +41,7 @@ class Creator:
         name = "creator"
         namespace = "http://purl.org/dc/elements/1.1/"
 
-    any_element: Optional[object] = field(
+    any_element: object | None = field(
         default=None,
         metadata={
             "type": "Wildcard",
@@ -57,7 +56,7 @@ class Date:
         name = "date"
         namespace = "http://purl.org/dc/elements/1.1/"
 
-    any_element: Optional[object] = field(
+    any_element: object | None = field(
         default=None,
         metadata={
             "type": "Wildcard",
@@ -72,7 +71,7 @@ class Description:
         name = "description"
         namespace = "http://purl.org/dc/elements/1.1/"
 
-    any_element: Optional[object] = field(
+    any_element: object | None = field(
         default=None,
         metadata={
             "type": "Wildcard",
@@ -87,7 +86,7 @@ class Format:
         name = "format"
         namespace = "http://purl.org/dc/elements/1.1/"
 
-    any_element: Optional[object] = field(
+    any_element: object | None = field(
         default=None,
         metadata={
             "type": "Wildcard",
@@ -102,7 +101,7 @@ class Identifier:
         name = "identifier"
         namespace = "http://purl.org/dc/elements/1.1/"
 
-    any_element: Optional[object] = field(
+    any_element: object | None = field(
         default=None,
         metadata={
             "type": "Wildcard",
@@ -117,7 +116,7 @@ class Language:
         name = "language"
         namespace = "http://purl.org/dc/elements/1.1/"
 
-    any_element: Optional[object] = field(
+    any_element: object | None = field(
         default=None,
         metadata={
             "type": "Wildcard",
@@ -132,7 +131,7 @@ class Publisher:
         name = "publisher"
         namespace = "http://purl.org/dc/elements/1.1/"
 
-    any_element: Optional[object] = field(
+    any_element: object | None = field(
         default=None,
         metadata={
             "type": "Wildcard",
@@ -147,7 +146,7 @@ class Relation:
         name = "relation"
         namespace = "http://purl.org/dc/elements/1.1/"
 
-    any_element: Optional[object] = field(
+    any_element: object | None = field(
         default=None,
         metadata={
             "type": "Wildcard",
@@ -162,7 +161,7 @@ class Rights:
         name = "rights"
         namespace = "http://purl.org/dc/elements/1.1/"
 
-    any_element: Optional[object] = field(
+    any_element: object | None = field(
         default=None,
         metadata={
             "type": "Wildcard",
@@ -177,7 +176,7 @@ class Source:
         name = "source"
         namespace = "http://purl.org/dc/elements/1.1/"
 
-    any_element: Optional[object] = field(
+    any_element: object | None = field(
         default=None,
         metadata={
             "type": "Wildcard",
@@ -192,7 +191,7 @@ class Subject:
         name = "subject"
         namespace = "http://purl.org/dc/elements/1.1/"
 
-    any_element: Optional[object] = field(
+    any_element: object | None = field(
         default=None,
         metadata={
             "type": "Wildcard",
@@ -207,7 +206,7 @@ class Title:
         name = "title"
         namespace = "http://purl.org/dc/elements/1.1/"
 
-    any_element: Optional[object] = field(
+    any_element: object | None = field(
         default=None,
         metadata={
             "type": "Wildcard",
@@ -222,7 +221,7 @@ class Type:
         name = "type"
         namespace = "http://purl.org/dc/elements/1.1/"
 
-    any_element: Optional[object] = field(
+    any_element: object | None = field(
         default=None,
         metadata={
             "type": "Wildcard",
@@ -242,7 +241,7 @@ class SimpleLiteral:
     elements.
     """
 
-    lang: Optional[Union[str, LangValue]] = field(
+    lang: str | LangValue | None = field(
         default=None,
         metadata={
             "type": "Attribute",

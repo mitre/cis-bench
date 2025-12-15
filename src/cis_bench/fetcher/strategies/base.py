@@ -5,7 +5,7 @@ as CIS WorkBench evolves their website over time.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict
+from typing import Any
 
 
 class ScraperStrategy(ABC):
@@ -42,7 +42,7 @@ class ScraperStrategy(ABC):
 
     @property
     @abstractmethod
-    def selectors(self) -> Dict[str, Dict[str, str]]:
+    def selectors(self) -> dict[str, dict[str, str]]:
         """CSS/XPath selectors for this HTML version.
 
         Returns:
@@ -58,7 +58,7 @@ class ScraperStrategy(ABC):
         pass
 
     @abstractmethod
-    def extract_recommendation(self, html: str) -> Dict[str, Any]:
+    def extract_recommendation(self, html: str) -> dict[str, Any]:
         """Extract recommendation data from HTML.
 
         Args:

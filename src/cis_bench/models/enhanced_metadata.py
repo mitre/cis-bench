@@ -14,7 +14,6 @@ This follows XCCDF best practices for extensibility:
 """
 
 from dataclasses import dataclass, field
-from typing import Optional
 
 
 @dataclass
@@ -29,7 +28,7 @@ class Technique:
         name = "technique"
         namespace = "http://cisecurity.org/xccdf/enhanced/1.0"
 
-    id: Optional[str] = field(
+    id: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -56,7 +55,7 @@ class Tactic:
         name = "tactic"
         namespace = "http://cisecurity.org/xccdf/enhanced/1.0"
 
-    id: Optional[str] = field(
+    id: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -83,7 +82,7 @@ class Mitigation:
         name = "mitigation"
         namespace = "http://cisecurity.org/xccdf/enhanced/1.0"
 
-    id: Optional[str] = field(
+    id: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -177,7 +176,7 @@ class EnhancedMetadata:
         name = "enhanced"
         namespace = "http://cisecurity.org/xccdf/enhanced/1.0"
 
-    mitre: Optional[MitreMetadata] = field(
+    mitre: MitreMetadata | None = field(
         default=None,
         metadata={
             "type": "Element",

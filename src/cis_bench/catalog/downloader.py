@@ -6,7 +6,6 @@ Integrates catalog database with WorkbenchScraper for efficient downloads.
 import hashlib
 import json
 import logging
-from typing import List, Optional
 
 from cis_bench.catalog.database import CatalogDatabase
 from cis_bench.catalog.search import CatalogSearch
@@ -175,7 +174,7 @@ class CatalogDownloader:
 
         return self.download_by_id(benchmark_id)
 
-    def _interactive_select(self, results: List[dict]) -> str:
+    def _interactive_select(self, results: list[dict]) -> str:
         """Interactive selection from multiple results.
 
         Args:
@@ -195,7 +194,7 @@ class CatalogDownloader:
 
         return benchmark_id
 
-    def get_downloaded_benchmark(self, benchmark_id: str) -> Optional[Benchmark]:
+    def get_downloaded_benchmark(self, benchmark_id: str) -> Benchmark | None:
         """Get downloaded benchmark from database.
 
         Args:
@@ -213,7 +212,7 @@ class CatalogDownloader:
         benchmark_dict = json.loads(downloaded["content_json"])
         return Benchmark(**benchmark_dict)
 
-    def list_downloaded(self) -> List[dict]:
+    def list_downloaded(self) -> list[dict]:
         """List all downloaded benchmarks.
 
         Returns:

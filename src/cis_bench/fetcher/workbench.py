@@ -6,8 +6,9 @@ It produces validated Pydantic Benchmark models.
 
 import logging
 import re
+from collections.abc import Callable
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 import requests
 import urllib3
@@ -30,7 +31,7 @@ class WorkbenchScraper:
     Produces validated Pydantic models as output.
     """
 
-    def __init__(self, session: requests.Session, strategy: Optional[ScraperStrategy] = None):
+    def __init__(self, session: requests.Session, strategy: ScraperStrategy | None = None):
         """Initialize scraper.
 
         Args:
@@ -75,7 +76,7 @@ class WorkbenchScraper:
         response.raise_for_status()
         return response.text
 
-    def fetch_json(self, url: str) -> Dict[str, Any]:
+    def fetch_json(self, url: str) -> dict[str, Any]:
         """Fetch JSON from URL.
 
         Args:
@@ -123,7 +124,7 @@ class WorkbenchScraper:
         title_elem = soup.find(name="wb-benchmark-title")
         return title_elem.get("title") if title_elem else "Unknown Benchmark"
 
-    def fetch_navtree(self, benchmark_id: str) -> Dict[str, Any]:
+    def fetch_navtree(self, benchmark_id: str) -> dict[str, Any]:
         """Fetch navigation tree for benchmark.
 
         Args:
@@ -135,7 +136,7 @@ class WorkbenchScraper:
         url = f"https://workbench.cisecurity.org/api/v1/benchmarks/{benchmark_id}/navtree"
         return self.fetch_json(url)
 
-    def parse_navtree(self, navtree_data: Dict[str, Any]) -> List[Dict[str, str]]:
+    def parse_navtree(self, navtree_data: dict[str, Any]) -> list[dict[str, str]]:
         """Parse navigation tree to extract recommendation URLs.
 
         Args:
@@ -145,7 +146,7 @@ class WorkbenchScraper:
             List of dicts with url, title, ref
         """
 
-        def generate_urls(recommendations: List[dict]) -> List[dict]:
+        def generate_urls(recommendations: list[dict]) -> list[dict]:
             output = []
             for rec in recommendations:
                 rec_id = rec["id"]
@@ -154,7 +155,7 @@ class WorkbenchScraper:
                 output.append({"url": url, "title": rec["title"], "ref": rec["view_level"]})
             return output
 
-        def parse_subsections(subsections: List[dict], result: List[dict]):
+        def parse_subsections(subsections: list[dict], result: list[dict]):
             for section in subsections:
                 # Process recommendations at this level
                 recommendations = section.get("recommendations_for_nav_tree", [])
@@ -170,7 +171,7 @@ class WorkbenchScraper:
         parse_subsections(navtree, parsed_data)
         return parsed_data
 
-    def fetch_recommendation(self, rec_url: str) -> Dict[str, Any]:
+    def fetch_recommendation(self, rec_url: str) -> dict[str, Any]:
         """Fetch and parse a single recommendation page.
 
         Args:
@@ -184,7 +185,7 @@ class WorkbenchScraper:
         return strategy.extract_recommendation(html)
 
     def download_benchmark(
-        self, benchmark_url: str, progress_callback: Optional[Callable[[str], None]] = None
+        self, benchmark_url: str, progress_callback: Callable[[str], None] | None = None
     ) -> Benchmark:
         """Download complete benchmark with all recommendations.
 
@@ -261,9 +262,9 @@ class WorkbenchScraper:
             benchmark_id=benchmark_id,
             url=benchmark_url,
             version=version,
-            scraper_version=self._detected_strategy.version
-            if self._detected_strategy
-            else "manual",
+            scraper_version=(
+                self._detected_strategy.version if self._detected_strategy else "manual"
+            ),
             total_recommendations=len(recommendations),
             recommendations=recommendations,
             downloaded_at=datetime.now(),

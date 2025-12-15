@@ -6,9 +6,10 @@ Pydantic Benchmark models to XCCDF format.
 
 import logging
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 import yaml
 
@@ -28,23 +29,23 @@ logger = logging.getLogger(__name__)
 class MappingConfig:
     """Loaded mapping configuration."""
 
-    metadata: Dict[str, Any]
-    benchmark: Dict[str, Any]
-    rule_defaults: Dict[str, Any]
-    rule_id: Dict[str, str]
-    field_mappings: Dict[str, Any]
-    transformations: Dict[str, Any]
-    cci_deduplication: Dict[str, Any]
-    rule_elements: Dict[str, Any]  # Specification of each Rule element and its xsdata type
-    group_elements: Dict[str, Any]  # Specification of each Group element and its xsdata type
-    legacy_vms_tags: Optional[Dict[str, Any]] = None
-    validation: Optional[Dict[str, Any]] = None
+    metadata: dict[str, Any]
+    benchmark: dict[str, Any]
+    rule_defaults: dict[str, Any]
+    rule_id: dict[str, str]
+    field_mappings: dict[str, Any]
+    transformations: dict[str, Any]
+    cci_deduplication: dict[str, Any]
+    rule_elements: dict[str, Any]  # Specification of each Rule element and its xsdata type
+    group_elements: dict[str, Any]  # Specification of each Group element and its xsdata type
+    legacy_vms_tags: dict[str, Any] | None = None
+    validation: dict[str, Any] | None = None
 
 
 class TransformRegistry:
     """Registry of transformation functions."""
 
-    _transforms: Dict[str, Callable] = {}
+    _transforms: dict[str, Callable] = {}
 
     @classmethod
     def register(cls, name: str, func: Callable):
@@ -74,7 +75,7 @@ TransformRegistry.register("html_to_markdown", HTMLCleaner.html_to_markdown)
 TransformRegistry.register("wrap_xhtml_paragraphs", XHTMLFormatter.wrap_paragraphs)
 
 
-def strip_html_keep_code(html: Optional[str]) -> str:
+def strip_html_keep_code(html: str | None) -> str:
     """Strip HTML but preserve code blocks."""
     if not html:
         return ""
@@ -89,7 +90,7 @@ class ConfigLoader:
     """Loads and validates mapping configuration from YAML with inheritance support."""
 
     @staticmethod
-    def _deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+    def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
         """Deep merge two dictionaries, with override taking precedence.
 
         Args:
@@ -114,7 +115,7 @@ class ConfigLoader:
         return result
 
     @staticmethod
-    def load(config_path: Path, _loading_stack: Optional[List[Path]] = None) -> MappingConfig:
+    def load(config_path: Path, _loading_stack: list[Path] | None = None) -> MappingConfig:
         """Load mapping configuration from YAML file with inheritance support.
 
         Config files can specify 'extends: base_style.yaml' to inherit from another file.
@@ -207,7 +208,7 @@ class VariableSubstituter:
     """Handles variable substitution in templates."""
 
     @staticmethod
-    def substitute(template: str, context: Dict[str, Any]) -> str:
+    def substitute(template: str, context: dict[str, Any]) -> str:
         """Replace {variables} in template with context values.
 
         Examples:
@@ -352,7 +353,7 @@ class MappingEngine:
 
         return "".join(description_parts)
 
-    def get_ccis_with_deduplication(self, rec: Recommendation) -> tuple[List[str], List[str]]:
+    def get_ccis_with_deduplication(self, rec: Recommendation) -> tuple[list[str], list[str]]:
         """Get CCIs and extra NIST controls using deduplication.
 
         Returns:
@@ -378,7 +379,7 @@ class MappingEngine:
         return ccis, extra_nist
 
     def apply_field_mapping(
-        self, field_name: str, rec: Recommendation, context: Dict[str, Any]
+        self, field_name: str, rec: Recommendation, context: dict[str, Any]
     ) -> Any:
         """Apply a single field mapping from config.
 
@@ -1134,7 +1135,7 @@ class MappingEngine:
 
         return Group(**group_fields)
 
-    def map_benchmark(self, benchmark: Benchmark, groups: List, context: dict):
+    def map_benchmark(self, benchmark: Benchmark, groups: list, context: dict):
         """Map Benchmark and Groups to XCCDF Benchmark using config (LOOP-DRIVEN).
 
         Args:

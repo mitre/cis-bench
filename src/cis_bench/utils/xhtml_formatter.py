@@ -4,7 +4,7 @@ Provides XHTML element wrappers matching official CIS XCCDF format.
 Uses lxml for proper namespace handling and XML generation.
 """
 
-from typing import List, Optional
+from __future__ import annotations
 
 from lxml import etree
 
@@ -19,7 +19,7 @@ class XHTMLFormatter:
     XHTML_NS = "http://www.w3.org/1999/xhtml"
 
     @classmethod
-    def wrap_paragraphs(cls, text: Optional[str]) -> List[etree.Element]:
+    def wrap_paragraphs(cls, text: str | None) -> list[etree.Element]:
         """Wrap plain text in XHTML <p> elements.
 
         Splits text on double newlines to create paragraph breaks.
@@ -59,7 +59,7 @@ class XHTMLFormatter:
         return elements
 
     @classmethod
-    def wrap_single_paragraph(cls, text: Optional[str]) -> Optional[etree.Element]:
+    def wrap_single_paragraph(cls, text: str | None) -> etree.Element | None:
         """Wrap text in a single XHTML <p> element.
 
         Convenience method for text that doesn't need paragraph breaks.
@@ -84,7 +84,7 @@ class XHTMLFormatter:
         return p_elem
 
     @classmethod
-    def create_code_block(cls, code: str, language: Optional[str] = None) -> etree.Element:
+    def create_code_block(cls, code: str, language: str | None = None) -> etree.Element:
         """Create XHTML <code> element.
 
         Args:
@@ -133,7 +133,7 @@ class XHTMLFormatter:
         return em_elem
 
     @classmethod
-    def elements_to_xml_string(cls, elements: List[etree.Element]) -> str:
+    def elements_to_xml_string(cls, elements: list[etree.Element]) -> str:
         """Convert list of XHTML elements to XML string.
 
         Utility for testing and debugging.

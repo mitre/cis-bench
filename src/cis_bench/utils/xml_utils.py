@@ -4,7 +4,6 @@ Helpers for XML namespace handling, serialization, and post-processing.
 """
 
 import logging
-from typing import Optional
 
 from lxml import etree
 
@@ -295,8 +294,8 @@ class XCCDFPostProcessor:
     def process(
         xml_string: str,
         xccdf_namespace: str,
-        dc_elements: Optional[dict] = None,
-        namespace_map: Optional[dict] = None,
+        dc_elements: dict | None = None,
+        namespace_map: dict | None = None,
     ) -> str:
         """Apply all XCCDF post-processing steps.
 

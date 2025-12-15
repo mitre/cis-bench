@@ -4,7 +4,6 @@ Auto-detects which scraper strategy to use based on HTML structure.
 """
 
 import logging
-from typing import List, Optional
 
 from .base import ScraperStrategy
 
@@ -21,7 +20,7 @@ class StrategyDetector:
 
     # Strategies ordered newest → oldest (check newest first)
     # Populated by importing strategy modules
-    _strategies: List[ScraperStrategy] = []
+    _strategies: list[ScraperStrategy] = []
 
     @classmethod
     def register_strategy(cls, strategy: ScraperStrategy, position: int = 0):
@@ -74,7 +73,7 @@ class StrategyDetector:
         )
 
     @classmethod
-    def get_strategy(cls, version: str) -> Optional[ScraperStrategy]:
+    def get_strategy(cls, version: str) -> ScraperStrategy | None:
         """Get specific strategy by version.
 
         Args:
@@ -89,7 +88,7 @@ class StrategyDetector:
         return None
 
     @classmethod
-    def list_strategies(cls) -> List[str]:
+    def list_strategies(cls) -> list[str]:
         """Get list of registered strategy versions.
 
         Returns:

@@ -2,7 +2,6 @@
 
 import json
 import re
-from typing import List, Optional
 
 from bs4 import BeautifulSoup
 
@@ -13,7 +12,7 @@ class WorkbenchParser:
     """Utilities for parsing CIS WorkBench HTML into structured data."""
 
     @staticmethod
-    def parse_mitre_table(html: Optional[str]) -> Optional[MITREMapping]:
+    def parse_mitre_table(html: str | None) -> MITREMapping | None:
         """Parse MITRE ATT&CK mapping from HTML table.
 
         Args:
@@ -66,7 +65,7 @@ class WorkbenchParser:
         return MITREMapping(**result)
 
     @staticmethod
-    def parse_nist_controls(html: Optional[str]) -> List[str]:
+    def parse_nist_controls(html: str | None) -> list[str]:
         """Parse NIST SP 800-53 control references from HTML.
 
         Args:
@@ -96,7 +95,7 @@ class WorkbenchParser:
         return sorted(set(controls))  # Deduplicate and sort
 
     @staticmethod
-    def parse_profiles_json(profiles_json: str) -> List[str]:
+    def parse_profiles_json(profiles_json: str) -> list[str]:
         """Parse profiles from JSON string.
 
         Args:
@@ -112,7 +111,7 @@ class WorkbenchParser:
             return []
 
     @staticmethod
-    def parse_cis_controls_json(controls_json: str) -> List[CISControl]:
+    def parse_cis_controls_json(controls_json: str) -> list[CISControl]:
         """Parse CIS Controls from JSON string.
 
         Args:
@@ -143,7 +142,7 @@ class WorkbenchParser:
             return []
 
     @staticmethod
-    def parse_artifacts_json(artifacts_json: str) -> List[Artifact]:
+    def parse_artifacts_json(artifacts_json: str) -> list[Artifact]:
         """Parse artifacts from JSON string.
 
         Args:
@@ -172,7 +171,7 @@ class WorkbenchParser:
             return []
 
     @staticmethod
-    def parse_parent_link(html: str) -> Optional[ParentReference]:
+    def parse_parent_link(html: str) -> ParentReference | None:
         """Parse parent recommendation link from HTML.
 
         Args:
@@ -202,7 +201,7 @@ class WorkbenchParser:
         return None
 
     @staticmethod
-    def extract_assessment_status(html: Optional[str]) -> str:
+    def extract_assessment_status(html: str | None) -> str:
         """Extract assessment status from HTML.
 
         Args:

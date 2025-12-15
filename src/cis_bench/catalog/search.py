@@ -4,7 +4,6 @@ Provides high-level search operations with filtering, ranking, and formatting.
 """
 
 import logging
-from typing import List, Optional
 
 from cis_bench.catalog.database import CatalogDatabase
 
@@ -25,12 +24,12 @@ class CatalogSearch:
     def search(
         self,
         query: str = "",
-        platform: Optional[str] = None,
-        platform_type: Optional[str] = None,
+        platform: str | None = None,
+        platform_type: str | None = None,
         status: str = "Published",
         latest_only: bool = False,
         limit: int = 50,
-    ) -> List[dict]:
+    ) -> list[dict]:
         """Search catalog with filters.
 
         Args:
@@ -64,7 +63,7 @@ class CatalogSearch:
         logger.info(f"Search returned {len(results)} results")
         return results
 
-    def find_by_id(self, benchmark_id: str) -> Optional[dict]:
+    def find_by_id(self, benchmark_id: str) -> dict | None:
         """Find benchmark by exact ID.
 
         Args:
@@ -75,7 +74,7 @@ class CatalogSearch:
         """
         return self.db.get_benchmark(benchmark_id)
 
-    def find_by_name(self, name: str, latest_only: bool = True) -> List[dict]:
+    def find_by_name(self, name: str, latest_only: bool = True) -> list[dict]:
         """Find benchmarks by name (fuzzy matching).
 
         Args:
@@ -87,7 +86,7 @@ class CatalogSearch:
         """
         return self.search(query=name, latest_only=latest_only, limit=20)
 
-    def list_all_published(self, limit: int = 100) -> List[dict]:
+    def list_all_published(self, limit: int = 100) -> list[dict]:
         """List all published benchmarks.
 
         Args:
@@ -98,7 +97,7 @@ class CatalogSearch:
         """
         return self.search(query="", status="Published", limit=limit)
 
-    def list_by_platform(self, platform: str, latest_only: bool = False) -> List[dict]:
+    def list_by_platform(self, platform: str, latest_only: bool = False) -> list[dict]:
         """List benchmarks for a platform.
 
         Args:
@@ -110,7 +109,7 @@ class CatalogSearch:
         """
         return self.search(query="", platform=platform, latest_only=latest_only, limit=200)
 
-    def list_by_community(self, community: str) -> List[dict]:
+    def list_by_community(self, community: str) -> list[dict]:
         """List benchmarks in a community.
 
         Args:
@@ -125,7 +124,7 @@ class CatalogSearch:
         # Filter to exact community match
         return [r for r in results if r.get("community") == community]
 
-    def get_platforms(self) -> List[dict]:
+    def get_platforms(self) -> list[dict]:
         """Get all platforms with benchmark counts.
 
         Returns:
@@ -133,7 +132,7 @@ class CatalogSearch:
         """
         return self.db.list_platforms()
 
-    def get_communities(self) -> List[dict]:
+    def get_communities(self) -> list[dict]:
         """Get all communities with benchmark counts.
 
         Returns:
@@ -141,7 +140,7 @@ class CatalogSearch:
         """
         return self.db.list_communities()
 
-    def get_latest_for_platform(self, platform: str) -> List[dict]:
+    def get_latest_for_platform(self, platform: str) -> list[dict]:
         """Get latest benchmarks for a platform.
 
         Args:
@@ -152,7 +151,7 @@ class CatalogSearch:
         """
         return self.search(query="", platform=platform, latest_only=True, limit=100)
 
-    def check_updates(self) -> List[dict]:
+    def check_updates(self) -> list[dict]:
         """Check downloaded benchmarks for available updates.
 
         Returns:
@@ -194,7 +193,7 @@ class CatalogSearch:
 
         return f"{line1}\n        {line2}" if line2 else line1
 
-    def format_results_table(self, results: List[dict], show_description: bool = False) -> str:
+    def format_results_table(self, results: list[dict], show_description: bool = False) -> str:
         """Format multiple results as a table.
 
         Args:

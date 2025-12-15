@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import Enum
-from typing import Optional, Union
+from typing import Optional
 
 from xsdata.models.datatype import XmlDate, XmlDateTime
 
@@ -24,7 +24,7 @@ class UriidrefType:
     class Meta:
         name = "URIidrefType"
 
-    idref: Optional[str] = field(
+    idref: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -58,14 +58,14 @@ class CheckContentRefType:
     class Meta:
         name = "checkContentRefType"
 
-    href: Optional[str] = field(
+    href: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
             "required": True,
         },
     )
-    name: Optional[str] = field(
+    name: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -106,7 +106,7 @@ class CheckExportType:
     class Meta:
         name = "checkExportType"
 
-    value_id: Optional[str] = field(
+    value_id: str | None = field(
         default=None,
         metadata={
             "name": "value-id",
@@ -114,7 +114,7 @@ class CheckExportType:
             "required": True,
         },
     )
-    export_name: Optional[str] = field(
+    export_name: str | None = field(
         default=None,
         metadata={
             "name": "export-name",
@@ -145,7 +145,7 @@ class CheckImportType:
             "required": True,
         },
     )
-    import_name: Optional[str] = field(
+    import_name: str | None = field(
         default=None,
         metadata={
             "name": "import-name",
@@ -198,7 +198,7 @@ class IdentType:
             "required": True,
         },
     )
-    system: Optional[str] = field(
+    system: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -227,14 +227,14 @@ class IdentityType:
             "required": True,
         },
     )
-    authenticated: Optional[bool] = field(
+    authenticated: bool | None = field(
         default=None,
         metadata={
             "type": "Attribute",
             "required": True,
         },
     )
-    privileged: Optional[bool] = field(
+    privileged: bool | None = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -271,7 +271,7 @@ class IdrefType:
     class Meta:
         name = "idrefType"
 
-    idref: Optional[str] = field(
+    idref: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -328,7 +328,7 @@ class InstanceResultType:
             "type": "Attribute",
         },
     )
-    parent_context: Optional[str] = field(
+    parent_context: str | None = field(
         default=None,
         metadata={
             "name": "parentContext",
@@ -407,7 +407,7 @@ class ParamType:
             "required": True,
         },
     )
-    name: Optional[str] = field(
+    name: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -431,7 +431,7 @@ class PlainTextType:
             "required": True,
         },
     )
-    id: Optional[str] = field(
+    id: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -457,7 +457,7 @@ class ProfileSetValueType:
             "required": True,
         },
     )
-    idref: Optional[str] = field(
+    idref: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -496,13 +496,13 @@ class ReferenceType:
     class Meta:
         name = "referenceType"
 
-    href: Optional[str] = field(
+    href: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    override: Optional[bool] = field(
+    override: bool | None = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -576,19 +576,19 @@ class ScoreType:
     class Meta:
         name = "scoreType"
 
-    value: Optional[Decimal] = field(
+    value: Decimal | None = field(
         default=None,
         metadata={
             "required": True,
         },
     )
-    system: Optional[str] = field(
+    system: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    maximum: Optional[Decimal] = field(
+    maximum: Decimal | None = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -616,7 +616,7 @@ class SelChoicesType:
             "min_occurs": 1,
         },
     )
-    must_match: Optional[bool] = field(
+    must_match: bool | None = field(
         default=None,
         metadata={
             "name": "mustMatch",
@@ -642,7 +642,7 @@ class SelNumType:
     class Meta:
         name = "selNumType"
 
-    value: Optional[Decimal] = field(
+    value: Decimal | None = field(
         default=None,
         metadata={
             "required": True,
@@ -714,7 +714,7 @@ class SignatureType:
     class Meta:
         name = "signatureType"
 
-    w3_org_2000_09_xmldsig_element: Optional[object] = field(
+    w3_org_2000_09_xmldsig_element: object | None = field(
         default=None,
         metadata={
             "type": "Wildcard",
@@ -746,7 +746,7 @@ class UriRefType:
     class Meta:
         name = "uriRefType"
 
-    uri: Optional[str] = field(
+    uri: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -797,13 +797,13 @@ class VersionType:
             "required": True,
         },
     )
-    time: Optional[XmlDateTime] = field(
+    time: XmlDateTime | None = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    update: Optional[str] = field(
+    update: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -884,7 +884,7 @@ class CheckType:
             "namespace": "",
         },
     )
-    check_content: Optional[CheckContentType] = field(
+    check_content: CheckContentType | None = field(
         default=None,
         metadata={
             "name": "check-content",
@@ -892,14 +892,14 @@ class CheckType:
             "namespace": "",
         },
     )
-    system: Optional[str] = field(
+    system: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
             "required": True,
         },
     )
-    id: Optional[str] = field(
+    id: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -911,7 +911,7 @@ class CheckType:
             "type": "Attribute",
         },
     )
-    base: Optional[str] = field(
+    base: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -937,7 +937,7 @@ class FactType:
             "required": True,
         },
     )
-    name: Optional[str] = field(
+    name: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -965,7 +965,7 @@ class FixType:
     class Meta:
         name = "fixType"
 
-    id: Optional[str] = field(
+    id: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -995,13 +995,13 @@ class FixType:
             "type": "Attribute",
         },
     )
-    system: Optional[str] = field(
+    system: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    platform: Optional[str] = field(
+    platform: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -1040,7 +1040,7 @@ class HtmlTextType:
     class Meta:
         name = "htmlTextType"
 
-    lang: Optional[Union[str, LangValue]] = field(
+    lang: str | LangValue | None = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -1079,7 +1079,7 @@ class HtmlTextWithSubType:
     class Meta:
         name = "htmlTextWithSubType"
 
-    lang: Optional[Union[str, LangValue]] = field(
+    lang: str | LangValue | None = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -1126,7 +1126,7 @@ class MessageType:
             "required": True,
         },
     )
-    severity: Optional[MsgSevEnumType] = field(
+    severity: MsgSevEnumType | None = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -1155,7 +1155,7 @@ class Model:
             "namespace": "",
         },
     )
-    system: Optional[str] = field(
+    system: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -1174,20 +1174,20 @@ class NoticeType:
     class Meta:
         name = "noticeType"
 
-    id: Optional[str] = field(
+    id: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    base: Optional[str] = field(
+    base: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
             "namespace": "http://www.w3.org/XML/1998/namespace",
         },
     )
-    lang: Optional[Union[str, LangValue]] = field(
+    lang: str | LangValue | None = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -1250,14 +1250,14 @@ class ProfileNoteType:
     class Meta:
         name = "profileNoteType"
 
-    lang: Optional[Union[str, LangValue]] = field(
+    lang: str | LangValue | None = field(
         default=None,
         metadata={
             "type": "Attribute",
             "namespace": "http://www.w3.org/XML/1998/namespace",
         },
     )
-    tag: Optional[str] = field(
+    tag: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -1292,13 +1292,13 @@ class Status:
         name = "status"
         namespace = "http://checklists.nist.gov/xccdf/1.1"
 
-    value: Optional[StatusType] = field(
+    value: StatusType | None = field(
         default=None,
         metadata={
             "required": True,
         },
     )
-    date: Optional[XmlDate] = field(
+    date: XmlDate | None = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -1323,7 +1323,7 @@ class TextType:
             "required": True,
         },
     )
-    lang: Optional[Union[str, LangValue]] = field(
+    lang: str | LangValue | None = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -1350,7 +1350,7 @@ class TextWithSubType:
     class Meta:
         name = "textWithSubType"
 
-    lang: Optional[Union[str, LangValue]] = field(
+    lang: str | LangValue | None = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -1412,7 +1412,7 @@ class ComplexCheckType:
             "namespace": "",
         },
     )
-    operator: Optional[CcOperatorEnumType] = field(
+    operator: CcOperatorEnumType | None = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -1437,7 +1437,7 @@ class FixTextType(HtmlTextWithSubType):
     class Meta:
         name = "fixTextType"
 
-    fixref: Optional[str] = field(
+    fixref: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -1480,7 +1480,7 @@ class OverrideType:
     class Meta:
         name = "overrideType"
 
-    old_result: Optional[ResultEnumType] = field(
+    old_result: ResultEnumType | None = field(
         default=None,
         metadata={
             "name": "old-result",
@@ -1489,7 +1489,7 @@ class OverrideType:
             "required": True,
         },
     )
-    new_result: Optional[ResultEnumType] = field(
+    new_result: ResultEnumType | None = field(
         default=None,
         metadata={
             "name": "new-result",
@@ -1498,7 +1498,7 @@ class OverrideType:
             "required": True,
         },
     )
-    remark: Optional[TextType] = field(
+    remark: TextType | None = field(
         default=None,
         metadata={
             "type": "Element",
@@ -1506,14 +1506,14 @@ class OverrideType:
             "required": True,
         },
     )
-    time: Optional[XmlDateTime] = field(
+    time: XmlDateTime | None = field(
         default=None,
         metadata={
             "type": "Attribute",
             "required": True,
         },
     )
-    authority: Optional[str] = field(
+    authority: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -1546,14 +1546,14 @@ class ProfileRefineRuleType:
             "namespace": "",
         },
     )
-    idref: Optional[str] = field(
+    idref: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
             "required": True,
         },
     )
-    weight: Optional[Decimal] = field(
+    weight: Decimal | None = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -1561,19 +1561,19 @@ class ProfileRefineRuleType:
             "total_digits": 3,
         },
     )
-    selector: Optional[str] = field(
+    selector: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    severity: Optional[SeverityEnumType] = field(
+    severity: SeverityEnumType | None = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    role: Optional[RoleEnumType] = field(
+    role: RoleEnumType | None = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -1604,20 +1604,20 @@ class ProfileRefineValueType:
             "namespace": "",
         },
     )
-    idref: Optional[str] = field(
+    idref: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
             "required": True,
         },
     )
-    selector: Optional[str] = field(
+    selector: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    operator: Optional[ValueOperatorType] = field(
+    operator: ValueOperatorType | None = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -1646,14 +1646,14 @@ class ProfileSelectType:
             "namespace": "",
         },
     )
-    idref: Optional[str] = field(
+    idref: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
             "required": True,
         },
     )
-    selected: Optional[bool] = field(
+    selected: bool | None = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -1720,7 +1720,7 @@ class ItemType:
             "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
-    version: Optional[VersionType] = field(
+    version: VersionType | None = field(
         default=None,
         metadata={
             "type": "Element",
@@ -1762,7 +1762,7 @@ class ItemType:
             "namespace": "",
         },
     )
-    id: Optional[str] = field(
+    id: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -1775,14 +1775,14 @@ class ItemType:
             "type": "Attribute",
         },
     )
-    cluster_id: Optional[str] = field(
+    cluster_id: str | None = field(
         default=None,
         metadata={
             "name": "cluster-id",
             "type": "Attribute",
         },
     )
-    extends: Optional[str] = field(
+    extends: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -1801,21 +1801,21 @@ class ItemType:
             "type": "Attribute",
         },
     )
-    lang: Optional[Union[str, LangValue]] = field(
+    lang: str | LangValue | None = field(
         default=None,
         metadata={
             "type": "Attribute",
             "namespace": "http://www.w3.org/XML/1998/namespace",
         },
     )
-    base: Optional[str] = field(
+    base: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
             "namespace": "http://www.w3.org/XML/1998/namespace",
         },
     )
-    id_attribute: Optional[str] = field(
+    id_attribute: str | None = field(
         default=None,
         metadata={
             "name": "Id",
@@ -1845,7 +1845,7 @@ class ProfileType:
             "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
-    version: Optional[VersionType] = field(
+    version: VersionType | None = field(
         default=None,
         metadata={
             "type": "Element",
@@ -1912,14 +1912,14 @@ class ProfileType:
             "namespace": "",
         },
     )
-    signature: Optional[SignatureType] = field(
+    signature: SignatureType | None = field(
         default=None,
         metadata={
             "type": "Element",
             "namespace": "",
         },
     )
-    id: Optional[str] = field(
+    id: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -1939,27 +1939,27 @@ class ProfileType:
             "type": "Attribute",
         },
     )
-    note_tag: Optional[str] = field(
+    note_tag: str | None = field(
         default=None,
         metadata={
             "name": "note-tag",
             "type": "Attribute",
         },
     )
-    extends: Optional[str] = field(
+    extends: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    base: Optional[str] = field(
+    base: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
             "namespace": "http://www.w3.org/XML/1998/namespace",
         },
     )
-    id_attribute: Optional[str] = field(
+    id_attribute: str | None = field(
         default=None,
         metadata={
             "name": "Id",
@@ -1979,7 +1979,7 @@ class RuleResultType:
     class Meta:
         name = "ruleResultType"
 
-    result: Optional[ResultEnumType] = field(
+    result: ResultEnumType | None = field(
         default=None,
         metadata={
             "type": "Element",
@@ -2029,38 +2029,38 @@ class RuleResultType:
             "namespace": "",
         },
     )
-    idref: Optional[str] = field(
+    idref: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
             "required": True,
         },
     )
-    role: Optional[RoleEnumType] = field(
+    role: RoleEnumType | None = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    severity: Optional[SeverityEnumType] = field(
+    severity: SeverityEnumType | None = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    time: Optional[XmlDateTime] = field(
+    time: XmlDateTime | None = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    version: Optional[str] = field(
+    version: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    weight: Optional[Decimal] = field(
+    weight: Decimal | None = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -2184,14 +2184,14 @@ class TestResultType:
             "namespace": "",
         },
     )
-    identity: Optional[IdentityType] = field(
+    identity: IdentityType | None = field(
         default=None,
         metadata={
             "type": "Element",
             "namespace": "",
         },
     )
-    profile: Optional[IdrefType] = field(
+    profile: IdrefType | None = field(
         default=None,
         metadata={
             "type": "Element",
@@ -2214,7 +2214,7 @@ class TestResultType:
             "namespace": "",
         },
     )
-    target_facts: Optional[TargetFactsType] = field(
+    target_facts: TargetFactsType | None = field(
         default=None,
         metadata={
             "name": "target-facts",
@@ -2253,28 +2253,28 @@ class TestResultType:
             "min_occurs": 1,
         },
     )
-    signature: Optional[SignatureType] = field(
+    signature: SignatureType | None = field(
         default=None,
         metadata={
             "type": "Element",
             "namespace": "",
         },
     )
-    id: Optional[str] = field(
+    id: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
             "required": True,
         },
     )
-    start_time: Optional[XmlDateTime] = field(
+    start_time: XmlDateTime | None = field(
         default=None,
         metadata={
             "name": "start-time",
             "type": "Attribute",
         },
     )
-    end_time: Optional[XmlDateTime] = field(
+    end_time: XmlDateTime | None = field(
         default=None,
         metadata={
             "name": "end-time",
@@ -2282,20 +2282,20 @@ class TestResultType:
             "required": True,
         },
     )
-    test_system: Optional[str] = field(
+    test_system: str | None = field(
         default=None,
         metadata={
             "name": "test-system",
             "type": "Attribute",
         },
     )
-    version: Optional[str] = field(
+    version: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    id_attribute: Optional[str] = field(
+    id_attribute: str | None = field(
         default=None,
         metadata={
             "name": "Id",
@@ -2305,7 +2305,7 @@ class TestResultType:
 
     @dataclass
     class Benchmark:
-        href: Optional[str] = field(
+        href: str | None = field(
             default=None,
             metadata={
                 "type": "Attribute",
@@ -2376,7 +2376,7 @@ class ValueType(ItemType):
             "namespace": "",
         },
     )
-    signature: Optional[SignatureType] = field(
+    signature: SignatureType | None = field(
         default=None,
         metadata={
             "type": "Element",
@@ -2402,7 +2402,7 @@ class ValueType(ItemType):
             "type": "Attribute",
         },
     )
-    interface_hint: Optional[InterfaceHintType] = field(
+    interface_hint: InterfaceHintType | None = field(
         default=None,
         metadata={
             "name": "interfaceHint",
@@ -2439,7 +2439,7 @@ class RuleType(SelectableItemType):
             "namespace": "",
         },
     )
-    impact_metric: Optional[str] = field(
+    impact_metric: str | None = field(
         default=None,
         metadata={
             "name": "impact-metric",
@@ -2476,7 +2476,7 @@ class RuleType(SelectableItemType):
             "namespace": "",
         },
     )
-    complex_check: Optional[ComplexCheckType] = field(
+    complex_check: ComplexCheckType | None = field(
         default=None,
         metadata={
             "name": "complex-check",
@@ -2484,7 +2484,7 @@ class RuleType(SelectableItemType):
             "namespace": "",
         },
     )
-    signature: Optional[SignatureType] = field(
+    signature: SignatureType | None = field(
         default=None,
         metadata={
             "type": "Element",
@@ -2503,7 +2503,7 @@ class RuleType(SelectableItemType):
             "type": "Attribute",
         },
     )
-    multiple: Optional[bool] = field(
+    multiple: bool | None = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -2559,7 +2559,7 @@ class GroupType(SelectableItemType):
             "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
-    signature: Optional[SignatureType] = field(
+    signature: SignatureType | None = field(
         default=None,
         metadata={
             "type": "Element",
@@ -2644,7 +2644,7 @@ class Benchmark:
             "namespace": "",
         },
     )
-    platform_definitions: Optional[str] = field(
+    platform_definitions: str | None = field(
         default=None,
         metadata={
             "name": "platform-definitions",
@@ -2652,7 +2652,7 @@ class Benchmark:
             "namespace": "http://www.cisecurity.org/xccdf/platform/0.2.3",
         },
     )
-    platform_specification: Optional[str] = field(
+    platform_specification: str | None = field(
         default=None,
         metadata={
             "name": "Platform-Specification",
@@ -2660,7 +2660,7 @@ class Benchmark:
             "namespace": "http://checklists.nist.gov/xccdf-p/1.1",
         },
     )
-    cpe_list: Optional[str] = field(
+    cpe_list: str | None = field(
         default=None,
         metadata={
             "name": "cpe-list",
@@ -2668,7 +2668,7 @@ class Benchmark:
             "namespace": "http://cpe.mitre.org/XMLSchema/cpe/1.0",
         },
     )
-    cpe_mitre_org_language_2_0_platform_specification: Optional[str] = field(
+    cpe_mitre_org_language_2_0_platform_specification: str | None = field(
         default=None,
         metadata={
             "name": "platform-specification",
@@ -2683,7 +2683,7 @@ class Benchmark:
             "namespace": "",
         },
     )
-    version: Optional[VersionType] = field(
+    version: VersionType | None = field(
         default=None,
         metadata={
             "type": "Element",
@@ -2739,21 +2739,21 @@ class Benchmark:
             "type": "Element",
         },
     )
-    signature: Optional[SignatureType] = field(
+    signature: SignatureType | None = field(
         default=None,
         metadata={
             "type": "Element",
             "namespace": "",
         },
     )
-    id: Optional[str] = field(
+    id: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
             "required": True,
         },
     )
-    id_attribute: Optional[str] = field(
+    id_attribute: str | None = field(
         default=None,
         metadata={
             "name": "Id",
@@ -2766,20 +2766,20 @@ class Benchmark:
             "type": "Attribute",
         },
     )
-    style: Optional[str] = field(
+    style: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    style_href: Optional[str] = field(
+    style_href: str | None = field(
         default=None,
         metadata={
             "name": "style-href",
             "type": "Attribute",
         },
     )
-    lang: Optional[Union[str, LangValue]] = field(
+    lang: str | LangValue | None = field(
         default=None,
         metadata={
             "type": "Attribute",

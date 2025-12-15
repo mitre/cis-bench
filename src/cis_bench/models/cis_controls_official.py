@@ -8,7 +8,6 @@ Namespace: http://cisecurity.org/controls
 """
 
 from dataclasses import dataclass, field
-from typing import Optional
 
 
 @dataclass
@@ -22,19 +21,19 @@ class ImplementationGroups:
         name = "implementation_groups"
         namespace = "http://cisecurity.org/controls"
 
-    ig1: Optional[bool] = field(
+    ig1: bool | None = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    ig2: Optional[bool] = field(
+    ig2: bool | None = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    ig3: Optional[bool] = field(
+    ig3: bool | None = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -62,35 +61,35 @@ class Safeguard:
         name = "safeguard"
         namespace = "http://cisecurity.org/controls"
 
-    title: Optional[str] = field(
+    title: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
             "required": True,
         },
     )
-    urn: Optional[str] = field(
+    urn: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",
             "required": True,
         },
     )
-    implementation_groups: Optional[ImplementationGroups] = field(
+    implementation_groups: ImplementationGroups | None = field(
         default=None,
         metadata={
             "type": "Element",
             "required": True,
         },
     )
-    asset_type: Optional[str] = field(
+    asset_type: str | None = field(
         default=None,
         metadata={
             "type": "Element",
             "required": True,
         },
     )
-    security_function: Optional[str] = field(
+    security_function: str | None = field(
         default=None,
         metadata={
             "type": "Element",
@@ -116,7 +115,7 @@ class Framework:
         name = "framework"
         namespace = "http://cisecurity.org/controls"
 
-    urn: Optional[str] = field(
+    urn: str | None = field(
         default=None,
         metadata={
             "type": "Attribute",

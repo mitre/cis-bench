@@ -6,7 +6,7 @@ This strategy extracts ALL fields including:
 - Parsed compliance mappings (MITRE, NIST, CIS Controls)
 """
 
-from typing import Any, Dict
+from typing import Any
 
 from bs4 import BeautifulSoup
 
@@ -28,7 +28,7 @@ class WorkbenchV1Strategy(ScraperStrategy):
         return "v1_2025_10"
 
     @property
-    def selectors(self) -> Dict[str, Dict[str, str]]:
+    def selectors(self) -> dict[str, dict[str, str]]:
         """Element ID selectors for HTML content fields."""
         return {
             "assessment_html": {"id": "automated_scoring-recommendation-data"},
@@ -44,7 +44,7 @@ class WorkbenchV1Strategy(ScraperStrategy):
             "additional_info": {"id": "notes-recommendation-data"},
         }
 
-    def extract_recommendation(self, html: str) -> Dict[str, Any]:
+    def extract_recommendation(self, html: str) -> dict[str, Any]:
         """Extract ALL recommendation fields from HTML.
 
         Extracts:

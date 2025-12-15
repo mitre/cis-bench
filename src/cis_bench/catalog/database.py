@@ -5,7 +5,6 @@ Provides CRUD operations, search, and management for the CIS benchmark catalog.
 
 import logging
 from pathlib import Path
-from typing import List, Optional
 
 from sqlalchemy import text
 from sqlmodel import Session, SQLModel, create_engine, select
@@ -262,13 +261,13 @@ class CatalogDatabase:
 
     def _list_all(
         self,
-        platform: Optional[str] = None,
-        platform_type: Optional[str] = None,
-        status: Optional[str] = "Published",
+        platform: str | None = None,
+        platform_type: str | None = None,
+        status: str | None = "Published",
         latest_only: bool = False,
         limit: int = 50,
         session: Session = None,
-    ) -> List[dict]:
+    ) -> list[dict]:
         """List all benchmarks (no FTS5 search)."""
         sql = """
             SELECT
@@ -318,12 +317,12 @@ class CatalogDatabase:
     def search(
         self,
         query: str,
-        platform: Optional[str] = None,
-        platform_type: Optional[str] = None,
-        status: Optional[str] = "Published",
+        platform: str | None = None,
+        platform_type: str | None = None,
+        status: str | None = "Published",
         latest_only: bool = False,
         limit: int = 50,
-    ) -> List[dict]:
+    ) -> list[dict]:
         """Search catalog using FTS5 fuzzy matching.
 
         Args:
@@ -402,7 +401,7 @@ class CatalogDatabase:
             # Convert to dicts
             return [dict(row._mapping) for row in rows]
 
-    def get_benchmark(self, benchmark_id: str) -> Optional[dict]:
+    def get_benchmark(self, benchmark_id: str) -> dict | None:
         """Get single benchmark with all metadata."""
         with Session(self.engine) as session:
             benchmark = session.get(CatalogBenchmark, benchmark_id)
@@ -426,7 +425,7 @@ class CatalogDatabase:
                 "metadata_json": benchmark.metadata_json,
             }
 
-    def list_platforms(self) -> List[dict]:
+    def list_platforms(self) -> list[dict]:
         """List all platforms with benchmark counts."""
         with Session(self.engine) as session:
             sql = """
@@ -441,7 +440,7 @@ class CatalogDatabase:
             result = session.execute(text(sql))
             return [{"name": row[0], "count": row[1]} for row in result.fetchall()]
 
-    def list_communities(self) -> List[dict]:
+    def list_communities(self) -> list[dict]:
         """List all communities with benchmark counts."""
         with Session(self.engine) as session:
             communities = session.exec(
@@ -489,7 +488,7 @@ class CatalogDatabase:
         content_json: str,
         content_hash: str,
         recommendation_count: int,
-        workbench_last_modified: Optional[str] = None,
+        workbench_last_modified: str | None = None,
     ):
         """Save downloaded benchmark content."""
         with Session(self.engine) as session:
@@ -515,7 +514,7 @@ class CatalogDatabase:
             session.commit()
             logger.debug(f"Saved downloaded benchmark: {benchmark_id}")
 
-    def get_downloaded(self, benchmark_id: str) -> Optional[dict]:
+    def get_downloaded(self, benchmark_id: str) -> dict | None:
         """Get downloaded benchmark."""
         with Session(self.engine) as session:
             downloaded = session.get(DownloadedBenchmark, benchmark_id)
@@ -532,7 +531,7 @@ class CatalogDatabase:
                 "workbench_last_modified": downloaded.workbench_last_modified,
             }
 
-    def check_updates_available(self) -> List[dict]:
+    def check_updates_available(self) -> list[dict]:
         """Check downloaded benchmarks for available updates."""
         with Session(self.engine) as session:
             sql = """
@@ -588,7 +587,7 @@ class CatalogDatabase:
 
             session.commit()
 
-    def get_metadata(self, key: str) -> Optional[str]:
+    def get_metadata(self, key: str) -> str | None:
         """Get scrape metadata value."""
         with Session(self.engine) as session:
             metadata = session.get(ScrapeMetadata, key)

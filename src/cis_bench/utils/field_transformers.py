@@ -5,7 +5,6 @@ Eliminates 15+ instances of duplicated HTML transformation code across exporters
 """
 
 import logging
-from typing import Dict, List, Optional
 
 from cis_bench.models.benchmark import CISControl, Recommendation
 from cis_bench.utils.html_parser import HTMLCleaner
@@ -34,7 +33,7 @@ class RecommendationFieldTransformer:
     ]
 
     @classmethod
-    def strip_all_html(cls, rec: Recommendation) -> Dict[str, str]:
+    def strip_all_html(cls, rec: Recommendation) -> dict[str, str]:
         """Strip HTML from all content fields.
 
         Args:
@@ -55,7 +54,7 @@ class RecommendationFieldTransformer:
         return result
 
     @classmethod
-    def markdown_all(cls, rec: Recommendation) -> Dict[str, str]:
+    def markdown_all(cls, rec: Recommendation) -> dict[str, str]:
         """Convert HTML to markdown in all content fields.
 
         Args:
@@ -124,7 +123,7 @@ class SafeFieldAccessor:
         return value if value else default
 
     @staticmethod
-    def get_list_as_csv(items: Optional[List[str]], separator: str = ", ") -> str:
+    def get_list_as_csv(items: list[str] | None, separator: str = ", ") -> str:
         """Convert list to separated string or empty string.
 
         Args:
@@ -207,7 +206,7 @@ class CISControlFormatter:
     """
 
     @staticmethod
-    def filter_by_version(controls: List[CISControl], version: int) -> str:
+    def filter_by_version(controls: list[CISControl], version: int) -> str:
         """Get controls for specific version as CSV.
 
         Args:
@@ -225,7 +224,7 @@ class CISControlFormatter:
         return ", ".join(filtered)
 
     @staticmethod
-    def format_all_with_version(controls: List[CISControl]) -> str:
+    def format_all_with_version(controls: list[CISControl]) -> str:
         """Format all controls with version prefix.
 
         Args:
@@ -241,7 +240,7 @@ class CISControlFormatter:
         return ", ".join([f"v{c.version}:{c.control}" for c in controls])
 
     @staticmethod
-    def group_by_version(controls: List[CISControl]) -> Dict[int, List[str]]:
+    def group_by_version(controls: list[CISControl]) -> dict[int, list[str]]:
         """Group controls by version.
 
         Args:
@@ -261,7 +260,7 @@ class CISControlFormatter:
         return grouped
 
     @staticmethod
-    def format_with_details(controls: List[CISControl], include_igs: bool = True) -> List[str]:
+    def format_with_details(controls: list[CISControl], include_igs: bool = True) -> list[str]:
         """Format controls with full details.
 
         Args:

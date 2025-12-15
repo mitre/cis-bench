@@ -1,8 +1,11 @@
 """Authentication commands for CIS Benchmark CLI."""
 
 import logging
+import shutil
+import subprocess
 import sys
 import webbrowser
+from urllib.parse import urlparse
 
 import click
 from rich.console import Console
@@ -71,14 +74,22 @@ def login(browser, open, no_verify_ssl):
             console.print("[cyan]Opening CIS WorkBench login page...[/cyan]")
             login_url = "https://workbench.cisecurity.org/"
 
+            # Security: Validate URL is CIS WorkBench domain
+            parsed = urlparse(login_url)
+            if parsed.netloc != "workbench.cisecurity.org" or parsed.scheme != "https":
+                raise ValueError("Invalid login URL - must be https://workbench.cisecurity.org/")
+
             try:
                 import platform
-                import subprocess
 
                 system = platform.system()
 
                 if system == "Darwin":  # macOS
-                    # Use macOS 'open' command with specific browser
+                    # Use macOS 'open' command with full path and specific browser
+                    open_cmd = shutil.which("open")
+                    if not open_cmd:
+                        raise FileNotFoundError("'open' command not found")
+
                     browser_apps = {
                         "chrome": "Google Chrome",
                         "firefox": "Firefox",
@@ -86,11 +97,20 @@ def login(browser, open, no_verify_ssl):
                         "safari": "Safari",
                     }
                     app_name = browser_apps.get(browser.lower(), "Google Chrome")
-                    subprocess.run(["open", "-a", app_name, login_url], check=True)  # noqa: S603, S607
+                    subprocess.run(
+                        [open_cmd, "-a", app_name, login_url],
+                        check=True,
+                        capture_output=True,
+                    )
                 elif system == "Linux":
-                    subprocess.run(["xdg-open", login_url], check=True)  # noqa: S603, S607
+                    # Use xdg-open with full path
+                    xdg_open = shutil.which("xdg-open")
+                    if not xdg_open:
+                        raise FileNotFoundError("'xdg-open' command not found")
+                    subprocess.run([xdg_open, login_url], check=True, capture_output=True)
                 elif system == "Windows":
-                    subprocess.run(["start", login_url], shell=True, check=True)  # noqa: S602, S603, S607
+                    # Use webbrowser module instead of shell command
+                    webbrowser.open(login_url)
                 else:
                     # Fallback to webbrowser module
                     webbrowser.open(login_url)

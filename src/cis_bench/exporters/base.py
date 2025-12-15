@@ -2,7 +2,6 @@
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Dict, List, Type
 
 from cis_bench.models.benchmark import Benchmark
 
@@ -59,10 +58,10 @@ class ExporterFactory:
     at module import time. This allows dynamic discovery of formats.
     """
 
-    _exporters: Dict[str, Type[BaseExporter]] = {}
+    _exporters: dict[str, type[BaseExporter]] = {}
 
     @classmethod
-    def register(cls, format_type: str, exporter_class: Type[BaseExporter]):
+    def register(cls, format_type: str, exporter_class: type[BaseExporter]):
         """Register an exporter for a format.
 
         Args:
@@ -109,7 +108,7 @@ class ExporterFactory:
         return exporter_class(**kwargs)
 
     @classmethod
-    def available_formats(cls) -> List[str]:
+    def available_formats(cls) -> list[str]:
         """Get list of available export formats.
 
         Returns:
@@ -118,7 +117,7 @@ class ExporterFactory:
         return sorted(cls._exporters.keys())
 
     @classmethod
-    def get_exporter_info(cls) -> List[Dict[str, str]]:
+    def get_exporter_info(cls) -> list[dict[str, str]]:
         """Get information about all registered exporters.
 
         Returns:

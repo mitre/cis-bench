@@ -6,7 +6,6 @@ with automatic validation.
 
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Optional
 
 from sqlmodel import Field, Relationship, SQLModel
 
@@ -36,9 +35,9 @@ class Platform(SQLModel, table=True):
 
     __tablename__ = "platforms"
 
-    platform_id: Optional[int] = Field(default=None, primary_key=True)
+    platform_id: int | None = Field(default=None, primary_key=True)
     name: str = Field(unique=True, index=True)
-    description: Optional[str] = None
+    description: str | None = None
 
     # Relationships
     benchmarks: list["CatalogBenchmark"] = Relationship(back_populates="platform")
@@ -49,7 +48,7 @@ class BenchmarkStatusModel(SQLModel, table=True):
 
     __tablename__ = "benchmark_statuses"
 
-    status_id: Optional[int] = Field(default=None, primary_key=True)
+    status_id: int | None = Field(default=None, primary_key=True)
     name: str = Field(unique=True)
     is_active: bool = Field(default=True)
     sort_order: int
@@ -63,10 +62,10 @@ class Community(SQLModel, table=True):
 
     __tablename__ = "communities"
 
-    community_id: Optional[int] = Field(default=None, primary_key=True)
+    community_id: int | None = Field(default=None, primary_key=True)
     name: str = Field(unique=True, index=True)
     benchmark_count: int = Field(default=0)
-    url: Optional[str] = None
+    url: str | None = None
 
     # Relationships
     benchmarks: list["CatalogBenchmark"] = Relationship(back_populates="community")
@@ -77,7 +76,7 @@ class Collection(SQLModel, table=True):
 
     __tablename__ = "collections"
 
-    collection_id: Optional[int] = Field(default=None, primary_key=True)
+    collection_id: int | None = Field(default=None, primary_key=True)
     name: str = Field(unique=True, index=True)
 
 
@@ -86,9 +85,9 @@ class Owner(SQLModel, table=True):
 
     __tablename__ = "owners"
 
-    owner_id: Optional[int] = Field(default=None, primary_key=True)
+    owner_id: int | None = Field(default=None, primary_key=True)
     username: str = Field(unique=True, index=True)
-    full_name: Optional[str] = None
+    full_name: str | None = None
 
     # Relationships
     benchmarks: list["CatalogBenchmark"] = Relationship(back_populates="owner")
@@ -110,41 +109,41 @@ class CatalogBenchmark(SQLModel, table=True):
 
     # Display
     title: str = Field(index=True)
-    version: Optional[str] = None
+    version: str | None = None
 
     # Foreign Keys
     status_id: int = Field(foreign_key="benchmark_statuses.status_id")
-    platform_id: Optional[int] = Field(default=None, foreign_key="platforms.platform_id")
-    community_id: Optional[int] = Field(default=None, foreign_key="communities.community_id")
-    owner_id: Optional[int] = Field(default=None, foreign_key="owners.owner_id")
+    platform_id: int | None = Field(default=None, foreign_key="platforms.platform_id")
+    community_id: int | None = Field(default=None, foreign_key="communities.community_id")
+    owner_id: int | None = Field(default=None, foreign_key="owners.owner_id")
 
     # Platform categorization (inferred from title)
-    platform_type: Optional[str] = Field(
+    platform_type: str | None = Field(
         default=None, index=True
     )  # cloud, os, database, container, application
 
     # Dates
-    published_date: Optional[str] = None
-    last_revision_date: Optional[str] = None
+    published_date: str | None = None
+    last_revision_date: str | None = None
 
     # Content
-    description: Optional[str] = None
+    description: str | None = None
 
     # Flags
     is_latest: bool = Field(default=False)
     is_vnext: bool = Field(default=False)
 
     # Metadata overflow
-    metadata_json: Optional[str] = None
+    metadata_json: str | None = None
 
     # Tracking
     scraped_at: datetime = Field(default_factory=utcnow)
 
     # Relationships
     status: BenchmarkStatusModel = Relationship(back_populates="benchmarks")
-    platform: Optional[Platform] = Relationship(back_populates="benchmarks")
-    community: Optional[Community] = Relationship(back_populates="benchmarks")
-    owner: Optional[Owner] = Relationship(back_populates="benchmarks")
+    platform: Platform | None = Relationship(back_populates="benchmarks")
+    community: Community | None = Relationship(back_populates="benchmarks")
+    owner: Owner | None = Relationship(back_populates="benchmarks")
     # Collections relationship defined via manual queries (many-to-many)
 
 
@@ -179,13 +178,13 @@ class DownloadedBenchmark(SQLModel, table=True):
     content_hash: str  # SHA256
 
     # Metadata
-    file_size: Optional[int] = None
-    recommendation_count: Optional[int] = None
+    file_size: int | None = None
+    recommendation_count: int | None = None
 
     # Timestamps
     downloaded_at: datetime = Field(default_factory=utcnow)
     last_accessed: datetime = Field(default_factory=utcnow)
-    workbench_last_modified: Optional[str] = None
+    workbench_last_modified: str | None = None
 
 
 # ============================================================================

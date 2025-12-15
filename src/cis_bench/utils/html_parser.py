@@ -2,7 +2,7 @@
 
 import logging
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from bs4 import BeautifulSoup
 
@@ -13,7 +13,7 @@ class HTMLCleaner:
     """Utilities for cleaning and parsing HTML content from CIS benchmarks."""
 
     @staticmethod
-    def strip_html(html: Optional[str]) -> str:
+    def strip_html(html: str | None) -> str:
         """Remove all HTML tags, return plain text.
 
         Args:
@@ -37,7 +37,7 @@ class HTMLCleaner:
         return result
 
     @staticmethod
-    def html_to_markdown(html: Optional[str]) -> str:
+    def html_to_markdown(html: str | None) -> str:
         """Convert HTML to Markdown format.
 
         Args:
@@ -65,7 +65,7 @@ class HTMLCleaner:
         return soup.get_text(separator="\n", strip=True)
 
     @staticmethod
-    def parse_mitre_table(html: Optional[str]) -> Optional[Dict[str, List[str]]]:
+    def parse_mitre_table(html: str | None) -> dict[str, list[str]] | None:
         """Parse MITRE ATT&CK mapping table from HTML.
 
         Args:
@@ -123,7 +123,7 @@ class HTMLCleaner:
         return result if has_data else None
 
     @staticmethod
-    def parse_cis_controls_table(html: Optional[str]) -> List[Dict[str, Any]]:
+    def parse_cis_controls_table(html: str | None) -> list[dict[str, Any]]:
         """Parse CIS Controls table from HTML.
 
         Expected structure:
@@ -180,7 +180,7 @@ class HTMLCleaner:
         return controls
 
     @staticmethod
-    def parse_nist_references(html: Optional[str]) -> List[str]:
+    def parse_nist_references(html: str | None) -> list[str]:
         """Parse NIST 800-53 control references from HTML.
 
         Args:
@@ -206,7 +206,7 @@ class HTMLCleaner:
         return list(set(controls))  # Deduplicate
 
     @staticmethod
-    def extract_profiles_from_title(title: str) -> List[str]:
+    def extract_profiles_from_title(title: str) -> list[str]:
         """Extract profile/level indicators from title.
 
         Args:
@@ -233,14 +233,14 @@ class HTMLValidator:
     """Validate HTML content structure."""
 
     @staticmethod
-    def has_table(html: Optional[str]) -> bool:
+    def has_table(html: str | None) -> bool:
         """Check if HTML contains a table."""
         if not html:
             return False
         return "<table" in html.lower()
 
     @staticmethod
-    def extract_all_ids(html: str) -> List[str]:
+    def extract_all_ids(html: str) -> list[str]:
         """Extract all element IDs from HTML (for debugging).
 
         Args:

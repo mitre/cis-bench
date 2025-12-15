@@ -5,7 +5,6 @@ Extracts benchmark metadata from HTML catalog listing pages.
 
 import logging
 import re
-from typing import List, Optional
 
 from bs4 import BeautifulSoup
 
@@ -49,7 +48,7 @@ class WorkBenchCatalogParser:
         return any(indicator is not None for indicator in login_indicators)
 
     @staticmethod
-    def parse_catalog_page(html: str) -> List[dict]:
+    def parse_catalog_page(html: str) -> list[dict]:
         """Extract benchmark list from catalog page.
 
         Args:
@@ -100,7 +99,7 @@ class WorkBenchCatalogParser:
         return benchmarks
 
     @staticmethod
-    def _parse_table_row(row) -> Optional[dict]:
+    def _parse_table_row(row) -> dict | None:
         """Parse single table row.
 
         Table columns:
