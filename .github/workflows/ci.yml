@@ -56,10 +56,10 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Check formatting
-        run: black --check --diff .
+        run: python -m black --check --diff .
 
       - name: Lint
-        run: ruff check .
+        run: python -m ruff check .
 
   security:
     name: Security Scan
