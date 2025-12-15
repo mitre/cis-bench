@@ -20,10 +20,11 @@ setup(
     license="Apache-2.0",
     packages=find_packages(where="src"),  # src layout
     package_dir={"": "src"},  # Look for packages in src/
-    # Include package data (schemas, etc.)
+    # Include package data (schemas, configs, data files)
     package_data={
         "cis_bench": [
-            "models/xccdf/*.py",
+            "data/*.json",
+            "exporters/configs/*.yaml",
         ],
         "": [
             "schemas/*.xsd",
@@ -32,7 +33,7 @@ setup(
         ],
     },
     include_package_data=True,
-    python_requires=">=3.8",
+    python_requires=">=3.12",
     install_requires=[
         # Core scraping
         "requests>=2.31.0",
