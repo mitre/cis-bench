@@ -1,0 +1,164 @@
+# CIS Native XCCDF Export - Minimal Working Version
+# Maps CIS Benchmark data to clean XCCDF format
+# Version: 1.0.0-minimal
+# XCCDF Target: 1.2
+
+metadata:
+  style_name: "cis"
+  description: "CIS Native clean XCCDF export (minimal)"
+  xccdf_version: "1.2"
+  target_tools:
+    - "OpenSCAP"
+    - "Generic XCCDF validators"
+  conventions: "Clean CIS format with basic fields"
+
+# Benchmark element specifications
+benchmark_elements:
+  title:
+    xccdf_type: "TextType"  # XCCDF 1.2 Benchmark.title is TextType not TextWithSubType
+  description:
+    xccdf_type: "HtmlTextType"  # XCCDF 1.2 Benchmark.description is HtmlTextType
+  version:
+    xccdf_type: "VersionType"
+  status:
+    xccdf_type: "StatusType"
+
+# Group element specifications
+group_elements:
+  title:
+    xccdf_type: "TextWithSubType"
+  description:
+    xccdf_type: "HtmlTextWithSubType"
+
+# Rule element specifications
+rule_elements:
+  version:
+    xccdf_type: "VersionType"
+  title:
+    xccdf_type: "TextWithSubType"
+  description:
+    xccdf_type: "HtmlTextWithSubType"
+  rationale:
+    xccdf_type: "HtmlTextWithSubType"
+  warning:
+    xccdf_type: "WarningType"
+  reference:
+    xccdf_type: "ReferenceType"
+  metadata:
+    xccdf_type: "MetadataType"
+  fixtext:
+    xccdf_type: "FixTextType"
+  check:
+    xccdf_type: "CheckType"
+
+# Benchmark-level mappings
+benchmark:
+  id_template: "xccdf_org.cisecurity.benchmarks_{platform}"
+  title:
+    source: "title"
+    transform: "none"
+  description:
+    source: "title"
+    transform: "none"
+  version:
+    source: "version"
+    transform: "none"
+  notice:
+    id: "terms-of-use"
+    xccdf_type: "NoticeType"
+  front_matter:
+    xccdf_type: "HtmlTextWithSubType"  # XCCDF 1.2 requires WithSubType
+  rear_matter:
+    xccdf_type: "HtmlTextWithSubType"  # XCCDF 1.2 requires WithSubType
+
+# Rule defaults
+rule_defaults:
+  severity: "medium"
+  weight: "10.0"
+  selected: "true"
+  role: "full"
+
+# Rule ID
+rule_id:
+  template: "xccdf_org.cisecurity.benchmarks_rule_{ref_normalized}"
+  ref_normalized: "replace('.', '_')"
+
+# Field mappings - Minimal working set
+field_mappings:
+
+  version:
+    target_element: "version"
+    source_field: "ref"
+    transform: "none"
+
+  title:
+    target_element: "title"
+    source_field: "title"
+    transform: "strip_html"
+
+  description:
+    target_element: "description"
+    source_field: "description"
+    transform: "strip_html"
+
+  rationale:
+    target_element: "rationale"
+    source_field: "rationale"
+    transform: "strip_html"
+
+  warning:
+    target_element: "warning"
+    source_field: "impact"
+    transform: "strip_html"
+    attributes:
+      category: "general"
+    optional: true
+
+  reference:
+    target_element: "reference"
+    multiple: true
+    source_field: "nist_controls"
+    structure: "dublin_core"
+    dc_elements:
+      - element: "dc:title"
+        content: "NIST SP 800-53"
+      - element: "dc:identifier"
+        content: "{nist_control_id}"
+    attributes:
+      href: "https://csrc.nist.gov/Projects/risk-management/sp800-53-controls"
+
+  fixtext:
+    target_element: "fixtext"
+    source_field: "remediation"
+    transform: "strip_html"
+
+  check:
+    target_element: "check"
+    structure: "nested"
+    children:
+      - element: "check-content"
+        source_field: "audit"
+        transform: "strip_html"
+
+  metadata:
+    target_element: "metadata"
+    structure: "cis_metadata"
+    components:
+      - name: "profiles"
+        source_field: "profiles"
+      - name: "cis_controls"
+        source_field: "cis_controls"
+      - name: "mitre_mapping"
+        source_field: "mitre_mapping"
+
+# Transformations
+transformations:
+  none:
+    description: "Pass through unchanged"
+  strip_html:
+    description: "Remove HTML tags"
+    function: "HTMLCleaner.strip_html"
+
+# CCI deduplication disabled
+cci_deduplication:
+  enabled: false

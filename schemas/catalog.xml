@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<!DOCTYPE catalog PUBLIC "-//OASIS//DTD Entity Resolution XML Catalog V1.0//EN" "http://www.oasis-open.org/committees/entity/release/1.0/catalog.dtd">
+<catalog xmlns="urn:oasis:names:tc:entity:xmlns:xml:catalog">
+  <!-- Map W3C XML namespace schema to local file -->
+  <uri name="https://www.w3.org/2009/01/xml.xsd" uri="xml.xsd"/>
+
+  <!-- Map CPE schemas to local files -->
+  <uri name="/schema/cpe/2.3/cpe-language_2.3.xsd" uri="schema/cpe/2.3/cpe-language_2.3.xsd"/>
+  <uri name="/schema/cpe/2.3/cpe-naming_2.3.xsd" uri="schema/cpe/2.3/cpe-naming_2.3.xsd"/>
+</catalog>

@@ -1,0 +1,410 @@
+{
+  "$defs": {
+    "Artifact": {
+      "description": "Test artifact for automated compliance checking.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "view_level": {
+          "description": "Artifact reference (e.g., '1.1.1.1.1')",
+          "title": "View Level",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "artifact_type": {
+          "additionalProperties": true,
+          "description": "Artifact type metadata",
+          "title": "Artifact Type",
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "view_level",
+        "title",
+        "status",
+        "artifact_type"
+      ],
+      "title": "Artifact",
+      "type": "object"
+    },
+    "CISControl": {
+      "description": "CIS Control mapping (v7 or v8).",
+      "properties": {
+        "version": {
+          "description": "CIS Controls version (7 or 8)",
+          "title": "Version",
+          "type": "integer"
+        },
+        "control": {
+          "description": "Control ID (e.g., '4.8', '10.3')",
+          "title": "Control",
+          "type": "string"
+        },
+        "title": {
+          "description": "Control title",
+          "title": "Title",
+          "type": "string"
+        },
+        "ig1": {
+          "description": "Implementation Group 1",
+          "title": "Ig1",
+          "type": "boolean"
+        },
+        "ig2": {
+          "description": "Implementation Group 2",
+          "title": "Ig2",
+          "type": "boolean"
+        },
+        "ig3": {
+          "description": "Implementation Group 3",
+          "title": "Ig3",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "version",
+        "control",
+        "title",
+        "ig1",
+        "ig2",
+        "ig3"
+      ],
+      "title": "CISControl",
+      "type": "object"
+    },
+    "MITREMapping": {
+      "description": "MITRE ATT&CK framework mapping.",
+      "properties": {
+        "techniques": {
+          "description": "MITRE technique IDs (e.g., ['T1068', 'T1203'])",
+          "items": {
+            "type": "string"
+          },
+          "title": "Techniques",
+          "type": "array"
+        },
+        "tactics": {
+          "description": "MITRE tactic IDs (e.g., ['TA0001'])",
+          "items": {
+            "type": "string"
+          },
+          "title": "Tactics",
+          "type": "array"
+        },
+        "mitigations": {
+          "description": "MITRE mitigation IDs (e.g., ['M1022'])",
+          "items": {
+            "type": "string"
+          },
+          "title": "Mitigations",
+          "type": "array"
+        }
+      },
+      "title": "MITREMapping",
+      "type": "object"
+    },
+    "ParentReference": {
+      "description": "Parent recommendation in hierarchy.",
+      "properties": {
+        "url": {
+          "format": "uri",
+          "maxLength": 2083,
+          "minLength": 1,
+          "title": "Url",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url",
+        "title"
+      ],
+      "title": "ParentReference",
+      "type": "object"
+    },
+    "Recommendation": {
+      "description": "A single CIS recommendation within a benchmark.\n\nThis represents one security configuration recommendation with all\nassociated metadata, audit procedures, and remediation steps.",
+      "properties": {
+        "ref": {
+          "description": "Recommendation reference number (e.g., '3.1.1')",
+          "pattern": "^[0-9]+(\\.[0-9]+)*$",
+          "title": "Ref",
+          "type": "string"
+        },
+        "title": {
+          "description": "Recommendation title",
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "url": {
+          "description": "Direct URL to recommendation page on CIS WorkBench",
+          "format": "uri",
+          "maxLength": 2083,
+          "minLength": 1,
+          "title": "Url",
+          "type": "string"
+        },
+        "assessment_status": {
+          "description": "Assessment type: 'Automated' or 'Manual'",
+          "title": "Assessment Status",
+          "type": "string"
+        },
+        "profiles": {
+          "description": "Applicable profiles (e.g., ['Level 1 - Server', 'Level 2 - Workstation'])",
+          "items": {
+            "type": "string"
+          },
+          "title": "Profiles",
+          "type": "array"
+        },
+        "cis_controls": {
+          "description": "CIS Controls v7 and v8 mappings with Implementation Groups",
+          "items": {
+            "$ref": "#/$defs/CISControl"
+          },
+          "title": "Cis Controls",
+          "type": "array"
+        },
+        "mitre_mapping": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MITREMapping"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "MITRE ATT&CK framework mapping (techniques, tactics, mitigations)"
+        },
+        "nist_controls": {
+          "description": "NIST SP 800-53 control IDs (e.g., ['SI-3', 'MP-7'])",
+          "items": {
+            "type": "string"
+          },
+          "title": "Nist Controls",
+          "type": "array"
+        },
+        "parent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ParentReference"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Parent recommendation in hierarchy"
+        },
+        "artifacts": {
+          "description": "Test artifacts for automated compliance checking",
+          "items": {
+            "$ref": "#/$defs/Artifact"
+          },
+          "title": "Artifacts",
+          "type": "array"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Detailed description (HTML format)",
+          "title": "Description"
+        },
+        "rationale": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Rationale/justification (HTML format)",
+          "title": "Rationale"
+        },
+        "impact": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Impact statement (HTML format)",
+          "title": "Impact"
+        },
+        "audit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Audit procedure (HTML format with code blocks)",
+          "title": "Audit"
+        },
+        "remediation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Remediation steps (HTML format with code blocks)",
+          "title": "Remediation"
+        },
+        "additional_info": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Additional information and notes (HTML format)",
+          "title": "Additional Info"
+        },
+        "default_value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Default configuration value (HTML format)",
+          "title": "Default Value"
+        },
+        "artifact_equation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Artifact equation logic (HTML format)",
+          "title": "Artifact Equation"
+        },
+        "references": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "External references and citations (HTML format)",
+          "title": "References"
+        }
+      },
+      "required": [
+        "ref",
+        "title",
+        "url",
+        "assessment_status"
+      ],
+      "title": "Recommendation",
+      "type": "object"
+    }
+  },
+  "description": "A complete CIS benchmark with metadata and recommendations.",
+  "properties": {
+    "title": {
+      "description": "Full benchmark title",
+      "title": "Title",
+      "type": "string"
+    },
+    "benchmark_id": {
+      "description": "CIS WorkBench benchmark ID",
+      "title": "Benchmark Id",
+      "type": "string"
+    },
+    "url": {
+      "description": "Source URL",
+      "format": "uri",
+      "maxLength": 2083,
+      "minLength": 1,
+      "title": "Url",
+      "type": "string"
+    },
+    "version": {
+      "description": "Benchmark version",
+      "title": "Version",
+      "type": "string"
+    },
+    "downloaded_at": {
+      "description": "Download timestamp",
+      "format": "date-time",
+      "title": "Downloaded At",
+      "type": "string"
+    },
+    "scraper_version": {
+      "description": "Scraper strategy version used",
+      "title": "Scraper Version",
+      "type": "string"
+    },
+    "total_recommendations": {
+      "minimum": 0,
+      "title": "Total Recommendations",
+      "type": "integer"
+    },
+    "recommendations": {
+      "items": {
+        "$ref": "#/$defs/Recommendation"
+      },
+      "title": "Recommendations",
+      "type": "array"
+    }
+  },
+  "required": [
+    "title",
+    "benchmark_id",
+    "url",
+    "version",
+    "scraper_version",
+    "total_recommendations",
+    "recommendations"
+  ],
+  "title": "Benchmark",
+  "type": "object"
+}

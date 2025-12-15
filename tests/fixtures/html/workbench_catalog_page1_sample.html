@@ -1,0 +1,1313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <!-- JS script for cached pages redirection if the user is not authorized-->
+    <script  nonce="2gZyEos4vFaVVT6SYSg9Duvbk9l5k7UK" >
+        window.addEventListener('pageshow', (event) => {
+            if (event.persisted || performance.getEntriesByType("navigation")[0].transferSize === 0) {
+                var domain = 'https://workbench.cisecurity.org/';
+                $.ajax({
+                    url:  "/is-authorized",
+                    type: "GET",
+                    success: function(data) {
+                        if(data.status === false) {
+                            window.history.pushState(null, "", window.location.href);
+                            window.history.back();
+                            window.history.forward();
+                            window.location = domain;
+                        }
+                    }
+                });
+            }
+        });
+    </script>
+    <!-- End of JS script for cached pages redirection -->
+    <title>CIS WorkBench / Benchmarks</title>
+            <meta charset="UTF-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="csrf-token" content="7VxqqMvhFDQiIh31VfVxLX9OKEVXFnFjdLSz7Nsv">
+        <meta name="inactive_time" content="60">
+        <link rel="shortcut icon" href="/favicon.ico" type="image/x-icon"/>
+    <link rel="icon" href="/images/CIS_Workbench_logo.png">
+
+            <link rel="preload" as="style" href="https://workbench.cisecurity.org/build/assets/app-DodppmTF.css" nonce="2gZyEos4vFaVVT6SYSg9Duvbk9l5k7UK" /><link rel="preload" as="style" href="https://workbench.cisecurity.org/build/assets/app-DSrJkXsx.css" nonce="2gZyEos4vFaVVT6SYSg9Duvbk9l5k7UK" /><link rel="preload" as="style" href="https://workbench.cisecurity.org/build/assets/tailwind-l7tt4JyH.css" nonce="2gZyEos4vFaVVT6SYSg9Duvbk9l5k7UK" /><link rel="modulepreload" as="script" href="https://workbench.cisecurity.org/build/assets/app-Dbaf8ToT.js" nonce="2gZyEos4vFaVVT6SYSg9Duvbk9l5k7UK" /><link rel="stylesheet" href="https://workbench.cisecurity.org/build/assets/app-DodppmTF.css" nonce="2gZyEos4vFaVVT6SYSg9Duvbk9l5k7UK" data-navigate-track="reload" /><link rel="stylesheet" href="https://workbench.cisecurity.org/build/assets/app-DSrJkXsx.css" nonce="2gZyEos4vFaVVT6SYSg9Duvbk9l5k7UK" data-navigate-track="reload" /><link rel="stylesheet" href="https://workbench.cisecurity.org/build/assets/tailwind-l7tt4JyH.css" nonce="2gZyEos4vFaVVT6SYSg9Duvbk9l5k7UK" data-navigate-track="reload" /><script type="module" src="https://workbench.cisecurity.org/build/assets/app-Dbaf8ToT.js" nonce="2gZyEos4vFaVVT6SYSg9Duvbk9l5k7UK" data-navigate-track="reload"></script>
+    <!-- Google Tag Manager -->
+    <script  nonce="2gZyEos4vFaVVT6SYSg9Duvbk9l5k7UK" >(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+                new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+            j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+            'https://www.googletagmanager.com/gtm.js?id='+i+dl;var n=d.querySelector('[nonce]');
+            n&&j.setAttribute('nonce',n.nonce||n.getAttribute('nonce'));f.parentNode.insertBefore(j,f);
+        })(window,document,'script','dataLayer','GTM-PMFL2DG');
+    </script>
+    <!-- End Google Tag Manager -->
+</head>
+<body>
+    <div id="app">
+
+	<wb-user-feedback
+		url="benchmarks"
+		referer-url=""
+		route-name="benchmarks.index"
+		is-fb-on="1"
+	></wb-user-feedback>
+
+			<div id="wrapper" class="  ">
+							<div id="sidebar-wrapper">
+					<div id="sidebar-actions">
+													<a href="#" class="offcanvas-slide pull-right"  aria-label="Hide side bar" rel="hide-sidebar"><span class="fa-regular fa-square-caret-left"></span></a>
+							<a href="#" class="offcanvas-slide pull-right" rel="show-sidebar" style="display: none;"><span class="fa-regular fa-square-caret-right"></span></a>
+												<div class="clearfix"></div>
+					</div>
+					<div id="sidebar-inner">
+						<div id="sidebar-content">
+
+    <ul class="sidebar-nav">
+        <li class="min-hide sidebar-header">
+            <div class="pull-left sidebar-icon flex items-center space-x-3 py-3">
+				<span class="fa-stack fa-lg">
+					<i class="fa-regular fa-circle fa-stack-2x"></i>
+					<i class="fa fa-user fa-stack-1x"></i>
+				</span>
+                <span class="leading-none">
+                    <div class="text-2xl">
+                    Aaron Lippold
+                </div>
+                <div class="font-bold">
+                    alippold
+                </div>
+                </span>
+
+            </div>
+            <div class="clearfix"></div>
+        </li>
+        <li class="max-hide">
+            <a href="">
+                <i class="fa fa-user"></i>
+            </a>
+        </li>
+        <li>
+            <a class="sidebar-nav " href="https://workbench.cisecurity.org/dashboard">
+                <span class="fa fa-dashboard fa-fw"></span> Dashboard
+            </a>
+        </li>
+        <li>
+            <a class="" href="https://workbench.cisecurity.org/communities">
+                <span class="fa fa-globe-americas fa-fw"></span> Communities
+            </a>
+        </li>
+        <li>
+            <a class=" active " href="https://workbench.cisecurity.org/benchmarks">
+                <span class="fa fa-book fa-fw"></span> Benchmarks
+            </a>
+        </li>
+        <li>
+            <a class="" href="https://workbench.cisecurity.org/tickets">
+                <span class="fa fa-ticket fa-fw"></span> Tickets
+            </a>
+        </li>
+        <li>
+            <a class=""
+               href="https://workbench.cisecurity.org/proposed-changes">
+                <span class="fa fa-pen-to-square fa-fw"></span> Proposed Changes
+            </a>
+        </li>
+        <li>
+            <a class="" href="https://workbench.cisecurity.org/files">
+                <span class="fa fa-download fa-fw"></span> Downloads
+            </a>
+        </li>
+    </ul>
+
+						</div>
+					</div>
+				</div>
+						<div id="page-content-wrapper">
+
+			<header class="navbar-fixed-top navbar-prod">
+									<div class="container">
+						<div class="navbar navbar-inverse navbar-fixed-top" role="navigation">
+	<div class="container-fluid">
+		<div class="navbar-logo-header navbar-header">
+			<a class="navbar-brand" href="https://workbench.cisecurity.org">
+				<img class="navbar-logo" src="/images/CIS_Workbench_Spot.png" alt="Security Benchmarks" data-cy="navbar-logo" />
+			</a>
+		</div>
+
+		<div class="navbar-mobile">
+			<button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-collapse">
+				<span class="sr-only">Toggle navigation</span>
+				<span class="icon-bar"></span>
+				<span class="icon-bar"></span>
+				<span class="icon-bar"></span>
+			</button>
+		</div>
+
+		<div class="navbar-collapse">
+			<ul class="nav navbar-nav navbar-main">
+				<li class="dropdown dropdown-hover">
+            <a href="https://workbench.cisecurity.org/communities" class="dropdown-toggle community-nav" data-toggle="dropdown">
+				<span class="fa fa-globe-americas icon-hover">
+					<span class="hover-text hidden-lg">Communities</span>
+				</span>
+                <span class="hidden-sm"> Communities</span>
+                <span class="caret"></span>
+            </a>
+            <ul class="dropdown-menu" role="menu">
+                <li class="dropdown-header">Joined Communities</li>
+                                    <li>
+                        <a href="https://workbench.cisecurity.org/communities/14">
+                            <span class="fa fa-globe-americas fa-fw"></span> CIS Red Hat Enterprise Linux Benchmarks
+                        </a>
+                    </li>
+                                    <li>
+                        <a href="https://workbench.cisecurity.org/communities/64">
+                            <span class="fa fa-globe-americas fa-fw"></span> CIS Oracle MySQL Benchmarks
+                        </a>
+                    </li>
+                                    <li>
+                        <a href="https://workbench.cisecurity.org/communities/23">
+                            <span class="fa fa-globe-americas fa-fw"></span> CIS NGINX Benchmarks
+                        </a>
+                    </li>
+                                    <li>
+                        <a href="https://workbench.cisecurity.org/communities/37">
+                            <span class="fa fa-globe-americas fa-fw"></span> CIS Docker Benchmarks
+                        </a>
+                    </li>
+                                    <li>
+                        <a href="https://workbench.cisecurity.org/communities/12">
+                            <span class="fa fa-globe-americas fa-fw"></span> CIS CentOS Linux Benchmarks
+                        </a>
+                    </li>
+                                    <li>
+                        <a href="https://workbench.cisecurity.org/communities/26">
+                            <span class="fa fa-globe-americas fa-fw"></span> CIS Apache HTTP Server Benchmarks
+                        </a>
+                    </li>
+                                    <li>
+                        <a href="https://workbench.cisecurity.org/communities/44">
+                            <span class="fa fa-globe-americas fa-fw"></span> CIS Apache Hadoop Benchmarks
+                        </a>
+                    </li>
+                                <li>
+                    <a href="https://workbench.cisecurity.org/communities/public">
+                        See All Communities
+                    </a>
+                </li>
+            </ul>
+        </li>
+        <li>
+        <a href="https://workbench.cisecurity.org/benchmarks" class="benchmarks-nav">
+			<span class="fa fa-book icon-hover">
+				<span class="hover-text hidden-lg">Benchmarks</span>
+			</span>
+            <span class="hidden-sm"> Benchmarks</span>
+        </a>
+    </li>
+    <li>
+        <a href="https://workbench.cisecurity.org/tickets" class="tickets-nav">
+            <span class="fa fa-ticket icon-hover"><span class="hover-text hidden-lg">Tickets</span></span><span
+                    class=" hidden-sm"> Tickets</span>
+        </a>
+    </li>
+    <li>
+        <a href="https://workbench.cisecurity.org/files" class="downloads-nav">
+            <span class="fa fa-download icon-hover"><span class="hover-text hidden-lg">Downloads</span></span><span
+                    class="hidden-sm"> Downloads</span>
+        </a>
+    </li>
+
+
+    <li>
+	<a href="https://workbench.cisecurity.org/support-center"><span class="fa fa-question icon-hover"><span class="hover-text hidden-lg">Support Center</span></span><span class="hidden-sm"> Support Center</span></a>
+</li>
+
+			</ul>
+
+			<ul class="nav navbar-nav navbar-right">
+								<li class="dropdown dropdown-hover user-nav">
+    <a href="#" class="dropdown-toggle" data-toggle="dropdown" dusk="user-nav-dropdown">
+        <span class="fa fa-user" style="margin-right: 5px;" aria-hidden="true"></span>alippold
+	                    <span class="badge notification-total">125</span>
+
+        <span class="caret"></span>
+    </a>
+    <ul class="dropdown-menu" role="menu">
+        <li>
+            <a href="https://workbench.cisecurity.org/user/alippold"
+               class="username-nav tour-step-backdrop">
+                <span class="fa fa-fw fa-user"></span> alippold
+            </a>
+        </li>
+                <li>
+            <a href="https://workbench.cisecurity.org/notifications">
+                <i class="fa fa-fw fa-bell"></i>
+                Notifications
+
+            </a>
+        </li>
+        <li>
+            <a href="https://workbench.cisecurity.org/notifications?#community_default_settings">
+                <i class="fa fa-fw fa-toggle-on"></i>
+                Notification Settings
+            </a>
+        </li>
+
+        <li class="divider"></li>
+        <li>
+            <form role="form"
+             method="POST"
+             action="https://workbench.cisecurity.org/logout"
+             accept-charset="UTF-8"
+             class=""
+             style="margin-bottom: 0;"
+             id=""
+             autocomplete="off"><input type="hidden" name="_token" value="7VxqqMvhFDQiIh31VfVxLX9OKEVXFnFjdLSz7Nsv" />
+            <button class="btn btn-link" style="padding: 3px 20px; width: 100%; text-align: left; color: #333f48;"
+                    type="submit" data-cy="logout">
+                <span class="fa fa-fw fa-sign-out"></span> Log Out
+            </button>
+            </form>
+        </li>
+    </ul>
+</li>
+
+			</ul>
+		</div>
+	</div>
+</div>
+					</div>
+							</header>
+
+			<div id="content" >
+				<div class="container-fluid">
+
+    <div class="row">
+        <div class="col-lg-12 col-md-12 col-sm-12">
+            <div class="page-header">
+                <h1 class="page-title">Benchmarks</h1> <a href="#" id="tour-benchmark-listing"
+                                                          aria-label="Intro Benchmarks Tour"><span
+                            class="fa fa-question-circle"></span></a>
+                <div class="pull-right" style="margin-top: 40px;">
+                                    </div>
+
+                <p>The listing below displays all the benchmarks you currently have access to.</p>
+            </div>
+        </div>
+    </div>
+
+
+        <div class="row">
+    <div class="col-lg-12" style="margin: 10px 0px;">
+        <form role="form"
+             method="get"
+             action="https://workbench.cisecurity.org/benchmarks"
+             accept-charset="UTF-8"
+             class="form-inline"
+             style=""
+             id=""
+             autocomplete="off">
+        <div class="form-group">
+            <label for="q" >Search</label>
+            <input type="text"
+            name="q"
+            value=""class="form-control" id="q" >
+
+            <label for="status" >Status</label>
+            <select name="status" class="form-control" placeholder="All" data-cy="benchmark-status-select" id="status" ><option value="">All</option><option value="draft">Draft</option><option value="accepted">Accepted</option><option value="published">Published</option><option value="rejected">Rejected</option><option value="archived">Archived</option></select>
+
+            <input type="hidden" name="sortBy" value="title" />
+            <input type="hidden" name="type" value="asc" />
+
+            <input type="submit"
+            value="Filter" class="btn btn-primary" data-cy="search-community-benchmark-btn" >
+
+                    </div>
+        </form>
+    </div>
+</div>
+
+    <div class="row">
+        <div class="col-lg-12">
+            <section class="content-benchmark-listing">
+
+
+                        <section>
+                <div class="w-full flex space-x-4 py-3 ">
+                                        <a
+        class="no-underline text-light-blue-dark hover:underline hover:text-gray-500 group/link hover:no-underline text-xl align-items-center p-3 bg-warm-gray-300 rounded-xl" href="https://workbench.cisecurity.org/benchmarks"
+>
+    <i class="fas fa fa-bookmark fa-fw text-dark-blue"></i>
+                        <span class="mr-0.5 font-normal text-medium-blue ">All</span>
+                        <span name="benchmarkCount-1316"
+                              class="bg-dark-blue rounded-full pt-1 pb-[4px] px-2 text-white text-lg font-semibold"
+                        >1316</span>
+</a>
+                                                                                                                                        <a
+        class="no-underline text-light-blue-dark hover:underline hover:text-gray-500 group/link hover:no-underline text-xl align-items-center p-3 hover:bg-warm-gray-700 hover:rounded-xl" href="https://workbench.cisecurity.org/benchmarks/collection/1"
+>
+    <i class="fas fa fa-bookmark fa-fw text-dark-blue"></i>
+                                    <span class="ml-1 mr-1.5 font-normal text-medium-blue  group-hover/link:text-white ">Database Server</span>
+                                    <span class="bg-dark-blue rounded-full pt-1 pb-[4px] px-2 text-white text-lg font-semibold">67</span>
+</a>                                                                                                                                                <a
+        class="no-underline text-light-blue-dark hover:underline hover:text-gray-500 group/link hover:no-underline text-xl align-items-center p-3 hover:bg-warm-gray-700 hover:rounded-xl" href="https://workbench.cisecurity.org/benchmarks/collection/2"
+>
+    <i class="fas fa fa-bookmark fa-fw text-dark-blue"></i>
+                                    <span class="ml-1 mr-1.5 font-normal text-medium-blue  group-hover/link:text-white ">DNS Server</span>
+                                    <span class="bg-dark-blue rounded-full pt-1 pb-[4px] px-2 text-white text-lg font-semibold">3</span>
+</a>                                                                                                                                                <a
+        class="no-underline text-light-blue-dark hover:underline hover:text-gray-500 group/link hover:no-underline text-xl align-items-center p-3 hover:bg-warm-gray-700 hover:rounded-xl" href="https://workbench.cisecurity.org/benchmarks/collection/3"
+>
+    <i class="fas fa fa-bookmark fa-fw text-dark-blue"></i>
+                                    <span class="ml-1 mr-1.5 font-normal text-medium-blue  group-hover/link:text-white ">Network Devices</span>
+                                    <span class="bg-dark-blue rounded-full pt-1 pb-[4px] px-2 text-white text-lg font-semibold">9</span>
+</a>                                                                                                                                                <a
+        class="no-underline text-light-blue-dark hover:underline hover:text-gray-500 group/link hover:no-underline text-xl align-items-center p-3 hover:bg-warm-gray-700 hover:rounded-xl" href="https://workbench.cisecurity.org/benchmarks/collection/4"
+>
+    <i class="fas fa fa-bookmark fa-fw text-dark-blue"></i>
+                                    <span class="ml-1 mr-1.5 font-normal text-medium-blue  group-hover/link:text-white ">Web Server</span>
+                                    <span class="bg-dark-blue rounded-full pt-1 pb-[4px] px-2 text-white text-lg font-semibold">12</span>
+</a>                                                                                                                                                <a
+        class="no-underline text-light-blue-dark hover:underline hover:text-gray-500 group/link hover:no-underline text-xl align-items-center p-3 hover:bg-warm-gray-700 hover:rounded-xl" href="https://workbench.cisecurity.org/benchmarks/collection/5"
+>
+    <i class="fas fa fa-bookmark fa-fw text-dark-blue"></i>
+                                    <span class="ml-1 mr-1.5 font-normal text-medium-blue  group-hover/link:text-white ">Operating System</span>
+                                    <span class="bg-dark-blue rounded-full pt-1 pb-[4px] px-2 text-white text-lg font-semibold">124</span>
+</a>                                                                                                                                                <a
+        class="no-underline text-light-blue-dark hover:underline hover:text-gray-500 group/link hover:no-underline text-xl align-items-center p-3 hover:bg-warm-gray-700 hover:rounded-xl" href="https://workbench.cisecurity.org/benchmarks/collection/6"
+>
+    <i class="fas fa fa-bookmark fa-fw text-dark-blue"></i>
+                                    <span class="ml-1 mr-1.5 font-normal text-medium-blue  group-hover/link:text-white ">STIG</span>
+                                    <span class="bg-dark-blue rounded-full pt-1 pb-[4px] px-2 text-white text-lg font-semibold">138</span>
+</a>                                                                                        </div>
+            </section>
+                <table class="table table-striped table-hover" data-cy="community-benchmarks-table">
+            <thead>
+            <tr>
+                                    <th class=""><a
+                href="https://workbench.cisecurity.org/benchmarks?sortBy=title&amp;type=desc&amp;0"
+                id="title" class="column" data-cy="sort-link-title">Title <i class="fa fa-sort"
+                                                                                             aria-hidden="true" data-cy="sort-icon-title-none"></i></a>
+    </th>
+
+                <th class=""><a
+                href="https://workbench.cisecurity.org/benchmarks?sortBy=version&amp;type=desc&amp;0"
+                id="version" class="column" data-cy="sort-link-version">Version <i class="fa fa-sort"
+                                                                                             aria-hidden="true" data-cy="sort-icon-version-none"></i></a>
+    </th>
+
+                <th class=""><a
+                href="https://workbench.cisecurity.org/benchmarks?sortBy=status&amp;type=desc&amp;0"
+                id="status" class="column" data-cy="sort-link-status">Status <i class="fa fa-sort"
+                                                                                             aria-hidden="true" data-cy="sort-icon-status-none"></i></a>
+    </th>
+
+                                    <th>Community</th>
+                                <th>Collections</th>
+                <th>Owner</th>
+                <th></th>
+            </tr>
+            </thead>
+            <tbody>
+                            <p></p>
+                <tr>
+                    <td style="height: 37px;">
+
+                            <img src="/images/Monogram_TM.png" style="height: 20px; width: 20px;" title="Center for Internet Security, New York" /> |
+
+                                                <a href="https://workbench.cisecurity.org/benchmarks/61" data-cy="benchmark-link-61">
+                            <span class="fa fa-book fa-fw"></span> CIS * Microsoft Windows Server 2012 R2 Benchmark [imported]
+                        </a>
+                    </td>
+                    <td>
+
+                                                    v1.0.0
+                                            </td>
+                    <td>
+                        <p class="label label-archived">Archived</p>
+                    </td>
+                                            <td>
+
+                                <a href="https://workbench.cisecurity.org/communities/2">
+                                    <span class="fa fa-globe-americas fa-fw"></span> CIS Microsoft Windows Benchmarks
+                                </a>
+                                                    </td>
+                                        <td>
+                                            </td>
+                    <td>
+                        <span class="fa fa-user" aria-hidden="true"></span> bfrantz
+                    </td>
+                    <td class="actions">
+
+                                            </td>
+                </tr>
+                            <p></p>
+                <tr>
+                    <td style="height: 37px;">
+
+                            <img src="/images/Monogram_TM.png" style="height: 20px; width: 20px;" title="Center for Internet Security, New York" /> |
+
+                                                <a href="https://workbench.cisecurity.org/benchmarks/22222" data-cy="benchmark-link-22222">
+                            <span class="fa fa-book fa-fw"></span> CIS AKS Optimized Azure Linux 2 Benchmark
+                        </a>
+                    </td>
+                    <td>
+
+                                                    v1.1.0
+                                            </td>
+                    <td>
+                        <p class="label label-published">Published</p>
+                    </td>
+                                            <td>
+
+                                <a href="https://workbench.cisecurity.org/communities/182">
+                                    <span class="fa fa-globe-americas fa-fw"></span> CIS Azure Linux Benchmarks
+                                </a>
+                                                    </td>
+                                        <td>
+
+                            <a href="https://workbench.cisecurity.org/benchmarks/collection/5" class="coll-label">
+			<span class="label label-info"><span class="fa fa-bookmark"></span> Operating System</span>
+		</a>
+
+
+                                            </td>
+                    <td>
+                        <a href="https://workbench.cisecurity.org/user/eric.pinnell?from=" data-cy="user-profile-link-eric.pinnell">
+		<span class="fa fa-user" aria-hidden="true"></span> eric.pinnell
+	</a>
+                    </td>
+                    <td class="actions">
+
+                                            </td>
+                </tr>
+                            <p></p>
+                <tr>
+                    <td style="height: 37px;">
+
+                            <img src="/images/Monogram_TM.png" style="height: 20px; width: 20px;" title="Center for Internet Security, New York" /> |
+
+                                                <a href="https://workbench.cisecurity.org/benchmarks/22694" data-cy="benchmark-link-22694">
+                            <span class="fa fa-book fa-fw"></span> CIS AKS Optimized Azure Linux 3 Benchmark
+                        </a>
+                    </td>
+                    <td>
+
+                                                    v1.0.0
+                                            </td>
+                    <td>
+                        <p class="label label-published">Published</p>
+                    </td>
+                                            <td>
+
+                                <a href="https://workbench.cisecurity.org/communities/182">
+                                    <span class="fa fa-globe-americas fa-fw"></span> CIS Azure Linux Benchmarks
+                                </a>
+                                                    </td>
+                                        <td>
+                                            </td>
+                    <td>
+                        <a href="https://workbench.cisecurity.org/user/eric.pinnell?from=" data-cy="user-profile-link-eric.pinnell">
+		<span class="fa fa-user" aria-hidden="true"></span> eric.pinnell
+	</a>
+                    </td>
+                    <td class="actions">
+
+                                            </td>
+                </tr>
+                            <p></p>
+                <tr>
+                    <td style="height: 37px;">
+                                                <a href="https://workbench.cisecurity.org/benchmarks/14187" data-cy="benchmark-link-14187">
+                            <span class="fa fa-book fa-fw"></span> CIS AKS Optimized Azure Linux Benchmark
+                        </a>
+                    </td>
+                    <td>
+
+                                                    vNext
+                                            </td>
+                    <td>
+                        <p class="label label-draft">Draft</p>
+                    </td>
+                                            <td>
+
+                                <a href="https://workbench.cisecurity.org/communities/182">
+                                    <span class="fa fa-globe-americas fa-fw"></span> CIS Azure Linux Benchmarks
+                                </a>
+                                                    </td>
+                                        <td>
+                                            </td>
+                    <td>
+                        <a href="https://workbench.cisecurity.org/user/eric.pinnell?from=" data-cy="user-profile-link-eric.pinnell">
+		<span class="fa fa-user" aria-hidden="true"></span> eric.pinnell
+	</a>
+                    </td>
+                    <td class="actions">
+
+
+
+
+                                            </td>
+                </tr>
+                            <p></p>
+                <tr>
+                    <td style="height: 37px;">
+
+                            <img src="/images/Monogram_TM.png" style="height: 20px; width: 20px;" title="Center for Internet Security, New York" /> |
+
+                                                <a href="https://workbench.cisecurity.org/benchmarks/12696" data-cy="benchmark-link-12696">
+                            <span class="fa fa-book fa-fw"></span> CIS AKS Optimized Azure Linux Benchmark
+                        </a>
+                    </td>
+                    <td>
+
+                                                    v1.0.0
+                                            </td>
+                    <td>
+                        <p class="label label-published">Published</p>
+                    </td>
+                                            <td>
+
+                                <a href="https://workbench.cisecurity.org/communities/182">
+                                    <span class="fa fa-globe-americas fa-fw"></span> CIS Azure Linux Benchmarks
+                                </a>
+                                                    </td>
+                                        <td>
+
+                            <a href="https://workbench.cisecurity.org/benchmarks/collection/5" class="coll-label">
+			<span class="label label-info"><span class="fa fa-bookmark"></span> Operating System</span>
+		</a>
+
+
+                                            </td>
+                    <td>
+                        <a href="https://workbench.cisecurity.org/user/eric.pinnell?from=" data-cy="user-profile-link-eric.pinnell">
+		<span class="fa fa-user" aria-hidden="true"></span> eric.pinnell
+	</a>
+                    </td>
+                    <td class="actions">
+
+                                            </td>
+                </tr>
+                            <p></p>
+                <tr>
+                    <td style="height: 37px;">
+
+                            <img src="/images/Monogram_TM.png" style="height: 20px; width: 20px;" title="Center for Internet Security, New York" /> |
+
+                                                <a href="https://workbench.cisecurity.org/benchmarks/7533" data-cy="benchmark-link-7533">
+                            <span class="fa fa-book fa-fw"></span> CIS Alibaba Cloud Container Service For Kubernetes (ACK) Benchmark
+                        </a>
+                    </td>
+                    <td>
+
+                                                    v1.1.0
+                                            </td>
+                    <td>
+                        <p class="label label-draft">Draft</p>
+                    </td>
+                                            <td>
+
+                                <a href="https://workbench.cisecurity.org/communities/43">
+                                    <span class="fa fa-globe-americas fa-fw"></span> CIS Kubernetes Benchmarks
+                                </a>
+                                                    </td>
+                                        <td>
+                                            </td>
+                    <td>
+                        <a href="https://workbench.cisecurity.org/user/rmowen?from=" data-cy="user-profile-link-rmowen">
+		<span class="fa fa-user" aria-hidden="true"></span> rmowen
+	</a>
+                    </td>
+                    <td class="actions">
+
+
+
+
+                                            </td>
+                </tr>
+                            <p></p>
+                <tr>
+                    <td style="height: 37px;">
+                                                <a href="https://workbench.cisecurity.org/benchmarks/6467" data-cy="benchmark-link-6467">
+                            <span class="fa fa-book fa-fw"></span> CIS Alibaba Cloud Container Service For Kubernetes (ACK) Benchmark
+                        </a>
+                    </td>
+                    <td>
+
+                                                    v1.0.0
+                                            </td>
+                    <td>
+                        <p class="label label-archived">Archived</p>
+                    </td>
+                                            <td>
+
+                                <a href="https://workbench.cisecurity.org/communities/43">
+                                    <span class="fa fa-globe-americas fa-fw"></span> CIS Kubernetes Benchmarks
+                                </a>
+                                                    </td>
+                                        <td>
+                                            </td>
+                    <td>
+                        <span class="fa fa-user" aria-hidden="true"></span> mvogelerpeterson
+                    </td>
+                    <td class="actions">
+
+                                            </td>
+                </tr>
+                            <p></p>
+                <tr>
+                    <td style="height: 37px;">
+
+                            <img src="/images/Monogram_TM.png" style="height: 20px; width: 20px;" title="Center for Internet Security, New York" /> |
+
+                                                <a href="https://workbench.cisecurity.org/benchmarks/6444" data-cy="benchmark-link-6444">
+                            <span class="fa fa-book fa-fw"></span> CIS Alibaba Cloud Foundation Benchmark
+                        </a>
+                    </td>
+                    <td>
+
+                                                    v2.0.0
+                                            </td>
+                    <td>
+                        <p class="label label-published">Published</p>
+                    </td>
+                                            <td>
+
+                                <a href="https://workbench.cisecurity.org/communities/97">
+                                    <span class="fa fa-globe-americas fa-fw"></span> CIS Alibaba Cloud Benchmarks
+                                </a>
+                                                    </td>
+                                        <td>
+                                            </td>
+                    <td>
+                        <a href="https://workbench.cisecurity.org/user/mwicks?from=" data-cy="user-profile-link-mwicks">
+		<span class="fa fa-user" aria-hidden="true"></span> mwicks
+	</a>
+                    </td>
+                    <td class="actions">
+
+                                            </td>
+                </tr>
+                            <p></p>
+                <tr>
+                    <td style="height: 37px;">
+
+                            <img src="/images/Monogram_TM.png" style="height: 20px; width: 20px;" title="Center for Internet Security, New York" /> |
+
+                                                <a href="https://workbench.cisecurity.org/benchmarks/6219" data-cy="benchmark-link-6219">
+                            <span class="fa fa-book fa-fw"></span> CIS Alibaba Cloud Foundation Benchmark
+                        </a>
+                    </td>
+                    <td>
+
+                                                    v1.0.0
+                                            </td>
+                    <td>
+                        <p class="label label-published">Published</p>
+                    </td>
+                                            <td>
+
+                                <a href="https://workbench.cisecurity.org/communities/97">
+                                    <span class="fa fa-globe-americas fa-fw"></span> CIS Alibaba Cloud Benchmarks
+                                </a>
+                                                    </td>
+                                        <td>
+                                            </td>
+                    <td>
+                        <a href="https://workbench.cisecurity.org/user/mwicks?from=" data-cy="user-profile-link-mwicks">
+		<span class="fa fa-user" aria-hidden="true"></span> mwicks
+	</a>
+                    </td>
+                    <td class="actions">
+
+                                            </td>
+                </tr>
+                            <p></p>
+                <tr>
+                    <td style="height: 37px;">
+
+                            <img src="/images/Monogram_TM.png" style="height: 20px; width: 20px;" title="Center for Internet Security, New York" /> |
+
+                                                <a href="https://workbench.cisecurity.org/benchmarks/23595" data-cy="benchmark-link-23595">
+                            <span class="fa fa-book fa-fw"></span> CIS Alibaba Cloud Linux 3 Benchmark
+                        </a>
+                    </td>
+                    <td>
+
+                                                    v2.0.0
+                                            </td>
+                    <td>
+                        <p class="label label-published">Published</p>
+                    </td>
+                                            <td>
+
+                                <a href="https://workbench.cisecurity.org/communities/98">
+                                    <span class="fa fa-globe-americas fa-fw"></span> CIS Alibaba Cloud Linux Benchmarks
+                                </a>
+                                                    </td>
+                                        <td>
+
+                            <a href="https://workbench.cisecurity.org/benchmarks/collection/5" class="coll-label">
+			<span class="label label-info"><span class="fa fa-bookmark"></span> Operating System</span>
+		</a>
+
+
+                                            </td>
+                    <td>
+                        <a href="https://workbench.cisecurity.org/user/eric.pinnell?from=" data-cy="user-profile-link-eric.pinnell">
+		<span class="fa fa-user" aria-hidden="true"></span> eric.pinnell
+	</a>
+                    </td>
+                    <td class="actions">
+
+                                            </td>
+                </tr>
+                            <p></p>
+                <tr>
+                    <td style="height: 37px;">
+                                                <a href="https://workbench.cisecurity.org/benchmarks/8034" data-cy="benchmark-link-8034">
+                            <span class="fa fa-book fa-fw"></span> CIS Alibaba Cloud Linux 3 Benchmark
+                        </a>
+                    </td>
+                    <td>
+
+                                                    v1.0.0
+                                            </td>
+                    <td>
+                        <p class="label label-archived">Archived</p>
+                    </td>
+                                            <td>
+
+                                <a href="https://workbench.cisecurity.org/communities/98">
+                                    <span class="fa fa-globe-americas fa-fw"></span> CIS Alibaba Cloud Linux Benchmarks
+                                </a>
+                                                    </td>
+                                        <td>
+
+                            <a href="https://workbench.cisecurity.org/benchmarks/collection/5" class="coll-label">
+			<span class="label label-info"><span class="fa fa-bookmark"></span> Operating System</span>
+		</a>
+
+
+                                            </td>
+                    <td>
+                        <a href="https://workbench.cisecurity.org/user/eric.pinnell?from=" data-cy="user-profile-link-eric.pinnell">
+		<span class="fa fa-user" aria-hidden="true"></span> eric.pinnell
+	</a>
+                    </td>
+                    <td class="actions">
+
+                                            </td>
+                </tr>
+                            <p></p>
+                <tr>
+                    <td style="height: 37px;">
+
+                            <img src="/images/Monogram_TM.png" style="height: 20px; width: 20px;" title="Center for Internet Security, New York" /> |
+
+                                                <a href="https://workbench.cisecurity.org/benchmarks/2228" data-cy="benchmark-link-2228">
+                            <span class="fa fa-book fa-fw"></span> CIS Aliyun Linux 2 Benchmark
+                        </a>
+                    </td>
+                    <td>
+
+                                                    v1.0.0
+                                            </td>
+                    <td>
+                        <p class="label label-archived">Archived</p>
+                    </td>
+                                            <td>
+
+                                <a href="https://workbench.cisecurity.org/communities/98">
+                                    <span class="fa fa-globe-americas fa-fw"></span> CIS Alibaba Cloud Linux Benchmarks
+                                </a>
+                                                    </td>
+                                        <td>
+
+                            <a href="https://workbench.cisecurity.org/benchmarks/collection/5" class="coll-label">
+			<span class="label label-info"><span class="fa fa-bookmark"></span> Operating System</span>
+		</a>
+
+
+                                            </td>
+                    <td>
+                        <a href="https://workbench.cisecurity.org/user/mwicks?from=" data-cy="user-profile-link-mwicks">
+		<span class="fa fa-user" aria-hidden="true"></span> mwicks
+	</a>
+                    </td>
+                    <td class="actions">
+
+                                            </td>
+                </tr>
+                            <p></p>
+                <tr>
+                    <td style="height: 37px;">
+
+                            <img src="/images/Monogram_TM.png" style="height: 20px; width: 20px;" title="Center for Internet Security, New York" /> |
+
+                                                <a href="https://workbench.cisecurity.org/benchmarks/24008" data-cy="benchmark-link-24008">
+                            <span class="fa fa-book fa-fw"></span> CIS AlmaLinux OS 10 Benchmark
+                        </a>
+                    </td>
+                    <td>
+
+                                                    v1.0.0
+                                            </td>
+                    <td>
+                        <p class="label label-published">Published</p>
+                    </td>
+                                            <td>
+
+                                <a href="https://workbench.cisecurity.org/communities/139">
+                                    <span class="fa fa-globe-americas fa-fw"></span> CIS AlmaLinux OS Benchmarks
+                                </a>
+                                                    </td>
+                                        <td>
+
+                            <a href="https://workbench.cisecurity.org/benchmarks/collection/5" class="coll-label">
+			<span class="label label-info"><span class="fa fa-bookmark"></span> Operating System</span>
+		</a>
+
+
+                                            </td>
+                    <td>
+                        <a href="https://workbench.cisecurity.org/user/eric.pinnell?from=" data-cy="user-profile-link-eric.pinnell">
+		<span class="fa fa-user" aria-hidden="true"></span> eric.pinnell
+	</a>
+                    </td>
+                    <td class="actions">
+
+                                            </td>
+                </tr>
+                            <p></p>
+                <tr>
+                    <td style="height: 37px;">
+                                                <a href="https://workbench.cisecurity.org/benchmarks/15585" data-cy="benchmark-link-15585">
+                            <span class="fa fa-book fa-fw"></span> CIS AlmaLinux OS 8 Benchmark
+                        </a>
+                    </td>
+                    <td>
+
+                                                    vNext
+                                            </td>
+                    <td>
+                        <p class="label label-draft">Draft</p>
+                    </td>
+                                            <td>
+
+                                <a href="https://workbench.cisecurity.org/communities/139">
+                                    <span class="fa fa-globe-americas fa-fw"></span> CIS AlmaLinux OS Benchmarks
+                                </a>
+                                                    </td>
+                                        <td>
+                                            </td>
+                    <td>
+                        <a href="https://workbench.cisecurity.org/user/eric.pinnell?from=" data-cy="user-profile-link-eric.pinnell">
+		<span class="fa fa-user" aria-hidden="true"></span> eric.pinnell
+	</a>
+                    </td>
+                    <td class="actions">
+
+
+
+
+                                            </td>
+                </tr>
+                            <p></p>
+                <tr>
+                    <td style="height: 37px;">
+
+                            <img src="/images/Monogram_TM.png" style="height: 20px; width: 20px;" title="Center for Internet Security, New York" /> |
+
+                                                <a href="https://workbench.cisecurity.org/benchmarks/23598" data-cy="benchmark-link-23598">
+                            <span class="fa fa-book fa-fw"></span> CIS AlmaLinux OS 8 Benchmark
+                        </a>
+                    </td>
+                    <td>
+
+                                                    v4.0.0
+                                            </td>
+                    <td>
+                        <p class="label label-published">Published</p>
+                    </td>
+                                            <td>
+
+                                <a href="https://workbench.cisecurity.org/communities/139">
+                                    <span class="fa fa-globe-americas fa-fw"></span> CIS AlmaLinux OS Benchmarks
+                                </a>
+                                                    </td>
+                                        <td>
+
+                            <a href="https://workbench.cisecurity.org/benchmarks/collection/5" class="coll-label">
+			<span class="label label-info"><span class="fa fa-bookmark"></span> Operating System</span>
+		</a>
+
+
+                                            </td>
+                    <td>
+                        <a href="https://workbench.cisecurity.org/user/eric.pinnell?from=" data-cy="user-profile-link-eric.pinnell">
+		<span class="fa fa-user" aria-hidden="true"></span> eric.pinnell
+	</a>
+                    </td>
+                    <td class="actions">
+
+                                            </td>
+                </tr>
+                            <p></p>
+                <tr>
+                    <td style="height: 37px;">
+
+                            <img src="/images/Monogram_TM.png" style="height: 20px; width: 20px;" title="Center for Internet Security, New York" /> |
+
+                                                <a href="https://workbench.cisecurity.org/benchmarks/15287" data-cy="benchmark-link-15287">
+                            <span class="fa fa-book fa-fw"></span> CIS AlmaLinux OS 8 Benchmark
+                        </a>
+                    </td>
+                    <td>
+
+                                                    v3.0.0
+                                            </td>
+                    <td>
+                        <p class="label label-published">Published</p>
+                    </td>
+                                            <td>
+
+                                <a href="https://workbench.cisecurity.org/communities/139">
+                                    <span class="fa fa-globe-americas fa-fw"></span> CIS AlmaLinux OS Benchmarks
+                                </a>
+                                                    </td>
+                                        <td>
+
+                            <a href="https://workbench.cisecurity.org/benchmarks/collection/5" class="coll-label">
+			<span class="label label-info"><span class="fa fa-bookmark"></span> Operating System</span>
+		</a>
+
+
+                                            </td>
+                    <td>
+                        <a href="https://workbench.cisecurity.org/user/eric.pinnell?from=" data-cy="user-profile-link-eric.pinnell">
+		<span class="fa fa-user" aria-hidden="true"></span> eric.pinnell
+	</a>
+                    </td>
+                    <td class="actions">
+
+                                            </td>
+                </tr>
+                            <p></p>
+                <tr>
+                    <td style="height: 37px;">
+
+                            <img src="/images/Monogram_TM.png" style="height: 20px; width: 20px;" title="Center for Internet Security, New York" /> |
+
+                                                <a href="https://workbench.cisecurity.org/benchmarks/9794" data-cy="benchmark-link-9794">
+                            <span class="fa fa-book fa-fw"></span> CIS AlmaLinux OS 8 Benchmark
+                        </a>
+                    </td>
+                    <td>
+
+                                                    v2.0.0
+                                            </td>
+                    <td>
+                        <p class="label label-published">Published</p>
+                    </td>
+                                            <td>
+
+                                <a href="https://workbench.cisecurity.org/communities/139">
+                                    <span class="fa fa-globe-americas fa-fw"></span> CIS AlmaLinux OS Benchmarks
+                                </a>
+                                                    </td>
+                                        <td>
+
+                            <a href="https://workbench.cisecurity.org/benchmarks/collection/5" class="coll-label">
+			<span class="label label-info"><span class="fa fa-bookmark"></span> Operating System</span>
+		</a>
+
+
+                                            </td>
+                    <td>
+                        <a href="https://workbench.cisecurity.org/user/eric.pinnell?from=" data-cy="user-profile-link-eric.pinnell">
+		<span class="fa fa-user" aria-hidden="true"></span> eric.pinnell
+	</a>
+                    </td>
+                    <td class="actions">
+
+                                            </td>
+                </tr>
+                            <p></p>
+                <tr>
+                    <td style="height: 37px;">
+
+                            <img src="/images/Monogram_TM.png" style="height: 20px; width: 20px;" title="Center for Internet Security, New York" /> |
+
+                                                <a href="https://workbench.cisecurity.org/benchmarks/7111" data-cy="benchmark-link-7111">
+                            <span class="fa fa-book fa-fw"></span> CIS AlmaLinux OS 8 Benchmark
+                        </a>
+                    </td>
+                    <td>
+
+                                                    v1.0.0
+                                            </td>
+                    <td>
+                        <p class="label label-published">Published</p>
+                    </td>
+                                            <td>
+
+                                <a href="https://workbench.cisecurity.org/communities/139">
+                                    <span class="fa fa-globe-americas fa-fw"></span> CIS AlmaLinux OS Benchmarks
+                                </a>
+                                                    </td>
+                                        <td>
+
+                            <a href="https://workbench.cisecurity.org/benchmarks/collection/5" class="coll-label">
+			<span class="label label-info"><span class="fa fa-bookmark"></span> Operating System</span>
+		</a>
+
+
+                                            </td>
+                    <td>
+                        <a href="https://workbench.cisecurity.org/user/eric.pinnell?from=" data-cy="user-profile-link-eric.pinnell">
+		<span class="fa fa-user" aria-hidden="true"></span> eric.pinnell
+	</a>
+                    </td>
+                    <td class="actions">
+
+                                            </td>
+                </tr>
+                            <p></p>
+                <tr>
+                    <td style="height: 37px;">
+
+                            <img src="/images/Monogram_TM.png" style="height: 20px; width: 20px;" title="Center for Internet Security, New York" /> |
+
+                                                <a href="https://workbench.cisecurity.org/benchmarks/18208" data-cy="benchmark-link-18208">
+                            <span class="fa fa-book fa-fw"></span> CIS AlmaLinux OS 9 Benchmark
+                        </a>
+                    </td>
+                    <td>
+
+                                                    v2.0.0
+                                            </td>
+                    <td>
+                        <p class="label label-published">Published</p>
+                    </td>
+                                            <td>
+
+                                <a href="https://workbench.cisecurity.org/communities/139">
+                                    <span class="fa fa-globe-americas fa-fw"></span> CIS AlmaLinux OS Benchmarks
+                                </a>
+                                                    </td>
+                                        <td>
+
+                            <a href="https://workbench.cisecurity.org/benchmarks/collection/5" class="coll-label">
+			<span class="label label-info"><span class="fa fa-bookmark"></span> Operating System</span>
+		</a>
+
+
+                                            </td>
+                    <td>
+                        <a href="https://workbench.cisecurity.org/user/eric.pinnell?from=" data-cy="user-profile-link-eric.pinnell">
+		<span class="fa fa-user" aria-hidden="true"></span> eric.pinnell
+	</a>
+                    </td>
+                    <td class="actions">
+
+                                            </td>
+                </tr>
+                            <p></p>
+                <tr>
+                    <td style="height: 37px;">
+
+                            <img src="/images/Monogram_TM.png" style="height: 20px; width: 20px;" title="Center for Internet Security, New York" /> |
+
+                                                <a href="https://workbench.cisecurity.org/benchmarks/11511" data-cy="benchmark-link-11511">
+                            <span class="fa fa-book fa-fw"></span> CIS AlmaLinux OS 9 Benchmark
+                        </a>
+                    </td>
+                    <td>
+
+                                                    v1.0.0
+                                            </td>
+                    <td>
+                        <p class="label label-published">Published</p>
+                    </td>
+                                            <td>
+
+                                <a href="https://workbench.cisecurity.org/communities/139">
+                                    <span class="fa fa-globe-americas fa-fw"></span> CIS AlmaLinux OS Benchmarks
+                                </a>
+                                                    </td>
+                                        <td>
+
+                            <a href="https://workbench.cisecurity.org/benchmarks/collection/5" class="coll-label">
+			<span class="label label-info"><span class="fa fa-bookmark"></span> Operating System</span>
+		</a>
+
+
+                                            </td>
+                    <td>
+                        <a href="https://workbench.cisecurity.org/user/eric.pinnell?from=" data-cy="user-profile-link-eric.pinnell">
+		<span class="fa fa-user" aria-hidden="true"></span> eric.pinnell
+	</a>
+                    </td>
+                    <td class="actions">
+
+                                            </td>
+                </tr>
+                        </tbody>
+
+            <tfoot>
+		<tr>
+			<td colspan="10" align="center"> <nav>
+        <ul class="pagination">
+
+                            <li class="disabled" aria-disabled="true" aria-label="&laquo; Previous">
+                    <span aria-hidden="true">&lsaquo;</span>
+                </li>
+
+
+
+
+
+                                                                                        <li class="active" aria-current="page"><span>1</span></li>
+                                                                                                <li><a href="https://workbench.cisecurity.org/benchmarks?page=2">2</a></li>
+                                                                                                <li><a href="https://workbench.cisecurity.org/benchmarks?page=3">3</a></li>
+                                                                                                <li><a href="https://workbench.cisecurity.org/benchmarks?page=4">4</a></li>
+                                                                                                <li><a href="https://workbench.cisecurity.org/benchmarks?page=5">5</a></li>
+                                                                                                <li><a href="https://workbench.cisecurity.org/benchmarks?page=6">6</a></li>
+                                                                                                <li><a href="https://workbench.cisecurity.org/benchmarks?page=7">7</a></li>
+                                                                                                <li><a href="https://workbench.cisecurity.org/benchmarks?page=8">8</a></li>
+                                                                                                <li><a href="https://workbench.cisecurity.org/benchmarks?page=9">9</a></li>
+                                                                                                <li><a href="https://workbench.cisecurity.org/benchmarks?page=10">10</a></li>
+
+                                    <li class="disabled" aria-disabled="true"><span>...</span></li>
+
+
+
+
+
+                                                                                        <li><a href="https://workbench.cisecurity.org/benchmarks?page=65">65</a></li>
+                                                                                                <li><a href="https://workbench.cisecurity.org/benchmarks?page=66">66</a></li>
+
+
+                            <li>
+                    <a href="https://workbench.cisecurity.org/benchmarks?page=2" rel="next" aria-label="Next &raquo;">&rsaquo;</a>
+                </li>
+                    </ul>
+    </nav>
+ </td>
+		</tr>
+	</tfoot>
+
+        </table>
+
+</section>
+        </div>
+    </div>
+
+				</div>
+			</div>
+
+			<footer>
+									<div class="footer-bottom">
+	<div class="container-fluid inner">
+		<hr>
+		<div class="row">
+			<div class="col-lg-4 col-lg-offset-4">
+				<p>&copy; 2025 <a href="http://cisecurity.org" target="_blank" rel="noopener noreferrer"><img src="/images/Logo_Text_Stacked_TMR.png" alt="CIS LOGO" height="50"></a></p></div>
+			<div class="col-lg-4"></div>
+		</div>
+	</div>
+</div>
+							</footer>
+		</div>
+
+			</div>
+    </div>
+            <script   nonce="2gZyEos4vFaVVT6SYSg9Duvbk9l5k7UK" >
+	var isUserLoggedIn = true;
+    window.addEventListener("load", (event) => {
+
+    $(document).ready(function(){
+
+	var tourName = "tour-benchmark-listing";
+
+	var tourSteps = [
+	{
+	  element: ".one",
+      backdrop: true,
+      title: "Welcome to Benchmarks",
+      content: "This page displays all the benchmarks you currently have access to."
+    },
+	{
+		element: "div.form-group",
+		title: "Search",
+		content: "Search Benchmarks by title, or look at all of specific status.",
+		placement: "top",
+	},
+	{
+		element: "table.table-striped",
+		title: "Benchmarks",
+		content: "This page displays all the benchmarks you currently have access to.",
+		placement: "top",
+	},
+	{
+		element: "ul.nav-pills",
+		title: "Collections",
+		content: "Benchmarks can be organized into collections, which are displayed here. Clicking on a collection filters the benchmark list below.",
+		placement: "top",
+	},{
+		element: "a.add-benchmark",
+		title: "Create New Benchmark",
+		content: "Start a new blank benchmark with this button.",
+		placement: "left",
+		onShown: function() {
+	        if ($('a.add-benchmark').length == 0) {
+	          tour.goTo(10);
+	        }
+        }
+	}];
+
+
+	var tour = new Tour({
+        name: tourName,
+        backdrop: true,
+        keyboard: true,
+        debug: false,
+        storage: window.localStorage,
+        orphan: true,
+        container: "body",
+        template: "<div class='popover tour'> \
+                <div class='arrow'></div> \
+                <h3 class='popover-title'></h3> \
+                <div class='popover-content'></div> \
+                <div class='popover-navigation'> \
+                    <div class='btn-group'> \
+                        <button class='btn btn-default' data-role='prev'>« Prev</button> \
+                        <button class='btn btn-default' data-role='next'>Next »</button> \
+                    </div> \
+                <button dusk='end-tour' class='btn btn-default' data-role='end'>End tour</button> \
+                </div> \
+              </div>",
+        steps: tourSteps
+    });
+
+            tour.init();
+        tour.start();
+
+    $('#'+tourName).on('click', function() {
+        tour.init();
+        tour.restart();
+    });
+
+;
+
+});
+
+            });
+</script>
+
+    <script nonce="2gZyEos4vFaVVT6SYSg9Duvbk9l5k7UK" data-navigate-once="true">window.livewireScriptConfig = {"csrf":"7VxqqMvhFDQiIh31VfVxLX9OKEVXFnFjdLSz7Nsv","uri":"\/livewire\/update","progressBar":"","nonce":"2gZyEos4vFaVVT6SYSg9Duvbk9l5k7UK"};</script>
+</body>
+</html>

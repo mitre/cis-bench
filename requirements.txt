@@ -1,0 +1,28 @@
+# Core scraping dependencies
+beautifulsoup4==4.12.2
+certifi==2023.7.22
+charset-normalizer==3.3.0
+idna==3.4
+requests==2.31.0
+soupsieve==2.5
+urllib3==2.0.6
+
+# CLI dependencies
+click>=8.1.0
+rich>=13.7.0
+questionary>=2.0.0
+browser-cookie3>=0.19.0
+
+# Export format dependencies
+PyYAML>=6.0.0
+
+# Data modeling and validation
+pydantic>=2.0.0
+
+# XCCDF schema and XML processing
+xsdata[cli,lxml]>=24.0.0
+lxml>=5.0.0
+
+# Testing dependencies
+pytest>=7.4.0
+pytest-mock>=3.12.0

@@ -1,0 +1,200 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:xccdf="http://checklists.nist.gov/xccdf/1.2"
+           xmlns:dc="http://purl.org/dc/elements/1.1/"
+           targetNamespace="http://disa.mil/xccdf/conventions/1.10.0"
+           elementFormDefault="qualified"
+           version="1.10.0">
+
+  <xs:annotation>
+    <xs:documentation>
+      DISA STIG XCCDF Conventions Schema v1.10.0
+
+      This schema documents DISA's specific usage patterns and requirements
+      for XCCDF benchmarks (STIGs). It is NOT an official DISA specification,
+      but reverse-engineered from actual STIG files and STIG Viewer source code.
+
+      Use this schema to validate that XCCDF exports follow DISA conventions
+      in addition to NIST XCCDF schema validation.
+
+      Sources:
+        - RHEL 9 STIG V2R5 (2025-07-18)
+        - Ubuntu 24.04 LTS STIG V1R1 (2025-01-10)
+        - STIG Viewer 2.18 Java source (decompiled)
+
+      Last Updated: 2025-10-18
+      Maintained By: CIS Benchmark CLI Project
+    </xs:documentation>
+  </xs:annotation>
+
+  <!-- Import base XCCDF schema -->
+  <xs:import namespace="http://checklists.nist.gov/xccdf/1.2"
+             schemaLocation="../xccdf_1.2.xsd"/>
+
+  <!-- Import Dublin Core namespace -->
+  <xs:import namespace="http://purl.org/dc/elements/1.1/"/>
+
+  <!--
+    DISA STIG Conventions Assertion Pattern
+
+    This schema uses assertions (not restrictions) to validate conventions.
+    It works alongside XCCDF schema, not replacing it.
+  -->
+
+  <!-- Validate plain-text element with specific IDs -->
+  <xs:element name="validate-plain-text">
+    <xs:annotation>
+      <xs:documentation>
+        DISA STIGs require exactly 3 plain-text elements with specific IDs:
+        - release-info: "Release: {number} Benchmark Date: {date}"
+        - generator: Tool version
+        - conventionsVersion: "1.10.0"
+      </xs:documentation>
+    </xs:annotation>
+  </xs:element>
+
+  <!-- Validate CCI format in ident elements -->
+  <xs:simpleType name="CCI-Pattern">
+    <xs:annotation>
+      <xs:documentation>
+        CCI (Control Correlation Identifier) format: CCI-XXXXXX (6 digits)
+      </xs:documentation>
+    </xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:pattern value="CCI-\d{6}"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- Validate STIG ID format in Rule version element -->
+  <xs:simpleType name="STIG-ID-Pattern">
+    <xs:annotation>
+      <xs:documentation>
+        STIG ID format examples:
+        - RHEL-09-211010
+        - UBTU-24-100010
+        - Platform-Major-Minor
+      </xs:documentation>
+    </xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:pattern value="[A-Z]{4}-\d{2}-\d{6}"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- Validate severity values -->
+  <xs:simpleType name="STIG-Severity">
+    <xs:annotation>
+      <xs:documentation>
+        STIG severity values (map to CAT I/II/III)
+      </xs:documentation>
+    </xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="low"/>    <!-- CAT III -->
+      <xs:enumeration value="medium"/> <!-- CAT II -->
+      <xs:enumeration value="high"/>   <!-- CAT I -->
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- Validate weight value -->
+  <xs:simpleType name="STIG-Weight">
+    <xs:annotation>
+      <xs:documentation>
+        DISA STIGs always use weight="10.0"
+      </xs:documentation>
+    </xs:annotation>
+    <xs:restriction base="xs:decimal">
+      <xs:enumeration value="10.0"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- Documentation of required elements (assertions, not enforceable in XSD) -->
+  <xs:annotation>
+    <xs:documentation>
+      DISA STIG XCCDF Benchmarks MUST contain (in order):
+
+      1. status element
+      2. title element
+      3. description element
+      4. notice element (id="terms-of-use", can be empty)
+      5. front-matter element (can be empty)
+      6. rear-matter element (can be empty)
+      7. reference element with:
+         - @href attribute
+         - dc:publisher child element
+         - dc:source child element
+      8. plain-text elements (minimum 3):
+         - id="release-info" (format: "Release: X Benchmark Date: DD MMM YYYY")
+         - id="generator" (tool version)
+         - id="conventionsVersion" (value: "1.10.0")
+      9. version element
+      10. Group or Rule elements
+
+      Each Group MUST contain:
+      - @id attribute (VulnID format: V-XXXXXX)
+      - title element (SRG reference)
+      - description element (with &lt;GroupDescription&gt;&lt;/GroupDescription&gt;)
+      - Exactly one Rule element
+
+      Each Rule MUST contain:
+      - @id attribute (format: SV-XXXXXrYYYYYY_rule)
+      - @severity attribute (low|medium|high)
+      - @weight attribute (10.0)
+      - status element
+      - version element (STIG ID)
+      - title element
+      - description element with embedded XML tags:
+        - &lt;VulnDiscussion&gt;...&lt;/VulnDiscussion&gt;
+        - &lt;FalsePositives&gt;&lt;/FalsePositives&gt;
+        - &lt;FalseNegatives&gt;&lt;/FalseNegatives&gt;
+        - &lt;Documentable&gt;false&lt;/Documentable&gt;
+        - &lt;Mitigations&gt;&lt;/Mitigations&gt;
+        - &lt;SeverityOverrideGuidance&gt;&lt;/SeverityOverrideGuidance&gt;
+        - &lt;PotentialImpacts&gt;&lt;/PotentialImpacts&gt;
+        - &lt;ThirdPartyTools&gt;&lt;/ThirdPartyTools&gt;
+        - &lt;MitigationControl&gt;&lt;/MitigationControl&gt;
+        - &lt;Responsibility&gt;&lt;/Responsibility&gt;
+        - &lt;IAControls&gt;&lt;/IAControls&gt;
+      - reference element (Rule-level, optional)
+      - ident elements (CCI format: CCI-XXXXXX)
+      - fixtext element with @fixref attribute
+      - fix element with @id matching fixref
+      - check element with check-content child
+
+      Note: Many XSD constraints cannot be enforced (element order, content patterns).
+      This schema documents requirements. Use schematron for full validation.
+    </xs:documentation>
+  </xs:annotation>
+
+  <!-- Schematron-style validation rules (for documentation) -->
+  <xs:annotation>
+    <xs:documentation>
+      For automated validation of all conventions, use Schematron with these assertions:
+
+      <!-- Require 3 plain-text elements -->
+      assert count(//plain-text[@id='release-info']) = 1
+      assert count(//plain-text[@id='generator']) = 1
+      assert count(//plain-text[@id='conventionsVersion']) = 1
+
+      <!-- Require notice, front-matter, rear-matter -->
+      assert count(//notice[@id='terms-of-use']) = 1
+      assert count(//front-matter) = 1
+      assert count(//rear-matter) = 1
+
+      <!-- Require reference with DC elements -->
+      assert count(//reference[dc:publisher and dc:source]) >= 1
+
+      <!-- Each Rule must have fixtext and check -->
+      assert every $rule in //Rule satisfies (
+        $rule/fixtext and $rule/check
+      )
+
+      <!-- All ident elements must match CCI pattern -->
+      assert every $ident in //ident[@system='http://cyber.mil/cci'] satisfies (
+        matches($ident, 'CCI-\d{6}')
+      )
+
+      <!-- conventionsVersion must be 1.10.0 -->
+      assert //plain-text[@id='conventionsVersion'] = '1.10.0'
+    </xs:documentation>
+  </xs:annotation>
+
+</xs:schema>

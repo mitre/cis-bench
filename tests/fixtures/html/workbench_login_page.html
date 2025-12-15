@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <!-- JS script for cached pages redirection if the user is not authorized-->
+    <script  nonce="pBSwHqV0HM4vDgum66DSZYmwkd7YRzjd" >
+        window.addEventListener('pageshow', (event) => {
+            if (event.persisted || performance.getEntriesByType("navigation")[0].transferSize === 0) {
+                var domain = 'https://workbench.cisecurity.org/';
+                $.ajax({
+                    url:  "/is-authorized",
+                    type: "GET",
+                    success: function(data) {
+                        if(data.status === false) {
+                            window.history.pushState(null, "", window.location.href);
+                            window.history.back();
+                            window.history.forward();
+                            window.location = domain;
+                        }
+                    }
+                });
+            }
+        });
+    </script>
+    <!-- End of JS script for cached pages redirection -->
+    <title>CIS WorkBench / Home</title>
+            <meta charset="UTF-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="csrf-token" content="MR9hOsAmil2uqIYb9FVc22m0eyhr5D36LsyaJYRv">
+        <meta name="inactive_time" content="60">
+        <link rel="shortcut icon" href="/favicon.ico" type="image/x-icon"/>
+    <link rel="icon" href="/images/CIS_Workbench_logo.png">
+
+                <link rel="preload" as="style" href="https://workbench.cisecurity.org/build/assets/app-DodppmTF.css" nonce="pBSwHqV0HM4vDgum66DSZYmwkd7YRzjd" /><link rel="preload" as="style" href="https://workbench.cisecurity.org/build/assets/app-DSrJkXsx.css" nonce="pBSwHqV0HM4vDgum66DSZYmwkd7YRzjd" /><link rel="preload" as="style" href="https://workbench.cisecurity.org/build/assets/tailwind-l7tt4JyH.css" nonce="pBSwHqV0HM4vDgum66DSZYmwkd7YRzjd" /><link rel="modulepreload" as="script" href="https://workbench.cisecurity.org/build/assets/app-DGDurzu9.js" nonce="pBSwHqV0HM4vDgum66DSZYmwkd7YRzjd" /><link rel="stylesheet" href="https://workbench.cisecurity.org/build/assets/app-DodppmTF.css" nonce="pBSwHqV0HM4vDgum66DSZYmwkd7YRzjd" data-navigate-track="reload" /><link rel="stylesheet" href="https://workbench.cisecurity.org/build/assets/app-DSrJkXsx.css" nonce="pBSwHqV0HM4vDgum66DSZYmwkd7YRzjd" data-navigate-track="reload" /><link rel="stylesheet" href="https://workbench.cisecurity.org/build/assets/tailwind-l7tt4JyH.css" nonce="pBSwHqV0HM4vDgum66DSZYmwkd7YRzjd" data-navigate-track="reload" /><script type="module" src="https://workbench.cisecurity.org/build/assets/app-DGDurzu9.js" nonce="pBSwHqV0HM4vDgum66DSZYmwkd7YRzjd" data-navigate-track="reload"></script>
+    <!-- Google Tag Manager -->
+    <script  nonce="pBSwHqV0HM4vDgum66DSZYmwkd7YRzjd" >(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+                new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+            j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+            'https://www.googletagmanager.com/gtm.js?id='+i+dl;var n=d.querySelector('[nonce]');
+            n&&j.setAttribute('nonce',n.nonce||n.getAttribute('nonce'));f.parentNode.insertBefore(j,f);
+        })(window,document,'script','dataLayer','GTM-PMFL2DG');
+    </script>
+    <!-- End Google Tag Manager -->
+</head>
+<body>
+    <div id="app">
+        	        	<noscript>
+    	  <div style="padding: 100px 75px;">
+    	    <h1>Warning: The CIS WorkBench website requires Javascipt.</h1>
+    	    <h2>You have javascript disabled or your browser does not support it.</h2>
+    	    <h2>Please turn it on in your browsers settings, or add an exemption for workbench.cisecurity.org</h2>
+    	  </div>
+    	</noscript>
+
+
+    <div class="container-fluid main-container">
+    	<div class="index-signin-wrapper">
+    		<div class="row">
+    			<div class="col-lg-12 benchmarks-logo">
+    				<img src="/images/CIS_Workbench_Spot.png" alt="Security Benchmarks logo" class='workbench-logo'>
+    			</div>
+    		</div>
+    		<div class="row">
+    			    <div class="col-sm-6 login-side">
+        <form class="index-form disableAreYouSure" role="form" method="POST" action="https://workbench.cisecurity.org/login">
+            <input type="hidden" name="_token" value="MR9hOsAmil2uqIYb9FVc22m0eyhr5D36LsyaJYRv" autocomplete="off">
+
+
+
+            <div class="field-wrap form-group index-login-form-group "
+                 style="padding-top: 10px;">
+                <label class="index-label control-label  ">E-Mail or Username</label>
+
+                <input type="login" class="form-control" autofocus="true" name="login"
+                       value="" autocomplete="off">
+
+
+            </div>
+
+            <div class="field-wrap form-group index-login-form-group">
+                <label class="index-label control-label">Password</label>
+
+                <input type="password" class="form-control" name="password" id="password"
+                       autocomplete="off">
+
+
+            </div>
+            <div class='row lower-group'>
+                <div class="col-sm-5 col-xs-5">
+                    <div class="form-group index-login-form-group">
+                        <button type="submit" class="login-submit-btn btn btn-primary">
+                            <i class="fa fa-btn fa-sign-in"></i> Log In
+                        </button>
+                    </div>
+                </div>
+                <div class="col-sm-7 col-xs-7">
+                    <div class="form-group index-login-form-group">
+
+                        <div class="index-checkbox">
+                            <label class="index-label"><input type="checkbox" name="remember"> Remember Me</label>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+            <div class="text-muted text-center">
+                <a class="" href="https://workbench.cisecurity.org/password/reset"><span
+                            class="fa fa-question-circle"></span> Forgot Your Password?</a>
+            </div>
+            <div class="text-muted text-center" style="margin: 10px 0px 20px 0px;">
+                <a href="https://workbench.cisecurity.org/terms-of-use" title="CIS Terms of Use" target="_blank"
+                   rel="noopener noreferrer">CIS Terms of Use</a>
+                <span>|</span>
+                <a href="https://www.cisecurity.org/privacy-policy/" title="Privacy Policy" target="_blank"
+                   rel="noopener noreferrer">Privacy Policy</a>
+            </div>
+            <div class="">
+                            </div>
+        </form>
+    </div>
+
+    <div class="col-sm-6 register-side">
+        <p class="text-left">Everything we do at CIS is community-driven. Bring your IT expertise to CIS WorkBench, where you can network and collaborate with cybersecurity professionals around the world. Register now to help draft configuration recommendations for the CIS Benchmarks, submit tickets, and discuss best practices for securing a wide range of technologies.</p>
+
+        <a href="https://workbench.cisecurity.org/registration" class="btn btn-warning register-btn"><span
+                    class="fa fa-user-plus"></span> Register Now!</a>
+
+        <br/>
+        <a class="text-muted" target="_blank" rel="noopener noreferrer" href="https://www.cisecurity.org/support/">
+            <span class="fa fa-info-circle"></span> Need Help?
+        </a>
+    </div>
+    		</div>
+    		<div class="col-sm-12  login-footer  ">
+				<div class="new-cis-logo">
+					<a href="http://cisecurity.org" target="_blank" rel="noopener noreferrer"><img src="/images/Logo_Text_Stacked_TMR.png" alt="CIS logo" class="cis-logo-img"></a>
+				</div>
+    		</div>
+    	</div>
+    </div>
+    </div>
+            <script   nonce="pBSwHqV0HM4vDgum66DSZYmwkd7YRzjd" >
+	var isUserLoggedIn = false;
+    window.addEventListener("load", (event) => {
+
+            });
+</script>
+
+    <script nonce="pBSwHqV0HM4vDgum66DSZYmwkd7YRzjd" data-navigate-once="true">window.livewireScriptConfig = {"csrf":"MR9hOsAmil2uqIYb9FVc22m0eyhr5D36LsyaJYRv","uri":"\/livewire\/update","progressBar":"","nonce":"pBSwHqV0HM4vDgum66DSZYmwkd7YRzjd"};</script>
+</body>
+</html>

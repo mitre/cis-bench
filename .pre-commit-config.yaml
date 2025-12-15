@@ -1,0 +1,86 @@
+# Pre-commit hooks configuration for CIS Benchmark CLI
+# See https://pre-commit.com for more information
+# Install: pip install pre-commit && pre-commit install
+
+repos:
+  # Standard file checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      # Remove trailing whitespace
+      - id: trailing-whitespace
+      # Ensure files end with newline
+      - id: end-of-file-fixer
+      # Check YAML syntax
+      - id: check-yaml
+      # Check TOML syntax
+      - id: check-toml
+      # Check JSON syntax
+      - id: check-json
+      # Prevent large files
+      - id: check-added-large-files
+        args: [--maxkb=10000]  # XCCDF benchmark files can be large
+      # Check for case conflicts
+      - id: check-case-conflict
+      # Check for merge conflicts
+      - id: check-merge-conflict
+      # Fix mixed line endings
+      - id: mixed-line-ending
+        args: [--fix=lf]
+
+  # Ruff - Python linting and formatting (replaces black, flake8, isort)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.4
+    hooks:
+      # Ruff linter with auto-fix
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+      # Ruff formatter
+      - id: ruff-format
+
+  # Bandit - Security vulnerability scanning
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.10
+    hooks:
+      - id: bandit
+        args: ["-c", "pyproject.toml"]
+        additional_dependencies: ["bandit[toml]"]
+
+  # Local hooks - Project-specific checks
+  - repo: local
+    hooks:
+      - id: fix-markdown-lists
+        name: Fix markdown list formatting
+        entry: python3 fix_markdown_lists.py
+        language: system
+        files: \.md$
+        pass_filenames: false
+
+  # mypy - Static type checking (disabled for now - enable when ready)
+  # - repo: https://github.com/pre-commit/mirrors-mypy
+  #   rev: v1.13.0
+  #   hooks:
+  #     - id: mypy
+  #       args: [--config-file=pyproject.toml]
+  #       additional_dependencies: [types-requests, types-PyYAML]
+  #       exclude: ^tests/
+
+# Global settings
+default_language_version:
+  python: python3.12
+
+# Exclude patterns
+exclude: |
+  (?x)^(
+    \.git/|
+    \.venv/|
+    venv/|
+    build/|
+    dist/|
+    \.pytest_cache/|
+    \.ruff_cache/|
+    __pycache__/|
+    .*\.egg-info/|
+    tests/fixtures/|
+    tools/
+  )$

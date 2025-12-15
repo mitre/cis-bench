@@ -1,0 +1,99 @@
+site_name: CIS Benchmark CLI
+site_description: Command-line tool for fetching, managing, and exporting CIS benchmarks
+site_author: MITRE SAF Team
+site_url: https://mitre.github.io/cis-bench
+
+repo_name: mitre/cis-bench
+repo_url: https://github.com/mitre/cis-bench
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+
+  - User Guide:
+      - End-to-End Workflows: user-guide/workflows.md
+      - Commands Reference: user-guide/commands-reference.md
+      - Catalog System: user-guide/catalog-guide.md
+      - XCCDF Export: user-guide/xccdf-guide.md
+      - Configuration: user-guide/configuration.md
+      - Troubleshooting: user-guide/troubleshooting.md
+
+  - Developer Guide:
+      - Contributing: developer-guide/contributing.md
+      - Architecture Overview: developer-guide/architecture.md
+      - Data Flow Pipeline: developer-guide/data-flow-pipeline.md
+      - MappingEngine User Guide: developer-guide/mapping-engine-guide.md
+      - Testing Guide: developer-guide/testing.md
+      - How To Add XCCDF Style: developer-guide/how-to-add-xccdf-style.md
+
+  - Technical Reference:
+      - Mapping Engine Design: technical-reference/mapping-engine-design.md
+      - Data Model: technical-reference/data-model.md
+      - YAML Config Syntax: technical-reference/yaml-config-reference.md
+      - XCCDF Styles Comparison: technical-reference/xccdf-styles.md
+      - InSpec Profile Style Guide: technical-reference/cis-inspec-profile-style-guide.md
+
+  - About:
+      - Design Philosophy: about/design-philosophy.md
+      - Licensing: about/licensing.md
+      - Use Cases: about/use-cases.md
+      - Future Features: about/future-features.md
+      - Release Process: about/release-process.md
+      - Glossary: about/glossary.md
+
+plugins:
+  - search
+  - autorefs
+
+extra:
+  version:
+    provider: mike
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/mitre/cis-bench
+
+extra_javascript:
+  - https://unpkg.com/mermaid@10/dist/mermaid.min.js

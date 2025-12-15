@@ -1,0 +1,346 @@
+# DISA STIG XCCDF Conventions v1.10.0
+#
+# This documents DISA's specific usage patterns of XCCDF elements
+# Based on: STIG Viewer 2.18 source code analysis + actual STIG files
+#
+# Sources:
+#   - RHEL 9 STIG V2R5 (Release Date: 2025-07-18)
+#   - Ubuntu 24.04 LTS STIG V1R1 (Release Date: 2025-01-10)
+#   - STIG Viewer 2.18 Java source (decompiled)
+#
+# Last Updated: 2025-10-18
+# XCCDF Base: 1.1.4 (STIGs) or 1.2 (compatible)
+
+metadata:
+  convention_version: "1.10.0"
+  xccdf_versions_supported:
+    - "1.1.4"
+    - "1.2"
+  maintained_by: "DISA"
+  reverse_engineered: true
+  note: "Not an official DISA specification - derived from actual STIGs and tool behavior"
+
+# Required XML Namespaces
+namespaces:
+  default:
+    uri: "http://checklists.nist.gov/xccdf/1.1"
+    note: "STIGs use 1.1, but 1.2 should work"
+    declaration: 'xmlns="http://checklists.nist.gov/xccdf/1.1"'
+
+  dublin_core:
+    prefix: "dc"
+    uri: "http://purl.org/dc/elements/1.1/"
+    required: true
+    declaration: 'xmlns:dc="http://purl.org/dc/elements/1.1/"'
+
+  xml_schema_instance:
+    prefix: "xsi"
+    uri: "http://www.w3.org/2001/XMLSchema-instance"
+    required: true
+    used_for: "schemaLocation attribute"
+
+  cpe:
+    prefix: "cpe"
+    uri: "http://cpe.mitre.org/language/2.0"
+    required: false
+
+  xhtml:
+    prefix: "xhtml"
+    uri: "http://www.w3.org/1999/xhtml"
+    required: false
+
+# Benchmark Element Requirements
+benchmark:
+  attributes:
+    id:
+      required: true
+      pattern: "[A-Z_]+_STIG"
+      examples: ["RHEL_9_STIG", "Ubuntu_24-04_STIG"]
+
+    xml:lang:
+      required: true
+      value: "en"
+
+  # Element Order (STRICT - STIG Viewer expects this order)
+  child_element_order:
+    - status
+    - title
+    - description
+    - notice
+    - front-matter
+    - rear-matter
+    - reference
+    - plain-text  # Multiple
+    - version
+    - Profile     # Multiple (optional)
+    - Group       # Multiple
+    - Rule        # Multiple (if no Groups)
+
+  # Required Child Elements
+  required_elements:
+    status:
+      required: true
+      attributes:
+        date:
+          format: "YYYY-MM-DD"
+          example: "2025-07-18"
+      content: "draft|accepted|deprecated"
+      stig_value: "accepted"
+
+    title:
+      required: true
+      content_type: "string"
+      example: "Red Hat Enterprise Linux 9 Security Technical Implementation Guide"
+
+    description:
+      required: true
+      content_type: "string"
+      example: "This Security Technical Implementation Guide..."
+
+    notice:
+      required: true
+      can_be_empty: true
+      attributes:
+        id: "terms-of-use"
+        xml:lang: "en"
+      note: "Usually empty in modern STIGs"
+
+    front-matter:
+      required: true
+      can_be_empty: true
+      attributes:
+        xml:lang: "en"
+      note: "Usually empty in modern STIGs"
+
+    rear-matter:
+      required: true
+      can_be_empty: true
+      attributes:
+        xml:lang: "en"
+      note: "Usually empty in modern STIGs"
+
+    reference:
+      required: true
+      attributes:
+        href:
+          required: true
+          example: "https://cyber.mil"
+      required_dc_elements:
+        - dc:publisher
+        - dc:source
+      example:
+        publisher: "DISA"
+        source: "STIG.DOD.MIL"
+
+    plain-text:
+      required: true
+      multiple: true
+      required_ids:
+        - id: "release-info"
+          format: "Release: {number} Benchmark Date: {DD MMM YYYY}"
+          example: "Release: 5 Benchmark Date: 02 Jul 2025"
+          parsed_by_stig_viewer: true
+          note: "STIG Viewer parses release number as float"
+
+        - id: "generator"
+          content: "STIG authoring tool version"
+          example: "3.5.1"
+
+        - id: "conventionsVersion"
+          content: "DISA conventions version"
+          example: "1.10.0"
+          note: "Tracks DISA's XCCDF usage evolution"
+
+    version:
+      required: true
+      content_type: "integer|string"
+      example: "2"
+      note: "STIG version number (V1, V2, V3)"
+
+# Profile Element (Optional but common)
+profile:
+  required: false
+  multiple: true
+  purpose: "Define compliance levels (MAC-1/2/3 × Classified/Public/Sensitive)"
+
+  attributes:
+    id:
+      required: true
+      pattern: "MAC-[123]_(Classified|Public|Sensitive)"
+      examples:
+        - "MAC-1_Classified"
+        - "MAC-2_Public"
+        - "MAC-3_Sensitive"
+
+  required_elements:
+    - title
+    - description
+    - select  # Multiple, references Rule VulnIDs
+
+# Group Element (Container for Rules)
+group:
+  required: false
+  purpose: "Group Rules (one Group per Rule in DISA STIGs)"
+  pattern: "One Group wraps one Rule"
+
+  attributes:
+    id:
+      required: true
+      pattern: "V-{number}"
+      example: "V-257777"
+      note: "Vulnerability ID, matches Rule's Vuln_Num"
+
+  required_elements:
+    - title
+    - description
+    - Rule  # Exactly one
+
+# Rule Element
+rule:
+  required: true
+  multiple: true
+
+  attributes:
+    id:
+      required: true
+      pattern: "SV-{number}r{revision}_rule"
+      example: "SV-257777r991589_rule"
+      note: "{number} = VulnID, {revision} = change tracking"
+
+    severity:
+      required: true
+      values: ["low", "medium", "high"]
+      maps_to_cat:
+        low: "CAT III"
+        medium: "CAT II"
+        high: "CAT I"
+
+    weight:
+      required: true
+      value: "10.0"
+      note: "DISA standard, always 10.0"
+
+  # Element Order (from STIG Viewer code)
+  child_element_order:
+    - status
+    - version
+    - title
+    - description
+    - reference
+    - ident      # Multiple (CCIs)
+    - fixtext
+    - fix
+    - check
+
+  required_elements:
+    version:
+      required: true
+      content: "STIG ID format"
+      pattern: "{PLATFORM}-{MAJOR}-{MINOR}"
+      examples:
+        - "RHEL-09-211010"
+        - "UBTU-24-100010"
+      note: "Human-readable stable ID, survives releases"
+
+    title:
+      required: true
+
+    description:
+      required: true
+      structure: "embedded_xml_tags"
+      embedded_tags:
+        - VulnDiscussion  # Main vulnerability description
+        - FalsePositives  # Usually empty
+        - FalseNegatives  # Usually empty
+        - Documentable    # Usually "false"
+        - Mitigations     # Usually empty
+        - SeverityOverrideGuidance  # Usually empty
+        - PotentialImpacts  # Impact statement
+        - ThirdPartyTools   # Usually empty
+        - MitigationControl  # Usually empty
+        - Responsibility  # Usually empty
+        - IAControls  # Usually empty (legacy VMS)
+      note: "Tags are escaped XML inside description text: &lt;VulnDiscussion&gt;...&lt;/VulnDiscussion&gt;"
+
+    reference:
+      required: true
+      contains_dc_elements: true
+      required_dc:
+        - dc:title
+        - dc:publisher
+        - dc:type
+        - dc:subject
+        - dc:identifier
+
+    ident:
+      required: true
+      multiple: true
+      purpose: "CCI (Control Correlation Identifier) references"
+      attributes:
+        system: "http://cyber.mil/cci"
+      content_pattern: "CCI-{6 digits}"
+      examples:
+        - "CCI-000366"
+        - "CCI-001384"
+      note: "CCIs map to NIST 800-53 controls"
+
+    fixtext:
+      required: true
+      content: "Remediation instructions"
+      attributes:
+        fixref:
+          required: true
+          pattern: "F-{number}r{revision}_fix"
+          must_match_fix_id: true
+
+    fix:
+      required: true
+      content: "Usually empty element"
+      attributes:
+        id:
+          required: true
+          pattern: "F-{number}r{revision}_fix"
+
+    check:
+      required: true
+      attributes:
+        system:
+          required: true
+          pattern: "C-{number}r{revision}_chk"
+      required_elements:
+        - check-content-ref  # Reference to OVAL/SCE
+        - check-content      # Human-readable check instructions
+
+# Test Criteria for DISA Compatibility
+validation_tests:
+  - name: "STIG Viewer Parseable"
+    tool: "stig_parser"
+    must_parse_without_error: true
+
+  - name: "STIG Viewer Loadable"
+    tool: "DISA STIG Viewer 2.18"
+    must_load_and_display: true
+
+  - name: "Required Elements Present"
+    check: "All required benchmark + rule elements present"
+
+  - name: "Element Order"
+    check: "Elements in expected order"
+    note: "STIG Viewer expects specific order"
+
+  - name: "CCI Format"
+    check: "All ident elements follow CCI-XXXXXX pattern"
+
+  - name: "Dublin Core"
+    check: "dc: namespace declared, dc:publisher and dc:source present"
+
+# Known Evolution
+evolution_notes:
+  v1.10.0:
+    introduced: "Unknown (current as of 2025)"
+    changes: "Current stable version seen in all 2024-2025 STIGs"
+    legacy_vms_tags: "Still present but usually empty"
+
+  future:
+    watch_for: "DISA may deprecate legacy VMS tags in future conventions"
+    monitor: "New STIGs from cyber.mil for convention changes"
