@@ -74,20 +74,37 @@ xmlns:enhanced="http://cisecurity.org/xccdf/enhanced/1.0"
 </xccdf:Benchmark>
 ```
 
-**Document extensions** - Clear schema and namespace
+**DISA exports** - Use ident elements only (no metadata pollution)
 ```xml
-<!-- Enhanced metadata in separate namespace -->
-<xccdf:metadata>
-<controls:cis_controls>...</controls:cis_controls> <!-- CIS official -->
-<enhanced:mitre>...</enhanced:mitre> <!-- Our extension -->
-</xccdf:metadata>
+<Rule>
+  <ident system="http://cyber.mil/cci">CCI-000123</ident>
+  <ident system="https://www.cisecurity.org/controls/v8">8:3.14</ident>
+  <ident system="https://attack.mitre.org/techniques">T1565</ident>
+  <!-- NO metadata elements - fixes Vulcan import issues -->
+</Rule>
 ```
 
-**Graceful degradation** - Tools that don't understand extensions ignore them
+**CIS exports** - Dual representation (ident + metadata)
+```xml
+<Rule>
+  <!-- CIS Controls as idents -->
+  <ident system="http://cisecurity.org/20-cc/v8"/>
+  <!-- MITRE as idents (not metadata - cleaner) -->
+  <ident system="https://attack.mitre.org/techniques">T1565</ident>
 
-- CIS-CAT: Reads CIS Controls, ignores MITRE
-- OpenSCAP: Reads XCCDF structure, ignores custom metadata
-- SCC: Processes rules, ignores unknown elements
+  <!-- CIS Controls ALSO in metadata (official structure) -->
+  <metadata>
+    <controls:cis_controls>...</controls:cis_controls>
+  </metadata>
+</Rule>
+```
+
+**Graceful degradation** - Tools process what they understand
+
+- Vulcan: Parses idents → InSpec tags (no namespace errors)
+- CIS-CAT: Reads CIS Controls metadata
+- OpenSCAP: Validates XCCDF structure
+- SCC: Processes all ident elements
 
 **5. What Users Get**
 
@@ -116,19 +133,24 @@ Our enhanced format provides more comprehensive data:
 xmlns:xccdf="http://checklists.nist.gov/xccdf/1.2"
 xmlns:xhtml="http://www.w3.org/1999/xhtml"
 xmlns:controls="http://cisecurity.org/controls"
-xmlns:cc6="http://cisecurity.org/20-cc/v6.1"
 xmlns:cc7="http://cisecurity.org/20-cc/v7.0"
 xmlns:cc8="http://cisecurity.org/20-cc/v8.0"
-xmlns:dc="http://purl.org/dc/elements/1.1/"
-xmlns:enhanced="http://cisecurity.org/xccdf/enhanced/1.0">
+xmlns:dc="http://purl.org/dc/elements/1.1/">
+
+<!-- Profiles at Benchmark level (proper XCCDF standard) -->
+<xccdf:Profile id="level-1-server">
+  <xccdf:title>Level 1 - Server</xccdf:title>
+  <xccdf:select idref="rule-6.1.1" selected="true"/>
+</xccdf:Profile>
 ```
 
 **Breakdown:**
 
 - `xccdf`, `xhtml` - Standard NIST namespaces (required)
-- `controls`, `cc6`, `cc7`, `cc8` - CIS official namespaces
+- `controls` - CIS official namespace (for metadata structure)
+- `cc7`, `cc8` - CIS Controls version namespaces
 - `dc` - Dublin Core for NIST references (W3C standard)
-- `enhanced` - **Our extension namespace** for MITRE/custom metadata
+- No custom namespaces needed - MITRE uses ident elements
 
 ### Structure
 
@@ -155,25 +177,17 @@ xmlns:enhanced="http://cisecurity.org/xccdf/enhanced/1.0">
 </controls:framework>
 </controls:cis_controls>
 
-<!-- OUR EXTENSIONS (clearly marked) -->
-<enhanced:mitre xmlns:enhanced="http://cisecurity.org/xccdf/enhanced/1.0">
-<enhanced:technique id="T1565.001">Data Manipulation</enhanced:technique>
-<enhanced:tactic id="TA0040">Impact</enhanced:tactic>
-<enhanced:mitigation id="M1022">Restrict File and Directory Permissions</enhanced:mitigation>
-</enhanced:mitre>
-
-<!-- CIS Profiles (our extension - CIS uses <Profile> elements instead) -->
-<enhanced:profiles>
-<enhanced:profile>Level 1 - Server</enhanced:profile>
-<enhanced:profile>Level 1 - Workstation</enhanced:profile>
-</enhanced:profiles>
 </xccdf:metadata>
 
-<!-- CIS Controls ident elements (CIS official pattern) -->
-<xccdf:ident cc8:controlURI="http://cisecurity.org/20-cc/v8.0/control/3/subcontrol/14"
-system="http://cisecurity.org/20-cc/v8.0"/>
-<xccdf:ident cc7:controlURI="http://cisecurity.org/20-cc/v7.0/control/14/subcontrol/9"
-system="http://cisecurity.org/20-cc/v7.0"/>
+<!-- MITRE as ident elements (not metadata - cleaner, no namespace pollution) -->
+<xccdf:ident system="https://attack.mitre.org/techniques">T1565</xccdf:ident>
+<xccdf:ident system="https://attack.mitre.org/techniques">T1565.001</xccdf:ident>
+<xccdf:ident system="https://attack.mitre.org/tactics">TA0040</xccdf:ident>
+<xccdf:ident system="https://attack.mitre.org/mitigations">M1022</xccdf:ident>
+
+<!-- CIS Controls also as ident elements (dual representation) -->
+<xccdf:ident system="http://cisecurity.org/20-cc/v8"/>
+<xccdf:ident system="http://cisecurity.org/20-cc/v7"/>
 
 <xccdf:rationale>...</xccdf:rationale>
 <xccdf:fixtext>...</xccdf:fixtext>
@@ -241,14 +255,23 @@ Create `enhanced-metadata.xsd` defining our extensions
 
 **Current Implementation:**
 
-- `enhanced:` namespace for MITRE/custom metadata
-- CIS Controls in official `controls:` structure
-- Dublin Core for NIST references
-- 318 CIS Controls metadata blocks
-- 296 MITRE ATT&CK blocks
-- Tested with OpenSCAP, SCC
+**DISA Exports:**
 
-**Result:** More comprehensive than CIS official while maintaining full compatibility.
+- All compliance data as ident elements (CCI, CIS Controls, MITRE)
+- No metadata elements (fixes Vulcan import issues)
+- Profiles at Benchmark level
+- Single namespace declaration (no pollution)
+
+**CIS Exports:**
+
+- CIS Controls in BOTH ident and metadata (dual representation)
+- MITRE as ident elements (not metadata - cleaner)
+- Profiles at Benchmark level
+- Official `controls:` namespace for metadata structure
+- Dublin Core for NIST references
+- Tested with OpenSCAP, SCC, Vulcan
+
+**Result:** DISA-compatible and CIS-compatible while maintaining full data preservation.
 
 ---
 
