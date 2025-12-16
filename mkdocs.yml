@@ -63,6 +63,7 @@ nav:
 
   - Developer Guide:
       - Contributing: developer-guide/contributing.md
+      - Python Project Setup Guide: developer-guide/python-project-setup-guide.md
       - Architecture Overview: developer-guide/architecture.md
       - Data Flow Pipeline: developer-guide/data-flow-pipeline.md
       - MappingEngine User Guide: developer-guide/mapping-engine-guide.md
