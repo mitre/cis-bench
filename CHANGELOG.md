@@ -1,7 +1,27 @@
 # CHANGELOG
 
 
+## v0.2.3 (2025-12-16)
+
+### Documentation
+
+- Add comprehensive Python project setup guide
+  ([`d4b383f`](https://github.com/mitre/cis-bench/commit/d4b383f5d9248ac652488ec1c69af82d9c16d036))
+
+Reusable template for MITRE Python projects covering uv, ruff, semantic-release, CI/CD, testing, and
+  community health files.
+
+Also copied to repo-minder for organizational reuse.
+
+Authored by: Aaron Lippold <lippold@gmail.com>
+
+
 ## v0.2.2 (2025-12-15)
+
+### Chores
+
+- Release 0.2.2
+  ([`9b4cd5b`](https://github.com/mitre/cis-bench/commit/9b4cd5b2b9d64fde720c61b3d14bdd3d56ad8adc))
 
 ### Documentation
 
