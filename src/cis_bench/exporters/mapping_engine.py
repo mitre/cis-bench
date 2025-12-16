@@ -227,18 +227,39 @@ class VariableSubstituter:
     """Handles variable substitution in templates."""
 
     @staticmethod
-    def substitute(template: str, context: dict[str, Any]) -> str:
+    def substitute(template: str, context: dict[str, Any]) -> Any:
         """Replace {variables} in template with context values.
+
+        Preserves type if template is a single variable (e.g., "{item.ig1}" returns bool).
+        Converts to string if mixing text and variables (e.g., "F-{ref}" returns string).
 
         Examples:
             template: "F-{ref_normalized}"
             context: {"ref_normalized": "3_1_1"}
-            result: "F-3_1_1"
-        """
+            result: "F-3_1_1" (string)
 
+            template: "{item.ig1}"
+            context: {"item": obj with ig1=False}
+            result: False (bool preserved!)
+        """
+        # Check if template is a single variable (preserve type)
+        single_var_match = re.fullmatch(r"\{([^}]+)\}", template)
+        if single_var_match:
+            var_name = single_var_match.group(1)
+            parts = var_name.split(".")
+            value = context
+
+            for part in parts:
+                if isinstance(value, dict):
+                    value = value.get(part, "")
+                else:
+                    value = getattr(value, part, "")
+
+            return value  # Preserve original type!
+
+        # Mixed template - convert all to strings
         def replacer(match):
             var_name = match.group(1)
-            # Handle nested: {control.version}
             parts = var_name.split(".")
             value = context
 
@@ -862,7 +883,8 @@ class MappingEngine:
             # Get field value using config
             value = self._build_field_value(field_name, field_mapping, rec, context)
 
-            if value is None:
+            # Skip only if no value AND no attributes (empty elements with attributes are OK)
+            if value is None and not attributes_config:
                 continue
 
             # Pattern 1: Multiple values (like CCIs)
@@ -887,8 +909,8 @@ class MappingEngine:
                     rule_fields[target_element] = [FieldType(value=item) for item in value]
                 continue
 
-            # Pattern 2: Has attributes (like fixtext/@fixref)
-            if attributes_config and value:
+            # Pattern 2: Has attributes (like fixtext/@fixref or fix/@id with empty content)
+            if attributes_config:
                 # Substitute variables in attributes
                 attr_values = {
                     k: VariableSubstituter.substitute(v, context)
@@ -897,13 +919,22 @@ class MappingEngine:
 
                 # Construct with attributes
                 # NOTE: Can't use _construct_typed_element because we need to pass attributes
-                # Keep this specialized for now
+                # Handle empty elements (like <fix id="..." />) - value can be None or ""
                 if hasattr(FieldType, "__dataclass_fields__"):
                     field_def = FieldType.__dataclass_fields__
                     if "content" in field_def:
-                        rule_fields[target_element] = [FieldType(content=[value], **attr_values)]
+                        # Use empty list if value is None/empty (for self-closing elements)
+                        content_value = [value] if value else []
+                        rule_fields[target_element] = [
+                            FieldType(content=content_value, **attr_values)
+                        ]
                     elif "value" in field_def:
-                        rule_fields[target_element] = [FieldType(value=value, **attr_values)]
+                        # Use empty string if value is None
+                        value_to_use = value if value is not None else ""
+                        rule_fields[target_element] = [FieldType(value=value_to_use, **attr_values)]
+                    else:
+                        # Just attributes, no content field (rare)
+                        rule_fields[target_element] = [FieldType(**attr_values)]
                 continue
 
             # Pattern 3: Simple field (default)
@@ -1429,9 +1460,11 @@ class MappingEngine:
         # Add attributes from config
         for attr_name, attr_template in attrs.items():
             attr_value = VariableSubstituter.substitute(attr_template, {"item": item})
-            # Boolean to lowercase string for XML
+            # Boolean to lowercase string for XML (handle both bool and string "True"/"False")
             if isinstance(attr_value, bool):
                 attr_value = str(attr_value).lower()
+            elif isinstance(attr_value, str) and attr_value in ["True", "False"]:
+                attr_value = attr_value.lower()
             else:
                 attr_value = str(attr_value)
             elem.set(attr_name, attr_value)
