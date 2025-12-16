@@ -260,7 +260,7 @@ Elements in custom namespace:
 ```yaml
 metadata:
 target_element: "metadata"
-structure: "custom_namespace"
+structure: "metadata_from_config"
 namespace: "http://cisecurity.org/xccdf/metadata/1.0"
 enabled: true
 components:
@@ -761,7 +761,7 @@ content: "{nist_control_id}"
 ```yaml
 metadata:
 target_element: "metadata"
-structure: "custom_namespace"
+structure: "metadata_from_config"
 namespace: "http://cisecurity.org/xccdf/metadata/1.0"
 components:
 

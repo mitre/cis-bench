@@ -14,13 +14,195 @@ This design document describes the technical architecture. The system implements
 
 The **MappingEngine** is a configuration-driven transformation engine that maps CIS Benchmark data to various XCCDF export styles (DISA STIG-compatible, CIS Native, etc.). It reads YAML configuration files that define field mappings, transformations, and composite field assembly.
 
+**December 2025 Refactor:** Fully generic structure handlers enable adding new compliance frameworks (PCI-DSS, ISO 27001, HIPAA) via YAML configuration only - zero code changes required.
+
 ## Purpose
 
 - **Read YAML configurations** that define how to map our Pydantic data models to XCCDF structures
 - **Apply transformations** (strip_html, html_to_markdown, composite field assembly)
-- **Handle complex XCCDF structures** (embedded XML tags, nested elements, variable substitution)
+- **Generate structures generically** using 3 core handlers (ident, metadata, profiles)
 - **Support multiple export styles** without changing code (just swap YAML config)
-- **Be extensible** for new transformations and field types
+- **Be extensible** for new frameworks via YAML only
+
+## Generic Structure Handlers (Dec 2025)
+
+### 1. ident_from_list - Generic Ident Generation
+
+**Purpose:** Generate `<ident>` elements from any list
+
+**Works For:**
+
+- CCIs (DoD)
+- CIS Controls (v7, v8)
+- MITRE ATT&CK (techniques, tactics, mitigations)
+- PCI-DSS requirements
+- ISO 27001 controls
+- HIPAA requirements
+- Any compliance framework index
+
+**Complete Config Spec:**
+```yaml
+field_name:
+  target_element: "ident"
+  structure: "ident_from_list"
+  source_field: "cis_controls"  # Or "mitre_mapping.techniques", etc.
+  ident_spec:
+    system_template: "https://org.com/framework/v{item.version}"
+    value_template: "{item.id}"  # Or just "{item}" for simple lists
+    attributes:  # Optional - for namespace attributes
+
+      - name: "controlURI"
+        template: "https://org.com/controls/{item.id}"
+        namespace_prefix: "fw{item.version}"
+```
+
+**Template Variables:**
+
+- `{item}` - For simple string lists
+- `{item.field}` - For object lists (item.version, item.control, etc.)
+- `{group_key}` - When used with grouping
+
+**Output Example:**
+```xml
+<ident system="https://www.cisecurity.org/controls/v8">8:3.14</ident>
+<ident system="https://attack.mitre.org/techniques">T1565</ident>
+<ident system="https://www.pcisecuritystandards.org/pci_dss/v4.0">Requirement-1.2.1</ident>
+```
+
+**Implementation:** `MappingEngine.generate_idents_from_config()`
+
+### 2. metadata_from_config - Generic Nested XML
+
+**Purpose:** Generate ANY nested XML structure from YAML specification
+
+**Works For:**
+
+- CIS Controls metadata (official nested structure)
+- PCI-DSS requirement hierarchies
+- ISO 27001 control families
+- HIPAA safeguard categories
+- Any hierarchical compliance data
+
+**Complete Config Spec:**
+```yaml
+field_name:
+  target_element: "metadata"
+  structure: "metadata_from_config"
+  source_field: "cis_controls"
+  requires_post_processing: true  # lxml elements injected after xsdata serialization
+  metadata_spec:
+    root_element: "cis_controls"
+    namespace: "http://cisecurity.org/controls"
+    namespace_prefix: "controls"
+    allow_empty: true  # Generate empty element if no data
+
+    # Grouping (optional)
+    group_by: "item.version"  # Group items by this field
+
+    group_element:
+      element: "framework"
+      attributes:
+        urn: "urn:cisecurity.org:controls:{group_key}"
+
+      item_element:
+        element: "safeguard"
+        attributes:
+          title: "{item.title}"
+          urn: "urn:cisecurity.org:controls:{item.version}:{item.control}"
+
+        children:
+
+          - element: "implementation_groups"
+            attributes:
+              ig1: "{item.ig1}"
+              ig2: "{item.ig2}"
+              ig3: "{item.ig3}"
+
+          - element: "asset_type"
+            content: "Unknown"  # Static content
+
+          - element: "security_function"
+            content: "Protect"
+```
+
+**Key Features:**
+
+- **Grouping:** `group_by` field groups items (e.g., by version)
+- **Nesting:** Unlimited depth via recursive children
+- **Attributes:** Template-based with variable substitution
+- **Content:** Static or template-based
+- **Empty handling:** Optional empty element generation
+- **Type preservation:** Booleans converted to lowercase ("true"/"false")
+
+**Output Example:**
+```xml
+<metadata>
+  <controls:cis_controls>
+    <controls:framework urn="urn:cisecurity.org:controls:8">
+      <controls:safeguard title="Log Sensitive Data Access" urn="urn:cisecurity.org:controls:8:3.14">
+        <controls:implementation_groups ig1="false" ig2="false" ig3="true"/>
+        <controls:asset_type>Unknown</controls:asset_type>
+        <controls:security_function>Protect</controls:security_function>
+      </controls:safeguard>
+    </controls:framework>
+  </controls:cis_controls>
+</metadata>
+```
+
+**Implementation:**
+
+- `MappingEngine.generate_metadata_from_config()`
+- `MappingEngine._build_config_item()`
+- `MappingEngine._build_config_child()`
+- `XCCDFUnifiedExporter._inject_metadata_from_config()`
+
+### 3. generate_profiles_from_rules - Profile Generation
+
+**Purpose:** Generate Benchmark-level `<Profile>` elements from recommendation.profiles field
+
+**Works For:**
+
+- CIS Levels (Level 1/2/3 × Server/Workstation)
+- DISA MAC levels (MAC-1/2/3 × Classified/Sensitive/Public)
+- PCI-DSS SAQ types (SAQ A/B/C/D)
+- Custom applicability hierarchies
+
+**Complete Config Spec:**
+```yaml
+benchmark:
+  profiles:
+    generate_from_rules: true
+    profile_mappings:
+
+      - match: "Level 1 - Server"  # String to match in rec.profiles
+        id: "level-1-server"
+        title: "Level 1 - Server"
+        description: "CIS Level 1 for server environments"
+
+      - match: "Level 2 - Server"
+        id: "level-2-server"
+        title: "Level 2 - Server"
+        description: "CIS Level 2 for server environments"
+```
+
+**How It Works:**
+1. Scans all recommendations
+2. For each profile mapping, finds recommendations where `profile_mapping.match` is in `recommendation.profiles`
+3. Creates Profile element with select list of matching rule IDs
+4. Adds to Benchmark (not Rules)
+
+**Output Example:**
+```xml
+<Profile id="level-1-server">
+  <title>Level 1 - Server</title>
+  <description>CIS Level 1 for server environments</description>
+  <select idref="xccdf_cis_rule_6_1_1" selected="true"/>
+  <select idref="xccdf_cis_rule_6_1_2" selected="true"/>
+  <!-- ... ~250 more rules -->
+</Profile>
+```
+
+**Implementation:** `MappingEngine.generate_profiles_from_rules()`
 
 ## Architecture
 

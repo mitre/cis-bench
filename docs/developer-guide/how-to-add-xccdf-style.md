@@ -1,8 +1,13 @@
 # How to Add a New XCCDF Style
 
-**Adding a new XCCDF style is 95% configuration, 5% code!**
+**Adding a new XCCDF style is 100% configuration, 0% code!**
 
-Create YAML config → Add CLI option → Test → Validate → Done.
+Create YAML config → Test → Done. (No CLI changes needed with generic handlers)
+
+!!! success "December 2025 Update"
+With generic structure handlers, adding frameworks like PCI-DSS, ISO 27001, or HIPAA requires **ONLY YAML configuration** - zero Python code changes!
+
+See working example: [Adding PCI-DSS](adding-pci-dss.md)
 
 !!! info "Documentation Path"
     **You are here:** Developer Guide > How To Add XCCDF Style
@@ -98,11 +103,16 @@ field_mappings:
     source_field: "description"
     transform: "html_to_markdown"
 
-  # Reuse existing CIS Controls structure
-  cis_controls:
-    structure: "official_cis_controls"
-    namespace: "http://cisecurity.org/controls"
+  # Use generic metadata handler for CIS Controls
+  cis_controls_metadata:
+    structure: "metadata_from_config"
+    requires_post_processing: true
     source_field: "cis_controls"
+    metadata_spec:
+      root_element: "cis_controls"
+      namespace: "http://cisecurity.org/controls"
+      group_by: "item.version"
+      # ... (see cis_style.yaml for full spec)
 ```
 
 **The configuration is the implementation.** The MappingEngine reads this YAML and executes the transformations automatically.
@@ -236,14 +246,26 @@ xmllint --schema schemas/xccdf_1.2.xsd --noout output.xml
 # Add metadata, test again
 ```
 
-### 3. Reuse Structures
+### 3. Use Generic Handlers
 
-The system provides proven structures:
+The system provides 3 generic handlers that work for ANY framework:
 
 ```yaml
-cis_controls:
-  structure: "official_cis_controls"  # Reuses proven structure
-  source_field: "cis_controls"
+# For simple indices (CCIs, controls, techniques)
+framework_controls:
+  structure: "ident_from_list"
+  source_field: "controls"
+  ident_spec:
+    system_template: "https://framework.org/v{item.version}"
+    value_template: "{item.id}"
+
+# For nested hierarchies (CIS Controls, PCI-DSS requirements)
+framework_metadata:
+  structure: "metadata_from_config"
+  requires_post_processing: true
+  source_field: "controls"
+  metadata_spec:
+    # Define structure in YAML
 ```
 
 ### 4. Always Validate Output
