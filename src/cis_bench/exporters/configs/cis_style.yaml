@@ -41,6 +41,36 @@ group_elements:
 # Benchmark-level mappings
 benchmark:
   id_template: "xccdf_org.cisecurity.benchmarks_{platform}"
+
+  # Profile generation - same as DISA
+  profiles:
+    generate_from_rules: true
+    profile_mappings:
+      - match: "Level 1 - Server"
+        id: "level-1-server"
+        title: "Level 1 - Server"
+        description: "CIS Level 1 recommendations for server environments"
+      - match: "Level 1 - Workstation"
+        id: "level-1-workstation"
+        title: "Level 1 - Workstation"
+        description: "CIS Level 1 recommendations for workstation environments"
+      - match: "Level 2 - Server"
+        id: "level-2-server"
+        title: "Level 2 - Server"
+        description: "CIS Level 2 recommendations for server environments"
+      - match: "Level 2 - Workstation"
+        id: "level-2-workstation"
+        title: "Level 2 - Workstation"
+        description: "CIS Level 2 recommendations for workstation environments"
+      - match: "Level 3 - Server"
+        id: "level-3-server"
+        title: "Level 3 - Server"
+        description: "CIS Level 3 recommendations for server environments"
+      - match: "Level 3 - Workstation"
+        id: "level-3-workstation"
+        title: "Level 3 - Workstation"
+        description: "CIS Level 3 recommendations for workstation environments"
+
   title:
     source: "title"
     transform: "none"
@@ -113,8 +143,14 @@ rule_elements:
   cis_controls_ident:
     xccdf_type: "IdentType"
 
-  enhanced_metadata:
-    xccdf_type: "MetadataType"
+  mitre_techniques:
+    xccdf_type: "IdentType"
+
+  mitre_tactics:
+    xccdf_type: "IdentType"
+
+  mitre_mitigations:
+    xccdf_type: "IdentType"
 
 # Field mappings - Clean separated structure
 field_mappings:
@@ -188,61 +224,78 @@ field_mappings:
         transform: "html_to_markdown"
     description: "Audit procedure in Markdown format"
 
-  # === CIS CONTROLS (Official Nested Structure) ===
+  # === CIS CONTROLS (Dual Representation - Official Pattern) ===
+
+  # CIS Controls as METADATA (Official nested structure - matches CIS-CAT)
   cis_controls_metadata:
     target_element: "metadata"
-    structure: "official_cis_controls"
-    namespace: "http://cisecurity.org/controls"
-    description: "Official CIS Controls structure matching CIS-CAT format"
-    source_logic: "build_cis_controls"
+    structure: "metadata_from_config"
     source_field: "cis_controls"
+    requires_post_processing: true  # lxml elements injected after serialization
+    metadata_spec:
+      root_element: "cis_controls"
+      namespace: "http://cisecurity.org/controls"
+      namespace_prefix: "controls"
+      allow_empty: true
+      group_by: "item.version"
+      group_element:
+        element: "framework"
+        attributes:
+          urn: "urn:cisecurity.org:controls:{group_key}"
+        item_element:
+          element: "safeguard"
+          attributes:
+            title: "{item.title}"
+            urn: "urn:cisecurity.org:controls:{item.version}:{item.control}"
+          children:
+            - element: "implementation_groups"
+              attributes:
+                ig1: "{item.ig1}"
+                ig2: "{item.ig2}"
+                ig3: "{item.ig3}"
+            - element: "asset_type"
+              content: "Unknown"
+            - element: "security_function"
+              content: "Protect"
 
-  # === CIS CONTROLS IDENT ELEMENTS (cc7/cc8 URIs) ===
+  # CIS Controls as IDENT (With cc7/cc8 controlURI attributes)
   cis_controls_ident:
     target_element: "ident"
-    multiple: true
-    structure: "cis_controls_ident"
-    source_logic: "generate_cis_idents"
+    structure: "ident_from_list"
     source_field: "cis_controls"
-    description: "Generate <ident cc7:controlURI=...> and <ident cc8:controlURI=...>"
+    ident_spec:
+      system_template: "http://cisecurity.org/20-cc/v{item.version}"
+      value_template: ""  # Empty per CIS convention
+      attributes:
+        - name: "controlURI"
+          template: "http://cisecurity.org/20-cc/v{item.version}/control/{item.control}"
+          namespace_prefix: "cc{item.version}"
 
-  # === ENHANCED METADATA (MITRE, Profiles, etc.) ===
-  enhanced_metadata:
-    target_element: "metadata"
-    structure: "enhanced_namespace"
-    namespace: "http://cisecurity.org/xccdf/enhanced/1.0"
-    enabled: true
-    description: "Extended metadata not in official CIS XCCDF (MITRE, profiles)"
-    components:
-      # MITRE ATT&CK
-      - element: "mitre"
-        source_field: "mitre_mapping"
-        optional: true
-        children:
-          - element: "technique"
-            source_field: "mitre_mapping.techniques"
-            multiple: true
-            attributes:
-              id: "{technique_id}"
-            content: "{technique_name}"
-          - element: "tactic"
-            source_field: "mitre_mapping.tactics"
-            multiple: true
-            attributes:
-              id: "{tactic_id}"
-            content: "{tactic_name}"
-          - element: "mitigation"
-            source_field: "mitre_mapping.mitigations"
-            multiple: true
-            attributes:
-              id: "{mitigation_id}"
-            content: "{mitigation_name}"
+  # === MITRE ATT&CK AS IDENT ELEMENTS (Not metadata - cleaner) ===
 
-      # CIS Profiles (simplified - official uses top-level Profile elements)
-      - element: "profile"
-        source_field: "profiles"
-        multiple: true
-        content: "{profile}"
+  mitre_techniques:
+    target_element: "ident"
+    structure: "ident_from_list"
+    source_field: "mitre_mapping.techniques"
+    ident_spec:
+      system_template: "https://attack.mitre.org/techniques"
+      value_template: "{item}"
+
+  mitre_tactics:
+    target_element: "ident"
+    structure: "ident_from_list"
+    source_field: "mitre_mapping.tactics"
+    ident_spec:
+      system_template: "https://attack.mitre.org/tactics"
+      value_template: "{item}"
+
+  mitre_mitigations:
+    target_element: "ident"
+    structure: "ident_from_list"
+    source_field: "mitre_mapping.mitigations"
+    ident_spec:
+      system_template: "https://attack.mitre.org/mitigations"
+      value_template: "{item}"
 
 # Transformation definitions
 transformations:

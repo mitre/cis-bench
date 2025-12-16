@@ -104,7 +104,11 @@ class XCCDFExporter(BaseExporter):
         loaded YAML configuration.
         """
         platform = benchmark.title.lower().split()[0] if benchmark.title else "CIS"
-        context = {"platform": platform, "benchmark": benchmark}
+        context = {
+            "platform": platform,
+            "benchmark": benchmark,
+            "recommendations": benchmark.recommendations,  # Needed for profile generation
+        }
 
         # Build all Groups (each contains one Rule)
         groups = []
@@ -113,7 +117,7 @@ class XCCDFExporter(BaseExporter):
             group = self.engine.map_group(rec, rule, context)
             groups.append(group)
 
-        # Build Benchmark
+        # Build Benchmark (will generate Profiles if configured)
         xccdf_bench = self.engine.map_benchmark(benchmark, groups, context)
 
         # Store elements needed for post-processing
@@ -134,20 +138,8 @@ class XCCDFExporter(BaseExporter):
         self._dc_elements = getattr(self.engine, "_dc_elements", [])
         logger.debug(f"Engine has _dc_elements: {has_dc}, value: {self._dc_elements}")
 
-        # CIS Controls objects (CIS style)
-        self._cis_controls_objects = getattr(self.engine, "_cis_controls_objects", [])
-
-        # Enhanced metadata (CIS style)
-        self._enhanced_metadata_components = getattr(
-            self.engine, "_enhanced_metadata_components", []
-        )
-
-        logger.info(
-            f"Stored post-processing data: "
-            f"dc_elements={self._dc_elements}, "
-            f"cis_controls={len(self._cis_controls_objects)}, "
-            f"enhanced={len(self._enhanced_metadata_components)}"
-        )
+        # Post-processing data (Dublin Core for NIST references)
+        logger.info("Post-processing setup: Dublin Core elements ready for injection")
 
     def _apply_post_processing(self, xml_output: str, benchmark: Benchmark) -> str:
         """Apply post-processing pipeline based on style config.
@@ -201,12 +193,9 @@ class XCCDFExporter(BaseExporter):
         )
         logger.debug("Applied Dublin Core injection")
 
-        # Style-specific post-processors
-        if self.style == "cis":
-            xml_output = self._apply_cis_post_processors(xml_output, namespaces_config)
-        elif self.style == "disa":
+        # DISA-specific post-processors (before namespace cleanup)
+        if self.style == "disa":
             xml_output = self._apply_disa_post_processors(xml_output, namespaces_config)
-        # Future: elif self.style == "pci-dss": ...
 
         # Final namespace cleanup (all styles)
         xml_output = XCCDFPostProcessor.process(
@@ -217,196 +206,77 @@ class XCCDFExporter(BaseExporter):
         )
         logger.debug("Applied final post-processing")
 
+        # CIS-specific post-processors (AFTER namespace cleanup to preserve metadata)
+        if self.style == "cis":
+            xml_output = self._apply_cis_post_processors(xml_output, namespaces_config)
+
         return xml_output
 
     def _apply_cis_post_processors(self, xml_output: str, namespaces: dict) -> str:
-        """Apply CIS-specific post-processors."""
-        xccdf_ns = namespaces.get("xccdf")
-        controls_ns = namespaces.get("controls")
-        enhanced_ns = namespaces.get("enhanced")
-        cc7_ns = namespaces.get("cc7")
-        cc8_ns = namespaces.get("cc8")
+        """Apply CIS-specific post-processors.
 
-        # Inject CIS Controls metadata
-        if self._cis_controls_objects:
-            logger.debug(
-                f"Injecting {len(self._cis_controls_objects)} CIS Controls metadata blocks"
-            )
-            xml_output = self._inject_cis_controls_metadata(xml_output, xccdf_ns, controls_ns)
+        Injects metadata elements built by metadata_from_config handler.
+        This is a GENERIC pattern - any style can use requires_post_processing flag.
+        """
+        return self._inject_metadata_from_config(xml_output)
 
-        # Inject enhanced metadata (MITRE, profiles)
-        if self._enhanced_metadata_components:
-            logger.debug(
-                f"Injecting enhanced metadata from {len(self._enhanced_metadata_components)} components"
-            )
-            xml_output = self._inject_enhanced_metadata(xml_output, xccdf_ns, enhanced_ns)
+    def _inject_metadata_from_config(self, xml_output: str) -> str:
+        """Generic metadata injection for elements marked requires_post_processing.
 
-        # Add cc7/cc8 controlURI attributes
-        xml_output = self._add_cis_controls_ident_uris(xml_output, xccdf_ns, cc7_ns, cc8_ns)
+        This is a documented pattern for complex nested structures that can't be
+        serialized directly by xsdata (lxml Elements).
 
-        return xml_output
+        Pattern:
+        1. Handler builds lxml Element from config
+        2. Stores in _metadata_for_post_processing
+        3. This method injects them after xsdata serialization
+
+        Works for: CIS Controls, PCI-DSS hierarchies, ISO 27001, etc.
+        """
+        from lxml import etree
+
+        metadata_elements = getattr(self.engine, "_metadata_for_post_processing", [])
+
+        if not metadata_elements:
+            logger.debug("No metadata for post-processing")
+            return xml_output
+
+        logger.info(f"Injecting {len(metadata_elements)} metadata elements (config-driven)")
+
+        root = etree.fromstring(xml_output.encode("utf-8"))
+        rules = root.xpath(".//*[local-name()='Rule']")
+
+        # Inject metadata into corresponding rules
+        for i, rule in enumerate(rules):
+            if i >= len(metadata_elements):
+                break
+
+            metadata_elem = metadata_elements[i]
+
+            # Wrap in xccdf:metadata element
+            xccdf_ns = root.nsmap.get(None) or root.nsmap.get("default")
+            if xccdf_ns:
+                metadata_wrapper = etree.SubElement(rule, f"{{{xccdf_ns}}}metadata")
+            else:
+                metadata_wrapper = etree.SubElement(rule, "metadata")
+
+            metadata_wrapper.append(metadata_elem)
+
+        return etree.tostring(root, encoding="unicode", pretty_print=True)
 
     def _apply_disa_post_processors(self, xml_output: str, namespaces: dict) -> str:
         """Apply DISA-specific post-processors.
 
-        Injects CIS Controls and enhanced metadata (MITRE, profiles) same as CIS style.
-        The data is identical - only the XCCDF structure differs between styles.
+        DISA exports use <ident> elements for all compliance data (CCIs, CIS Controls, MITRE).
+        No metadata injection needed - all data is handled by MappingEngine via ident_from_list.
         """
-        logger.debug("Applying DISA post-processors: CIS Controls and enhanced metadata injection")
+        logger.debug("Applying DISA post-processors: No metadata injection (using ident elements)")
 
-        # Get namespaces for metadata injection
-        xccdf_ns = namespaces.get("default", "http://checklists.nist.gov/xccdf/1.2")
-        controls_ns = "http://cisecurity.org/controls"
-        enhanced_ns = "http://cisecurity.org/xccdf/enhanced/1.0"
-
-        # Inject CIS Controls metadata (same data as CIS style)
-        xml_output = self._inject_cis_controls_metadata(xml_output, xccdf_ns, controls_ns)
-
-        # Inject enhanced metadata: MITRE ATT&CK, profiles, etc. (same data as CIS style)
-        xml_output = self._inject_enhanced_metadata(xml_output, xccdf_ns, enhanced_ns)
+        # DISA STIGs don't use metadata elements - all compliance data is in <ident> elements
+        # CCIs, CIS Controls, and MITRE ATT&CK are all generated by MappingEngine
+        # Nothing to do here - just return the XML as-is
 
         return xml_output
-
-    def _inject_cis_controls_metadata(self, xml_str: str, xccdf_ns: str, controls_ns: str) -> str:
-        """Inject CIS Controls official nested structure into metadata elements."""
-        from lxml import etree
-        from xsdata.formats.dataclass.serializers import XmlSerializer
-        from xsdata.formats.dataclass.serializers.config import SerializerConfig
-
-        if not self._cis_controls_objects:
-            return xml_str
-
-        root = etree.fromstring(xml_str.encode("utf-8"))
-        # Find rules with any XCCDF namespace (1.1, 1.2, etc.) using local-name()
-        rules = root.xpath(".//*[local-name()='Rule']")
-
-        config = SerializerConfig(pretty_print=False)
-        serializer = XmlSerializer(config=config)
-
-        injected_count = 0
-
-        for i, rule in enumerate(rules):
-            if i >= len(self._cis_controls_objects):
-                break
-
-            cis_controls_obj = self._cis_controls_objects[i]
-
-            if not cis_controls_obj.framework:
-                continue
-
-            # Serialize CisControls to XML
-            cis_controls_xml = serializer.render(cis_controls_obj)
-            cis_controls_elem = etree.fromstring(cis_controls_xml.encode("utf-8"))
-
-            # Find or create metadata element
-            ns = {"xccdf": xccdf_ns}
-            metadata = rule.xpath("./xccdf:metadata", namespaces=ns)
-            if not metadata:
-                metadata = rule.xpath("./metadata")
-
-            if not metadata:
-                metadata_elem = etree.Element("{http://checklists.nist.gov/xccdf/1.2}metadata")
-                # Insert after rationale
-                rationale = rule.xpath("./xccdf:rationale | ./rationale", namespaces=ns)
-                if rationale:
-                    rationale_idx = list(rule).index(rationale[0])
-                    rule.insert(rationale_idx + 1, metadata_elem)
-                else:
-                    rule.append(metadata_elem)
-                metadata = [metadata_elem]
-
-            metadata[0].append(cis_controls_elem)
-            injected_count += 1
-
-        logger.info(f"Injected CIS Controls metadata into {injected_count} rules")
-        return etree.tostring(root, encoding="unicode", pretty_print=True)
-
-    def _inject_enhanced_metadata(self, xml_str: str, xccdf_ns: str, enhanced_ns: str) -> str:
-        """Inject enhanced metadata (MITRE, profiles) into metadata elements."""
-        from collections import defaultdict
-
-        from lxml import etree
-
-        if not self._enhanced_metadata_components:
-            return xml_str
-
-        root = etree.fromstring(xml_str.encode("utf-8"))
-        # Find rules with any XCCDF namespace (1.1, 1.2, etc.) using local-name()
-        rules = root.xpath(".//*[local-name()='Rule']")
-        ns = {"xccdf": xccdf_ns}
-
-        # Group components by recommendation ref
-        components_by_rule = defaultdict(list)
-        for comp_data in self._enhanced_metadata_components:
-            rec = comp_data["recommendation"]
-            components_by_rule[rec.ref].append((rec, comp_data["config"]))
-
-        added_mitre_count = 0
-        added_profile_count = 0
-
-        for rule in rules:
-            version_elem = rule.xpath("./xccdf:version", namespaces=ns)
-            if not version_elem:
-                version_elem = rule.xpath("./version")
-            if not version_elem or not version_elem[0].text:
-                continue
-
-            rule_ref = version_elem[0].text
-
-            if rule_ref not in components_by_rule:
-                continue
-
-            rec, _ = components_by_rule[rule_ref][0]
-
-            # Find or create metadata
-            metadata = rule.xpath("./xccdf:metadata", namespaces=ns)
-            if not metadata:
-                metadata = rule.xpath("./metadata")
-            if not metadata:
-                metadata_elem = etree.Element(f"{{{xccdf_ns}}}metadata")
-                rule.append(metadata_elem)
-                metadata = [metadata_elem]
-
-            metadata_elem = metadata[0]
-
-            # Create enhanced container
-            enhanced_elem = etree.SubElement(metadata_elem, f"{{{enhanced_ns}}}enhanced")
-
-            # Add MITRE if present
-            if rec.mitre_mapping:
-                mitre_elem = etree.SubElement(enhanced_elem, f"{{{enhanced_ns}}}mitre")
-
-                if rec.mitre_mapping.techniques:
-                    for tech in rec.mitre_mapping.techniques:
-                        tech_elem = etree.SubElement(mitre_elem, f"{{{enhanced_ns}}}technique")
-                        tech_elem.set("id", tech)
-                        tech_elem.text = tech
-
-                if rec.mitre_mapping.tactics:
-                    for tactic in rec.mitre_mapping.tactics:
-                        tac_elem = etree.SubElement(mitre_elem, f"{{{enhanced_ns}}}tactic")
-                        tac_elem.set("id", tactic)
-                        tac_elem.text = tactic
-
-                if rec.mitre_mapping.mitigations:
-                    for mitigation in rec.mitre_mapping.mitigations:
-                        mit_elem = etree.SubElement(mitre_elem, f"{{{enhanced_ns}}}mitigation")
-                        mit_elem.set("id", mitigation)
-                        mit_elem.text = mitigation
-
-                added_mitre_count += 1
-
-            # Add profiles
-            if rec.profiles:
-                for profile in rec.profiles:
-                    profile_elem = etree.SubElement(enhanced_elem, f"{{{enhanced_ns}}}profile")
-                    profile_elem.text = profile
-                    added_profile_count += 1
-
-        logger.info(
-            f"Injected enhanced metadata: {added_mitre_count} MITRE blocks, {added_profile_count} profiles"
-        )
-        return etree.tostring(root, encoding="unicode", pretty_print=True)
 
     def _add_cis_controls_ident_uris(
         self, xml_str: str, xccdf_ns: str, cc7_ns: str, cc8_ns: str
