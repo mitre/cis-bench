@@ -23,6 +23,35 @@ benchmark:
   # ID generation
   id_template: "xccdf_org.cisecurity_benchmark_{platform}{benchmark_id}"
 
+  # Profile generation - convert CIS profiles to XCCDF Profile elements
+  profiles:
+    generate_from_rules: true
+    profile_mappings:
+      - match: "Level 1 - Server"
+        id: "level-1-server"
+        title: "Level 1 - Server"
+        description: "CIS Level 1 recommendations for server environments"
+      - match: "Level 1 - Workstation"
+        id: "level-1-workstation"
+        title: "Level 1 - Workstation"
+        description: "CIS Level 1 recommendations for workstation environments"
+      - match: "Level 2 - Server"
+        id: "level-2-server"
+        title: "Level 2 - Server"
+        description: "CIS Level 2 recommendations for server environments"
+      - match: "Level 2 - Workstation"
+        id: "level-2-workstation"
+        title: "Level 2 - Workstation"
+        description: "CIS Level 2 recommendations for workstation environments"
+      - match: "Level 3 - Server"
+        id: "level-3-server"
+        title: "Level 3 - Server"
+        description: "CIS Level 3 recommendations for server environments (new, not in all benchmarks)"
+      - match: "Level 3 - Workstation"
+        id: "level-3-workstation"
+        title: "Level 3 - Workstation"
+        description: "CIS Level 3 recommendations for workstation environments (new, not in all benchmarks)"
+
   # Namespaces inherited from base_style.yaml (common + controls/enhanced)
   # Can override here if needed for DISA-specific requirements
 
@@ -215,50 +244,41 @@ field_mappings:
         source_field: "audit"
         transform: "strip_html_keep_code"
 
-  # === CIS CONTROLS (Triggers official structure creation for post-processing) ===
-  cis_controls_metadata:
-    structure: "official_cis_controls"
-    description: "Build CIS Controls objects for metadata injection (handled in post-processing)"
+  # === CIS CONTROLS AS IDENT ELEMENTS ===
+  # DISA STIGs use <ident> elements (like CCIs), not <metadata>
+  cis_controls:
+    target_element: "ident"
+    structure: "ident_from_list"
+    source_field: "cis_controls"
+    ident_spec:
+      system_template: "https://www.cisecurity.org/controls/v{item.version}"
+      value_template: "{item.version}:{item.control}"
 
-  # === ENHANCED METADATA (MITRE, Profiles) ===
-  enhanced_metadata:
-    structure: "custom_namespace"
-    description: "Store enhanced metadata for post-processing injection"
-    components:
-      - element: "cis-control"
-        source_field: "cis_controls"
-        multiple: true
-        attributes:
-          version: "{control.version}"
-          id: "{control.control}"
-          ig1: "{control.ig1}"
-          ig2: "{control.ig2}"
-          ig3: "{control.ig3}"
-        content: "{control.title}"
+  # === MITRE ATT&CK AS IDENT ELEMENTS ===
+  # Techniques, tactics, and mitigations as separate ident elements
+  mitre_techniques:
+    target_element: "ident"
+    structure: "ident_from_list"
+    source_field: "mitre_mapping.techniques"
+    ident_spec:
+      system_template: "https://attack.mitre.org/techniques"
+      value_template: "{item}"
 
-      - element: "profile"
-        source_field: "profiles"
-        multiple: true
-        content: "{profile}"
+  mitre_tactics:
+    target_element: "ident"
+    structure: "ident_from_list"
+    source_field: "mitre_mapping.tactics"
+    ident_spec:
+      system_template: "https://attack.mitre.org/tactics"
+      value_template: "{item}"
 
-      - element: "mitre-technique"
-        source_field: "mitre_mapping.techniques"
-        multiple: true
-        content: "{technique}"
-
-      - element: "mitre-tactic"
-        source_field: "mitre_mapping.tactics"
-        multiple: true
-        content: "{tactic}"
-
-      - element: "mitre-mitigation"
-        source_field: "mitre_mapping.mitigations"
-        multiple: true
-        content: "{mitigation}"
-
-      - element: "assessment-status"
-        source_field: "assessment_status"
-        content: "{assessment_status}"
+  mitre_mitigations:
+    target_element: "ident"
+    structure: "ident_from_list"
+    source_field: "mitre_mapping.mitigations"
+    ident_spec:
+      system_template: "https://attack.mitre.org/mitigations"
+      value_template: "{item}"
 
 # Transformation definitions
 # Transformations inherited from base_style.yaml
@@ -335,17 +355,30 @@ rule_elements:
     xccdf_type: "FixTextType"
     source: "remediation"
 
+  fix:
+    xccdf_type: "FixType"
+    source: "remediation"
+
   check:
     xccdf_type: "CheckType"
     source: "audit"
 
-  cis_controls_metadata:
-    xccdf_type: "MetadataType"
-    description: "CIS Controls metadata (injected in post-processing)"
+  # CIS Controls and MITRE ATT&CK as ident elements
+  cis_controls:
+    xccdf_type: "IdentType"
+    description: "CIS Controls as ident elements"
 
-  enhanced_metadata:
-    xccdf_type: "MetadataType"
-    description: "Enhanced metadata: MITRE ATT&CK, profiles (injected in post-processing)"
+  mitre_techniques:
+    xccdf_type: "IdentType"
+    description: "MITRE ATT&CK techniques as ident elements"
+
+  mitre_tactics:
+    xccdf_type: "IdentType"
+    description: "MITRE ATT&CK tactics as ident elements"
+
+  mitre_mitigations:
+    xccdf_type: "IdentType"
+    description: "MITRE ATT&CK mitigations as ident elements"
 
 # Group element specifications (xsdata types for each Group element)
 # Note: Groups are DISA wrappers - one Group per Rule (STIG convention)
