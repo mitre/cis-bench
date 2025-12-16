@@ -2,6 +2,25 @@
 
 Reads YAML configs and applies transformations to convert
 Pydantic Benchmark models to XCCDF format.
+
+CRITICAL: Config-Driven Architecture
+=====================================
+ALL structure generation MUST be config-driven, not hard-coded.
+
+RED FLAGS (Stop immediately if you see these):
+- Organization names in method names (build_cis_*, generate_mitre_*)
+- Hard-coded URIs (http://cisecurity.org/... in literals)
+- Organization-specific if/else branching
+- Structure logic in Python instead of YAML
+
+APPROVED PATTERNS:
+- ident_from_list: Generic ident generation from config
+- metadata_from_config: Generic nested XML from config (with requires_post_processing)
+- generate_profiles_from_rules: Generic profile generation from config
+
+See ARCHITECTURE_PRINCIPLES.md for complete guidelines.
+
+Adding PCI-DSS, ISO 27001, HIPAA, etc. MUST require ZERO code changes (YAML only).
 """
 
 import logging
@@ -808,35 +827,11 @@ class MappingEngine:
                         self._dc_elements = [dc["element"] for dc in dc_elements_config]
                 continue
 
-            # For official_cis_controls structure - use dataclass serialization
-            if structure == "official_cis_controls":
-                logger.debug(f"Processing official_cis_controls for rec {rec.ref}")
-                # Call build_cis_controls method to create proper nested structure
-                cis_controls_obj = self.build_cis_controls(rec)
-                logger.debug(
-                    f"Created CIS Controls with {len(cis_controls_obj.framework)} frameworks"
-                )
+            # For ident_from_list structure - generic ident generation (CIS, MITRE, PCI-DSS, etc.)
+            if structure == "ident_from_list":
+                logger.debug(f"Generating idents from config for {field_name}")
+                idents = self.generate_idents_from_config(rec, field_mapping)
 
-                # Store in a special field for post-processing injection
-                # Can't add directly to rule_fields because MetadataType doesn't support it
-                if not hasattr(self, "_cis_controls_objects"):
-                    self._cis_controls_objects = []
-                    logger.info("Initialized _cis_controls_objects list for CIS Controls metadata")
-                self._cis_controls_objects.append(cis_controls_obj)
-                logger.debug(
-                    f"Total CIS Controls objects stored: {len(self._cis_controls_objects)}"
-                )
-                # Will be injected in exporter post-processing
-                continue
-
-            # For cis_controls_ident structure - generate ident elements
-            if structure == "cis_controls_ident":
-                logger.debug(f"Generating CIS Controls idents for rec {rec.ref}")
-                # Call generate_cis_idents to create ident list
-                idents = self.generate_cis_idents(rec)
-                logger.debug(f"Generated {len(idents)} ident elements")
-
-                # Add to rule_fields (these are proper IdentType objects)
                 if idents:
                     # Append to existing idents if any
                     existing_idents = rule_fields.get(target_element, [])
@@ -844,169 +839,24 @@ class MappingEngine:
                     logger.debug(f"Added {len(idents)} idents to rule_fields[{target_element}]")
                 continue
 
-            # For enhanced_namespace structures (MITRE, profiles)
-            if structure == "enhanced_namespace":
-                # Store for post-processing injection (similar to CIS Controls)
-                components = field_mapping.get("components", [])
+            # For metadata_from_config structure - generic metadata from YAML
+            if structure == "metadata_from_config":
+                logger.debug(f"Generating metadata from config for {field_name}")
+                metadata_elem = self.generate_metadata_from_config(rec, field_mapping)
 
-                if components:
-                    # Build enhanced metadata object
-                    # Store in special field for post-processing
-                    if not hasattr(self, "_enhanced_metadata_components"):
-                        self._enhanced_metadata_components = []
-
-                    # Store component configs and source data for serialization
-                    for component_config in components:
-                        self._enhanced_metadata_components.append(
-                            {"config": component_config, "recommendation": rec}
+                if metadata_elem is not None:
+                    # Check if requires post-processing (lxml can't serialize in xsdata)
+                    if field_mapping.get("requires_post_processing", False):
+                        # Store for post-processing injection
+                        if not hasattr(self, "_metadata_for_post_processing"):
+                            self._metadata_for_post_processing = []
+                        self._metadata_for_post_processing.append(metadata_elem)
+                        logger.debug("Stored metadata for post-processing injection")
+                    else:
+                        # Try to add directly (if xsdata compatible - currently not supported)
+                        logger.warning(
+                            "metadata_from_config without requires_post_processing not yet supported"
                         )
-                # Will be injected in exporter post-processing
-                continue
-
-            # For custom_namespace structures (CIS metadata), build from config
-            if structure == "custom_namespace":
-                components = field_mapping.get("components", [])
-                # namespace from config used by post-processor
-
-                if components:
-                    # Build metadata markers from config (NO HARDCODING)
-                    metadata_markers = []
-
-                    # Loop through each component definition in config
-                    for component_config in components:
-                        element_name = component_config.get("element")  # From config
-                        source_field = component_config.get("source_field")  # From config
-                        is_multiple = component_config.get("multiple", False)
-                        content_template = component_config.get("content", "{value}")
-                        component_structure = component_config.get("structure")
-
-                        # Get source value
-                        source_value = getattr(rec, source_field, None)
-
-                        if source_value:
-                            # Handle simple list (like profiles)
-                            if (
-                                is_multiple
-                                and isinstance(source_value, list)
-                                and not component_structure
-                            ):
-                                # Simple list of strings
-                                for item in source_value:
-                                    # Substitute template - find variable name from template
-                                    # Config might use {profile}, {value}, {item}, etc.
-                                    import re
-
-                                    var_match = re.search(r"\{(\w+)\}", content_template)
-                                    if var_match:
-                                        # Template has variable, substitute it
-                                        content = content_template.replace(
-                                            f"{{{var_match.group(1)}}}", str(item)
-                                        )
-                                    else:
-                                        # No template, use item directly
-                                        content = str(item)
-
-                                    metadata_markers.append(f"META:{element_name}:{content}")
-
-                            # Handle nested structure (like CIS Controls)
-                            elif component_structure == "nested":
-                                children_config = component_config.get("children", [])
-                                attributes_config = component_config.get("attributes", {})
-
-                                # For each item in list
-                                if isinstance(source_value, list):
-                                    for item in source_value:
-                                        # Build marker for this control
-                                        # Format: META:cis-control:version=8:id=4.8:title=Uninstall Unnecessary
-                                        marker_parts = [f"META:{element_name}"]
-
-                                        # Add attributes
-                                        for attr_name, attr_template in attributes_config.items():
-                                            attr_value = VariableSubstituter.substitute(
-                                                attr_template, {"item": item}
-                                            )
-                                            if hasattr(item, attr_name):
-                                                attr_value = str(getattr(item, attr_name))
-                                            marker_parts.append(f"{attr_name}={attr_value}")
-
-                                        # Add children
-                                        for child_config in children_config:
-                                            child_elem = child_config.get("element")
-                                            child_content_template = child_config.get("content", "")
-
-                                            # Extract value from item
-                                            # Handle {control.field} syntax
-                                            if "{" in child_content_template:
-                                                # Parse {control.field}
-                                                import re
-
-                                                matches = re.findall(
-                                                    r"\{(\w+)\.(\w+)\}", child_content_template
-                                                )
-                                                if matches:
-                                                    obj_name, field_name = matches[0]
-                                                    if hasattr(item, field_name):
-                                                        child_value = getattr(item, field_name)
-                                                        marker_parts.append(
-                                                            f"{child_elem}={child_value}"
-                                                        )
-                                            else:
-                                                marker_parts.append(
-                                                    f"{child_elem}={child_content_template}"
-                                                )
-
-                                        metadata_markers.append(":".join(marker_parts))
-
-                                # Handle object with sub-fields (like MITRE mapping)
-                                elif not isinstance(source_value, (list, str)):
-                                    # Loop through child definitions
-                                    for child_config in children_config:
-                                        child_element = child_config.get("element")
-                                        child_source = child_config.get("source_field")
-                                        child_multiple = child_config.get("multiple", False)
-
-                                        # Extract nested value
-                                        if "." in child_source:
-                                            # Handle "mitre_mapping.techniques" syntax
-                                            parts = child_source.split(".")
-                                            child_value = source_value
-                                            for part in parts[1:]:
-                                                if hasattr(child_value, part):
-                                                    child_value = getattr(child_value, part)
-                                                else:
-                                                    child_value = None
-                                                    break
-
-                                            if (
-                                                child_value
-                                                and child_multiple
-                                                and isinstance(child_value, list)
-                                            ):
-                                                for item in child_value:
-                                                    metadata_markers.append(
-                                                        f"META:{child_element}:{item}"
-                                                    )
-                                            elif child_value and not child_multiple:
-                                                # Single value
-                                                metadata_markers.append(
-                                                    f"META:{child_element}:{child_value}"
-                                                )
-
-                    if metadata_markers:
-                        # Store enhanced metadata for post-processing injection
-                        # Don't add to rule_fields - will be injected after serialization
-                        if not hasattr(self, "_enhanced_metadata_components"):
-                            self._enhanced_metadata_components = []
-
-                        # Store component configs and source data for post-processing
-                        for component_config in components:
-                            self._enhanced_metadata_components.append(
-                                {"config": component_config, "recommendation": rec}
-                            )
-                        logger.debug(
-                            f"Stored {len(components)} enhanced metadata components for rec {rec.ref}"
-                        )
-                # Will be injected in exporter post-processing
                 continue
 
             # Get field value using config
@@ -1228,149 +1078,370 @@ class MappingEngine:
         # Store DC elements for post-processing
         self._dc_elements = dc_elements
 
+        # Generate Profile elements if configured
+        profile_config = self.config.benchmark.get("profiles")
+        if profile_config:
+            # Need to pass all recommendations to build profile select lists
+            # Get recommendations from context (passed by exporter)
+            recommendations = context.get("recommendations", [])
+            if recommendations:
+                profiles = self.generate_profiles_from_rules(recommendations, profile_config)
+                if profiles:
+                    benchmark_fields["profile"] = profiles
+                    logger.debug(f"Added {len(profiles)} Profile elements to benchmark")
+
         return XCCDFBenchmark(**benchmark_fields)
 
-    def build_cis_controls(self, recommendation: "Recommendation"):
-        """Build official nested CIS Controls structure.
+    def generate_idents_from_config(
+        self, recommendation: "Recommendation", field_mapping: dict
+    ) -> list:
+        """Generic ident generation from YAML config - works for ANY organization.
 
-        Creates the proper CIS Controls hierarchy matching CIS-CAT format:
-        CisControls > Framework (v7.0, v8.0) > Safeguard > ImplementationGroups
+        Generates <ident> elements for any compliance framework (CIS, MITRE, PCI-DSS, etc.)
+        based on YAML configuration. Completely data-driven - no hard-coding.
 
-        Args:
-            recommendation: Recommendation with cis_controls list
-
-        Returns:
-            CisControls object with nested framework/safeguard structure
-
-        Example:
-            <cis_controls xmlns="http://cisecurity.org/controls">
-              <framework urn="urn:cisecurity.org:controls:8.0">
-                <safeguard title="Use Unique Passwords"
-                           urn="urn:cisecurity.org:controls:8.0:5:2">
-                  <implementation_groups ig1="true" ig2="true" ig3="true"/>
-                  <asset_type>Users</asset_type>
-                  <security_function>Protect</security_function>
-                </safeguard>
-              </framework>
-            </cis_controls>
-        """
-        from cis_bench.models.cis_controls_official import (
-            CisControls,
-            Framework,
-            ImplementationGroups,
-            Safeguard,
-        )
-
-        if not recommendation.cis_controls:
-            # Return empty structure if no controls
-            return CisControls(framework=[])
-
-        # Group controls by version (7.0 and 8.0)
-        controls_by_version = {}
-        for control in recommendation.cis_controls:
-            version = control.version
-            if version not in controls_by_version:
-                controls_by_version[version] = []
-            controls_by_version[version].append(control)
-
-        # Build Framework objects for each version
-        frameworks = []
-        for version in sorted(controls_by_version.keys()):
-            controls = controls_by_version[version]
-            safeguards = []
-
-            for control in controls:
-                # Create ImplementationGroups
-                ig = ImplementationGroups(
-                    ig1=control.ig1 if control.ig1 is not None else False,
-                    ig2=control.ig2 if control.ig2 is not None else False,
-                    ig3=control.ig3 if control.ig3 is not None else True,  # Default true per schema
-                )
-
-                # Parse control_id for URN (e.g., "5.2" -> control=5, subcontrol=2)
-                control_id_parts = control.control.split(".")
-                if len(control_id_parts) == 2:
-                    control_num, subcontrol_num = control_id_parts
-                    urn = f"urn:cisecurity.org:controls:{version}:{control_num}:{subcontrol_num}"
-                else:
-                    # Single-level control (e.g., "5")
-                    urn = f"urn:cisecurity.org:controls:{version}:{control.control}"
-
-                # Create Safeguard
-                safeguard = Safeguard(
-                    title=control.title,
-                    urn=urn,
-                    implementation_groups=ig,
-                    asset_type="Unknown",  # We don't have this data from WorkBench
-                    security_function="Protect",  # Default per CIS convention
-                )
-                safeguards.append(safeguard)
-
-            # Create Framework for this version
-            framework = Framework(
-                urn=f"urn:cisecurity.org:controls:{version}",
-                safeguard=safeguards,
-            )
-            frameworks.append(framework)
-
-        return CisControls(framework=frameworks)
-
-    def generate_cis_idents(self, recommendation: "Recommendation") -> list:
-        """Generate CIS Controls <ident> elements with cc7/cc8 controlURI attributes.
-
-        Creates XCCDF ident elements for each CIS Control with proper namespace attributes:
-        - cc7:controlURI for v7 controls
-        - cc8:controlURI for v8 controls
+        Config structure:
+            source_field: "cis_controls"  # or "mitre_mapping.techniques", etc.
+            ident_spec:
+                system_template: "https://org.com/framework/v{item.version}"
+                value_template: "{item.id}"  # or just "{item}" for strings
+                attributes:  # Optional custom namespace attributes
+                  - name: "controlURI"
+                    template: "https://..."
+                    namespace_prefix: "cc{item.version}"
 
         Args:
-            recommendation: Recommendation with cis_controls list
+            recommendation: Source recommendation data
+            field_mapping: YAML field mapping config with ident_spec
 
         Returns:
-            List of xsdata Ident objects (empty if no controls)
+            List of xsdata IdentType objects
 
-        Example:
-            <ident cc8:controlURI="http://cisecurity.org/20-cc/v8.0/control/5/subcontrol/2"
-                   system="http://cisecurity.org/20-cc/v8.0"/>
-            <ident cc7:controlURI="http://cisecurity.org/20-cc/v7.0/control/16/subcontrol/2"
-                   system="http://cisecurity.org/20-cc/v7.0"/>
+        Examples:
+            CIS Controls:
+                system="https://www.cisecurity.org/controls/v8"
+                value="8:3.14"
 
-        Note:
-            The cc7:controlURI and cc8:controlURI attributes need to be added
-            post-serialization because xsdata doesn't support dynamic namespace
-            attributes directly in the model.
+            MITRE ATT&CK:
+                system="https://attack.mitre.org/techniques"
+                value="T1565"
+
+            PCI-DSS (future):
+                system="https://www.pcisecuritystandards.org/pci_dss/v4.0"
+                value="1.2.1"
         """
         IdentType = self.get_xccdf_class("IdentType")
 
-        if not recommendation.cis_controls:
+        source_field = field_mapping.get("source_field")
+        ident_spec = field_mapping.get("ident_spec", {})
+
+        if not source_field or not ident_spec:
+            logger.warning("ident_from_list missing source_field or ident_spec")
             return []
 
+        # Get source data (supports nested paths like "mitre_mapping.techniques")
+        source_data = self._get_nested_field(recommendation, source_field)
+        if not source_data:
+            return []
+
+        # Handle both list and single value
+        items = source_data if isinstance(source_data, list) else [source_data]
+
         idents = []
+        system_template = ident_spec.get("system_template", "")
+        value_template = ident_spec.get("value_template", "{item}")
+        custom_attrs = ident_spec.get("attributes", [])
 
-        for control in recommendation.cis_controls:
-            version = control.version
+        for item in items:
+            # Build context for template substitution
+            # Supports both objects (item.version, item.control) and primitives (item)
+            context = {"item": item}
 
-            # Parse control_id for URI (e.g., "5.2" -> control=5, subcontrol=2)
-            control_id_parts = control.control.split(".")
-
-            if len(control_id_parts) == 2:
-                control_num, subcontrol_num = control_id_parts
-                control_uri = f"http://cisecurity.org/20-cc/v{version}/control/{control_num}/subcontrol/{subcontrol_num}"
-            else:
-                # Single-level control
-                control_uri = f"http://cisecurity.org/20-cc/v{version}/control/{control.control}"
+            # Substitute templates using existing VariableSubstituter
+            system = VariableSubstituter.substitute(system_template, context)
+            value = VariableSubstituter.substitute(value_template, context)
 
             # Create ident element
-            # Note: system attribute is standard, controlURI needs post-processing
-            ident = IdentType(
-                system=f"http://cisecurity.org/20-cc/v{version}",
-                value="",  # Empty per CIS convention
-            )
+            ident = IdentType(system=system, value=value)
 
-            # Store controlURI for post-processing
-            # This will be added as cc{version}:controlURI attribute
-            ident._control_uri = control_uri  # Store for post-processing
-            ident._cc_version = version  # Store version for namespace prefix
+            # Add custom namespace attributes if specified (e.g., cc7:controlURI)
+            if custom_attrs:
+                ident._custom_attrs = {}
+                for attr_config in custom_attrs:
+                    attr_name = attr_config.get("name")
+                    attr_template = attr_config.get("template", "")
+                    namespace_prefix = attr_config.get("namespace_prefix", "")
+
+                    attr_value = VariableSubstituter.substitute(attr_template, context)
+                    resolved_prefix = VariableSubstituter.substitute(namespace_prefix, context)
+
+                    ident._custom_attrs[attr_name] = {
+                        "value": attr_value,
+                        "namespace_prefix": resolved_prefix,
+                    }
 
             idents.append(ident)
 
+        logger.debug(
+            f"Generated {len(idents)} idents from {source_field} (system={system_template})"
+        )
         return idents
+
+    def _get_nested_field(self, obj: Any, field_path: str) -> Any:
+        """Get nested field from object using dot notation.
+
+        Supports paths like:
+        - "cis_controls" -> obj.cis_controls
+        - "mitre_mapping.techniques" -> obj.mitre_mapping.techniques
+
+        Args:
+            obj: Source object (Recommendation, Benchmark, etc.)
+            field_path: Dot-separated path to field
+
+        Returns:
+            Field value or None if not found
+        """
+        parts = field_path.split(".")
+        value = obj
+
+        for part in parts:
+            if value is None:
+                return None
+            value = getattr(value, part, None)
+
+        return value
+
+    def generate_profiles_from_rules(
+        self, recommendations: list["Recommendation"], profile_config: dict
+    ) -> list:
+        """Generate XCCDF Profile elements from recommendation.profiles field.
+
+        Builds Profile elements at Benchmark level with select lists indicating
+        which rules belong to which profiles. Supports both CIS and DISA profile types.
+
+        Config structure:
+            generate_from_rules: true
+            profile_mappings:
+              - match: "Level 1 - Server"  # Match against rec.profiles
+                id: "level-1-server"
+                title: "Level 1 - Server"
+                description: "Basic server security controls"
+
+        Args:
+            recommendations: All recommendations in the benchmark
+            profile_config: YAML profile configuration
+
+        Returns:
+            List of xsdata Profile objects with select elements
+
+        Example Output:
+            <Profile id="level-1-server">
+              <title>Level 1 - Server</title>
+              <description>Basic server security controls</description>
+              <select idref="xccdf_cis_rule_6_1_1" selected="true"/>
+              <select idref="xccdf_cis_rule_6_1_2" selected="true"/>
+            </Profile>
+        """
+        Profile = self.get_xccdf_class("Profile")
+        ProfileSelectType = self.get_xccdf_class("ProfileSelectType")
+        TextWithSubType = self.get_xccdf_class("TextWithSubType")
+        HtmlTextWithSubType = self.get_xccdf_class("HtmlTextWithSubType")
+
+        if not profile_config.get("generate_from_rules"):
+            return []
+
+        profile_mappings = profile_config.get("profile_mappings", [])
+        if not profile_mappings:
+            logger.warning("profile_mappings empty - no profiles will be generated")
+            return []
+
+        profiles = []
+
+        # Build profiles from config
+        for mapping in profile_mappings:
+            match_pattern = mapping.get("match")
+            profile_id = mapping.get("id")
+            profile_title = mapping.get("title")
+            profile_desc = mapping.get("description", "")
+
+            # Find all rules that match this profile
+            select_list = []
+            for rec in recommendations:
+                if match_pattern in rec.profiles:
+                    # Generate rule ID (same logic as in map_rule)
+                    ref_normalized = rec.ref.replace(".", "_")
+                    rule_id = f"xccdf_cis_cis_rule_{ref_normalized}"
+
+                    # Create select element
+                    select = ProfileSelectType(idref=rule_id, selected=True)
+                    select_list.append(select)
+
+            if not select_list:
+                logger.debug(f"Profile '{profile_id}' has no matching rules, skipping")
+                continue
+
+            # Create Profile element (use _construct_typed_element helper for DRY)
+            title_elem = self._construct_typed_element(TextWithSubType, profile_title)
+            desc_elem = self._construct_typed_element(HtmlTextWithSubType, profile_desc)
+
+            profile = Profile(
+                id=profile_id,
+                title=[title_elem] if title_elem else [],
+                description=[desc_elem] if desc_elem else [],
+                select=select_list,
+            )
+
+            profiles.append(profile)
+            logger.debug(f"Generated profile '{profile_id}' with {len(select_list)} rules")
+
+        logger.info(f"Generated {len(profiles)} Profile elements")
+        return profiles
+
+    def generate_metadata_from_config(
+        self, recommendation: "Recommendation", field_mapping: dict
+    ) -> Any:
+        """Generate nested XML metadata from YAML config - GENERIC for ANY structure.
+
+        Builds metadata using lxml based on YAML specification.
+        Supports grouping, nesting, attributes, content - all config-driven.
+
+        Args:
+            recommendation: Source recommendation data
+            field_mapping: YAML field mapping with metadata_spec
+
+        Returns:
+            lxml Element with metadata structure, or None if no data
+        """
+        from collections import defaultdict
+
+        from lxml import etree
+
+        source_field = field_mapping.get("source_field")
+        metadata_spec = field_mapping.get("metadata_spec", {})
+
+        if not source_field or not metadata_spec:
+            logger.warning("metadata_from_config missing source_field or metadata_spec")
+            return None
+
+        # Get source data
+        source_data = self._get_nested_field(recommendation, source_field)
+
+        # Handle empty case
+        allow_empty = metadata_spec.get("allow_empty", False)
+        if not source_data:
+            if allow_empty:
+                # Create empty element
+                root_element = metadata_spec.get("root_element")
+                namespace = metadata_spec.get("namespace")
+                if namespace:
+                    return etree.Element(f"{{{namespace}}}{root_element}")
+                else:
+                    return etree.Element(root_element)
+            else:
+                return None
+
+        # Create root element
+        root_element = metadata_spec.get("root_element")
+        namespace = metadata_spec.get("namespace")
+
+        if namespace:
+            root = etree.Element(f"{{{namespace}}}{root_element}")
+        else:
+            root = etree.Element(root_element)
+
+        # Check for grouping
+        group_by = metadata_spec.get("group_by")
+
+        if group_by:
+            # Group items by field (e.g., CIS Controls by version)
+            groups = defaultdict(list)
+            for item in source_data:
+                group_key = self._get_nested_field(item, group_by.replace("item.", ""))
+                if group_key:
+                    groups[group_key].append(item)
+
+            # Build group elements from config
+            group_spec = metadata_spec.get("group_element", {})
+            group_elem_name = group_spec.get("element", "group")
+            group_attrs = group_spec.get("attributes", {})
+            item_spec = group_spec.get("item_element", {})
+
+            for group_key, group_items in sorted(groups.items()):
+                # Create group element
+                if namespace:
+                    group_elem = etree.SubElement(root, f"{{{namespace}}}{group_elem_name}")
+                else:
+                    group_elem = etree.SubElement(root, group_elem_name)
+
+                # Add group attributes from config
+                for attr_name, attr_template in group_attrs.items():
+                    attr_value = VariableSubstituter.substitute(
+                        attr_template, {"group_key": group_key}
+                    )
+                    group_elem.set(attr_name, attr_value)
+
+                # Build items in group
+                for item in group_items:
+                    self._build_config_item(group_elem, item, item_spec, namespace)
+
+        return root
+
+    def _build_config_item(self, parent, item, item_spec, namespace):
+        """Build item element from config spec."""
+        from lxml import etree
+
+        elem_name = item_spec.get("element")
+        attrs = item_spec.get("attributes", {})
+        children = item_spec.get("children", [])
+
+        # Create element
+        if namespace:
+            elem = etree.SubElement(parent, f"{{{namespace}}}{elem_name}")
+        else:
+            elem = etree.SubElement(parent, elem_name)
+
+        # Add attributes from config
+        for attr_name, attr_template in attrs.items():
+            attr_value = VariableSubstituter.substitute(attr_template, {"item": item})
+            elem.set(attr_name, str(attr_value))
+
+        # Add children from config
+        for child_spec in children:
+            self._build_config_child(elem, item, child_spec, namespace)
+
+        return elem
+
+    def _build_config_child(self, parent, item, child_spec, namespace):
+        """Build child element recursively from config."""
+        from lxml import etree
+
+        elem_name = child_spec.get("element")
+        attrs = child_spec.get("attributes", {})
+        content = child_spec.get("content")
+        children = child_spec.get("children", [])
+
+        # Create element
+        if namespace:
+            elem = etree.SubElement(parent, f"{{{namespace}}}{elem_name}")
+        else:
+            elem = etree.SubElement(parent, elem_name)
+
+        # Add attributes from config
+        for attr_name, attr_template in attrs.items():
+            attr_value = VariableSubstituter.substitute(attr_template, {"item": item})
+            # Boolean to lowercase string for XML
+            if isinstance(attr_value, bool):
+                attr_value = str(attr_value).lower()
+            else:
+                attr_value = str(attr_value)
+            elem.set(attr_name, attr_value)
+
+        # Add content from config
+        if content:
+            elem.text = str(VariableSubstituter.substitute(content, {"item": item}))
+
+        # Recursive children
+        for grandchild_spec in children:
+            self._build_config_child(elem, item, grandchild_spec, namespace)
+
+        return elem
