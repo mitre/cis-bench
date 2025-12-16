@@ -31,12 +31,9 @@ def test_disa_export_creates_file(disa_export_file):
     assert disa_export_file.stat().st_size > 0
 
 
-@pytest.mark.skip(
-    reason="Schema dependencies missing (platform-0.2.3.xsd, xccdfp-1.1.xsd, cpe-1.0.xsd)"
-)
 def test_disa_export_validates_nist_schema(disa_export_file):
     """Test DISA export validates against NIST XCCDF 1.1.4 schema."""
-    schema_dir = Path(__file__).parent.parent / "schemas"
+    schema_dir = Path(__file__).parent.parent.parent / "schemas"
     schema_file = schema_dir / "xccdf-1.1.4.xsd"  # DISA uses 1.1.4, not 1.2
     catalog_file = schema_dir / "catalog.xml"
 
@@ -51,7 +48,6 @@ def test_disa_export_validates_nist_schema(disa_export_file):
     assert result.returncode == 0, f"NIST schema validation failed: {result.stderr}"
 
 
-@pytest.mark.skip(reason="DISAConventionsValidator needs namespace update for XCCDF 1.1.4")
 def test_disa_export_passes_conventions(disa_export_file):
     """Test DISA export follows DISA conventions v1.10.0."""
     validator = DISAConventionsValidator(str(disa_export_file))

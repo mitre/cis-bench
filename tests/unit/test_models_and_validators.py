@@ -413,9 +413,18 @@ class TestBenchmark:
 
     def test_benchmark_validates_total_recommendations_count(self):
         """Test total_recommendations validation."""
-        # Note: Pydantic doesn't enforce this field relationship without custom validator
-        # The model accepts mismatched counts - would need @field_validator
-        pytest.skip("Requires custom @field_validator for total_recommendations consistency")
+        # Validator exists - test it works
+        with pytest.raises(ValidationError) as exc:
+            Benchmark(
+                title="Test",
+                benchmark_id="12345",
+                url="https://example.org",
+                version="1.0.0",
+                scraper_version="v1",
+                total_recommendations=5,  # Says 5
+                recommendations=[],  # But has 0!
+            )
+        assert "total_recommendations" in str(exc.value)
 
     def test_benchmark_total_recommendations_non_negative(self):
         """Test total_recommendations must be >= 0."""
