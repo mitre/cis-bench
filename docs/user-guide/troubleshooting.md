@@ -49,6 +49,72 @@ source ~/.bashrc
 !!! tip "Why pipx?"
     Per [Python Packaging Authority guidelines](https://packaging.python.org/en/latest/guides/installing-stand-alone-command-line-tools/), CLI tools should be installed with pipx or uv tool, not pip. These tools create isolated environments and handle PATH correctly.
 
+### Cleaning Up Development Installs
+
+If you previously installed from source or have multiple Python environments, old installations may shadow the new one.
+
+**Symptoms:**
+
+- `cis-bench --version` shows wrong version (e.g., `1.0.0` instead of `0.3.x`)
+- `ModuleNotFoundError: No module named 'cis_bench'` after installing
+- `which cis-bench` shows unexpected path
+
+**Diagnosis:**
+```bash
+# Check where cis-bench is coming from
+which cis-bench
+
+# Check for multiple installations
+pip list | grep -i cis
+pipx list | grep -i cis
+
+# Check pyenv (if using pyenv)
+ls ~/.pyenv/versions/*/bin/cis-bench 2>/dev/null
+```
+
+**Cleanup Steps:**
+
+1. **Remove pip installations:**
+```bash
+pip uninstall cis-bench
+pip uninstall cis-benchmark-cli  # old package name
+```
+
+2. **Remove pyenv orphaned scripts:**
+```bash
+# Find orphaned scripts
+ls ~/.pyenv/versions/*/bin/cis-bench 2>/dev/null
+
+# Remove them (example for Python 3.12.1)
+rm ~/.pyenv/versions/3.12.1/bin/cis-bench
+pyenv rehash
+```
+
+3. **Remove editable installs:**
+```bash
+# Check for editable installs
+pip list --editable | grep -i cis
+
+# Remove the editable install
+pip uninstall cis-bench
+```
+
+4. **Clean install with pipx:**
+```bash
+# Remove any existing pipx install
+pipx uninstall cis-bench 2>/dev/null
+
+# Fresh install
+pipx install cis-bench
+
+# Verify
+which cis-bench  # Should be ~/.local/bin/cis-bench
+cis-bench --version
+```
+
+!!! warning "PATH Priority"
+    If `which cis-bench` doesn't show `~/.local/bin/cis-bench`, check your PATH order. pyenv shims and other directories may take priority over pipx's bin directory.
+
 ### "No module named 'cis_bench'"
 
 **Cause:** Package not installed, or installed in a different Python environment.
@@ -346,7 +412,7 @@ cis-bench catalog refresh 2> debug.log
 
 ### Report Issues
 
-https://github.com/aaronlippold/cis-benchmark-cli/issues
+https://github.com/mitre/cis-bench/issues
 
 Include:
 
