@@ -818,8 +818,8 @@ End-to-end test of complete CLI workflow.
 
 - [Data Flow Pipeline](../developer-guide/data-flow-pipeline.md) - How data transforms through the system
 - [MappingEngine Guide](../developer-guide/mapping-engine-guide.md) - Configuration-driven transformations
-- [Data Model](../technical-reference/DATA_MODEL.md) - Pydantic model definitions
-- [XCCDF Styles](../technical-reference/XCCDF_STYLES.md) - DISA vs CIS comparison
+- [Data Model](../technical-reference/data-model.md) - Pydantic model definitions
+- [XCCDF Styles](../technical-reference/xccdf-styles.md) - DISA vs CIS comparison
 - [Commands Reference](../user-guide/commands-reference.md) - Complete CLI syntax
 
 ---

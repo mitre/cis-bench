@@ -5,7 +5,7 @@ Complete guide to exporting CIS benchmarks to NIST XCCDF format with two style o
 !!! info "Documentation Path"
 **You are here:** User Guide > XCCDF Export
 
-- **For technical details:** See [XCCDF Styles Comparison](../technical-reference/XCCDF_STYLES.md)
+- **For technical details:** See [XCCDF Styles Comparison](../technical-reference/xccdf-styles.md)
 - **For examples:** See [Workflows](workflows.md)
 - **For commands:** See [Commands Reference](commands-reference.md)
 
@@ -266,5 +266,5 @@ Both styles validate against NIST schemas. If you get errors:
 
 ## See Also
 
-- [XCCDF Styles Design](../technical-reference/XCCDF_STYLES.md) - Technical details
-- [Mapping Engine](../technical-reference/MAPPING_ENGINE_DESIGN.md) - How it works
+- [XCCDF Styles Design](../technical-reference/xccdf-styles.md) - Technical details
+- [Mapping Engine](../technical-reference/mapping-engine-design.md) - How it works

@@ -8,9 +8,11 @@ This package provides:
 - Adaptable scraping strategies (HTML-change resilient)
 """
 
-__version__ = "1.0.0"
-__author__ = "Aaron Lippold"
-__email__ = "lippold@gmail.com"
+from importlib.metadata import version
+
+__version__ = version("cis-bench")
+__author__ = "MITRE SAF Team"
+__email__ = "saf@mitre.org"
 
 # Core models
 # Exporter system

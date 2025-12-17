@@ -69,6 +69,7 @@ nav:
       - MappingEngine User Guide: developer-guide/mapping-engine-guide.md
       - Testing Guide: developer-guide/testing.md
       - How To Add XCCDF Style: developer-guide/how-to-add-xccdf-style.md
+      - Adding PCI-DSS Support: developer-guide/adding-pci-dss.md
 
   - Technical Reference:
       - Mapping Engine Design: technical-reference/mapping-engine-design.md
@@ -83,6 +84,7 @@ nav:
       - Use Cases: about/use-cases.md
       - Future Features: about/future-features.md
       - Release Process: about/release-process.md
+      - Changelog: CHANGELOG.md
       - Glossary: about/glossary.md
 
 plugins:

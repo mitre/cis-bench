@@ -4,13 +4,14 @@
 import click
 from rich.console import Console
 
+from cis_bench import __version__
 from cis_bench.utils.logging_config import LoggingConfig
 
 console = Console()
 
 
 @click.group()
-@click.version_option(version="1.0.0", prog_name="cis-bench")
+@click.version_option(version=__version__, prog_name="cis-bench")
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose (DEBUG level) logging")
 @click.option(
     "--debug", "-d", is_flag=True, help="Enable maximum debug logging (same as --verbose)"

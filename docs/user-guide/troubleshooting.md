@@ -13,27 +13,57 @@ Common issues and solutions.
 
 ### "Command not found: cis-bench"
 
-**Cause:** Package not installed or virtual environment not activated.
+**Cause:** The `cis-bench` command is not in your PATH. This is common when using `pip install` instead of the recommended installation methods.
 
-**Solution:**
+**Solution 1 (Recommended):** Reinstall with pipx or uv
 ```bash
-# Activate venv
-source venv/bin/activate
+# Uninstall pip version
+pip uninstall cis-bench
 
-# Install package
-pip install -e .
+# Install properly with pipx (handles PATH correctly)
+pipx install cis-bench
+
+# Or with uv
+uv tool install cis-bench
 
 # Verify
 cis-bench --version
 ```
 
+**Solution 2:** Use module syntax (always works)
+```bash
+python -m cis_bench --version
+python -m cis_bench download 23598
+```
+
+**Solution 3:** Fix your PATH (if you must use pip)
+```bash
+# Add pip's bin directory to PATH
+export PATH="$HOME/.local/bin:$PATH"
+
+# Add to shell config for persistence
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc  # or ~/.zshrc
+source ~/.bashrc
+```
+
+!!! tip "Why pipx?"
+    Per [Python Packaging Authority guidelines](https://packaging.python.org/en/latest/guides/installing-stand-alone-command-line-tools/), CLI tools should be installed with pipx or uv tool, not pip. These tools create isolated environments and handle PATH correctly.
+
 ### "No module named 'cis_bench'"
 
-**Cause:** Package not installed in editable mode.
+**Cause:** Package not installed, or installed in a different Python environment.
 
 **Solution:**
 ```bash
-pip install -e .
+# Check which Python
+which python
+python --version
+
+# Install with same Python
+python -m pip install cis-bench
+
+# Or use pipx (recommended)
+pipx install cis-bench
 ```
 
 ---
@@ -331,4 +361,4 @@ Include:
 
 - [Configuration](configuration.md) - Environment settings
 - [Commands Reference](commands-reference.md) - All commands
-- [Testing Guide](../developer-guide/TESTING.md) - Testing setup
+- [Testing Guide](../developer-guide/testing.md) - Testing setup
