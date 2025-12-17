@@ -86,7 +86,7 @@ jobs:
 
       - name: Verify entry points and __main__.py
         run: |
-          uv run --frozen pytest tests/e2e/test_cli_packaging.py -v
+          uv run --frozen --all-extras pytest tests/e2e/test_cli_packaging.py -v
 
       - name: Test pipx installation simulation
         run: |
