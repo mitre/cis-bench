@@ -1,7 +1,195 @@
 # CHANGELOG
 
 
+## v0.3.0 (2025-12-17)
+
+### Bug Fixes
+
+- Preserve types in VariableSubstituter and fix empty element handling
+  ([`a91b42b`](https://github.com/mitre/cis-bench/commit/a91b42b2b3512ac7c63729ce4abe797282e152d5))
+
+VariableSubstituter changes: - Preserve original type for single-variable templates ({item.ig1}) -
+  Convert to string only for mixed templates (text + variable) - Fixes boolean attributes (False →
+  'false' for XML)
+
+Empty element handling: - Allow elements with attributes but no content (DISA fix element) - Skip
+  only if no value AND no attributes
+
+Fixes: - CIS Controls ig1/ig2/ig3 now lowercase 'true'/'false' - DISA fix elements now generated
+
+Authored by: Aaron Lippold <lippold@gmail.com>
+
+### Chores
+
+- Add OpenSCAP schema library for validation
+  ([`ef78dc0`](https://github.com/mitre/cis-bench/commit/ef78dc0cfe856d7e70b3e87cbe0bb890bbb03cd4))
+
+Add complete XCCDF/CPE/OVAL schema collection from OpenSCAP (551 XSD files).
+
+Includes: - XCCDF 1.1 and 1.2 validation schemas - CPE 1.0, 2.0, 2.1, 2.3 schemas - OVAL 5.x schemas
+  (all versions) - ARF (Asset Reporting Format) schemas
+
+Updated XML catalog for proper schema resolution (local files, no network).
+
+Enables NIST XCCDF schema validation without external dependencies.
+
+Source: OpenSCAP/openscap (NIST certified SCAP 1.2 toolkit)
+
+Authored by: Aaron Lippold <lippold@gmail.com>
+
+### Continuous Integration
+
+- Install libxml2-utils for xmllint schema validation
+  ([`d6c7218`](https://github.com/mitre/cis-bench/commit/d6c7218c79c996dd9abb22bc0139a691b6be41ae))
+
+The test_disa_export_validates_nist_schema test requires xmllint to validate XCCDF exports against
+  the NIST schema.
+
+Authored by: Aaron Lippold <lippold@gmail.com>
+
+### Documentation
+
+- Complete Phase 5 - comprehensive documentation updates
+  ([`29faca9`](https://github.com/mitre/cis-bench/commit/29faca9bcdf90dee4b2443ba2bf72e675ab22cd2))
+
+Updated ALL documentation files for generic structure refactor:
+
+Core Docs Updated: - design-philosophy.md: DISA vs CIS export patterns - architecture.md: Generic
+  handler architecture - mapping-engine-design.md: Handler specifications - mapping-engine-guide.md:
+  Practical examples - how-to-add-xccdf-style.md: Zero-code extensibility -
+  yaml-config-reference.md: Updated structure names
+
+New Docs: - REFACTOR_SUMMARY.md: High-level overview - ARCHITECTURE_PRINCIPLES.md: Design
+  enforcement - FINAL_PLAN.md: Implementation plan - SYSTEM_ANALYSIS.md: System review -
+  adding-pci-dss.md: Framework extension guide
+
+All references to deleted patterns removed: - official_cis_controls → metadata_from_config -
+  enhanced_namespace → ident_from_list - custom_namespace → metadata_from_config -
+  build_cis_controls → (deleted, now generic)
+
+Documents DISA/CIS differences, generic patterns, extensibility.
+
+Phase 5 complete.
+
+Authored by: Aaron Lippold <lippold@gmail.com>
+
+- Update documentation for generic structure handlers
+  ([`b847a0d`](https://github.com/mitre/cis-bench/commit/b847a0d8043ca0a995405d03b1d637f20663237b))
+
+Updates: - design-philosophy.md: Document DISA vs CIS export differences - REFACTOR_SUMMARY.md:
+  High-level overview of changes - developer-guide/adding-pci-dss.md: Framework extension example
+
+Key changes documented: - DISA uses idents only (no metadata) - fixes Vulcan errors - CIS uses dual
+  representation (ident + metadata for CIS Controls) - MITRE now as idents (not in metadata -
+  cleaner) - Profiles at Benchmark level (proper XCCDF standard) - Adding frameworks requires only
+  YAML config
+
+Phase 5 complete.
+
+Authored by: Aaron Lippold <lippold@gmail.com>
+
+### Features
+
+- Add fix element to DISA exports
+  ([`94f2858`](https://github.com/mitre/cis-bench/commit/94f2858ae94a267c6ff669842cf7f5da60af1ac3))
+
+Add empty <fix id='...'/> elements to match official DISA STIG structure.
+
+Official DISA STIGs have fix elements as placeholders with ID attributes. Required for full DISA
+  STIG compliance.
+
+Authored by: Aaron Lippold <lippold@gmail.com>
+
+- Add LibCST utility for safe code refactoring
+  ([`7ff8470`](https://github.com/mitre/cis-bench/commit/7ff84704a3e0736ce487105a16381efcdf2fb2b5))
+
+Add scripts/remove_code.py with comprehensive test suite for safely removing functions, methods, and
+  classes during refactoring.
+
+- LibCST-based code removal (preserves formatting) - 27 comprehensive tests (edge cases covered) -
+  Dry-run mode for safety - Handles decorators, async, dataclass, nested functions
+
+This tool enables safe cleanup during XCCDF refactoring.
+
+Authored by: Aaron Lippold <lippold@gmail.com>
+
+- Config-driven STIG IDs and Vulcan compatibility
+  ([`40522b5`](https://github.com/mitre/cis-bench/commit/40522b58ea67d4edbbb03e3a6446d392b2596596))
+
+- Add config-driven ID generation (V-/SV- for DISA, descriptive for CIS) - Add ref_to_stig_number()
+  helper (3.1.1 → 030101) - Add strip_version_prefix transform (v4.0.0 → 4.0.0) - Restructure
+  configs: base.yaml + styles/{disa,cis}.yaml - Fix duplicate CCI deduplication - Remove status from
+  Rules (belongs at Benchmark level only) - Add 40+ new tests for ID formats and Vulcan
+  compatibility - Move test_remove_code_script.py to tests/scripts/
+
+Tested: 583 tests pass, validated with stig_parser and Vulcan 2.2.1
+
+Authored by: Aaron Lippold <lippold@gmail.com>
+
+- Implement generic config-driven structure handlers
+  ([`e46ef23`](https://github.com/mitre/cis-bench/commit/e46ef2338b8af5ceeb7acfea16372dfddadfc5f5))
+
+Add three generic handlers for XCCDF generation:
+
+1. generate_idents_from_config(): Generate ident elements from any list - Works for CCI, CIS
+  Controls, MITRE, PCI-DSS, ISO 27001, etc. - Template-based (system, value, optional attributes)
+
+2. generate_metadata_from_config(): Generate nested XML from config - Supports grouping (e.g., CIS
+  Controls by version) - Recursive children with attributes and content - Requires post-processing
+  flag for lxml injection
+
+3. generate_profiles_from_rules(): Generate Benchmark-level Profiles - Builds Profile elements with
+  select lists - Works for CIS Levels, DISA MAC, any applicability system
+
+All handlers are fully config-driven (no hard-coded structures). Removes organization-specific
+  methods (build_cis_controls, generate_cis_idents).
+
+Tests: - 11 unit tests for metadata generation - 4 integration tests for profile generation - All
+  passing
+
+Authored by: Aaron Lippold <lippold@gmail.com>
+
+### Refactoring
+
+- Update CIS export to use generic patterns
+  ([`058dacb`](https://github.com/mitre/cis-bench/commit/058dacbb82ae30511600290a36fced94eea219ab))
+
+CIS configuration changes: - Use metadata_from_config for CIS Controls (with post-processing) - Use
+  ident_from_list for MITRE (not metadata - cleaner) - Add profiles configuration - Remove old
+  enhanced_namespace and official_cis_controls patterns
+
+Exporter changes: - Implement generic _inject_metadata_from_config() method - Remove hard-coded
+  CIS-specific injection - Metadata injection now config-driven (requires_post_processing flag)
+
+Test updates: - Update CIS tests for new architecture - MITRE now as idents (not in enhanced
+  metadata) - Profiles now at Benchmark level (not in metadata)
+
+CIS exports now use dual representation: - CIS Controls in both ident and metadata (official
+  pattern) - MITRE in idents only (no namespace pollution)
+
+Authored by: Aaron Lippold <lippold@gmail.com>
+
+### Testing
+
+- Fix all skipped tests and improve assertions
+  ([`5078775`](https://github.com/mitre/cis-bench/commit/5078775b791e7cf34d93b2d7a7b0a13b7933cfed))
+
+- Remove skip from NIST schema validation (schemas now available) - Remove skip from DISA
+  conventions validation (works correctly) - Fix CIS ident/metadata count assertion (dual
+  representation = 2x idents) - Fix boolean attribute test (now checks for lowercase) - Add mock
+  PCI-DSS config to prove extensibility - Fix Pydantic validator for total_recommendations count
+
+All 575 tests now passing (0 skipped, 0 failed).
+
+Authored by: Aaron Lippold <lippold@gmail.com>
+
+
 ## v0.2.3 (2025-12-16)
+
+### Chores
+
+- Release 0.2.3
+  ([`475a10b`](https://github.com/mitre/cis-bench/commit/475a10b346d19dd5fd034fd1f8355097e361de7d))
 
 ### Documentation
 
