@@ -624,11 +624,13 @@ class TestCLIIntegration:
             assert "Usage:" in result.output
 
     def test_version_option(self, runner):
-        """Version option displays version."""
+        """Version option displays version from package metadata."""
+        from cis_bench import __version__
+
         result = runner.invoke(cli, ["--version"])
 
         assert result.exit_code == 0
-        assert "1.0.0" in result.output
+        assert __version__ in result.output
 
     def test_cli_help(self, runner):
         """Main CLI help displays overview."""
