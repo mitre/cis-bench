@@ -95,10 +95,17 @@ rule_defaults:
   selected: "true"
   role: "full"
 
-# Rule ID generation
+# ID Generation - CIS Native Format
+# CIS uses descriptive IDs with organization prefix
+# Variables: {stig_number}, {ref_normalized}, {platform}
+
+group_id:
+  template: "xccdf_org.cisecurity.benchmarks_group_{ref_normalized}"
+  description: "CIS Group ID format (includes CIS ref)"
+
 rule_id:
   template: "xccdf_org.cisecurity.benchmarks_rule_{ref_normalized}"
-  ref_normalized: "replace('.', '_')"  # 3.1.1 → 3_1_1
+  description: "CIS Rule ID format (includes CIS ref)"
 
 # Rule element specifications (xsdata types for each Rule element)
 rule_elements:
@@ -397,3 +404,20 @@ implementation_notes:
     - Research and analysis workflows
     - Non-DoD security teams
     - Organizations wanting clean, readable XCCDF
+
+# Post-processing for CIS format
+# CIS-CAT and OpenSCAP need rich namespace declarations
+post_processing:
+  # Keep all namespaces - CIS format uses them for rich metadata
+  strip_namespace_prefixes: false
+
+  # Preserve all namespaces from the namespaces section
+  preserve_namespaces: null  # null = keep all
+
+  # Remove 'override' attributes (xsdata artifact)
+  remove_override_attr: true
+
+  # Handlers to run (includes metadata injection for CIS Controls)
+  handlers:
+    - dublin_core_injection
+    - metadata_injection

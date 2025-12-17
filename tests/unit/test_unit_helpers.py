@@ -155,6 +155,7 @@ def sample_context():
         "platform": "eks",
         "ref": "3.1.1",
         "ref_normalized": "3_1_1",
+        "stig_number": "030101",  # 3.1.1 → 03 01 01 → 030101
         "control": {"version": "8", "control": "4.8", "title": "Uninstall Services"},
         "nist_control_id": "CM-7",
     }
@@ -246,6 +247,38 @@ class TestTransformRegistry:
         html = "<p>Test &amp; &lt;special&gt; characters</p>"
         result = TransformRegistry.apply("strip_html", html)
         assert "&" in result or "amp" in result  # HTML entities handling
+
+    # === strip_version_prefix transform tests ===
+
+    def test_strip_version_prefix_lowercase_v(self):
+        """Test stripping lowercase 'v' prefix from version."""
+        result = TransformRegistry.apply("strip_version_prefix", "v4.0.0")
+        assert result == "4.0.0"
+
+    def test_strip_version_prefix_uppercase_v(self):
+        """Test stripping uppercase 'V' prefix from version."""
+        result = TransformRegistry.apply("strip_version_prefix", "V1.2.3")
+        assert result == "1.2.3"
+
+    def test_strip_version_prefix_no_prefix(self):
+        """Test version without prefix is unchanged."""
+        result = TransformRegistry.apply("strip_version_prefix", "4.0.0")
+        assert result == "4.0.0"
+
+    def test_strip_version_prefix_none_input(self):
+        """Test strip_version_prefix with None input."""
+        result = TransformRegistry.apply("strip_version_prefix", None)
+        assert result == ""
+
+    def test_strip_version_prefix_empty_string(self):
+        """Test strip_version_prefix with empty string."""
+        result = TransformRegistry.apply("strip_version_prefix", "")
+        assert result == ""
+
+    def test_strip_version_prefix_only_v(self):
+        """Test edge case: version is just 'v'."""
+        result = TransformRegistry.apply("strip_version_prefix", "v")
+        assert result == ""
 
 
 # ============================================================================
@@ -808,8 +841,11 @@ class TestIntegrationScenarios:
         template = engine.config.rule_id.get("template", "CIS-{ref_normalized}_rule")
         result = VariableSubstituter.substitute(template, sample_context)
 
-        assert "3_1_1" in result
-        assert "eks" in result.lower() or "cis" in result.lower()
+        # DISA style uses stig_number (030101), CIS style uses ref_normalized (3_1_1)
+        # Either format is valid depending on config
+        assert "030101" in result or "3_1_1" in result
+        # DISA uses SV-/V- prefix, CIS uses organization prefix
+        assert "SV-" in result or "xccdf" in result.lower() or "cis" in result.lower()
 
     def test_full_transformation_pipeline(self, sample_recommendation):
         """Test full pipeline: HTML input → Transform → Substitute → Output."""
@@ -835,9 +871,457 @@ class TestIntegrationScenarios:
 # ============================================================================
 
 
-class TestEdgeCases:
-    """Test edge cases and error conditions."""
+# ============================================================================
+# TEST: ID Format Validation (TDD for config-driven ID templates)
+# ============================================================================
 
+
+class TestIDFormatValidation:
+    """Verify ID formats match expected patterns for each style.
+
+    DISA STIG convention:
+    - Group ID: V-NNNNNN (e.g., V-030101)
+    - Rule ID: SV-NNNNNNrREV_rule (e.g., SV-030101r1_rule)
+
+    CIS convention:
+    - Group ID: xccdf_org.cisecurity.benchmarks_group_{ref_normalized}
+    - Rule ID: xccdf_org.cisecurity.benchmarks_rule_{ref_normalized}
+    """
+
+    @pytest.fixture
+    def disa_engine(self, disa_config_path):
+        """Create MappingEngine with DISA style."""
+        return MappingEngine(disa_config_path)
+
+    @pytest.fixture
+    def cis_engine(self, cis_config_path):
+        """Create MappingEngine with CIS style."""
+        return MappingEngine(cis_config_path)
+
+    # --- DISA ID Format Tests ---
+
+    def test_disa_group_id_format_v_prefix(self, disa_engine):
+        """DISA Group ID must start with V- prefix."""
+        template = disa_engine.config.group_id.get("template", "")
+        context = {"stig_number": "030101", "ref_normalized": "3_1_1", "platform": "eks"}
+        group_id = VariableSubstituter.substitute(template, context)
+
+        assert group_id.startswith("V-"), f"DISA Group ID must start with V-, got: {group_id}"
+
+    def test_disa_group_id_format_numeric(self, disa_engine):
+        """DISA Group ID must have numeric portion after V-."""
+        import re
+
+        template = disa_engine.config.group_id.get("template", "")
+        context = {"stig_number": "030101", "ref_normalized": "3_1_1", "platform": "eks"}
+        group_id = VariableSubstituter.substitute(template, context)
+
+        # Pattern: V-NNNNNN (V- followed by digits)
+        pattern = r"^V-\d+$"
+        assert re.match(pattern, group_id), f"DISA Group ID must match V-NNNNNN, got: {group_id}"
+
+    def test_disa_rule_id_format_sv_prefix(self, disa_engine):
+        """DISA Rule ID must start with SV- prefix."""
+        template = disa_engine.config.rule_id.get("template", "")
+        context = {"stig_number": "030101", "ref_normalized": "3_1_1", "platform": "eks"}
+        rule_id = VariableSubstituter.substitute(template, context)
+
+        assert rule_id.startswith("SV-"), f"DISA Rule ID must start with SV-, got: {rule_id}"
+
+    def test_disa_rule_id_format_revision_suffix(self, disa_engine):
+        """DISA Rule ID must have rN_rule suffix."""
+        import re
+
+        template = disa_engine.config.rule_id.get("template", "")
+        context = {"stig_number": "030101", "ref_normalized": "3_1_1", "platform": "eks"}
+        rule_id = VariableSubstituter.substitute(template, context)
+
+        # Pattern: SV-NNNNNNrREV_rule
+        pattern = r"^SV-\d+r\d+_rule$"
+        assert re.match(pattern, rule_id), (
+            f"DISA Rule ID must match SV-NNNNNNrN_rule, got: {rule_id}"
+        )
+
+    def test_disa_stig_number_conversion(self, disa_engine):
+        """Test ref_to_stig_number converts refs correctly."""
+        test_cases = [
+            ("1.1.1", "010101"),
+            ("3.2.1", "030201"),
+            ("10.5.3", "100503"),
+            ("1.1.1.1", "01010101"),
+            ("5", "05"),
+        ]
+        for ref, expected in test_cases:
+            result = disa_engine.ref_to_stig_number(ref)
+            assert result == expected, f"ref_to_stig_number({ref}) = {result}, expected {expected}"
+
+    def test_disa_ids_are_unique_for_different_refs(self, disa_engine):
+        """Different CIS refs should produce different DISA IDs."""
+        refs = ["1.1.1", "1.1.2", "2.1.1", "3.2.1"]
+        group_template = disa_engine.config.group_id.get("template", "")
+        rule_template = disa_engine.config.rule_id.get("template", "")
+
+        group_ids = set()
+        rule_ids = set()
+
+        for ref in refs:
+            stig_number = disa_engine.ref_to_stig_number(ref)
+            context = {"stig_number": stig_number, "ref_normalized": ref.replace(".", "_")}
+
+            group_id = VariableSubstituter.substitute(group_template, context)
+            rule_id = VariableSubstituter.substitute(rule_template, context)
+
+            assert group_id not in group_ids, f"Duplicate Group ID: {group_id}"
+            assert rule_id not in rule_ids, f"Duplicate Rule ID: {rule_id}"
+
+            group_ids.add(group_id)
+            rule_ids.add(rule_id)
+
+    # --- CIS ID Format Tests ---
+
+    def test_cis_group_id_format_prefix(self, cis_engine):
+        """CIS Group ID must have cisecurity.benchmarks prefix."""
+        template = cis_engine.config.group_id.get("template", "")
+        context = {"stig_number": "030101", "ref_normalized": "3_1_1", "platform": "eks"}
+        group_id = VariableSubstituter.substitute(template, context)
+
+        assert "cisecurity.benchmarks" in group_id, (
+            f"CIS Group ID must contain cisecurity.benchmarks, got: {group_id}"
+        )
+        assert "_group_" in group_id, f"CIS Group ID must contain _group_, got: {group_id}"
+
+    def test_cis_group_id_format_contains_ref(self, cis_engine):
+        """CIS Group ID must contain the normalized ref."""
+        template = cis_engine.config.group_id.get("template", "")
+        context = {"stig_number": "030101", "ref_normalized": "3_1_1", "platform": "eks"}
+        group_id = VariableSubstituter.substitute(template, context)
+
+        assert "3_1_1" in group_id, (
+            f"CIS Group ID must contain ref_normalized (3_1_1), got: {group_id}"
+        )
+
+    def test_cis_rule_id_format_prefix(self, cis_engine):
+        """CIS Rule ID must have cisecurity.benchmarks prefix."""
+        template = cis_engine.config.rule_id.get("template", "")
+        context = {"stig_number": "030101", "ref_normalized": "3_1_1", "platform": "eks"}
+        rule_id = VariableSubstituter.substitute(template, context)
+
+        assert "cisecurity.benchmarks" in rule_id, (
+            f"CIS Rule ID must contain cisecurity.benchmarks, got: {rule_id}"
+        )
+        assert "_rule_" in rule_id, f"CIS Rule ID must contain _rule_, got: {rule_id}"
+
+    def test_cis_rule_id_format_contains_ref(self, cis_engine):
+        """CIS Rule ID must contain the normalized ref."""
+        template = cis_engine.config.rule_id.get("template", "")
+        context = {"stig_number": "030101", "ref_normalized": "3_1_1", "platform": "eks"}
+        rule_id = VariableSubstituter.substitute(template, context)
+
+        assert "3_1_1" in rule_id, (
+            f"CIS Rule ID must contain ref_normalized (3_1_1), got: {rule_id}"
+        )
+
+    def test_cis_ids_are_unique_for_different_refs(self, cis_engine):
+        """Different CIS refs should produce different CIS IDs."""
+        refs = ["1.1.1", "1.1.2", "2.1.1", "3.2.1"]
+        group_template = cis_engine.config.group_id.get("template", "")
+        rule_template = cis_engine.config.rule_id.get("template", "")
+
+        group_ids = set()
+        rule_ids = set()
+
+        for ref in refs:
+            context = {"ref_normalized": ref.replace(".", "_")}
+
+            group_id = VariableSubstituter.substitute(group_template, context)
+            rule_id = VariableSubstituter.substitute(rule_template, context)
+
+            assert group_id not in group_ids, f"Duplicate Group ID: {group_id}"
+            assert rule_id not in rule_ids, f"Duplicate Rule ID: {rule_id}"
+
+            group_ids.add(group_id)
+            rule_ids.add(rule_id)
+
+    # --- Edge Cases for ref_to_stig_number ---
+
+    def test_stig_number_empty_ref(self, disa_engine):
+        """Empty ref returns '00' (empty string split produces one empty segment)."""
+        # Note: "".split(".") → [""] → "".zfill(2) → "00"
+        # This is acceptable edge case behavior - empty refs shouldn't occur in practice
+        result = disa_engine.ref_to_stig_number("")
+        assert result == "00", f"Empty ref edge case, got: {result}"
+
+    def test_stig_number_single_digit_segments(self, disa_engine):
+        """Single digit segments should be zero-padded."""
+        test_cases = [
+            ("1", "01"),
+            ("9", "09"),
+            ("1.2", "0102"),
+            ("1.2.3", "010203"),
+        ]
+        for ref, expected in test_cases:
+            result = disa_engine.ref_to_stig_number(ref)
+            assert result == expected, f"ref_to_stig_number({ref}) = {result}, expected {expected}"
+
+    def test_stig_number_double_digit_segments(self, disa_engine):
+        """Double digit segments should not be truncated."""
+        test_cases = [
+            ("10", "10"),
+            ("10.11", "1011"),
+            ("10.11.12", "101112"),
+            ("99.99.99", "999999"),
+        ]
+        for ref, expected in test_cases:
+            result = disa_engine.ref_to_stig_number(ref)
+            assert result == expected, f"ref_to_stig_number({ref}) = {result}, expected {expected}"
+
+    def test_stig_number_very_deep_hierarchy(self, disa_engine):
+        """Very deep refs (5+ levels) should still work."""
+        result = disa_engine.ref_to_stig_number("1.2.3.4.5")
+        assert result == "0102030405", f"Deep ref failed, got: {result}"
+
+    # --- End-to-End ID Tests (map_rule/map_group) ---
+
+    def test_disa_map_rule_produces_sv_id(self, disa_engine, sample_recommendation):
+        """map_rule() with DISA config should produce SV- prefixed rule ID."""
+        import re
+
+        context = {"platform": "eks", "benchmark": None}
+        rule = disa_engine.map_rule(sample_recommendation, context)
+
+        assert rule.id.startswith("SV-"), f"DISA Rule ID should start with SV-, got: {rule.id}"
+        assert re.match(r"^SV-\d+r\d+_rule$", rule.id), f"Invalid DISA Rule ID format: {rule.id}"
+
+    def test_disa_map_group_produces_v_id(self, disa_engine, sample_recommendation):
+        """map_group() with DISA config should produce V- prefixed group ID."""
+        import re
+
+        context = {"platform": "eks", "benchmark": None}
+        rule = disa_engine.map_rule(sample_recommendation, context)
+        group = disa_engine.map_group(sample_recommendation, rule, context)
+
+        assert group.id.startswith("V-"), f"DISA Group ID should start with V-, got: {group.id}"
+        assert re.match(r"^V-\d+$", group.id), f"Invalid DISA Group ID format: {group.id}"
+
+    def test_cis_map_rule_produces_benchmarks_id(self, cis_engine, sample_recommendation):
+        """map_rule() with CIS config should produce cisecurity.benchmarks rule ID."""
+        context = {"platform": "eks", "benchmark": None}
+        rule = cis_engine.map_rule(sample_recommendation, context)
+
+        assert "cisecurity.benchmarks" in rule.id, (
+            f"CIS Rule ID should contain cisecurity.benchmarks, got: {rule.id}"
+        )
+        assert "_rule_" in rule.id, f"CIS Rule ID should contain _rule_, got: {rule.id}"
+        assert "3_1_1" in rule.id, (
+            f"CIS Rule ID should contain ref_normalized (3_1_1), got: {rule.id}"
+        )
+
+    def test_cis_map_group_produces_benchmarks_id(self, cis_engine, sample_recommendation):
+        """map_group() with CIS config should produce cisecurity.benchmarks group ID."""
+        context = {"platform": "eks", "benchmark": None}
+        rule = cis_engine.map_rule(sample_recommendation, context)
+        group = cis_engine.map_group(sample_recommendation, rule, context)
+
+        assert "cisecurity.benchmarks" in group.id, (
+            f"CIS Group ID should contain cisecurity.benchmarks, got: {group.id}"
+        )
+        assert "_group_" in group.id, f"CIS Group ID should contain _group_, got: {group.id}"
+        assert "3_1_1" in group.id, (
+            f"CIS Group ID should contain ref_normalized (3_1_1), got: {group.id}"
+        )
+
+    def test_disa_rule_and_group_ids_correspond(self, disa_engine, sample_recommendation):
+        """DISA Rule and Group IDs should use same stig_number."""
+        context = {"platform": "eks", "benchmark": None}
+        rule = disa_engine.map_rule(sample_recommendation, context)
+        group = disa_engine.map_group(sample_recommendation, rule, context)
+
+        # Extract numbers: V-030101 → 030101, SV-030101r1_rule → 030101
+        group_num = group.id.replace("V-", "")
+        rule_num = rule.id.split("r")[0].replace("SV-", "")
+
+        assert group_num == rule_num, (
+            f"Group ({group.id}) and Rule ({rule.id}) should share stig_number"
+        )
+
+    # --- Profile Select Element ID Tests ---
+
+    def test_disa_profile_selects_use_sv_rule_ids(self, disa_engine, almalinux_complete_benchmark):
+        """Profile select elements should reference SV- rule IDs in DISA style."""
+        # Get profile config from engine config (not context)
+        profile_config = disa_engine.config.benchmark.get("profiles", {})
+
+        # Generate profiles
+        profiles = disa_engine.generate_profiles_from_rules(
+            almalinux_complete_benchmark.recommendations, profile_config
+        )
+
+        # Check at least one profile has selects
+        assert any(p.select for p in profiles), "No profiles with selects generated"
+
+        # Check all select idrefs use SV- format
+        for profile in profiles:
+            for select in profile.select:
+                assert select.idref.startswith("SV-"), (
+                    f"Profile select idref should use SV- format, got: {select.idref}"
+                )
+
+    def test_cis_profile_selects_use_benchmarks_rule_ids(
+        self, cis_engine, almalinux_complete_benchmark
+    ):
+        """Profile select elements should reference cisecurity.benchmarks rule IDs in CIS style."""
+        # Get profile config from engine config (not context)
+        profile_config = cis_engine.config.benchmark.get("profiles", {})
+
+        # Generate profiles
+        profiles = cis_engine.generate_profiles_from_rules(
+            almalinux_complete_benchmark.recommendations, profile_config
+        )
+
+        # Check at least one profile has selects
+        assert any(p.select for p in profiles), "No profiles with selects generated"
+
+        # Check all select idrefs use CIS format
+        for profile in profiles:
+            for select in profile.select:
+                assert "cisecurity.benchmarks" in select.idref, (
+                    f"Profile select idref should use cisecurity.benchmarks format, got: {select.idref}"
+                )
+
+    # --- Cross-Style Validation ---
+
+    def test_disa_and_cis_ids_are_distinct_formats(self, disa_engine, cis_engine):
+        """DISA and CIS IDs should be visually distinct formats."""
+        context = {"stig_number": "030101", "ref_normalized": "3_1_1", "platform": "eks"}
+
+        disa_group = VariableSubstituter.substitute(
+            disa_engine.config.group_id.get("template", ""), context
+        )
+        cis_group = VariableSubstituter.substitute(
+            cis_engine.config.group_id.get("template", ""), context
+        )
+
+        # They should be different
+        assert disa_group != cis_group, "DISA and CIS Group IDs should differ"
+
+        # DISA should be short numeric, CIS should be long descriptive
+        assert len(disa_group) < len(cis_group), "DISA IDs should be shorter than CIS IDs"
+        assert disa_group.startswith("V-"), "DISA should use V- prefix"
+        assert "xccdf" in cis_group.lower(), "CIS should use xccdf prefix"
+
+
+# ============================================================================
+# TEST: DISA/Vulcan Compatibility (Benchmark-level format tests)
+# ============================================================================
+
+
+class TestDISAVulcanCompatibility:
+    """Tests for DISA/Vulcan-compatible export format.
+
+    Vulcan expects specific formats:
+    - Benchmark ID: Short format (e.g., "CIS_AlmaLinux_STIG")
+    - Version: Without 'v' prefix (e.g., "4.0.0" not "v4.0.0")
+    - Group title: Contains useful info (not "<GroupDescription></GroupDescription>")
+    """
+
+    def test_disa_benchmark_id_is_short_format(self, disa_config_path):
+        """DISA benchmark ID template should produce short IDs for Vulcan."""
+        engine = MappingEngine(disa_config_path)
+        id_template = engine.config.benchmark.get("id_template", "")
+
+        # Template should NOT contain full xccdf namespace
+        assert "xccdf_org.cisecurity_benchmark" not in id_template, (
+            "DISA benchmark ID should not use full XCCDF namespace"
+        )
+
+        # Should produce short readable ID using benchmark_id
+        context = {"platform": "AlmaLinux", "benchmark_id": "23598"}
+        bench_id = VariableSubstituter.substitute(id_template, context)
+
+        assert len(bench_id) < 50, "Benchmark ID should be reasonably short"
+        assert "CIS" in bench_id, "Benchmark ID should contain 'CIS'"
+        assert "23598" in bench_id, "Benchmark ID should contain benchmark_id"
+
+    def test_disa_version_transform_strips_v_prefix(self, disa_config_path):
+        """DISA version config should use strip_version_prefix transform."""
+        engine = MappingEngine(disa_config_path)
+        version_config = engine.config.benchmark.get("version", {})
+
+        transform = version_config.get("transform")
+        assert transform == "strip_version_prefix", (
+            f"DISA version should use strip_version_prefix, got: {transform}"
+        )
+
+    def test_disa_group_title_has_source(self, disa_config_path):
+        """DISA group title should have a source field (not default placeholder)."""
+        engine = MappingEngine(disa_config_path)
+        title_config = engine.config.group_elements.get("title", {})
+
+        source = title_config.get("source")
+        assert source is not None, "DISA group title should have a source field"
+        assert source == "ref", "DISA group title source should be 'ref'"
+
+    def test_disa_group_description_has_source(self, disa_config_path):
+        """DISA group description should have a source field."""
+        engine = MappingEngine(disa_config_path)
+        desc_config = engine.config.group_elements.get("description", {})
+
+        source = desc_config.get("source")
+        assert source is not None, "DISA group description should have a source field"
+        assert source == "title", "DISA group description source should be 'title'"
+
+    def test_disa_map_group_uses_ref_as_title(self, disa_config_path, almalinux_complete_benchmark):
+        """map_group should use CIS ref as group title."""
+        engine = MappingEngine(disa_config_path)
+        benchmark = almalinux_complete_benchmark
+        rec = benchmark.recommendations[0]
+        context = {"platform": "test", "benchmark": benchmark}
+
+        rule = engine.map_rule(rec, context)
+        group = engine.map_group(rec, rule, context)
+
+        # Group title should contain the ref (e.g., "6.1.1")
+        assert group.title, "Group should have title"
+        title_content = (
+            group.title[0].content[0]
+            if hasattr(group.title[0], "content")
+            else group.title[0].value
+        )
+        assert rec.ref in title_content, (
+            f"Group title should contain ref '{rec.ref}', got: {title_content}"
+        )
+        # Should NOT contain the placeholder
+        assert "<GroupDescription>" not in title_content, (
+            "Group title should not contain placeholder"
+        )
+
+    def test_disa_map_group_uses_rule_title_as_description(
+        self, disa_config_path, almalinux_complete_benchmark
+    ):
+        """map_group should use rule title as group description."""
+        engine = MappingEngine(disa_config_path)
+        benchmark = almalinux_complete_benchmark
+        rec = benchmark.recommendations[0]
+        context = {"platform": "test", "benchmark": benchmark}
+
+        rule = engine.map_rule(rec, context)
+        group = engine.map_group(rec, rule, context)
+
+        # Group description should contain the rule title
+        assert group.description, "Group should have description"
+        desc_content = (
+            group.description[0].content[0]
+            if hasattr(group.description[0], "content")
+            else group.description[0].value
+        )
+        # Title may be transformed, so check for key words
+        assert len(desc_content) > 10, f"Group description should have content, got: {desc_content}"
+        assert "<GroupDescription>" not in desc_content, (
+            "Group description should not contain placeholder"
+        )
+
+
+class TestEdgeCases:
     def test_empty_recommendation_fields(self):
         """Test handling recommendation with minimal fields (some empty optionals)."""
         rec = Recommendation(

@@ -11,7 +11,7 @@ from cis_bench.models.benchmark import CISControl, MITREMapping, Recommendation
 @pytest.fixture
 def mapping_engine():
     """Create MappingEngine for testing."""
-    config_path = Path("src/cis_bench/exporters/configs/disa_style.yaml")
+    config_path = Path("src/cis_bench/exporters/configs/styles/disa.yaml")
     return MappingEngine(config_path)
 
 

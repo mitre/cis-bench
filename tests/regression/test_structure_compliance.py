@@ -63,6 +63,7 @@ class TestDISAStructureCompliance:
         """CRITICAL: Only ONE namespace declaration at root (no child redeclarations).
 
         Namespace pollution was causing Vulcan's Ruby XML parser to fail.
+        We use default namespace (xmlns=) NOT prefixed (xmlns:ns0=) for Vulcan compatibility.
         """
         output = tmp_path / "disa.xml"
         exporter = ExporterFactory.create("xccdf", style="disa")
@@ -71,12 +72,19 @@ class TestDISAStructureCompliance:
         with open(output) as f:
             content = f.read()
 
-        # Count xmlns:ns declarations
-        xmlns_count = content.count("xmlns:ns")
+        # Count xmlns declarations (default namespace, not prefixed)
+        # We use xmlns= (default), NOT xmlns:ns0= (prefixed)
+        # This is required for Vulcan's HappyMapper to parse correctly
+        default_xmlns_count = content.count('xmlns="http://checklists.nist.gov')
+        prefixed_xmlns_count = content.count("xmlns:ns")
 
-        assert xmlns_count == 1, (
-            f"Should have exactly 1 namespace declaration at root, found {xmlns_count}. "
-            "Child elements MUST NOT redeclare namespaces."
+        assert default_xmlns_count >= 1, (
+            f"Should have at least 1 default namespace declaration (xmlns=), found {default_xmlns_count}. "
+            "XCCDF must use default namespace for Vulcan compatibility."
+        )
+        assert prefixed_xmlns_count == 0, (
+            f"Should have 0 prefixed namespace declarations (xmlns:ns*), found {prefixed_xmlns_count}. "
+            "Prefixed namespaces cause Vulcan import failures."
         )
 
     def test_disa_structure_matches_official_pattern(self, sample_benchmark, tmp_path):

@@ -1,7 +1,7 @@
 # Mock PCI-DSS Configuration - Proves Generic Extensibility
 # This config demonstrates that adding PCI-DSS requires ZERO code changes
 
-extends: ../../src/cis_bench/exporters/configs/base_style.yaml
+extends: ../../../src/cis_bench/exporters/configs/base.yaml
 
 metadata:
   style_name: "pci_dss"

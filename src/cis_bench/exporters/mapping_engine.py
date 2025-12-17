@@ -52,6 +52,7 @@ class MappingConfig:
     benchmark: dict[str, Any]
     rule_defaults: dict[str, Any]
     rule_id: dict[str, str]
+    group_id: dict[str, str]  # Group ID template configuration
     field_mappings: dict[str, Any]
     transformations: dict[str, Any]
     cci_deduplication: dict[str, Any]
@@ -92,6 +93,27 @@ TransformRegistry.register("none", lambda x: x)
 TransformRegistry.register("strip_html", HTMLCleaner.strip_html)
 TransformRegistry.register("html_to_markdown", HTMLCleaner.html_to_markdown)
 TransformRegistry.register("wrap_xhtml_paragraphs", XHTMLFormatter.wrap_paragraphs)
+
+
+def strip_version_prefix(version: str | None) -> str:
+    """Strip leading 'v' or 'V' prefix from version strings.
+
+    DISA/Vulcan expects version without prefix (e.g., "4.0.0" not "v4.0.0").
+    Vulcan adds its own "V" prefix per DISA convention.
+
+    Examples:
+        "v4.0.0" → "4.0.0"
+        "V1.2.3" → "1.2.3"
+        "4.0.0" → "4.0.0" (unchanged)
+    """
+    if not version:
+        return ""
+    if version.startswith(("v", "V")):
+        return version[1:]
+    return version
+
+
+TransformRegistry.register("strip_version_prefix", strip_version_prefix)
 
 
 def strip_html_keep_code(html: str | None) -> str:
@@ -187,6 +209,7 @@ class ConfigLoader:
                     "benchmark": parent_config_obj.benchmark,
                     "rule_defaults": parent_config_obj.rule_defaults,
                     "rule_id": parent_config_obj.rule_id,
+                    "group_id": parent_config_obj.group_id,
                     "field_mappings": parent_config_obj.field_mappings,
                     "transformations": parent_config_obj.transformations,
                     "cci_deduplication": parent_config_obj.cci_deduplication,
@@ -209,6 +232,7 @@ class ConfigLoader:
                 benchmark=config_data.get("benchmark", {}),
                 rule_defaults=config_data.get("rule_defaults", {}),
                 rule_id=config_data.get("rule_id", {}),
+                group_id=config_data.get("group_id", {}),
                 field_mappings=config_data.get("field_mappings", {}),
                 transformations=config_data.get("transformations", {}),
                 cci_deduplication=config_data.get("cci_deduplication", {}),
@@ -351,6 +375,25 @@ class MappingEngine:
         """Normalize CIS ref for IDs (3.1.1 → 3_1_1)."""
         return ref.replace(".", "_")
 
+    def ref_to_stig_number(self, ref: str) -> str:
+        """Convert CIS ref to STIG-style 6-digit number.
+
+        Converts hierarchical CIS refs like "1.1.1" or "3.2.1.1" to a
+        STIG-style 6-digit number by padding each segment.
+
+        Examples:
+            "1.1.1"   → "010101" (2 digits per segment, 3 segments)
+            "3.2.1"   → "030201"
+            "1.1.1.1" → "01010101" (8 digits for 4 segments)
+            "12.3.4"  → "120304"
+
+        This creates a sortable, unique numeric ID from CIS refs.
+        """
+        parts = ref.split(".")
+        # Pad each part to 2 digits, join without separator
+        padded = "".join(p.zfill(2) for p in parts)
+        return padded
+
     def create_vuln_discussion(self, rec: Recommendation) -> str:
         """Create VulnDiscussion XML structure from CIS fields.
 
@@ -415,6 +458,14 @@ class MappingEngine:
         ccis, extra_nist = self.cci_service.deduplicate_nist_controls(
             cis_control_ids, rec.nist_controls, extract=extract
         )
+
+        # Fallback CCI if no CCIs (even if NIST exists)
+        # CRITICAL: DISA STIGs require at least one ident element per rule
+        if not ccis:
+            fallback_cci = cci_lookup_config.get("fallback_cci")
+            if fallback_cci:
+                ccis = [fallback_cci]
+                logger.debug(f"No CCIs for {rec.ref}, using fallback {fallback_cci}")
 
         return ccis, extra_nist
 
@@ -728,12 +779,17 @@ class MappingEngine:
             This is the CORRECT implementation. Old create_rule() hard-codes field list.
         """
         Rule = self.get_xccdf_class("Rule")
-        Status = self.get_xccdf_class("Status")
 
         # Generate ID
         ref_norm = self.normalize_ref(rec.ref)
+        stig_number = self.ref_to_stig_number(rec.ref)
         context.update(
-            {"ref_normalized": ref_norm, "rec": rec, "platform": context.get("platform", "")}
+            {
+                "ref_normalized": ref_norm,
+                "stig_number": stig_number,
+                "rec": rec,
+                "platform": context.get("platform", ""),
+            }
         )
 
         rule_id = VariableSubstituter.substitute(
@@ -741,15 +797,19 @@ class MappingEngine:
         )
 
         # Start with required fields and defaults
+        # Note: status belongs at Benchmark level, not Rule level
         rule_fields = {
             "id": rule_id,
             "severity": self.config.rule_defaults.get("severity", "medium"),
             "weight": float(self.config.rule_defaults.get("weight", "10.0")),
-            "status": [Status(value="draft")],
         }
 
         # THE KEY: Loop through config.field_mappings (NO HARD-CODED FIELD LIST)
         for field_name, field_mapping in self.config.field_mappings.items():
+            # Skip null/disabled field mappings (used to override parent config)
+            if field_mapping is None:
+                continue
+
             # Get xsdata type for this element
             FieldType = self.rule_element_types.get(field_name)
             if not FieldType:
@@ -967,15 +1027,22 @@ class MappingEngine:
         """
         Group = self.get_xccdf_class("Group")
 
-        # Generate Group ID
+        # Generate Group ID from config template (config-driven, no hardcoded patterns)
         ref_norm = context.get("ref_normalized", self.normalize_ref(rec.ref))
-        platform = context.get("platform", "")
+        stig_number = context.get("stig_number", self.ref_to_stig_number(rec.ref))
+        context.update(
+            {
+                "ref_normalized": ref_norm,
+                "stig_number": stig_number,
+                "rec": rec,
+            }
+        )
 
-        # Group ID pattern
-        if self.xccdf_version == "1.1.4":
-            group_id = f"CIS-{ref_norm}"
-        else:
-            group_id = f"xccdf_org.cisecurity_group_{platform}{ref_norm}"
+        # Use config-driven template with fallback for backward compatibility
+        default_template = "xccdf_org.cisecurity_group_{platform}{ref_normalized}"
+        group_id = VariableSubstituter.substitute(
+            self.config.group_id.get("template", default_template), context
+        )
 
         # Build Group fields from config
         group_fields = {
@@ -993,11 +1060,8 @@ class MappingEngine:
             # Get source value
             source = element_config.get("source")
             if source:
-                # Source from rec
-                if source == "ref":
-                    value = f"CIS {rec.ref}"
-                else:
-                    value = getattr(rec, source, None)
+                # Source from rec - use getattr for all fields including 'ref'
+                value = getattr(rec, source, None)
             else:
                 # Static content (like GroupDescription)
                 value = element_config.get("content", "<GroupDescription></GroupDescription>")
@@ -1299,9 +1363,18 @@ class MappingEngine:
             select_list = []
             for rec in recommendations:
                 if match_pattern in rec.profiles:
-                    # Generate rule ID (same logic as in map_rule)
-                    ref_normalized = rec.ref.replace(".", "_")
-                    rule_id = f"xccdf_cis_cis_rule_{ref_normalized}"
+                    # Generate rule ID using config template (same logic as map_rule)
+                    ref_normalized = self.normalize_ref(rec.ref)
+                    stig_number = self.ref_to_stig_number(rec.ref)
+                    rule_context = {
+                        "ref_normalized": ref_normalized,
+                        "stig_number": stig_number,
+                        "platform": "",  # Platform not needed for profile select idrefs
+                    }
+                    rule_id = VariableSubstituter.substitute(
+                        self.config.rule_id.get("template", "CIS-{ref_normalized}_rule"),
+                        rule_context,
+                    )
 
                     # Create select element
                     select = ProfileSelectType(idref=rule_id, selected=True)

@@ -1,15 +1,22 @@
-"""Tests for scripts/remove_code.py - LibCST utility."""
+"""Tests for scripts/remove_code.py - LibCST utility.
+
+These tests are for project development utilities, not the cis-bench package.
+Run with: pytest -m scripts
+"""
 
 import sys
 from pathlib import Path
 
 import pytest
 
+# Mark entire module as 'scripts' - excluded from default test run
+pytestmark = pytest.mark.scripts
+
 # Add scripts to path for import
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "scripts"))
 
-import libcst as cst
-from remove_code import CodeLister, CodeRemover, remove_code
+import libcst as cst  # noqa: E402
+from remove_code import CodeLister, CodeRemover, remove_code  # noqa: E402
 
 
 class TestCodeLister:

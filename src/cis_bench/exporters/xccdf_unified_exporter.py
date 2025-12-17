@@ -28,29 +28,30 @@ class XCCDFExporter(BaseExporter):
     Supported styles:
     - disa: DISA/DoD STIG-compatible (XCCDF 1.1.4)
     - cis: CIS native format (XCCDF 1.2)
-    - custom: User-defined (create custom_style.yaml)
+    - disa_vulcan_compat: DISA with CCIs only (for Vulcan import)
+    - custom: User-defined (create configs/styles/custom.yaml)
     """
 
     def __init__(self, style: str = "disa"):
         """Initialize with specified style.
 
         Args:
-            style: Style name (matches config filename without _style.yaml)
-                   Examples: 'disa', 'cis', 'pci-dss', 'banking'
+            style: Style name (matches config filename in configs/styles/)
+                   Examples: 'disa', 'cis', 'disa_vulcan_compat'
 
         Raises:
-            FileNotFoundError: If style config file doesn't exist
+            ValueError: If style config file doesn't exist
         """
         self.style = style
-        config_filename = f"{style}_style.yaml"
-        config_path = Path(__file__).parent / "configs" / config_filename
+        config_filename = f"{style}.yaml"
+        config_path = Path(__file__).parent / "configs" / "styles" / config_filename
 
         if not config_path.exists():
             available_styles = self._get_available_styles()
             raise ValueError(
                 f"Unknown XCCDF style: '{style}'. "
                 f"Available styles: {', '.join(available_styles)}. "
-                f"To add a new style, create configs/{config_filename}"
+                f"To add a new style, create configs/styles/{config_filename}"
             )
 
         logger.info(f"Initializing XCCDF exporter with style: {style}")
@@ -60,10 +61,10 @@ class XCCDFExporter(BaseExporter):
 
     @staticmethod
     def _get_available_styles():
-        """Get list of available style configs."""
-        configs_dir = Path(__file__).parent / "configs"
-        style_files = configs_dir.glob("*_style.yaml")
-        return [f.stem.replace("_style", "") for f in style_files]
+        """Get list of available style configs from configs/styles/ directory."""
+        styles_dir = Path(__file__).parent / "configs" / "styles"
+        style_files = styles_dir.glob("*.yaml")
+        return sorted([f.stem for f in style_files])
 
     def export(self, benchmark: Benchmark, output_path: str) -> str:
         """Export to XCCDF using configured style.
@@ -144,81 +145,77 @@ class XCCDFExporter(BaseExporter):
     def _apply_post_processing(self, xml_output: str, benchmark: Benchmark) -> str:
         """Apply post-processing pipeline based on style config.
 
-        Different styles may need different post-processors.
-        This method routes to the appropriate processors based on style.
+        All behavior is CONFIG-DRIVEN - no hardcoded style checks.
+        Reads post_processing section from YAML config.
         """
-        # Get namespaces from config (MappingConfig is a dataclass)
-        # CIS has top-level namespaces field, DISA has benchmark.namespaces
-        namespaces_config = {}
-
-        # Try loading from raw YAML (re-parse to get non-dataclass fields)
         from pathlib import Path
 
         import yaml
 
-        config_file = Path(__file__).parent / "configs" / f"{self.style}_style.yaml"
+        # Load raw config to get post_processing and namespaces sections
+        config_file = Path(__file__).parent / "configs" / "styles" / f"{self.style}.yaml"
         with open(config_file) as f:
             raw_config = yaml.safe_load(f)
 
-        # Try top-level namespaces (CIS)
+        # Get namespaces config (CIS: top-level, DISA: benchmark.namespaces)
+        namespaces_config = {}
         if "namespaces" in raw_config:
             namespaces_config = raw_config["namespaces"]
-        # Try benchmark.namespaces (DISA)
         elif "benchmark" in raw_config and "namespaces" in raw_config["benchmark"]:
             namespaces_config = raw_config["benchmark"]["namespaces"]
 
-        logger.debug(f"Loaded namespaces config: {list(namespaces_config.keys())}")
+        # Get post_processing config (with defaults from base.yaml via inheritance)
+        post_processing_config = raw_config.get("post_processing", {})
 
-        # Get XCCDF namespace (different for DISA vs CIS)
+        logger.debug(f"Loaded namespaces: {list(namespaces_config.keys())}")
+        logger.debug(f"Post-processing config: {post_processing_config}")
+
+        # Get XCCDF namespace from config (NO HARDCODING)
         if "default" in namespaces_config:
             xccdf_ns = namespaces_config["default"]
         elif "xccdf" in namespaces_config:
             xccdf_ns = namespaces_config["xccdf"]
         else:
-            # Fallback based on style
-            xccdf_ns = (
-                "http://checklists.nist.gov/xccdf/1.1"
-                if self.style == "disa"
-                else "http://checklists.nist.gov/xccdf/1.2"
-            )
+            raise ValueError(f"No XCCDF namespace found in config for style '{self.style}'")
 
         logger.debug(f"Applying post-processing for style: {self.style}, namespace: {xccdf_ns}")
 
-        # Common post-processors (all styles)
-        # Always try DC injection (references may have DC markers from rules)
+        # Run handlers from config (in order)
+        handlers = post_processing_config.get("handlers", [])
         dc_ns = namespaces_config.get("dc", "http://purl.org/dc/elements/1.1/")
-        logger.debug("Applying Dublin Core injection to all references with markers")
-        xml_output = DublinCoreInjector.inject_dc_into_all_references(
-            xml_output, xccdf_namespace=xccdf_ns, dc_namespace=dc_ns
-        )
-        logger.debug("Applied Dublin Core injection")
 
-        # DISA-specific post-processors (before namespace cleanup)
-        if self.style == "disa":
-            xml_output = self._apply_disa_post_processors(xml_output, namespaces_config)
+        for handler in handlers:
+            if handler == "dublin_core_injection":
+                logger.debug("Running handler: dublin_core_injection")
+                xml_output = DublinCoreInjector.inject_dc_into_all_references(
+                    xml_output, xccdf_namespace=xccdf_ns, dc_namespace=dc_ns
+                )
+            elif handler == "metadata_injection":
+                logger.debug("Running handler: metadata_injection")
+                xml_output = self._inject_metadata_from_config(xml_output)
+            else:
+                logger.warning(f"Unknown post-processing handler: {handler}")
 
-        # Final namespace cleanup (all styles)
+        # Build namespace map for lxml (convert "default" key to None)
+        nsmap_for_lxml = {}
+        for key, value in namespaces_config.items():
+            if key == "default":
+                nsmap_for_lxml[None] = value
+            else:
+                nsmap_for_lxml[key] = value
+
+        # Final processing (namespace cleanup, attribute removal, etc.)
+        # All behavior driven by post_processing_config
         xml_output = XCCDFPostProcessor.process(
             xml_output,
             xccdf_namespace=xccdf_ns,
             dc_elements=self._dc_elements,
-            namespace_map=namespaces_config,
+            namespace_map=nsmap_for_lxml,
+            post_processing_config=post_processing_config,
         )
         logger.debug("Applied final post-processing")
 
-        # CIS-specific post-processors (AFTER namespace cleanup to preserve metadata)
-        if self.style == "cis":
-            xml_output = self._apply_cis_post_processors(xml_output, namespaces_config)
-
         return xml_output
-
-    def _apply_cis_post_processors(self, xml_output: str, namespaces: dict) -> str:
-        """Apply CIS-specific post-processors.
-
-        Injects metadata elements built by metadata_from_config handler.
-        This is a GENERIC pattern - any style can use requires_post_processing flag.
-        """
-        return self._inject_metadata_from_config(xml_output)
 
     def _inject_metadata_from_config(self, xml_output: str) -> str:
         """Generic metadata injection for elements marked requires_post_processing.
@@ -263,20 +260,6 @@ class XCCDFExporter(BaseExporter):
             metadata_wrapper.append(metadata_elem)
 
         return etree.tostring(root, encoding="unicode", pretty_print=True)
-
-    def _apply_disa_post_processors(self, xml_output: str, namespaces: dict) -> str:
-        """Apply DISA-specific post-processors.
-
-        DISA exports use <ident> elements for all compliance data (CCIs, CIS Controls, MITRE).
-        No metadata injection needed - all data is handled by MappingEngine via ident_from_list.
-        """
-        logger.debug("Applying DISA post-processors: No metadata injection (using ident elements)")
-
-        # DISA STIGs don't use metadata elements - all compliance data is in <ident> elements
-        # CCIs, CIS Controls, and MITRE ATT&CK are all generated by MappingEngine
-        # Nothing to do here - just return the XML as-is
-
-        return xml_output
 
     def _add_cis_controls_ident_uris(
         self, xml_str: str, xccdf_ns: str, cc7_ns: str, cc8_ns: str

@@ -48,8 +48,42 @@ rule_defaults:
   selected: "true"
   role: "full"
 
+# Default ID templates (can be overridden by child configs)
+# Variables available: {platform}, {ref}, {ref_normalized}, {version_padded}
+rule_id:
+  template: "xccdf_org.cisecurity_rule_{platform}_{ref_normalized}"
+
+group_id:
+  template: "xccdf_org.cisecurity_group_{platform}_{ref_normalized}"
+
 # Common validation rules
 validation:
   require_cci_for_cis_controls: false
   require_nist_controls: false
   max_cci_per_rule: 50
+
+# Common CCI lookup defaults
+cci_defaults:
+  fallback_cci: "CCI-000366"  # Generic CCI for rules with no compliance data
+  # CCI-000366 = "The organization implements the security configuration settings"
+
+# Post-processing configuration (config-driven, not hardcoded)
+# Each style can override these settings
+post_processing:
+  # Whether to strip ns0:, ns1:, etc. prefixes from elements
+  # DISA/STIG: true (Vulcan/HappyMapper needs clean XML)
+  # CIS: false (preserve namespaces for rich metadata)
+  strip_namespace_prefixes: false
+
+  # Which namespaces to declare in root element
+  # null = use all from namespaces section
+  # list = only these (e.g., ["default", "dc"])
+  preserve_namespaces: null
+
+  # Whether to remove 'override' attributes (xsdata artifact)
+  remove_override_attr: true
+
+  # Post-processing handlers to run (in order)
+  # Available: dublin_core_injection, metadata_injection
+  handlers:
+    - dublin_core_injection
