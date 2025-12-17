@@ -10,10 +10,24 @@ from rich.console import Console
 
 from cis_bench.config import Config
 from cis_bench.exporters import ExporterFactory
+from cis_bench.exporters.xccdf_unified_exporter import XCCDFExporter
 from cis_bench.models.benchmark import Benchmark
 
 console = Console()
 logger = logging.getLogger(__name__)
+
+
+def get_available_xccdf_styles():
+    """Get available XCCDF styles for CLI validation."""
+    return XCCDFExporter._get_available_styles()
+
+
+class DynamicStyleChoice(click.Choice):
+    """Dynamic choice that loads available styles at runtime."""
+
+    def __init__(self):
+        # Load choices dynamically
+        super().__init__(get_available_xccdf_styles())
 
 
 @click.command(name="export")
@@ -28,7 +42,7 @@ logger = logging.getLogger(__name__)
 )
 @click.option(
     "--style",
-    type=click.Choice(["disa", "cis"]),
+    type=DynamicStyleChoice(),
     default="disa",
     help="XCCDF export style (only used with --format xccdf)",
 )

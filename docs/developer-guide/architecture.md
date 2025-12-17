@@ -353,8 +353,8 @@ source_field: "title"
 transform: "strip_html"
 
 cis_controls_metadata:
-structure: "official_cis_controls"
-source_logic: "build_cis_controls"
+structure: "metadata_from_config"
+requires_post_processing: true
 ```
 
 **Adding new XCCDF style:**
@@ -523,8 +523,8 @@ transform: "strip_html"
 # Complex nested structure
 cis_controls_metadata:
 target_element: "metadata"
-structure: "official_cis_controls"
-source_logic: "build_cis_controls"
+structure: "metadata_from_config"
+requires_post_processing: true
 
 # Multiple values
 reference:
@@ -549,8 +549,8 @@ function: "HTMLCleaner.html_to_markdown"
 - `simple` - Direct field mapping
 - `nested` - Parent with child elements
 - `dublin_core` - Reference with DC metadata
-- `official_cis_controls` - CIS Controls hierarchy
-- `enhanced_namespace` - Custom namespace metadata
+- `metadata_from_config` - Generic nested XML (CIS Controls, hierarchies)
+- `ident_from_list` - Generic ident generation (CCIs, MITRE, PCI-DSS)
 - `embedded_xml_tags` - VulnDiscussion style
 
 **Adding new structure:**

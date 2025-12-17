@@ -7,6 +7,16 @@
 
 **New to terms?** See [Glossary](../about/glossary.md) for definitions of MappingEngine, YAML, transformation, field mapping, xsdata, etc.
 
+!!! success "December 2025 Update"
+**Generic Structure Handlers:** The MappingEngine now uses 3 generic handlers that work for ANY compliance framework:
+
+- `ident_from_list` - Any index/taxonomy (CCI, MITRE, PCI-DSS, etc.)
+- `metadata_from_config` - Any nested XML structure
+- `generate_profiles_from_rules` - Any applicability system
+
+**Adding PCI-DSS, ISO 27001, HIPAA:** YAML config only (no code changes)
+See [Adding PCI-DSS Guide](adding-pci-dss.md)
+
 ---
 
 ## What is the MappingEngine?
@@ -715,18 +725,20 @@ Add CIS Controls as structured metadata:
 
 ```yaml
 cis_controls_metadata:
-structure: "custom_namespace"
-namespace: "controls"
-components:
-
-- element: "control"
-source_field: "cis_controls"
-multiple: true
-attributes:
-id: "{control.id}"
-version: "8"
-ig: "{control.ig}"
-content: "{control.title}"
+  structure: "metadata_from_config"
+  requires_post_processing: true
+  source_field: "cis_controls"
+  metadata_spec:
+    root_element: "cis_controls"
+    namespace: "http://cisecurity.org/controls"
+    group_by: "item.version"
+    group_element:
+      element: "framework"
+      attributes:
+        urn: "urn:cisecurity.org:controls:{group_key}"
+      item_element:
+        element: "safeguard"
+        # ... (see cis_style.yaml for complete spec)
 ```
 
 **Output:**

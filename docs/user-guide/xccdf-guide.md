@@ -143,13 +143,14 @@ cc8:controlURI="http://cisecurity.org/20-cc/v8.0/control/3/subcontrol/14"/>
 | Feature | DISA Style | CIS Style |
 |---------|------------|-----------|
 | XCCDF Version | 1.1.4 | 1.2 |
-| CCI Mappings | Yes (2161) | No |
-| CIS Controls | Flat metadata | Official nested structure |
-| MITRE ATT&CK | In metadata | Enhanced namespace |
-| NIST 800-53 | Via CCIs | Direct + Dublin Core |
-| VulnDiscussion | Yes | No (separate rationale) |
-| File Size (322 recs) | 1.4 MB | 1.7 MB |
-| Target Tools | DISA SCC, STIG Viewer | CIS-CAT, OpenSCAP |
+| CCI Mappings | Yes (626 CCIs) | No |
+| CIS Controls | As idents (681) | Ident + metadata (dual) |
+| MITRE ATT&CK | As idents (1570) | As idents (cleaner) |
+| NIST 800-53 | Via CCIs + references | Direct Dublin Core |
+| VulnDiscussion | Yes (embedded tags) | No (separate rationale) |
+| Profiles | Benchmark level (4) | Benchmark level (4) |
+| File Size (322 recs) | 1.5 MB | 1.8 MB |
+| Target Tools | DISA SCC, STIG Viewer, **Vulcan** | CIS-CAT, OpenSCAP |
 
 ---
 

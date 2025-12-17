@@ -141,15 +141,21 @@ class Benchmark(BaseModel):
     total_recommendations: int = Field(..., ge=0)
     recommendations: list[Recommendation] = Field(...)
 
-    @field_validator("total_recommendations")
+    @field_validator("recommendations")
     @classmethod
-    def validate_count_matches(cls, v, info):
-        """Ensure total_recommendations matches actual count."""
-        if "recommendations" in info.data:
-            actual_count = len(info.data["recommendations"])
-            if v != actual_count:
+    def validate_recommendations_count_matches_total(cls, v, info):
+        """Ensure recommendations list count matches total_recommendations field.
+
+        This validator runs when recommendations field is set, and checks if
+        total_recommendations (if already set) matches the actual count.
+        """
+        if "total_recommendations" in info.data:
+            expected_count = info.data["total_recommendations"]
+            actual_count = len(v)
+            if expected_count != actual_count:
                 raise ValueError(
-                    f"total_recommendations ({v}) doesn't match actual ({actual_count})"
+                    f"total_recommendations field says {expected_count} but "
+                    f"recommendations list has {actual_count} items"
                 )
         return v
 

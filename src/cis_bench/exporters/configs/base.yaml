@@ -1,0 +1,89 @@
+# Base XCCDF Export Configuration
+# Common configuration shared across all XCCDF styles (CIS, DISA, future styles)
+# Use: extends: base_style.yaml in child configs
+
+# Benchmark-level configuration
+benchmark:
+  # Common namespaces used across all styles
+  namespaces:
+    default: "http://checklists.nist.gov/xccdf/1.2"
+    dc: "http://purl.org/dc/elements/1.1/"
+    xsi: "http://www.w3.org/2001/XMLSchema-instance"
+    cpe: "http://cpe.mitre.org/language/2.0"
+    xhtml: "http://www.w3.org/1999/xhtml"
+    # CIS-specific namespaces (used even in DISA format for metadata)
+    controls: "http://cisecurity.org/controls"
+    enhanced: "http://cisecurity.org/xccdf/enhanced/1.0"
+    cc6: "http://cisecurity.org/20-cc/v6.1"
+    cc7: "http://cisecurity.org/20-cc/v7.0"
+    cc8: "http://cisecurity.org/20-cc/v8.0"
+
+# Common transformations available to all styles
+transformations:
+  none:
+    description: "Pass through unchanged"
+
+  strip_html:
+    description: "Remove all HTML tags, return plain text"
+    function: "HTMLCleaner.strip_html"
+
+  strip_html_keep_code:
+    description: "Strip HTML but preserve code blocks and lists"
+    function: "HTMLCleaner.strip_html_keep_code"
+    preserve_elements:
+      - "code"
+      - "pre"
+      - "ul"
+      - "ol"
+      - "li"
+
+  html_to_markdown:
+    description: "Convert HTML to Markdown"
+    function: "HTMLCleaner.html_to_markdown"
+
+# Common rule defaults (can be overridden by child configs)
+rule_defaults:
+  severity: "medium"
+  weight: "10.0"
+  selected: "true"
+  role: "full"
+
+# Default ID templates (can be overridden by child configs)
+# Variables available: {platform}, {ref}, {ref_normalized}, {version_padded}
+rule_id:
+  template: "xccdf_org.cisecurity_rule_{platform}_{ref_normalized}"
+
+group_id:
+  template: "xccdf_org.cisecurity_group_{platform}_{ref_normalized}"
+
+# Common validation rules
+validation:
+  require_cci_for_cis_controls: false
+  require_nist_controls: false
+  max_cci_per_rule: 50
+
+# Common CCI lookup defaults
+cci_defaults:
+  fallback_cci: "CCI-000366"  # Generic CCI for rules with no compliance data
+  # CCI-000366 = "The organization implements the security configuration settings"
+
+# Post-processing configuration (config-driven, not hardcoded)
+# Each style can override these settings
+post_processing:
+  # Whether to strip ns0:, ns1:, etc. prefixes from elements
+  # DISA/STIG: true (Vulcan/HappyMapper needs clean XML)
+  # CIS: false (preserve namespaces for rich metadata)
+  strip_namespace_prefixes: false
+
+  # Which namespaces to declare in root element
+  # null = use all from namespaces section
+  # list = only these (e.g., ["default", "dc"])
+  preserve_namespaces: null
+
+  # Whether to remove 'override' attributes (xsdata artifact)
+  remove_override_attr: true
+
+  # Post-processing handlers to run (in order)
+  # Available: dublin_core_injection, metadata_injection
+  handlers:
+    - dublin_core_injection

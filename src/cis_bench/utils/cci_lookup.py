@@ -168,12 +168,17 @@ class CCILookupService:
         logger.debug(
             f"Deduplicating NIST controls: {len(cis_control_ids)} CIS controls, {len(cited_nist_controls)} cited NIST (extract={extract})"
         )
+        seen_ccis = set()
         all_ccis = []
 
         # Get CCIs from CIS controls (filtered by extract parameter)
+        # IMPORTANT: Deduplicate CCIs - multiple CIS controls can map to the same CCI
         for cis_id in cis_control_ids:
             ccis = self.get_ccis_for_cis_control(cis_id, extract=extract)
-            all_ccis.extend([c.cci for c in ccis])
+            for c in ccis:
+                if c.cci not in seen_ccis:
+                    seen_ccis.add(c.cci)
+                    all_ccis.append(c.cci)
 
         # Determine which NIST controls are covered by these CCIs
         covered_nist = self.get_nist_controls_covered_by_ccis(all_ccis)
@@ -187,7 +192,7 @@ class CCILookupService:
                 extra_nist.append(cited)
 
         logger.info(
-            f"Deduplication result: {len(all_ccis)} CCIs, {len(extra_nist)} extra NIST controls"
+            f"Deduplication result: {len(all_ccis)} unique CCIs, {len(extra_nist)} extra NIST controls"
         )
         return all_ccis, extra_nist
 

@@ -288,6 +288,9 @@ class XCCDFPostProcessor:
 
     Combines namespace fixing, DC injection, and other workarounds
     for xsdata limitations.
+
+    All behavior is CONFIG-DRIVEN via post_processing_config parameter.
+    No hardcoded style-specific logic.
     """
 
     @staticmethod
@@ -296,53 +299,93 @@ class XCCDFPostProcessor:
         xccdf_namespace: str,
         dc_elements: dict | None = None,
         namespace_map: dict | None = None,
+        post_processing_config: dict | None = None,
     ) -> str:
-        """Apply all XCCDF post-processing steps.
+        """Apply XCCDF post-processing steps based on config.
 
         Args:
             xml_string: Raw XML from xsdata serializer
             xccdf_namespace: XCCDF namespace URI
             dc_elements: Dublin Core elements to inject (optional)
-            namespace_map: Additional namespaces for root (optional)
-                          e.g., {None: xccdf_ns, 'dc': dc_ns}
+            namespace_map: All available namespaces from config
+                          e.g., {None: xccdf_ns, 'dc': dc_ns, 'controls': ...}
+            post_processing_config: Config-driven settings (from YAML)
+                - strip_namespace_prefixes: bool (default: False)
+                - preserve_namespaces: list or None (default: None = all)
+                - remove_rule_status: bool (default: False)
+                - remove_override_attr: bool (default: True)
 
         Returns:
             Fully processed XML ready for output
-
-        Processing steps:
-            1. Fix namespace bug (add XCCDF namespace to unnamespaced elements)
-            2. Inject Dublin Core elements if provided
-            3. Add namespace declarations to root if provided
-            4. Clean up invalid attributes (like 'override')
         """
-        # Step 1: Fix namespaces
+        # Default config if not provided
+        if post_processing_config is None:
+            post_processing_config = {}
+
+        # Extract config values with defaults
+        strip_ns_prefixes = post_processing_config.get("strip_namespace_prefixes", False)
+        preserve_ns_list = post_processing_config.get("preserve_namespaces", None)
+        remove_override = post_processing_config.get("remove_override_attr", True)
+
+        logger.debug(
+            f"Post-processing config: strip_ns={strip_ns_prefixes}, preserve_ns={preserve_ns_list}"
+        )
+
+        # Step 1: Fix namespaces (always needed - xsdata bug workaround)
         xml_string = XCCDFNamespaceFixer.fix_namespaces(xml_string, xccdf_namespace)
 
-        # Step 2: Inject DC elements
+        # Step 2: Inject DC elements if provided
         if dc_elements:
             dc_ns = "http://purl.org/dc/elements/1.1/"
             xml_string = DublinCoreInjector.inject_dc_elements(
                 xml_string, dc_elements, xccdf_namespace, dc_ns
             )
 
-        # Step 3: Add namespace declarations to root
-        if namespace_map:
-            root = etree.fromstring(xml_string.encode("utf-8"))
+        # Step 3: Parse XML for remaining processing
+        root = etree.fromstring(xml_string.encode("utf-8"))
 
-            # Create new root with proper nsmap
-            new_root = etree.Element(root.tag, attrib=root.attrib, nsmap=namespace_map)
+        # Step 4: Process elements based on config
+        for elem in root.iter():
+            # Remove 'override' attribute if configured
+            if remove_override and "override" in elem.attrib:
+                del elem.attrib["override"]
+
+            # Strip namespace prefixes if configured
+            if strip_ns_prefixes and elem.tag.startswith("{"):
+                ns, local = elem.tag[1:].split("}", 1)
+                # Always keep DC elements with their namespace (for proper serialization)
+                if "purl.org/dc" not in ns:
+                    elem.tag = local
+
+        # Step 6: Rebuild root with appropriate namespaces
+        if namespace_map:
+            # Determine which namespaces to include
+            if preserve_ns_list is not None:
+                # Only include specified namespaces
+                final_nsmap = {}
+                for key in preserve_ns_list:
+                    if key == "default":
+                        # Default namespace uses None key in lxml
+                        if None in namespace_map:
+                            final_nsmap[None] = namespace_map[None]
+                        elif "default" in namespace_map:
+                            final_nsmap[None] = namespace_map["default"]
+                    elif key in namespace_map:
+                        final_nsmap[key] = namespace_map[key]
+                logger.debug(f"Using filtered namespaces: {list(final_nsmap.keys())}")
+            else:
+                # Use all namespaces from config
+                final_nsmap = namespace_map
+                logger.debug(f"Using all namespaces: {list(final_nsmap.keys())}")
+
+            # Create new root with correct namespace map
+            new_root = etree.Element(root.tag, attrib=root.attrib, nsmap=final_nsmap)
+            new_root.text = root.text
 
             # Copy all children
             for child in root:
                 new_root.append(child)
 
-            xml_string = XCCDFSerializer.tree_to_string(new_root)
-
-        # Step 4: Clean up invalid attributes
-        root = etree.fromstring(xml_string.encode("utf-8"))
-        for elem in root.iter():
-            # Remove 'override' attribute (not used in real STIGs, breaks some parsers)
-            if "override" in elem.attrib:
-                del elem.attrib["override"]
+            root = new_root
 
         return XCCDFSerializer.tree_to_string(root)

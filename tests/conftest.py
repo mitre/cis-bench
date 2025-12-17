@@ -7,6 +7,12 @@ Professional pytest configuration following best practices:
 - Helper functions for common test operations
 
 NO HARDCODED PATHS in tests - everything via fixtures.
+
+Test organization:
+- tests/scripts/ - Project utility tests (optional, requires libcst)
+  Run with: uv run pytest tests/scripts/
+- All other tests - cis-bench package tests (default)
+  Run with: uv run pytest
 """
 
 import os
@@ -74,6 +80,12 @@ def configs_dir(exporters_dir):
 
 
 @pytest.fixture(scope="session")
+def styles_dir(configs_dir):
+    """Return styles directory within configs."""
+    return configs_dir / "styles"
+
+
+@pytest.fixture(scope="session")
 def utils_dir(package_dir):
     """Return utils directory."""
     return package_dir / "utils"
@@ -109,15 +121,21 @@ def html_fixtures(fixtures_dir):
 
 
 @pytest.fixture(scope="session")
-def disa_config_path(configs_dir):
+def disa_config_path(styles_dir):
     """Path to DISA style configuration YAML."""
-    return configs_dir / "disa_style.yaml"
+    return styles_dir / "disa.yaml"
 
 
 @pytest.fixture(scope="session")
-def cis_native_config_path(configs_dir):
-    """Path to CIS native style configuration YAML."""
-    return configs_dir / "cis_native_style.yaml"
+def cis_config_path(styles_dir):
+    """Path to CIS style configuration YAML."""
+    return styles_dir / "cis.yaml"
+
+
+@pytest.fixture(scope="session")
+def disa_vulcan_compat_config_path(styles_dir):
+    """Path to DISA Vulcan-compatible style configuration YAML."""
+    return styles_dir / "disa_vulcan_compat.yaml"
 
 
 # ============================================================================

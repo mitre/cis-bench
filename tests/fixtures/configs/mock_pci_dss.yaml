@@ -1,0 +1,45 @@
+# Mock PCI-DSS Configuration - Proves Generic Extensibility
+# This config demonstrates that adding PCI-DSS requires ZERO code changes
+
+extends: ../../../src/cis_bench/exporters/configs/base.yaml
+
+metadata:
+  style_name: "pci_dss"
+  description: "PCI-DSS v4.0 mock configuration (for testing)"
+  xccdf_version: "1.2"
+
+benchmark:
+  id_template: "xccdf_org.pcisecuritystandards_benchmark_PCI_DSS_v4.0"
+
+  profiles:
+    generate_from_rules: true
+    profile_mappings:
+      - match: "SAQ A"
+        id: "saq-a"
+        title: "Self-Assessment Questionnaire A"
+        description: "Card-not-present merchants"
+
+field_mappings:
+  # PCI-DSS requirements as idents (using generic ident_from_list)
+  pci_requirements:
+    target_element: "ident"
+    structure: "ident_from_list"
+    source_field: "cis_controls"  # Mock - reuse CIS data for testing
+    ident_spec:
+      system_template: "https://www.pcisecuritystandards.org/pci_dss/v4.0"
+      value_template: "Requirement-{item.control}"
+
+  # MITRE as idents (same as DISA/CIS)
+  mitre_techniques:
+    target_element: "ident"
+    structure: "ident_from_list"
+    source_field: "mitre_mapping.techniques"
+    ident_spec:
+      system_template: "https://attack.mitre.org/techniques"
+      value_template: "{item}"
+
+rule_elements:
+  pci_requirements:
+    xccdf_type: "IdentType"
+  mitre_techniques:
+    xccdf_type: "IdentType"

@@ -1,0 +1,423 @@
+# CIS Native XCCDF Export Mapping Configuration
+# Maps CIS Benchmark data to clean CIS-centric XCCDF format
+# Version: 1.0.0
+# XCCDF Target: 1.2 (clean format optimized for general XCCDF tools)
+
+metadata:
+  style_name: "cis"
+  description: "CIS Native clean XCCDF export"
+  xccdf_version: "1.2"
+  target_tools:
+    - "OpenSCAP (commercial/non-DoD)"
+    - "Generic XCCDF validators"
+    - "Custom compliance tools"
+    - "Research and analysis tools"
+  conventions: "Clean CIS-centric format with separate elements (no embedded XML tags)"
+
+# Benchmark element specifications (xsdata types)
+benchmark_elements:
+  title:
+    xccdf_type: "TextType"  # XCCDF 1.2: Benchmark.title is TextType
+  description:
+    xccdf_type: "HtmlTextType"  # XCCDF 1.2: Benchmark.description is HtmlTextType
+  version:
+    xccdf_type: "VersionType"
+  status:
+    xccdf_type: "StatusType"
+  notice:
+    xccdf_type: "NoticeType"
+  front_matter:
+    xccdf_type: "HtmlTextWithSubType"  # XCCDF 1.2 requires WithSubType
+  rear_matter:
+    xccdf_type: "HtmlTextWithSubType"  # XCCDF 1.2 requires WithSubType
+
+# Group element specifications (xsdata types)
+group_elements:
+  title:
+    xccdf_type: "TextWithSubType"
+  description:
+    xccdf_type: "HtmlTextWithSubType"
+
+# Benchmark-level mappings
+benchmark:
+  id_template: "xccdf_org.cisecurity.benchmarks_{platform}"
+
+  # Profile generation - same as DISA
+  profiles:
+    generate_from_rules: true
+    profile_mappings:
+      - match: "Level 1 - Server"
+        id: "level-1-server"
+        title: "Level 1 - Server"
+        description: "CIS Level 1 recommendations for server environments"
+      - match: "Level 1 - Workstation"
+        id: "level-1-workstation"
+        title: "Level 1 - Workstation"
+        description: "CIS Level 1 recommendations for workstation environments"
+      - match: "Level 2 - Server"
+        id: "level-2-server"
+        title: "Level 2 - Server"
+        description: "CIS Level 2 recommendations for server environments"
+      - match: "Level 2 - Workstation"
+        id: "level-2-workstation"
+        title: "Level 2 - Workstation"
+        description: "CIS Level 2 recommendations for workstation environments"
+      - match: "Level 3 - Server"
+        id: "level-3-server"
+        title: "Level 3 - Server"
+        description: "CIS Level 3 recommendations for server environments"
+      - match: "Level 3 - Workstation"
+        id: "level-3-workstation"
+        title: "Level 3 - Workstation"
+        description: "CIS Level 3 recommendations for workstation environments"
+
+  title:
+    source: "title"
+    transform: "none"
+  description:
+    source: "title"  # Use title as description
+    transform: "none"
+  version:
+    source: "version"
+    transform: "none"
+  notice:
+    id: "terms-of-use"
+    xccdf_type: "NoticeType"
+  front_matter:
+    xccdf_type: "HtmlTextWithSubType"
+  rear_matter:
+    xccdf_type: "HtmlTextWithSubType"
+
+# Rule-level default attributes
+rule_defaults:
+  severity: "medium"  # CIS has no severity concept
+  weight: "10.0"
+  selected: "true"
+  role: "full"
+
+# ID Generation - CIS Native Format
+# CIS uses descriptive IDs with organization prefix
+# Variables: {stig_number}, {ref_normalized}, {platform}
+
+group_id:
+  template: "xccdf_org.cisecurity.benchmarks_group_{ref_normalized}"
+  description: "CIS Group ID format (includes CIS ref)"
+
+rule_id:
+  template: "xccdf_org.cisecurity.benchmarks_rule_{ref_normalized}"
+  description: "CIS Rule ID format (includes CIS ref)"
+
+# Rule element specifications (xsdata types for each Rule element)
+rule_elements:
+  version:
+    xccdf_type: "VersionType"
+    source: "ref"
+
+  title:
+    xccdf_type: "TextWithSubType"
+    source: "title"
+
+  description:
+    xccdf_type: "HtmlTextWithSubType"
+    source: "description"
+
+  rationale:
+    xccdf_type: "HtmlTextWithSubType"
+    source: "rationale"
+
+  warning:
+    xccdf_type: "WarningType"
+    source: "impact"
+
+  reference:
+    xccdf_type: "ReferenceType"
+    multiple: true
+
+  fixtext:
+    xccdf_type: "FixTextType"
+    source: "remediation"
+
+  check:
+    xccdf_type: "CheckType"
+    source: "audit"
+
+  metadata:
+    xccdf_type: "MetadataType"
+
+  cis_controls_metadata:
+    xccdf_type: "MetadataType"
+
+  cis_controls_ident:
+    xccdf_type: "IdentType"
+
+  mitre_techniques:
+    xccdf_type: "IdentType"
+
+  mitre_tactics:
+    xccdf_type: "IdentType"
+
+  mitre_mitigations:
+    xccdf_type: "IdentType"
+
+# Field mappings - Clean separated structure
+field_mappings:
+
+  # === CORE IDENTIFICATION ===
+  version:
+    target_element: "version"
+    source_field: "ref"
+    transform: "none"
+    description: "CIS reference number (3.1.1, etc.)"
+
+  title:
+    target_element: "title"
+    source_field: "title"
+    transform: "strip_html"
+
+  # === CLEAN SEPARATED CONTENT ===
+  description:
+    target_element: "description"
+    source_field: "description"
+    transform: "html_to_markdown"
+    description: "Description in Markdown format"
+    # TODO: Add XHTML formatting later (xsdata can't serialize lxml Elements)
+
+  rationale:
+    target_element: "rationale"
+    source_field: "rationale"
+    transform: "html_to_markdown"
+    description: "Separate rationale element in Markdown"
+    # TODO: Add XHTML formatting later (xsdata can't serialize lxml Elements)
+
+  # === IMPACT AS WARNING (XCCDF standard for caveats) ===
+  warning:
+    target_element: "warning"
+    source_field: "impact"
+    transform: "html_to_markdown"
+    attributes:
+      category: "general"
+    description: "Impact statement as XCCDF warning element"
+    optional: true
+
+  # === DIRECT NIST REFERENCES (No CCI, add ALL controls) ===
+  reference:
+    target_element: "reference"
+    multiple: true
+    source_field: "nist_controls"
+    structure: "dublin_core"
+    dc_elements:
+      - element: "dc:title"
+        content: "NIST SP 800-53"
+      - element: "dc:identifier"
+        content: "{nist_control_id}"
+    attributes:
+      href: "https://csrc.nist.gov/Projects/risk-management/sp800-53-controls"
+    description: "Direct NIST 800-53 references (all cited controls, no CCI deduplication)"
+
+  # === REMEDIATION ===
+  fixtext:
+    target_element: "fixtext"
+    source_field: "remediation"
+    transform: "html_to_markdown"
+    description: "Remediation steps in Markdown format"
+
+  # === AUDIT/CHECK ===
+  check:
+    target_element: "check"
+    structure: "nested"
+    children:
+      - element: "check-content"
+        source_field: "audit"
+        transform: "html_to_markdown"
+    description: "Audit procedure in Markdown format"
+
+  # === CIS CONTROLS (Dual Representation - Official Pattern) ===
+
+  # CIS Controls as METADATA (Official nested structure - matches CIS-CAT)
+  cis_controls_metadata:
+    target_element: "metadata"
+    structure: "metadata_from_config"
+    source_field: "cis_controls"
+    requires_post_processing: true  # lxml elements injected after serialization
+    metadata_spec:
+      root_element: "cis_controls"
+      namespace: "http://cisecurity.org/controls"
+      namespace_prefix: "controls"
+      allow_empty: true
+      group_by: "item.version"
+      group_element:
+        element: "framework"
+        attributes:
+          urn: "urn:cisecurity.org:controls:{group_key}"
+        item_element:
+          element: "safeguard"
+          attributes:
+            title: "{item.title}"
+            urn: "urn:cisecurity.org:controls:{item.version}:{item.control}"
+          children:
+            - element: "implementation_groups"
+              attributes:
+                ig1: "{item.ig1}"
+                ig2: "{item.ig2}"
+                ig3: "{item.ig3}"
+            - element: "asset_type"
+              content: "Unknown"
+            - element: "security_function"
+              content: "Protect"
+
+  # CIS Controls as IDENT (With cc7/cc8 controlURI attributes)
+  cis_controls_ident:
+    target_element: "ident"
+    structure: "ident_from_list"
+    source_field: "cis_controls"
+    ident_spec:
+      system_template: "http://cisecurity.org/20-cc/v{item.version}"
+      value_template: ""  # Empty per CIS convention
+      attributes:
+        - name: "controlURI"
+          template: "http://cisecurity.org/20-cc/v{item.version}/control/{item.control}"
+          namespace_prefix: "cc{item.version}"
+
+  # === MITRE ATT&CK AS IDENT ELEMENTS (Not metadata - cleaner) ===
+
+  mitre_techniques:
+    target_element: "ident"
+    structure: "ident_from_list"
+    source_field: "mitre_mapping.techniques"
+    ident_spec:
+      system_template: "https://attack.mitre.org/techniques"
+      value_template: "{item}"
+
+  mitre_tactics:
+    target_element: "ident"
+    structure: "ident_from_list"
+    source_field: "mitre_mapping.tactics"
+    ident_spec:
+      system_template: "https://attack.mitre.org/tactics"
+      value_template: "{item}"
+
+  mitre_mitigations:
+    target_element: "ident"
+    structure: "ident_from_list"
+    source_field: "mitre_mapping.mitigations"
+    ident_spec:
+      system_template: "https://attack.mitre.org/mitigations"
+      value_template: "{item}"
+
+# Transformation definitions
+transformations:
+  none:
+    description: "Pass through unchanged"
+
+  strip_html:
+    description: "Remove all HTML tags, return plain text"
+    function: "HTMLCleaner.strip_html"
+
+  html_to_markdown:
+    description: "Convert HTML to Markdown for better readability"
+    function: "HTMLCleaner.html_to_markdown"
+    preserve_structure: true
+    options:
+      heading_style: "ATX"  # Use # for headers
+      code_language: "bash"  # Default for code blocks
+      bullets: "-"  # Use - for lists
+      emphasis_mark: "*"  # Use * for emphasis
+      strong_mark: "**"  # Use ** for strong
+
+  wrap_xhtml_paragraphs:
+    description: "Wrap text content in XHTML <p> elements per CIS official format"
+    function: "XHTMLFormatter.wrap_paragraphs"
+    namespace: "http://www.w3.org/1999/xhtml"
+    options:
+      split_on: "\n\n"  # Paragraph breaks
+      preserve_code_blocks: true
+      preserve_lists: true
+
+# CCI Deduplication - DISABLED for CIS native style
+cci_deduplication:
+  enabled: false
+  description: "CIS native style includes ALL NIST controls as direct references"
+  rationale: "No DoD CCI requirement, cleaner to have direct NIST 800-53 citations"
+
+# Legacy VMS tags - NOT INCLUDED in CIS native style
+legacy_vms_tags:
+  include: false
+  description: "VMS tags (FalsePositives, etc.) are DoD-specific, not needed in CIS native"
+
+# Validation rules
+validation:
+  require_nist_controls: false
+  require_cis_controls: false
+  max_references_per_rule: 100  # Sanity check
+
+# Output formatting preferences
+formatting:
+  indent: 2
+  line_length: 120
+  pretty_print: true
+  xml_declaration: true
+  encoding: "UTF-8"
+
+# Namespace declarations for metadata
+namespaces:
+  default: "http://checklists.nist.gov/xccdf/1.2"
+  xccdf: "http://checklists.nist.gov/xccdf/1.2"
+  xhtml: "http://www.w3.org/1999/xhtml"
+  controls: "http://cisecurity.org/controls"
+  cc6: "http://cisecurity.org/20-cc/v6.1"
+  cc7: "http://cisecurity.org/20-cc/v7.0"
+  cc8: "http://cisecurity.org/20-cc/v8.0"
+  dc: "http://purl.org/dc/elements/1.1/"
+  enhanced: "http://cisecurity.org/xccdf/enhanced/1.0"
+  xsi: "http://www.w3.org/2001/XMLSchema-instance"
+
+# Notes for implementers
+implementation_notes:
+  description_handling: |
+    Unlike DISA style, description is clean Markdown without embedded XML tags.
+    Rationale is a separate <rationale> element.
+    Impact becomes a <warning category="general"> element per XCCDF standard.
+
+  nist_mapping: |
+    Add ALL NIST controls cited by CIS as <reference> elements.
+    No CCI lookup, no deduplication.
+    Simple and transparent.
+
+  metadata_richness: |
+    CIS-specific metadata is comprehensive:
+    - CIS Controls v7 and v8 with IG levels
+    - MITRE ATT&CK techniques, tactics, mitigations
+    - CIS Profiles (Level 1/2, Server/Workstation)
+    - Assessment status (Automated/Manual)
+    - Artifacts (test scripts if present)
+
+  markdown_benefits: |
+    HTML-to-Markdown transformation improves:
+    - Readability in text editors
+    - Compatibility with documentation tools
+    - Cleaner diffs in version control
+    - Better for automated processing
+
+  target_audience: |
+    This style targets:
+    - Commercial compliance tools
+    - Research and analysis workflows
+    - Non-DoD security teams
+    - Organizations wanting clean, readable XCCDF
+
+# Post-processing for CIS format
+# CIS-CAT and OpenSCAP need rich namespace declarations
+post_processing:
+  # Keep all namespaces - CIS format uses them for rich metadata
+  strip_namespace_prefixes: false
+
+  # Preserve all namespaces from the namespaces section
+  preserve_namespaces: null  # null = keep all
+
+  # Remove 'override' attributes (xsdata artifact)
+  remove_override_attr: true
+
+  # Handlers to run (includes metadata injection for CIS Controls)
+  handlers:
+    - dublin_core_injection
+    - metadata_injection
