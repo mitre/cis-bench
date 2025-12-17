@@ -1,6 +1,34 @@
 # CHANGELOG
 
 
+## v0.3.1 (2025-12-17)
+
+### Bug Fixes
+
+- Add --all-extras to packaging test step
+  ([`bc5cf77`](https://github.com/mitre/cis-bench/commit/bc5cf77383c2d3a36a14587bc9ff249140ad7ac4))
+
+Authored by: Aaron Lippold <lippold@gmail.com>
+
+- Correct CLI packaging for pipx/uv installation
+  ([`0a9a48b`](https://github.com/mitre/cis-bench/commit/0a9a48bb652a34fec3357d717c1de28a0f4be0aa))
+
+- Add __main__.py for `python -m cis_bench` fallback - Add pipx.run entry point for pipx
+  compatibility - Fix hardcoded version (now reads from importlib.metadata) - Update author to MITRE
+  SAF Team - Add packaging verification job to CI (tests pipx install) - Update docs to recommend
+  pipx/uv over pip (per Python Packaging Authority) - Fix 14 broken doc links (wrong case) - Add
+  CHANGELOG to mkdocs nav - Docs now deploy after CI passes (not just after Release)
+
+Authored by: Aaron Lippold <lippold@gmail.com>
+
+- Update version test to use dynamic version
+  ([`c1f307b`](https://github.com/mitre/cis-bench/commit/c1f307b97b73529e8e7777c44c95efb984ea1bf7))
+
+Test was expecting hardcoded 1.0.0 instead of actual package version
+
+Authored by: Aaron Lippold <lippold@gmail.com>
+
+
 ## v0.3.0 (2025-12-17)
 
 ### Bug Fixes
@@ -36,6 +64,9 @@ Enables NIST XCCDF schema validation without external dependencies.
 Source: OpenSCAP/openscap (NIST certified SCAP 1.2 toolkit)
 
 Authored by: Aaron Lippold <lippold@gmail.com>
+
+- Release 0.3.0
+  ([`e9408f2`](https://github.com/mitre/cis-bench/commit/e9408f2fa8cee7300eed80d5828d55f30730f69a))
 
 ### Continuous Integration
 
