@@ -10,32 +10,61 @@
 
 ### Requirements
 
-- Python 3.8 or higher
-- pip
+- Python 3.12 or higher
+- [pipx](https://pipx.pypa.io/) (recommended) or [uv](https://docs.astral.sh/uv/)
 
-### Install from source
+### Install from PyPI (Recommended)
+
+Per [Python Packaging Authority guidelines](https://packaging.python.org/en/latest/guides/installing-stand-alone-command-line-tools/), CLI tools should be installed with **pipx** or **uv tool**, not pip directly.
 
 ```bash
-# Clone the repository
-git clone https://github.com/mitre/cis-bench.git
-cd cis-benchmark-cli
+# RECOMMENDED: pipx (isolated environment, correct PATH)
+pipx install cis-bench
 
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate # On Mac/Linux
-# or
-venv\Scripts\activate # On Windows
-
-# Install the package
-pip install -e .
+# ALTERNATIVE: uv tool (fast, modern)
+uv tool install cis-bench
 
 # Verify installation
 cis-bench --version
 ```
 
-### Install with development tools
+!!! warning "Why not pip?"
+    `pip install cis-bench` may install to a directory not in your PATH, causing "command not found" errors. pipx and uv tool handle PATH correctly.
+
+??? note "Using pip anyway? (click to expand)"
+    ```bash
+    pip install cis-bench
+    ```
+
+    If you get `cis-bench: command not found`:
+
+    ```bash
+    # Option 1: Use module syntax (always works)
+    python -m cis_bench --version
+
+    # Option 2: Add pip's bin to PATH
+    export PATH="$HOME/.local/bin:$PATH"  # Add to ~/.bashrc or ~/.zshrc
+    ```
+
+### Install from Source
 
 ```bash
+git clone https://github.com/mitre/cis-bench.git
+cd cis-bench
+
+# Install for development
+pipx install -e .
+# Or: uv tool install -e .
+
+# Verify
+cis-bench --version
+```
+
+### Development Install
+
+```bash
+git clone https://github.com/mitre/cis-bench.git
+cd cis-bench
 pip install -e ".[dev]"
 pre-commit install
 ```

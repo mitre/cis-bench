@@ -85,6 +85,11 @@ Issues = "https://github.com/mitre/cis-bench/issues"
 [project.scripts]
 cis-bench = "cis_bench.cli.app:cli"
 
+# Enable `pipx run cis-bench` without --spec flag
+# See: https://packaging.python.org/en/latest/guides/creating-command-line-tools/
+[project.entry-points."pipx.run"]
+cis-bench = "cis_bench.cli.app:cli"
+
 [tool.setuptools]
 packages = {find = {where = ["src"]}}
 

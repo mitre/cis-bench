@@ -27,11 +27,10 @@
 ## Quick Start
 
 ```bash
-# 1. Install from PyPI (using modern uv - recommended)
-uv tool install cis-bench
-
-# Or using pip
-pip install cis-bench
+# 1. Install (choose one)
+pipx install cis-bench    # Recommended - isolated environment, no PATH issues
+uv tool install cis-bench # Alternative - fast, modern
+pip install cis-bench     # Not recommended - may have PATH issues
 
 # 2. Login (one-time)
 cis-bench auth login --browser chrome
@@ -130,15 +129,15 @@ cis-bench search oracle --output-format json | jq -r '.[].benchmark_id'
 - **[Data Flow Pipeline](developer-guide/data-flow-pipeline.md)** - Complete transformation pipeline
 - **[MappingEngine Guide](developer-guide/mapping-engine-guide.md)** - Working with YAML configs
 - **[Contributing Guide](developer-guide/contributing.md)** - Code standards and development workflow
-- **[Testing Guide](developer-guide/TESTING.md)** - Running and writing tests
+- **[Testing Guide](developer-guide/testing.md)** - Running and writing tests
 - **[How to Add XCCDF Style](developer-guide/how-to-add-xccdf-style.md)** - Extending XCCDF export
 
 ### Technical Reference
 
-- **[Data Model](technical-reference/DATA_MODEL.md)** - Pydantic models and field definitions
-- **[Mapping Engine Design](technical-reference/MAPPING_ENGINE_DESIGN.md)** - Technical architecture
-- **[XCCDF Styles](technical-reference/XCCDF_STYLES.md)** - DISA vs CIS format comparison
-- **[YAML Config Reference](technical-reference/YAML_CONFIG_REFERENCE.md)** - Mapping configuration syntax
+- **[Data Model](technical-reference/data-model.md)** - Pydantic models and field definitions
+- **[Mapping Engine Design](technical-reference/mapping-engine-design.md)** - Technical architecture
+- **[XCCDF Styles](technical-reference/xccdf-styles.md)** - DISA vs CIS format comparison
+- **[YAML Config Reference](technical-reference/yaml-config-reference.md)** - Mapping configuration syntax
 
 ---
 
@@ -217,7 +216,7 @@ cis-bench export 23598 --format xccdf --style cis
 - MITRE ATT&CK techniques (296 mappings)
 - Enhanced namespace for custom fields
 
-**[XCCDF Styles Comparison](technical-reference/XCCDF_STYLES.md)** for detailed differences
+**[XCCDF Styles Comparison](technical-reference/xccdf-styles.md)** for detailed differences
 
 ---
 
@@ -271,20 +270,57 @@ NIST XCCDF Output
 - Benchmark comparison/diff
 - Recommendation search across benchmarks
 
-**[Future Features](about/FUTURE_FEATURES.md)** for roadmap
+**[Future Features](about/future-features.md)** for roadmap
 
 ---
 
 ## Installation
 
+### From PyPI (Recommended)
+
+Per [Python Packaging Authority guidelines](https://packaging.python.org/en/latest/guides/installing-stand-alone-command-line-tools/), CLI tools should be installed with **pipx** or **uv tool**, not pip directly.
+
+```bash
+# RECOMMENDED: pipx (isolated environment, correct PATH)
+pipx install cis-bench
+
+# ALTERNATIVE: uv tool (fast, modern)
+uv tool install cis-bench
+
+# Verify
+cis-bench --version
+```
+
+> **Why not pip?** `pip install` installs to a directory that may not be in your PATH, causing "command not found" errors. pipx and uv tool handle this correctly.
+
+<details>
+<summary><strong>Using pip anyway?</strong> (click to expand)</summary>
+
+```bash
+pip install cis-bench
+```
+
+If you get `cis-bench: command not found`:
+
+```bash
+# Option 1: Use module syntax (always works)
+python -m cis_bench --version
+
+# Option 2: Add pip's bin to PATH
+export PATH="$HOME/.local/bin:$PATH"  # Add to ~/.bashrc or ~/.zshrc
+```
+
+</details>
+
 ### From Source
 
 ```bash
 git clone https://github.com/mitre/cis-bench.git
-cd cis-benchmark-cli
+cd cis-bench
 
-# Install
-pip install -e .
+# Install for development
+pipx install -e .
+# Or: uv tool install -e .
 
 # Verify
 cis-bench --version
@@ -293,7 +329,9 @@ cis-bench --version
 ### Development Install
 
 ```bash
-# Install with dev dependencies
+# Clone and install with dev dependencies
+git clone https://github.com/mitre/cis-bench.git
+cd cis-bench
 pip install -e ".[dev]"
 
 # Install pre-commit hooks
@@ -360,7 +398,7 @@ Apache License 2.0 - See [LICENSE](LICENSE) for details
 - [Data Flow Pipeline](developer-guide/data-flow-pipeline.md)
 - [MappingEngine Guide](developer-guide/mapping-engine-guide.md)
 - [Contributing](developer-guide/contributing.md)
-- [Testing](developer-guide/TESTING.md)
+- [Testing](developer-guide/testing.md)
 
 **Need Help?**
 

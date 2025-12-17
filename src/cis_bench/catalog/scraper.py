@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeRemainingColumn
 
+from cis_bench import __version__
 from cis_bench.catalog.database import CatalogDatabase
 from cis_bench.catalog.parser import WorkBenchCatalogParser
 
@@ -236,7 +237,7 @@ class CatalogScraper:
 
         logger.debug(f"Fetching page {page_num}: {url}")
 
-        headers = {"User-Agent": "cis-bench-cli/1.0.0 (github.com/aaronlippold/cis-benchmark-cli)"}
+        headers = {"User-Agent": f"cis-bench-cli/{__version__} (github.com/mitre/cis-bench)"}
 
         response = self.session.get(url, headers=headers, timeout=30)
         response.raise_for_status()

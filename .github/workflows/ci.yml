@@ -67,3 +67,41 @@ jobs:
 
       - name: Run Bandit
         run: uv run --frozen --all-extras --with bandit[toml] -- bandit -c pyproject.toml -r src/cis_bench/
+
+  packaging:
+    name: Verify CLI Packaging
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      - name: Build package
+        run: uv build
+
+      - name: Verify entry points and __main__.py
+        run: |
+          uv run --frozen pytest tests/e2e/test_cli_packaging.py -v
+
+      - name: Test pipx installation simulation
+        run: |
+          # Install pipx
+          python -m pip install pipx
+          pipx ensurepath
+
+          # Install our built package with pipx
+          pipx install dist/*.whl
+
+          # Verify CLI works
+          cis-bench --version
+          cis-bench --help
+
+      - name: Test module execution
+        run: |
+          uv run python -m cis_bench --version
+          uv run python -m cis_bench --help
