@@ -1,8 +1,8 @@
 # CIS Benchmark CLI - Current Status
 
 **Last Updated:** December 19, 2025
-**Version:** 0.3.1
-**Branch:** `main` (after PR #4 merge)
+**Version:** 0.3.3
+**Branch:** `main`
 
 ---
 
@@ -55,7 +55,6 @@ Run `bd list` to see current tasks:
 
 | Priority | Task | Status |
 |----------|------|--------|
-| P0 | PR #4 - Documentation cleanup | Ready for merge |
 | P2 | Offline mode (--offline flag) | Open |
 | P2 | Batch export operations | Open |
 | P3 | Benchmark comparison/diff | Open |
@@ -77,6 +76,8 @@ Run `bd list` to see current tasks:
 ### Infrastructure
 - Added beads (bd) task tracker
 - Configured git hooks and sync-branch
+- Fixed semantic-release config (standard conventional commits)
+  - Only feat/fix/perf trigger releases now
 
 ---
 
