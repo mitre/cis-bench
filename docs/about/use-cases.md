@@ -1,6 +1,12 @@
 # CIS Benchmark CLI - Use Cases and Workflows
 
-## Core Workflows (v1.0)
+!!! info "Documentation Path"
+    **You are here:** About > Use Cases
+
+    - **For detailed workflows:** See [Workflows](../user-guide/workflows.md)
+    - **For commands:** See [Commands Reference](../user-guide/commands-reference.md)
+
+## Core Workflows
 
 ### 1. Security Auditor - Compliance Assessment
 **Goal**: Get benchmark in XCCDF for scanning tools

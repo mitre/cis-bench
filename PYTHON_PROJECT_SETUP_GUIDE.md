@@ -1,5 +1,11 @@
 # Python Project Setup Guide
 
+!!! info "Documentation Path"
+    **You are here:** Developer Guide > Python Project Setup Guide
+
+    - **For contributing:** See [Contributing](contributing.md)
+    - **For release process:** See [Release Process](../about/release-process.md)
+
 A comprehensive guide for setting up modern Python projects at MITRE with best practices, automation, and proper tooling (2025 standards).
 
 ## Quick Start Template
@@ -729,7 +735,7 @@ gh pr create --title "Add capability"
 
 ## README Template
 
-```markdown
+```text
 # Project Name
 
 > Brief description

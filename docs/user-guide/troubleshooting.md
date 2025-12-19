@@ -3,11 +3,11 @@
 Common issues and solutions.
 
 !!! info "Documentation Path"
-**You are here:** User Guide > Troubleshooting
+    **You are here:** User Guide > Troubleshooting
 
-- **For configuration:** See [Configuration](configuration.md)
-- **For commands:** See [Commands Reference](commands-reference.md)
-- **For workflows:** See [Workflows](workflows.md)
+    - **For configuration:** See [Configuration](configuration.md)
+    - **For commands:** See [Commands Reference](commands-reference.md)
+    - **For workflows:** See [Workflows](workflows.md)
 
 ## Installation Issues
 

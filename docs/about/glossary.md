@@ -526,7 +526,7 @@ Chef's compliance testing framework using Ruby DSL.
 2. Convert XCCDF to InSpec using SAF CLI
 3. Run InSpec scans with generated profile
 
-**Example:** See [Workflows - Scenario 4](../user-guide/workflows.md#scenario-4)
+**Example:** See [Workflows - Scenario 4](../user-guide/workflows.md#scenario-4-generate-inspec-profile-from-cis-benchmark)
 
 ---
 

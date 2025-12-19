@@ -1,5 +1,11 @@
 # Release Process
 
+!!! info "Documentation Path"
+    **You are here:** About > Release Process
+
+    - **For contributing:** See [Contributing](../developer-guide/contributing.md)
+    - **For project status:** See [Future Features](future-features.md)
+
 This document describes the automated release process for CIS Benchmark CLI using Python Semantic Release.
 
 ## Overview
@@ -125,7 +131,7 @@ semantic-release publish
 
 Runs on every push and pull request:
 
-- **Test** - Run pytest across Python 3.8-3.12
+- **Test** - Run pytest with Python 3.12+
 - **Lint** - Check code style (black, ruff)
 - **Security** - Scan with bandit
 

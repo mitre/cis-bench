@@ -6,7 +6,7 @@ Thank you for contributing to CIS Benchmark CLI!
 **You are here:** Developer Guide > Contributing
 
 - **For architecture:** See [Architecture Overview](architecture.md)
-- **For testing:** See [Testing Guide](TESTING.md)
+- **For testing:** See [Testing Guide](testing.md)
 - **For data flow:** See [Data Flow Pipeline](data-flow-pipeline.md)
 
 ## Git Workflow
@@ -149,7 +149,7 @@ tests/unit/test_catalog_database.py
 - E2E tests: `CIS_BENCH_ENV=test` (automatic)
 - NO touching production data
 
-**See:** [Testing Guide](TESTING.md)
+**See:** [Testing Guide](testing.md)
 
 ---
 
@@ -443,5 +443,5 @@ Be professional, respectful, and collaborative.
 ## See Also
 
 - [Architecture](architecture.md) - System design
-- [Testing Guide](TESTING.md) - Test practices
+- [Testing Guide](testing.md) - Test practices
 - [How to Add XCCDF Style](how-to-add-xccdf-style.md) - Extension guide

@@ -247,9 +247,9 @@ NIST XCCDF Output
 
 ## Project Status
 
-**Version:** 1.0.0 (Production Ready)
-**Tests:** 512 passing, 0 failing
-**Python:** 3.8+
+**Version:** 0.3.1 (Beta)
+**Tests:** See latest CI run
+**Python:** 3.12+
 **License:** Apache 2.0
 
 **Current Features:**
@@ -349,7 +349,7 @@ pytest tests/ -v
 
 **Runtime:**
 
-- Python 3.8+
+- Python 3.12+
 - CIS WorkBench account (free registration at workbench.cisecurity.org)
 - Supported browser (Chrome, Firefox, Edge, or Safari)
 

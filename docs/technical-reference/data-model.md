@@ -1,10 +1,10 @@
 # CIS Benchmark CLI - Data Model and JSON Schema
 
 !!! info "Documentation Path"
-**You are here:** Technical Reference > Data Model
+    **You are here:** Technical Reference > Data Model
 
-- **For architecture:** See [Architecture Overview](../developer-guide/architecture.md)
-- **For data flow:** See [Data Flow Pipeline](../developer-guide/data-flow-pipeline.md)
+    - **For architecture:** See [Architecture Overview](../developer-guide/architecture.md)
+    - **For data flow:** See [Data Flow Pipeline](../developer-guide/data-flow-pipeline.md)
 
 ## Overview
 

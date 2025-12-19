@@ -1404,7 +1404,7 @@ def download(benchmark_ids, browser, output_dir, format):
 
 ---
 
-**Version**: 1.0.0
+**Version**: 0.3.1
 **Author**: MITRE SAF Team
 **Last Updated**: December 2025
-**Status**: Production Release
+**Status**: Beta

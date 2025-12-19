@@ -3,10 +3,10 @@
 **Real-world scenarios with complete commands and expected outcomes**
 
 !!! info "Documentation Path"
-**You are here:** User Guide > End-to-End Workflows
+    **You are here:** User Guide > End-to-End Workflows
 
-- **For command syntax:** See [Commands Reference](commands-reference.md)
-- **For term definitions:** See [Glossary](../about/glossary.md)
+    - **For command syntax:** See [Commands Reference](commands-reference.md)
+    - **For term definitions:** See [Glossary](../about/glossary.md)
 
 ---
 
