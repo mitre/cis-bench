@@ -259,8 +259,8 @@ ExporterFactory-->>CLI: XCCDFExporter(cis)
 CLI->>XCCDFExporter: export(benchmark)
 XCCDFExporter->>MappingEngine: Load cis_style.yaml
 MappingEngine->>Config: Read field_mappings
-MappingEngine->>Loop: For each field in config
-Loop->>Transform: Apply transformation
+MappingEngine->>FieldLoop: For each field in config
+FieldLoop->>Transform: Apply transformation
 Transform->>xsdata: Build typed objects
 xsdata->>XML: Serialize
 XCCDFExporter->>PostProcessor: Inject metadata
@@ -370,7 +370,7 @@ requires_post_processing: true
 
 **Core:**
 
-- Python 3.8+
+- Python 3.12+
 - Click (CLI framework)
 - Pydantic (data validation)
 - SQLModel (database ORM)
@@ -730,7 +730,7 @@ D --> K[~/.cis-bench/]
 
 ## See Also
 
-- [Mapping Engine Design](../technical-reference/MAPPING_ENGINE_DESIGN.md) - Detailed config system
-- [YAML Config Reference](../technical-reference/YAML_CONFIG_REFERENCE.md) - Complete YAML syntax
-- [Data Model](../technical-reference/DATA_MODEL.md) - Pydantic models
-- [Testing Guide](TESTING.md) - Testing best practices
+- [Mapping Engine Design](../technical-reference/mapping-engine-design.md) - Detailed config system
+- [YAML Config Reference](../technical-reference/yaml-config-reference.md) - Complete YAML syntax
+- [Data Model](../technical-reference/data-model.md) - Pydantic models
+- [Testing Guide](testing.md) - Testing best practices

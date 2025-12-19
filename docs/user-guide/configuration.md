@@ -3,10 +3,10 @@
 Configuration options for CIS Benchmark CLI.
 
 !!! info "Documentation Path"
-**You are here:** User Guide > Configuration
+    **You are here:** User Guide > Configuration
 
-- **For commands:** See [Commands Reference](commands-reference.md)
-- **For troubleshooting:** See [Troubleshooting](troubleshooting.md)
+    - **For commands:** See [Commands Reference](commands-reference.md)
+    - **For troubleshooting:** See [Troubleshooting](troubleshooting.md)
 
 ## Environment Variables
 

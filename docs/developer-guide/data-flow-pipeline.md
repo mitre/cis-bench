@@ -1072,7 +1072,7 @@ The pipeline ensures **separation of concerns** - scraping, validation, transfor
 ## Related Documentation
 
 - [Architecture Overview](architecture.md) - System design patterns
-- [Mapping Engine Design](../technical-reference/MAPPING_ENGINE_DESIGN.md) - Detailed internals
-- [YAML Config Reference](../technical-reference/YAML_CONFIG_REFERENCE.md) - Configuration syntax
-- [XCCDF Styles](../technical-reference/XCCDF_STYLES.md) - DISA vs CIS comparison
+- [Mapping Engine Design](../technical-reference/mapping-engine-design.md) - Detailed internals
+- [YAML Config Reference](../technical-reference/yaml-config-reference.md) - Configuration syntax
+- [XCCDF Styles](../technical-reference/xccdf-styles.md) - DISA vs CIS comparison
 - [How to Add XCCDF Style](how-to-add-xccdf-style.md) - Step-by-step guide

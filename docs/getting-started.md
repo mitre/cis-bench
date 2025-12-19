@@ -339,7 +339,7 @@ cis-bench catalog check-updates
 
 ### Catalog Commands
 
-For complete catalog command syntax and options, see [Commands Reference](user-guide/commands-reference.md#catalog-commands).
+For complete catalog command syntax and options, see [Commands Reference](user-guide/commands-reference.md#catalog-management).
 
 **Quick examples:**
 ```bash

@@ -1,12 +1,18 @@
 # CIS Benchmark CLI - Future Features
 
+!!! info "Documentation Path"
+    **You are here:** About > Future Features
+
+    - **For current features:** See [Commands Reference](../user-guide/commands-reference.md)
+    - **For design philosophy:** See [Design Philosophy](design-philosophy.md)
+
 **Status**: Design document for v1.1+ features
 
-**Note**: As of v1.0.0, many originally planned features have been implemented. See [Commands Reference](../user-guide/commands-reference.md) for current features.
+**Note**: Many originally planned features have been implemented. See [Commands Reference](../user-guide/commands-reference.md) for current features.
 
 ---
 
-## Implemented Features (v1.0.0)
+## Implemented Features
 
 The following features were originally planned as "future" but are now complete:
 

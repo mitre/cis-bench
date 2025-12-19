@@ -13,7 +13,7 @@ See working example: [Adding PCI-DSS](adding-pci-dss.md)
     **You are here:** Developer Guide > How To Add XCCDF Style
 
     - **For MappingEngine:** See [MappingEngine User Guide](mapping-engine-guide.md)
-    - **For YAML syntax:** See [YAML Config Reference](../technical-reference/YAML_CONFIG_REFERENCE.md)
+    - **For YAML syntax:** See [YAML Config Reference](../technical-reference/yaml-config-reference.md)
     - **For examples:** See [Workflows](../user-guide/workflows.md)
 
 ---
@@ -341,9 +341,9 @@ Before considering your new style complete:
 
 ## See Also
 
-- [YAML Config Reference](../technical-reference/YAML_CONFIG_REFERENCE.md) - Complete YAML syntax
-- [Mapping Engine Design](../technical-reference/MAPPING_ENGINE_DESIGN.md) - How config-driven system works
-- [XCCDF Styles Comparison](../technical-reference/XCCDF_STYLES.md) - All available styles
+- [YAML Config Reference](../technical-reference/yaml-config-reference.md) - Complete YAML syntax
+- [Mapping Engine Design](../technical-reference/mapping-engine-design.md) - How config-driven system works
+- [XCCDF Styles Comparison](../technical-reference/xccdf-styles.md) - All available styles
 - [MappingEngine User Guide](mapping-engine-guide.md) - Using the mapping engine
 
 ---

@@ -137,6 +137,7 @@ navtree.json
 # Project-specific: Internal documentation (not for repo)
 CLAUDE.md
 SESSION*.md
+RECOVERY*.md
 recovery*.
 recovery-prompt.*
 research/

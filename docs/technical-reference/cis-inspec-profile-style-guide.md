@@ -5,10 +5,10 @@
 **Date:** November 6, 2025
 
 !!! info "Documentation Path"
-**You are here:** Technical Reference > InSpec Profile Style Guide
+    **You are here:** Technical Reference > InSpec Profile Style Guide
 
-- **For XCCDF export:** See [XCCDF Guide](../user-guide/xccdf-guide.md)
-- **For workflow example:** See [Workflows - Scenario 4](../user-guide/workflows.md#scenario-4-generate-inspec-profile-from-cis-benchmark)
+    - **For XCCDF export:** See [XCCDF Guide](../user-guide/xccdf-guide.md)
+    - **For workflow example:** See [Workflows - Scenario 4](../user-guide/workflows.md#scenario-4-generate-inspec-profile-from-cis-benchmark)
 
 ## Overview
 

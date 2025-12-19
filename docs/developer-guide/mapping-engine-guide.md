@@ -23,7 +23,7 @@ See [Adding PCI-DSS Guide](adding-pci-dss.md)
 
 The [MappingEngine](../about/glossary.md#mappingengine) is a **[config-driven](../about/glossary.md#config-driven) [transformation](../about/glossary.md#transformation) system** that converts CIS [Benchmark](../about/glossary.md#benchmark) data ([Pydantic models](../about/glossary.md#pydantic-model)) into [XCCDF](../about/glossary.md#xccdf) XML format using YAML configuration files.
 
-**Think of it as:** A translator that reads instructions from a [YAML](../about/glossary.md#yaml) file and transforms data from one [format](../about/glossary.md#format) to another - without writing code.
+**Think of it as:** A translator that reads instructions from a YAML file and transforms data from one [format](../about/glossary.md#format) to another - without writing code.
 
 ```mermaid
 graph LR
@@ -1225,8 +1225,8 @@ debug: true # Enable debug logging for this field
 ## Related Documentation
 
 - [Data Flow Pipeline](data-flow-pipeline.md) - Complete transformation process
-- [MAPPING_ENGINE_DESIGN.md](../technical-reference/MAPPING_ENGINE_DESIGN.md) - Technical architecture
-- [YAML Config Reference](../technical-reference/YAML_CONFIG_REFERENCE.md) - Complete syntax guide
+- [Mapping Engine Design](../technical-reference/mapping-engine-design.md) - Technical architecture
+- [YAML Config Reference](../technical-reference/yaml-config-reference.md) - Complete syntax guide
 - [How to Add XCCDF Style](how-to-add-xccdf-style.md) - Step-by-step tutorial
 
 ---

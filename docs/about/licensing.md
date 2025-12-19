@@ -1,8 +1,10 @@
 # Licensing
 
-!!! info "Navigation"
- You are in: **About** Licensing
- See also: [Design Philosophy](design-philosophy.md) | [Glossary](glossary.md)
+!!! info "Documentation Path"
+    **You are here:** About > Licensing
+
+    - **For design philosophy:** See [Design Philosophy](design-philosophy.md)
+    - **For terms:** See [Glossary](glossary.md)
 
 ## License
 
@@ -50,7 +52,7 @@ This tool:
 - Transforms data format only (no content modification)
 - Links users to CIS terms of use
 
-See [NOTICE.md](../../NOTICE.md) for complete third-party acknowledgments.
+See [NOTICE.md](../NOTICE.md) for complete third-party acknowledgments.
 
 ---
 

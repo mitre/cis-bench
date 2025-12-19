@@ -3,11 +3,11 @@
 The catalog feature provides fast, searchable access to 1,300+ CIS benchmarks with platform filtering and full-text search.
 
 !!! info "Documentation Path"
-**You are here:** User Guide > Catalog System
+    **You are here:** User Guide > Catalog System
 
-- **For commands:** See [Commands Reference](commands-reference.md)
-- **For examples:** See [Workflows](workflows.md)
-- **For terms:** See [Glossary](../about/glossary.md)
+    - **For commands:** See [Commands Reference](commands-reference.md)
+    - **For examples:** See [Workflows](workflows.md)
+    - **For terms:** See [Glossary](../about/glossary.md)
 
 ---
 

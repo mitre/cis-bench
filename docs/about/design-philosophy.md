@@ -437,9 +437,9 @@ The system is designed for extension without modification:
 - E2E tests: Complete workflows
 - Architecture tests: Validate patterns (no hard-coded fields, etc.)
 
-**Coverage:** 512 tests, all passing
+**Coverage:** See latest CI run
 
-**See:** [Testing Guide](../developer-guide/TESTING.md)
+**See:** [Testing Guide](../developer-guide/testing.md)
 
 ---
 

@@ -63,7 +63,6 @@ nav:
 
   - Developer Guide:
       - Contributing: developer-guide/contributing.md
-      - Python Project Setup Guide: developer-guide/python-project-setup-guide.md
       - Architecture Overview: developer-guide/architecture.md
       - Data Flow Pipeline: developer-guide/data-flow-pipeline.md
       - MappingEngine User Guide: developer-guide/mapping-engine-guide.md
@@ -78,9 +77,16 @@ nav:
       - XCCDF Styles Comparison: technical-reference/xccdf-styles.md
       - InSpec Profile Style Guide: technical-reference/cis-inspec-profile-style-guide.md
 
+  - Design Documents:
+      - Design Principles: design/design-principles.md
+      - XCCDF Mapping Design: design/xccdf-mapping-design.md
+      - Handler Reference: design/handler-reference.md
+      - Architecture Decisions: design/architecture-decisions.md
+
   - About:
       - Design Philosophy: about/design-philosophy.md
       - Licensing: about/licensing.md
+      - Third-Party Notices: NOTICE.md
       - Use Cases: about/use-cases.md
       - Future Features: about/future-features.md
       - Release Process: about/release-process.md
