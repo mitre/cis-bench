@@ -102,9 +102,11 @@ build_command = "pip install build && python -m build"
 commit_message = "chore: release {version}"
 
 [tool.semantic_release.commit_parser_options]
-allowed_tags = ["feat", "fix", "docs", "chore", "refactor", "test", "ci"]
+# Standard conventional commits: only feat/fix/perf trigger releases
+# docs, chore, refactor, style, test, ci, build do NOT trigger releases
+allowed_tags = ["feat", "fix", "perf", "docs", "chore", "refactor", "style", "test", "ci", "build"]
 minor_tags = ["feat"]
-patch_tags = ["fix", "docs", "chore", "refactor", "test", "ci"]
+patch_tags = ["fix", "perf"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
