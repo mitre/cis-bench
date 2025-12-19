@@ -1,6 +1,49 @@
 # CHANGELOG
 
 
+## v0.3.2 (2025-12-19)
+
+### Documentation
+
+- Add Catalog System section to architecture
+  ([`5587850`](https://github.com/mitre/cis-bench/commit/558785066a7c48491c37ce6aff8ba8b114ad1bf7))
+
+- Document SQLite database with SQLModel ORM - Document FTS5 full-text search implementation -
+  Document schema with tables and relationships - Explain catalog metadata vs downloaded benchmarks
+  distinction - Document Alembic migrations for schema versioning - Add platform inference patterns
+  documentation - Update package structure to include catalog module - Update dependencies to
+  include sqlmodel and alembic - Add catalog commands to Commands section
+
+Authored by: Aaron Lippold <lippold@gmail.com>
+
+- Reorganize design docs and fix documentation issues
+  ([`dff7974`](https://github.com/mitre/cis-bench/commit/dff7974816510d2d548b5836eb61c8d7beb348be))
+
+Session 29-30 documentation cleanup:
+
+Design document reorganization: - Move ARCHITECTURE_PRINCIPLES.md → docs/design/design-principles.md
+  - Move SYSTEM_ANALYSIS.md → docs/design/handler-reference.md - Move REFACTOR_PLAN.md →
+  docs/design/xccdf-mapping-design.md - Move FINAL_PLAN.md → docs/design/architecture-decisions.md -
+  Reduce total from 2,596 to 1,090 lines (58% reduction) - Add Design Documents section to
+  mkdocs.yml navigation
+
+Documentation fixes: - Fix Python version requirement: 3.8+ → 3.12+ (4 files) - Fix project version:
+  1.0.0 → 0.3.1 (3 files) - Fix 12 broken links (case sensitivity: UPPERCASE → lowercase) -
+  Standardize navigation header indentation (8 files) - Add CHANGELOG.md and NOTICE.md symlinks to
+  docs/ - Add Third-Party Notices to About nav section - Fix NOTICE.md link path in licensing.md -
+  Fix 3 missing anchor links (catalog-commands, scenario-4, yaml) - Fix mermaid syntax error (Loop →
+  FieldLoop reserved keyword)
+
+File cleanup: - Delete obsolete setup.py and requirements.txt - Move fix_markdown_lists.py →
+  scripts/ - Add redownload_samples.py to scripts/ - Move python-project-setup-guide.md to root
+  (general reference) - Update .pre-commit-config.yaml for new script location - Add RECOVERY*.md to
+  .gitignore
+
+Build verified: mkdocs build --strict passes with no warnings
+
+Authored by: Aaron Lippold<lippold@gmail.com>
+
+
 ## v0.3.1 (2025-12-17)
 
 ### Bug Fixes
@@ -27,6 +70,11 @@ Authored by: Aaron Lippold <lippold@gmail.com>
 Test was expecting hardcoded 1.0.0 instead of actual package version
 
 Authored by: Aaron Lippold <lippold@gmail.com>
+
+### Chores
+
+- Release 0.3.1
+  ([`e8d7bb8`](https://github.com/mitre/cis-bench/commit/e8d7bb8958fbe702977b0dd476796f91ebdcee3e))
 
 
 ## v0.3.0 (2025-12-17)
@@ -395,7 +443,6 @@ Authored by: Aaron Lippold <lippold@gmail.com>
   ([`5d8a92b`](https://github.com/mitre/cis-bench/commit/5d8a92bd6756dacc68cc4726f5087f6bdfdd51b9))
 
 Based on working examples from established projects: - Use psf/black@stable with use_pyproject: true
-
   - Use astral-sh/ruff-action@v3 (official action) - Use astral-sh/setup-uv@v5 for UV setup - Use uv
   sync for dependency installation - Separate jobs for format, lint, security, and test
 
@@ -453,7 +500,6 @@ Authored by: Aaron Lippold <lippold@gmail.com>
   for full executable paths - Remove shell=True on Windows (use webbrowser module) - Add subprocess
   output capture - Fix type annotation compatibility: - Add __future__ annotations for lxml/Cython
   compatibility - Auto-upgrade deprecated typing syntax (ruff --fix): - typing.Union -> X | Y syntax
-
   - typing.List -> list - collections.abc imports - Auto-format code (black) - Fix black regex
   pattern in pyproject.toml - Configure bandit to read pyproject.toml config - All checks passing:
   black ✓, ruff ✓, bandit ✓, tests ✓ (512 passed)
