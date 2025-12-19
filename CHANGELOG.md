@@ -1,7 +1,39 @@
 # CHANGELOG
 
 
+## v0.3.3 (2025-12-19)
+
+### Chores
+
+- Add beads task tracker for project management
+  ([`4e0f733`](https://github.com/mitre/cis-bench/commit/4e0f733fe6134f9d72457fe66a7b0f181e1a9e07))
+
+Initialize beads (bd) for tracking completed, current, and future work: - .beads/ directory with
+  config and issue database - AGENTS.md with session completion workflow - .gitattributes with beads
+  merge driver
+
+Authored by: Aaron Lippold <lippold@gmail.com>
+
+- Update beads task statuses
+  ([`c32c51d`](https://github.com/mitre/cis-bench/commit/c32c51d43cf980f86c87074a95e480451201a278))
+
+### Documentation
+
+- Add CURRENT_STATUS.md for project state tracking
+  ([`18b2a72`](https://github.com/mitre/cis-bench/commit/18b2a72627ac30617ab805e2a7992a4336a3826b))
+
+Quick reference for resuming work after breaks: - Project state and feature status - Open tasks from
+  beads - Completed work summary - Recovery prompt for new sessions
+
+Authored by: Aaron Lippold <lippold@gmail.com>
+
+
 ## v0.3.2 (2025-12-19)
+
+### Chores
+
+- Release 0.3.2
+  ([`65c8294`](https://github.com/mitre/cis-bench/commit/65c82946df13bef9f4fe19d95dd068c5a261af97))
 
 ### Documentation
 
