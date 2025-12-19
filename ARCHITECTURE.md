@@ -538,6 +538,200 @@ graph TB
     style M fill:#a5d6a7,stroke:#333,stroke-width:2px
 ```
 
+#### Catalog System (Local Database)
+
+The catalog system provides fast, searchable access to 1,300+ CIS benchmarks with platform filtering and full-text search. It uses SQLite with SQLModel (Pydantic + SQLAlchemy) for type-safe operations.
+
+**Why a Local Database?**
+
+- **Fast search**: FTS5 full-text search is <1ms vs network requests
+- **Offline access**: Browse available benchmarks without network
+- **Platform filtering**: Discover benchmarks by category (cloud, os, database, container)
+- **Downloaded content storage**: Preserve benchmark JSON for instant re-export
+- **Scriptable**: JSON/CSV output for automation
+
+**Architecture Flow:**
+
+```mermaid
+graph TB
+    subgraph "Catalog Refresh"
+        A[CIS WorkBench<br/>~68 pages] --> B[CatalogScraper<br/>Parallel fetch]
+        B --> C[WorkBenchCatalogParser<br/>HTML parsing]
+        C --> D[Platform Inference<br/>40+ patterns]
+        D --> E[CatalogDatabase<br/>SQLite + FTS5]
+    end
+
+    subgraph "User Operations"
+        F[cis-bench search] --> G[FTS5 Query]
+        G --> E
+        H[cis-bench catalog info] --> E
+        I[cis-bench download] --> J[WorkbenchScraper<br/>Full benchmark]
+        J --> K[downloaded_benchmarks<br/>Persistent storage]
+        K --> E
+    end
+
+    style E fill:#c8e6c9,stroke:#333,stroke-width:2px
+    style K fill:#fff9c4,stroke:#333,stroke-width:2px
+```
+
+**Database Schema:**
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                         CATALOG DATABASE                             │
+│                    ~/.cis-bench/catalog.db                          │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  ┌──────────────────┐     ┌──────────────────┐                      │
+│  │ catalog_benchmarks│     │ downloaded_      │                      │
+│  ├──────────────────┤     │ benchmarks       │                      │
+│  │ benchmark_id (PK)│◄────┤ benchmark_id (FK)│                      │
+│  │ title            │     │ content_json     │  ← Full benchmark    │
+│  │ version          │     │ content_hash     │    data (persistent) │
+│  │ url              │     │ downloaded_at    │                      │
+│  │ status_id (FK)   │     │ recommendation_  │                      │
+│  │ platform_id (FK) │     │   count          │                      │
+│  │ community_id (FK)│     └──────────────────┘                      │
+│  │ owner_id (FK)    │                                               │
+│  │ platform_type    │  ← Inferred (cloud, os, database, container)  │
+│  │ published_date   │                                               │
+│  │ is_latest        │                                               │
+│  └────────┬─────────┘                                               │
+│           │                                                          │
+│  ┌────────┴─────────────────────────────────────────┐               │
+│  │                   LOOKUP TABLES                   │               │
+│  │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ │               │
+│  │  │ platforms   │ │ communities │ │ owners      │ │               │
+│  │  │ platform_id │ │ community_id│ │ owner_id    │ │               │
+│  │  │ name        │ │ name        │ │ username    │ │               │
+│  │  └─────────────┘ └─────────────┘ └─────────────┘ │               │
+│  │  ┌─────────────┐ ┌─────────────┐                 │               │
+│  │  │ benchmark_  │ │ collections │                 │               │
+│  │  │ statuses    │ │ collection_ │                 │               │
+│  │  │ status_id   │ │   id        │                 │               │
+│  │  │ name        │ │ name        │                 │               │
+│  │  └─────────────┘ └─────────────┘                 │               │
+│  └──────────────────────────────────────────────────┘               │
+│                                                                      │
+│  ┌──────────────────────────────────────────────────┐               │
+│  │              FULL-TEXT SEARCH (FTS5)              │               │
+│  │  benchmarks_fts                                   │               │
+│  │  ├─ benchmark_id (UNINDEXED)                     │               │
+│  │  ├─ title                                        │               │
+│  │  ├─ platform                                     │               │
+│  │  ├─ community                                    │               │
+│  │  └─ description                                  │               │
+│  │  tokenize='porter unicode61'                     │               │
+│  └──────────────────────────────────────────────────┘               │
+│                                                                      │
+│  ┌──────────────────────────────────────────────────┐               │
+│  │              METADATA                             │               │
+│  │  scrape_metadata                                  │               │
+│  │  ├─ key (PK)                                     │               │
+│  │  ├─ value                                        │               │
+│  │  └─ updated_at                                   │               │
+│  │  Keys: last_full_scrape, total_pages_scraped    │               │
+│  └──────────────────────────────────────────────────┘               │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Two Types of Data:**
+
+| Data Type | Location | Rebuildable? | Purpose |
+|-----------|----------|--------------|---------|
+| **Catalog metadata** | `catalog_benchmarks` | Yes (scrape again) | Index of all CIS benchmarks from WorkBench listing pages |
+| **Downloaded benchmarks** | `downloaded_benchmarks` | Expensive (re-download each) | Full benchmark JSON with all recommendations |
+
+This distinction is critical: catalog metadata is a cache that can be rebuilt with `cis-bench catalog refresh`, but downloaded benchmarks represent user data that should be preserved across schema upgrades.
+
+**Schema Migrations (Alembic):**
+
+Because downloaded benchmarks are persistent user data, schema changes must be handled via migrations:
+
+```
+alembic/
+├── alembic.ini          # Alembic configuration
+├── env.py               # Migration environment
+├── script.py.mako       # Migration template
+└── versions/
+    └── e8d458b69e97_add_platform_type_column.py
+```
+
+**When to use migrations:**
+
+- Adding new columns (e.g., `platform_type` for filtering)
+- Changing relationships between tables
+- Adding new tables
+- Any schema change that affects existing user databases
+
+**Migration workflow:**
+
+```bash
+# Create migration after changing models
+alembic revision --autogenerate -m "Add new column"
+
+# Apply migrations (user's database)
+alembic upgrade head
+```
+
+**Platform Inference:**
+
+Benchmarks are automatically categorized from titles using 40+ patterns:
+
+```python
+PLATFORM_PATTERNS = [
+    # Cloud (check before OS to catch "Oracle Cloud" before "Oracle Linux")
+    (["oracle cloud", "oci"], "cloud", "oracle-cloud"),
+    (["amazon web services", "aws"], "cloud", "aws"),
+    (["google cloud", "gcp"], "cloud", "google-cloud"),
+    (["microsoft azure", "azure"], "cloud", "azure"),
+
+    # Databases (check before OS to catch "Oracle Database")
+    (["oracle database", "oracle db"], "database", "oracle-database"),
+    (["mysql"], "database", "mysql"),
+    (["postgresql"], "database", "postgresql"),
+
+    # Operating Systems
+    (["ubuntu"], "os", "ubuntu"),
+    (["red hat", "rhel"], "os", "red-hat"),
+    (["windows server"], "os", "windows-server"),
+
+    # Containers
+    (["kubernetes", "k8s"], "container", "kubernetes"),
+    (["docker"], "container", "docker"),
+    (["eks"], "container", "aws-eks"),
+    # ... 40+ total patterns
+]
+```
+
+**Catalog Module Structure:**
+
+```
+cis_bench/catalog/
+├── __init__.py
+├── database.py      # CatalogDatabase class (CRUD, search, stats)
+├── models.py        # SQLModel models (CatalogBenchmark, Platform, etc.)
+├── parser.py        # WorkBenchCatalogParser (HTML → dict)
+├── scraper.py       # CatalogScraper (parallel page fetching)
+├── search.py        # Search utilities
+├── downloader.py    # Benchmark download integration
+└── schema.sql       # Reference SQL schema
+```
+
+**Key Classes:**
+
+- `CatalogDatabase`: Main interface for all database operations
+- `CatalogScraper`: Scrapes 68 pages from WorkBench (parallel, rate-limited)
+- `WorkBenchCatalogParser`: Extracts benchmark metadata from HTML tables
+- SQLModel models: Type-safe ORM with Pydantic validation
+
+**Performance:**
+
+- Full catalog refresh: ~2 minutes (parallel scraping)
+- FTS5 search: <1ms
+- Platform filtering: <10ms
+- Database size: ~5MB for 1,300+ benchmarks
+
 ### High-Level Design Principles
 
 1. **Separation of Concerns**: Fetching, parsing, exporting, CLI are separate
@@ -584,6 +778,16 @@ cis-benchmark-cli/
 │ │ ├── markdown.py # Markdown exporter
 │ │ └── xccdf.py # XCCDF exporter (uses xsdata models)
 │ │
+│ ├── catalog/ # Catalog database system
+│ │ ├── __init__.py
+│ │ ├── database.py # CatalogDatabase (CRUD, search)
+│ │ ├── models.py # SQLModel models
+│ │ ├── parser.py # HTML parser for catalog pages
+│ │ ├── scraper.py # Parallel catalog scraper
+│ │ ├── search.py # Search utilities
+│ │ ├── downloader.py # Download integration
+│ │ └── schema.sql # Reference SQL schema
+│ │
 │ ├── utils/ # Shared utilities
 │ │ ├── __init__.py
 │ │ ├── logging.py # Logging setup
@@ -599,6 +803,13 @@ cis-benchmark-cli/
 │ │ ├── list.py # List command
 │ │ └── info.py # Info command
 │ └── output.py # Rich console output helpers
+│
+├── alembic/ # Database migrations
+│ ├── alembic.ini # Alembic configuration
+│ ├── env.py # Migration environment
+│ ├── script.py.mako # Migration template
+│ └── versions/ # Migration scripts
+│ └── *.py # Individual migrations
 │
 ├── tests/ # Test suite
 │ ├── __init__.py
@@ -1147,14 +1358,16 @@ def download(benchmark_ids, browser, output_dir, format):
 - **pyyaml**: YAML export
 - **xsdata[cli]**: XCCDF models generation
 - **lxml**: XML processing (required by xsdata)
+- **sqlmodel**: SQLite ORM (Pydantic + SQLAlchemy)
+- **alembic**: Database migrations
 
 ### Development Dependencies
 
 - **pytest**: Testing framework
 - **pytest-mock**: Mocking
-- **black**: Code formatting
+- **ruff**: Linting and formatting
+- **bandit**: Security scanning
 - **mypy**: Type checking
-- **flake8**: Linting
 
 ## Naming Conventions
 
@@ -1182,6 +1395,11 @@ def download(benchmark_ids, browser, output_dir, format):
 - `cis-bench export` - Convert formats
 - `cis-bench list` - Show downloaded benchmarks
 - `cis-bench info` - Show benchmark details
+- `cis-bench search` - Search catalog (FTS5)
+- `cis-bench catalog refresh` - Update catalog from WorkBench
+- `cis-bench catalog platforms` - List platform categories
+- `cis-bench catalog stats` - Show catalog statistics
+- `cis-bench get` - Search + download + export in one command
 - Future: `diff`, `analyze`, `validate`, etc.
 
 ---
