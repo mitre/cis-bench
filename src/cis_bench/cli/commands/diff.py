@@ -469,18 +469,18 @@ def _output_table(comparison: dict, verbose: bool = False):
 
         for item in changes["added"]:
             table.add_row(
-                "[green]✚ ADD[/green]",
+                "[green]✚ Added[/green]",
                 item["ref"],
                 item["title"],
-                "New",
+                "New recommendation",
             )
 
         for item in changes["removed"]:
             table.add_row(
-                "[red]✖ DEL[/red]",
+                "[red]✖ Removed[/red]",
                 item["ref"],
                 item["title"],
-                "Removed",
+                "No longer present",
             )
 
         for item in changes["modified"]:
@@ -491,7 +491,7 @@ def _output_table(comparison: dict, verbose: bool = False):
             else:
                 changes_text = ", ".join(fields[:3]) + f" +{len(fields) - 3} more"
             table.add_row(
-                "[yellow]⟳ MOD[/yellow]",
+                "[yellow]⟳ Modified[/yellow]",
                 item["ref"],
                 item["title"],
                 changes_text,
@@ -499,7 +499,7 @@ def _output_table(comparison: dict, verbose: bool = False):
 
         for item in changes["renumbered"]:
             table.add_row(
-                "[cyan]? REN[/cyan]",
+                "[cyan]↷ Renumbered[/cyan]",
                 f"{item['old_ref']} → {item['new_ref']}",
                 item["title"],
                 f"{item['similarity']}% match",
