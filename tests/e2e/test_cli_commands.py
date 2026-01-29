@@ -132,8 +132,8 @@ class TestDownloadCommand:
             assert "Authentication Required" in result.output
             assert "auth login" in result.output
 
-    def test_download_single_benchmark_with_browser(self, runner, sample_benchmark, tmp_path):
-        """Download single benchmark using browser cookies."""
+    def test_download_single_benchmark_with_saved_session(self, runner, sample_benchmark, tmp_path):
+        """Download single benchmark using saved session."""
         # Mock Config to ensure no catalog exists (skip cache check)
         with patch("cis_bench.cli.commands.download.Config") as mock_config:
             mock_config.get_catalog_db_path.return_value = tmp_path / "nonexistent.db"
@@ -159,8 +159,6 @@ class TestDownloadCommand:
                         [
                             "download",
                             "23598",
-                            "--browser",
-                            "chrome",
                             "--output-dir",
                             str(tmp_path),
                             "--force",
@@ -656,8 +654,9 @@ class TestCLIIntegration:
         assert result.exit_code != 0
         assert "Invalid value" in result.output or "Error" in result.output
 
-    def test_download_invalid_browser(self, runner):
-        """Download rejects invalid browser choice."""
-        result = runner.invoke(cli, ["download", "23598", "--browser", "invalid"])
+    def test_auth_login_invalid_browser(self, runner):
+        """Auth login rejects invalid browser choice."""
+        result = runner.invoke(cli, ["auth", "login", "--browser", "invalid"])
 
         assert result.exit_code != 0
+        assert "Invalid value" in result.output

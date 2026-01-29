@@ -101,7 +101,7 @@ class TestDownloadDatabaseCaching:
 
                             result = runner.invoke(
                                 cli,
-                                ["download", "23598", "--browser", "chrome"],
+                                ["download", "23598"],
                             )
 
                             # Verify command succeeded
@@ -143,7 +143,7 @@ class TestDownloadDatabaseCaching:
 
                         result = runner.invoke(
                             cli,
-                            ["download", "23598", "--browser", "chrome"],
+                            ["download", "23598"],
                         )
 
                         # Should succeed even without catalog
@@ -186,7 +186,7 @@ class TestDownloadDatabaseCaching:
 
                             result = runner.invoke(
                                 cli,
-                                ["download", "23598", "--browser", "chrome"],
+                                ["download", "23598"],
                             )
 
                             # Should still succeed
@@ -227,7 +227,7 @@ class TestDownloadDatabaseCaching:
 
                             result = runner.invoke(
                                 cli,
-                                ["download", "23598", "22605", "--browser", "chrome"],
+                                ["download", "23598", "22605"],
                             )
 
                             assert result.exit_code == 0, f"Download failed: {result.output}"
@@ -279,7 +279,7 @@ class TestDownloadAndExportIntegration:
                             # Step 1: Download
                             download_result = runner.invoke(
                                 cli,
-                                ["download", "23598", "--browser", "chrome"],
+                                ["download", "23598"],
                             )
 
                             assert download_result.exit_code == 0
