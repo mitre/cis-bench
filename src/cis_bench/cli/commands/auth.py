@@ -38,8 +38,13 @@ def auth():
     "--browser",
     "-b",
     type=click.Choice(["chrome", "firefox", "edge", "safari"]),
-    required=True,
     help="Browser to use for authentication",
+)
+@click.option(
+    "--cookies",
+    "-c",
+    type=click.Path(exists=True),
+    help="Load cookies from file instead of browser (Netscape format)",
 )
 @click.option(
     "--open",
@@ -52,13 +57,13 @@ def auth():
     is_flag=True,
     help="Disable SSL certificate verification (use if encountering SSL errors)",
 )
-def login(browser, open, no_verify_ssl):
+def login(browser, cookies, open, no_verify_ssl):
     """Log in to CIS WorkBench and save session.
 
     This command will:
     1. Optionally open the CIS WorkBench login page in your browser
     2. Wait for you to log in manually
-    3. Extract session cookies from your browser
+    3. Extract session cookies from your browser (or load from file)
     4. Save them for future use
 
     After running this once, other commands won't need --browser flag.
@@ -67,7 +72,25 @@ def login(browser, open, no_verify_ssl):
     Examples:
         cis-bench auth login --browser chrome --open
         cis-bench auth login --browser firefox
+        cis-bench auth login --cookies cookies.txt
+
+    \b
+    Windows users: If you get permission errors with Chrome/Edge,
+    use Firefox or the --cookies option instead.
     """
+    # Validate that either browser or cookies is specified
+    if not browser and not cookies:
+        console.print("[red]Error: Must specify either --browser or --cookies[/red]")
+        console.print("\n[cyan]Examples:[/cyan]")
+        console.print("  cis-bench auth login --browser chrome")
+        console.print("  cis-bench auth login --cookies cookies.txt")
+        sys.exit(1)
+
+    if browser and cookies:
+        console.print(
+            "[yellow]Warning: Both --browser and --cookies specified, using --cookies[/yellow]"
+        )
+
     try:
         # Open browser if requested
         if open:
@@ -125,23 +148,47 @@ def login(browser, open, no_verify_ssl):
             console.print("[dim]Press Enter when you've completed login...[/dim]")
             input()
 
-        # Extract cookies from browser
-        console.print(f"[cyan]Extracting session cookies from {browser}...[/cyan]")
-
         # Determine SSL verification setting
         verify_ssl = not no_verify_ssl if no_verify_ssl else Config.get_verify_ssl()
 
-        session = AuthManager.load_cookies_from_browser(browser, verify_ssl=verify_ssl)
+        # Load cookies from file or browser
+        if cookies:
+            # Load from cookie file
+            console.print(f"[cyan]Loading cookies from {cookies}...[/cyan]")
+            try:
+                session = AuthManager.load_cookies_from_file(cookies, verify_ssl=verify_ssl)
+            except Exception as e:
+                console.print(f"[red]✗ Failed to load cookies: {e}[/red]")
+                sys.exit(1)
 
-        if not session or not session.cookies:
-            console.print(f"[red]✗ No cookies found in {browser}[/red]")
-            console.print(
-                "\n[yellow]Make sure you are logged into workbench.cisecurity.org in your browser[/yellow]"
-            )
-            sys.exit(1)
+            cookie_count = len(list(session.cookies))
+            console.print(f"[green]✓[/green] Loaded {cookie_count} cookies from file")
+        else:
+            # Extract cookies from browser
+            console.print(f"[cyan]Extracting session cookies from {browser}...[/cyan]")
 
-        cookie_count = len(list(session.cookies))
-        console.print(f"[green]✓[/green] Extracted {cookie_count} cookies from {browser}")
+            try:
+                # Try with fallback on Windows for Chromium browsers
+                session = AuthManager.load_cookies_from_browser(
+                    browser, verify_ssl=verify_ssl, try_fallback=True
+                )
+            except Exception as e:
+                # Check if this is a Windows permission error
+                if AuthManager._is_windows_permission_error(e):
+                    console.print(f"[red]✗ {e}[/red]\n")
+                    console.print(AuthManager._format_windows_cookie_error(browser, e))
+                    sys.exit(1)
+                raise
+
+            if not session or not session.cookies:
+                console.print(f"[red]✗ No cookies found in {browser}[/red]")
+                console.print(
+                    "\n[yellow]Make sure you are logged into workbench.cisecurity.org in your browser[/yellow]"
+                )
+                sys.exit(1)
+
+            cookie_count = len(list(session.cookies))
+            console.print(f"[green]✓[/green] Extracted {cookie_count} cookies from {browser}")
 
         # Validate session
         console.print("[cyan]Validating session...[/cyan]")

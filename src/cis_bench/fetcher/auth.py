@@ -2,6 +2,7 @@
 
 import http.cookiejar
 import logging
+import platform
 from pathlib import Path
 
 import browser_cookie3
@@ -25,13 +26,91 @@ logger = logging.getLogger(__name__)
 class AuthManager:
     """Manages authentication for CIS WorkBench."""
 
+    # Windows-specific error patterns that indicate permission/encryption issues
+    WINDOWS_PERMISSION_PATTERNS = [
+        "requires admin",
+        "access is denied",
+        "permission denied",
+        "being used by another process",
+        "winerror 5",
+        "winerror 32",
+    ]
+
+    # Browsers that use Chromium's App-Bound Encryption on Windows
+    CHROMIUM_BROWSERS = ["chrome", "edge", "brave", "chromium", "vivaldi", "opera"]
+
     @staticmethod
-    def load_cookies_from_browser(browser="chrome", verify_ssl=None) -> requests.Session:
+    def _is_windows_permission_error(error: Exception) -> bool:
+        """Check if an error is a Windows-specific permission/encryption issue.
+
+        Args:
+            error: The exception to check
+
+        Returns:
+            True if this appears to be a Windows cookie access permission error
+        """
+        error_str = str(error).lower()
+        return any(pattern in error_str for pattern in AuthManager.WINDOWS_PERMISSION_PATTERNS)
+
+    @staticmethod
+    def _get_fallback_browser(failed_browser: str) -> str | None:
+        """Get a fallback browser when the primary browser fails on Windows.
+
+        Firefox doesn't use App-Bound Encryption and works without admin on Windows.
+
+        Args:
+            failed_browser: The browser that failed
+
+        Returns:
+            Fallback browser name, or None if no fallback available
+        """
+        # Firefox is the fallback for all Chromium-based browsers
+        if failed_browser.lower() in AuthManager.CHROMIUM_BROWSERS:
+            return "firefox"
+        # No fallback for Firefox or Safari
+        return None
+
+    @staticmethod
+    def _format_windows_cookie_error(browser: str, error: Exception) -> str:
+        """Format a helpful error message for Windows cookie extraction failures.
+
+        Args:
+            browser: The browser that failed
+            error: The exception that occurred
+
+        Returns:
+            Formatted error message with actionable workarounds
+        """
+        return f"""Failed to extract cookies from {browser}: {error}
+
+This is likely due to Chrome's App-Bound Encryption (Chrome 127+) on Windows,
+which requires administrator privileges to decrypt cookies.
+
+Workarounds:
+1. Use Firefox instead (recommended - works without admin):
+   cis-bench auth login --browser firefox
+
+2. Close {browser} completely before running:
+   (Chrome locks the cookie file while running)
+
+3. Export cookies to a file manually:
+   - Install a browser extension like "Get cookies.txt LOCALLY"
+   - Export cookies for workbench.cisecurity.org
+   - Use: cis-bench download <id> --cookies cookies.txt
+
+4. Run as Administrator (not recommended for security reasons)
+"""
+
+    @staticmethod
+    def load_cookies_from_browser(
+        browser="chrome", verify_ssl=None, try_fallback: bool = False
+    ) -> requests.Session:
         """Load cookies from browser using browser-cookie3.
 
         Args:
             browser: Browser name ('chrome', 'firefox', 'edge', 'safari')
             verify_ssl: SSL verification setting (None = use Config default)
+            try_fallback: If True and on Windows, try Firefox if Chromium browser fails
 
         Returns:
             requests.Session with cookies loaded and SSL verification configured
@@ -76,7 +155,23 @@ class AuthManager:
             # Re-raise ValueError as-is (for unsupported browser)
             raise
         except Exception as e:
-            # Catch browser-specific exceptions (database locked, etc.)
+            # Check if we should try a fallback browser on Windows
+            is_windows = platform.system() == "Windows"
+            is_permission_error = AuthManager._is_windows_permission_error(e)
+
+            if try_fallback and is_windows and is_permission_error:
+                fallback = AuthManager._get_fallback_browser(browser)
+                if fallback:
+                    logger.warning(
+                        f"{browser} failed with permission error on Windows, "
+                        f"trying {fallback} as fallback"
+                    )
+                    # Recursive call with fallback browser (no further fallback)
+                    return AuthManager.load_cookies_from_browser(
+                        fallback, verify_ssl=verify_ssl, try_fallback=False
+                    )
+
+            # No fallback available or not on Windows - raise with helpful message
             raise Exception(f"Failed to extract cookies from {browser}: {e}") from e
 
     @staticmethod
