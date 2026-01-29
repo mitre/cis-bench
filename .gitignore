@@ -160,4 +160,6 @@ SESSION_PLAN.md
 /archive/
 tools/
 # Note: /archive/ only ignores top-level, allows research/archive/ tracking
+# Beads task tracker - runtime artifacts (issues.jsonl IS tracked)
 .beads/recovery-context.md
+.beads/last-touched
