@@ -20,18 +20,6 @@ logger = logging.getLogger(__name__)
 @click.command(name="download")
 @click.argument("benchmark_ids", nargs=-1, required=False)
 @click.option(
-    "--browser",
-    "-b",
-    type=click.Choice(["chrome", "firefox", "edge", "safari"]),
-    help="Extract session from this browser (only needed for first login or refresh)",
-)
-@click.option(
-    "--cookies",
-    "-c",
-    type=click.Path(exists=True),
-    help="Use cookies from file instead of saved session",
-)
-@click.option(
     "--file",
     "-f",
     "urls_file",
@@ -50,23 +38,15 @@ logger = logging.getLogger(__name__)
     default=["json"],
     help="Export formats (can specify multiple)",
 )
-@click.option(
-    "--no-verify-ssl",
-    is_flag=True,
-    help="Disable SSL certificate verification",
-)
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose (DEBUG level) logging")
 @click.option("--debug", "-d", is_flag=True, help="Enable debug logging (same as --verbose)")
 @click.option("--quiet", "-q", is_flag=True, help="Quiet mode (warnings and errors only)")
 @click.option("--force", is_flag=True, help="Force re-download even if already cached in database")
 def download(
     benchmark_ids,
-    browser,
-    cookies,
     urls_file,
     output_dir,
     export_formats,
-    no_verify_ssl,
     verbose,
     debug,
     quiet,
@@ -74,14 +54,14 @@ def download(
 ):
     """Download CIS benchmarks by ID or URL.
 
-    Uses saved session if available. Only need --browser for first-time login.
+    Uses saved session from 'cis-bench auth login'.
 
     \b
     Examples:
-        # First time (or to refresh session)
-        cis-bench auth login --browser chrome --open
+        # First, authenticate (one time)
+        cis-bench auth login --browser chrome
 
-        # After login, no --browser needed
+        # Then download
         cis-bench download 23598
         cis-bench download 23598 22605 --format json --format xccdf
         cis-bench download --file urls.txt
@@ -94,42 +74,31 @@ def download(
 
     logger.debug(f"Starting download command: output_dir={output_dir}, formats={export_formats}")
 
-    # Get authenticated session (tries saved session first)
+    # Get authenticated session (uses saved session only)
     try:
-        if cookies:
-            # User explicitly provided cookies file
-            logger.debug("Using provided cookies file")
-            with console.status("[bold green]Loading cookies..."):
-                session = AuthManager.load_cookies_from_file(cookies)
-        else:
-            # Use get_or_create_session (tries saved session first, then browser if provided)
-            logger.debug("Getting authenticated session")
-            with console.status("[bold green]Authenticating..."):
-                # Flag overrides config/env var
-                verify_ssl = not no_verify_ssl if no_verify_ssl else Config.get_verify_ssl()
-                session = AuthManager.get_or_create_session(browser=browser, verify_ssl=verify_ssl)
+        logger.debug("Getting authenticated session")
+        with console.status("[bold green]Authenticating..."):
+            session = AuthManager.get_or_create_session()
 
         console.print("[green]✓[/green] Authenticated successfully\n")
         logger.debug("Authentication successful")
 
-    except ValueError as e:
-        # No saved session and no browser provided
+    except ValueError:
+        # No saved session
         console.print("\n[bold red]Authentication Required[/bold red]\n")
-        console.print(f"[yellow]{e}[/yellow]\n")
-        console.print("[bold cyan]To authenticate:[/bold cyan]")
-        console.print("  1. Log into workbench.cisecurity.org in your browser")
-        console.print("  2. Run: [bold]cis-bench auth login --browser chrome[/bold]")
-        console.print("\n[dim]Or run with --browser flag to authenticate inline:[/dim]")
-        console.print("  cis-bench download 23598 --browser chrome")
+        console.print("[bold cyan]Please log in first:[/bold cyan]")
+        console.print("  cis-bench auth login --browser chrome")
+        console.print("\n[dim]This saves your session for future commands.[/dim]")
+        console.print(
+            "\n[dim]Windows users: If Chrome fails, try Firefox or --cookies option.[/dim]"
+        )
         sys.exit(1)
     except Exception as e:
         logger.error(f"Authentication failed: {e}", exc_info=True)
         console.print("\n[bold red]Authentication Failed[/bold red]\n")
         console.print(f"[yellow]Error: {e}[/yellow]\n")
         console.print("[bold cyan]Your session may have expired. To refresh:[/bold cyan]")
-        console.print("  1. Ensure you're logged into workbench.cisecurity.org in your browser")
-        console.print("  2. Run: [bold]cis-bench auth login --browser chrome[/bold]")
-        console.print("\n[dim]This will extract fresh cookies and save them for future use.[/dim]")
+        console.print("  cis-bench auth login --browser chrome")
         sys.exit(1)
 
     # Create scraper

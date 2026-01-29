@@ -50,19 +50,13 @@ class DynamicStyleChoice(click.Choice):
     "-o",
     help="Output file path (default: auto-generated)",
 )
-@click.option(
-    "--browser",
-    "-b",
-    type=click.Choice(["chrome", "firefox", "edge", "safari"]),
-    help="Browser for authentication (only needed if no saved session)",
-)
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose (DEBUG level) logging")
 @click.option("--debug", "-d", is_flag=True, help="Enable debug logging (same as --verbose)")
 @click.option("--quiet", "-q", is_flag=True, help="Quiet mode (warnings and errors only)")
 @click.option(
     "--non-interactive", is_flag=True, help="Disable interactive prompts (show table instead)"
 )
-def get_cmd(query, export_format, style, output, browser, verbose, debug, quiet, non_interactive):
+def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_interactive):
     """Search, download, and export benchmark in one command.
 
     This is the easiest way to get a CIS benchmark. It combines search,
@@ -76,8 +70,8 @@ def get_cmd(query, export_format, style, output, browser, verbose, debug, quiet,
 
     \b
     Requirements:
-        Must have catalog initialized first:
-        cis-bench catalog refresh --browser chrome
+        1. Authenticate: cis-bench auth login --browser chrome
+        2. Build catalog: cis-bench catalog refresh
     """
     # Configure logging if flags provided
     if verbose or debug or quiet:
@@ -211,10 +205,9 @@ def get_cmd(query, export_format, style, output, browser, verbose, debug, quiet,
         console.print("[cyan]Downloading benchmark...[/cyan]\n")
 
         try:
-            # Get authenticated session
+            # Get authenticated session (uses saved session only)
             logger.debug("Getting authenticated session for download")
-            verify_ssl = Config.get_verify_ssl()
-            session = AuthManager.get_or_create_session(browser=browser, verify_ssl=verify_ssl)
+            session = AuthManager.get_or_create_session()
 
             # Download with progress bar
             import hashlib
@@ -244,13 +237,13 @@ def get_cmd(query, export_format, style, output, browser, verbose, debug, quiet,
 
             logger.debug(f"Saved benchmark {benchmark_id} to database")
 
-        except ValueError as e:
+        except ValueError:
             console.print("\n[bold red]Authentication Required[/bold red]\n")
-            console.print(f"[yellow]{e}[/yellow]\n")
             console.print("[cyan]Please log in first:[/cyan]")
-            console.print("  cis-bench auth login --browser chrome\n")
-            console.print("[dim]Or provide --browser flag:[/dim]")
-            console.print(f'  cis-bench get "{query}" --browser chrome --format {export_format}')
+            console.print("  cis-bench auth login --browser chrome")
+            console.print(
+                "\n[dim]Windows users: If Chrome fails, try Firefox or --cookies option.[/dim]"
+            )
             sys.exit(1)
         except Exception as e:
             logger.error(f"Download failed: {e}", exc_info=True)
