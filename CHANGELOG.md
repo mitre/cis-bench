@@ -1,6 +1,89 @@
 # CHANGELOG
 
 
+## v0.4.0 (2026-01-29)
+
+### Bug Fixes
+
+- Include YAML config files in PyPI package distribution
+  ([`dbe533e`](https://github.com/mitre/cis-bench/commit/dbe533e2f74aceaecadbbe4e0ea092764d3d71b0))
+
+Fixes Issue #6 - users installing from PyPI got 'cis is not one of .' error because YAML style
+  configs were not included in the package.
+
+Added [tool.setuptools.package-data] to include exporters/configs/**/*.yaml
+
+Authored by: Aaron Lippold<lippold@gmail.com>
+
+### Chores
+
+- Fix semantic-release to use standard conventional commits
+  ([`191b96d`](https://github.com/mitre/cis-bench/commit/191b96d41a71fcd05777ac82bbc6aa04a5619e17))
+
+Only feat/fix/perf now trigger releases: - feat: minor release - fix: patch release - perf: patch
+  release - docs, chore, refactor, style, test, ci, build: no release
+
+Authored by: Aaron Lippold <lippold@gmail.com>
+
+- Update beads with recovery card
+  ([`9e28ac6`](https://github.com/mitre/cis-bench/commit/9e28ac632748c111b12d7d44ff0b4e99a470b579))
+
+Authored by: Aaron Lippold<lippold@gmail.com>
+
+- Update project status and beads tasks
+  ([`07f6bf4`](https://github.com/mitre/cis-bench/commit/07f6bf45c53497562de3e4c3b754435fe2ccd8f5))
+
+- Update version to 0.3.3 - Add semantic-release fix to completed work - Update open tasks list -
+  Sync beads database
+
+Authored by: Aaron Lippold <lippold@gmail.com>
+
+### Features
+
+- Add Windows cookie extraction fallback and --cookies option
+  ([`84152cd`](https://github.com/mitre/cis-bench/commit/84152cdfe2d1e2e7eebf4659cdcd12d15ade35c8))
+
+Issue #3 improvements: - Auto-fallback to Firefox when Chrome/Edge fails on Windows with permission
+  error - Add --cookies option to 'auth login' command for cookie file import - Better error
+  messages explaining Chrome App-Bound Encryption limitation - Windows permission error detection
+  (_is_windows_permission_error) - Helpful workarounds in error messages (Firefox, close browser,
+  cookie file)
+
+Authored by: Aaron Lippold<lippold@gmail.com>
+
+### Refactoring
+
+- Remove auth flags from download and get commands (DRY)
+  ([`69ffbd1`](https://github.com/mitre/cis-bench/commit/69ffbd11e4c88a75a4e7bdb4a0e44347f9757393))
+
+Simplify CLI structure - auth flags now only on 'auth login': - Remove --browser, --cookies,
+  --no-verify-ssl from download command - Remove --browser from get command - Users must run 'auth
+  login' first, then other commands use saved session - Better error messages directing users to
+  auth login
+
+This follows DRY principle and prevents user confusion (Issue #3 user tried --cookies on wrong
+  command).
+
+Authored by: Aaron Lippold<lippold@gmail.com>
+
+### Testing
+
+- Add comprehensive tests for Issues #6, #3, and CLI structure
+  ([`e23d8fa`](https://github.com/mitre/cis-bench/commit/e23d8fa15c82c5e08817baaa0029fdb237923203))
+
+New test files (92 tests total): - test_package_data.py: Verify YAML configs included in package (9
+  tests) - test_auth_windows_fallback.py: Windows permission detection, Firefox fallback (13 tests)
+  - test_cli_structure.py: Verify auth flags only on auth login (15 tests) -
+  test_metadata_models.py: CIS Controls and Enhanced Metadata models (30 tests) -
+  test_xhtml_formatter.py: XHTML element creation and serialization (25 tests)
+
+Updated existing tests for new CLI structure (removed --browser from download/get).
+
+Coverage improved: 81.9% → 83.6%
+
+Authored by: Aaron Lippold<lippold@gmail.com>
+
+
 ## v0.3.3 (2025-12-19)
 
 ### Chores
@@ -29,11 +112,6 @@ Authored by: Aaron Lippold <lippold@gmail.com>
 
 
 ## v0.3.2 (2025-12-19)
-
-### Chores
-
-- Release 0.3.2
-  ([`65c8294`](https://github.com/mitre/cis-bench/commit/65c82946df13bef9f4fe19d95dd068c5a261af97))
 
 ### Documentation
 
@@ -103,11 +181,6 @@ Test was expecting hardcoded 1.0.0 instead of actual package version
 
 Authored by: Aaron Lippold <lippold@gmail.com>
 
-### Chores
-
-- Release 0.3.1
-  ([`e8d7bb8`](https://github.com/mitre/cis-bench/commit/e8d7bb8958fbe702977b0dd476796f91ebdcee3e))
-
 
 ## v0.3.0 (2025-12-17)
 
@@ -144,9 +217,6 @@ Enables NIST XCCDF schema validation without external dependencies.
 Source: OpenSCAP/openscap (NIST certified SCAP 1.2 toolkit)
 
 Authored by: Aaron Lippold <lippold@gmail.com>
-
-- Release 0.3.0
-  ([`e9408f2`](https://github.com/mitre/cis-bench/commit/e9408f2fa8cee7300eed80d5828d55f30730f69a))
 
 ### Continuous Integration
 
@@ -297,11 +367,6 @@ Authored by: Aaron Lippold <lippold@gmail.com>
 
 ## v0.2.3 (2025-12-16)
 
-### Chores
-
-- Release 0.2.3
-  ([`475a10b`](https://github.com/mitre/cis-bench/commit/475a10b346d19dd5fd034fd1f8355097e361de7d))
-
 ### Documentation
 
 - Add comprehensive Python project setup guide
@@ -316,11 +381,6 @@ Authored by: Aaron Lippold <lippold@gmail.com>
 
 
 ## v0.2.2 (2025-12-15)
-
-### Chores
-
-- Release 0.2.2
-  ([`9b4cd5b`](https://github.com/mitre/cis-bench/commit/9b4cd5b2b9d64fde720c61b3d14bdd3d56ad8adc))
 
 ### Documentation
 
@@ -337,11 +397,6 @@ Authored by: Aaron Lippold <lippold@gmail.com>
 
 
 ## v0.2.1 (2025-12-15)
-
-### Chores
-
-- Release 0.2.1
-  ([`e4e1d11`](https://github.com/mitre/cis-bench/commit/e4e1d11d99978c487ad04909c2ea6e485c58027c))
 
 ### Documentation
 
@@ -387,11 +442,6 @@ Authored by: Aaron Lippold <lippold@gmail.com>
 
 Authored by: Aaron Lippold <lippold@gmail.com>
 
-### Chores
-
-- Release 0.2.0
-  ([`74973fc`](https://github.com/mitre/cis-bench/commit/74973fc89aaf6ad9d69ee9fab64ca3572b69a6a3))
-
 ### Features
 
 - Complete migration to uv package manager
@@ -414,11 +464,6 @@ Authored by: Aaron Lippold <lippold@gmail.com>
 
 
 ## v0.1.0 (2025-12-15)
-
-### Chores
-
-- Release 0.1.0
-  ([`42b6a0e`](https://github.com/mitre/cis-bench/commit/42b6a0e0c09926967887c63e31b35e7b87fc0536))
 
 ### Features
 
@@ -489,9 +534,6 @@ Authored by: Aaron Lippold <lippold@gmail.com>
 
 ### Chores
 
-- Release 0.0.4
-  ([`24085cb`](https://github.com/mitre/cis-bench/commit/24085cb7fb3e5e2b43dbddfecaaf3c5ddb5313fd))
-
 - Update pre-commit hooks and fix formatting
   ([`526aaf6`](https://github.com/mitre/cis-bench/commit/526aaf6b00baa1a56c2dae69a1663018001ec7e7))
 
@@ -538,11 +580,6 @@ Authored by: Aaron Lippold <lippold@gmail.com>
 
 Authored by: Aaron Lippold <lippold@gmail.com>
 
-### Chores
-
-- Release 0.0.3
-  ([`51973ce`](https://github.com/mitre/cis-bench/commit/51973ce1b1488fe093364036355dca87f4ca2488))
-
 
 ## v0.0.2 (2025-12-15)
 
@@ -554,9 +591,6 @@ Authored by: Aaron Lippold <lippold@gmail.com>
 Authored by: Aaron Lippold <lippold@gmail.com>
 
 ### Chores
-
-- Release 0.0.2
-  ([`17b039d`](https://github.com/mitre/cis-bench/commit/17b039d1cac4535a650352d2a43f5df4860f1c1c))
 
 - Standardize documentation filenames to lowercase
   ([`e862941`](https://github.com/mitre/cis-bench/commit/e862941fa3ec23536a0eeb9cb7e7d38a1d93b011))
@@ -583,6 +617,3 @@ Features: - Download CIS benchmarks via browser cookie authentication - Export t
   releases via python-semantic-release - Complete documentation with MkDocs
 
 Authored by: Aaron Lippold <lippold@gmail.com>
-
-- Release 0.0.1
-  ([`b3693ee`](https://github.com/mitre/cis-bench/commit/b3693ee0548c5068a01887a4fa9ad3ab7f38a480))
