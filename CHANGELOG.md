@@ -1,6 +1,101 @@
 # CHANGELOG
 
 
+## v0.5.0 (2026-01-29)
+
+### Chores
+
+- Add CLAUDE.md to repo for project context
+  ([`c30dc50`](https://github.com/mitre/cis-bench/commit/c30dc50c033c14c6ed4aec92ead891aaefb43d0b))
+
+- Remove CLAUDE.md from .gitignore - Add CLAUDE.md with project overview, commands, architecture
+  notes
+
+Authored by: Aaron Lippold<lippold@gmail.com>
+
+- Gitignore beads runtime artifacts
+  ([`6cb78c8`](https://github.com/mitre/cis-bench/commit/6cb78c83872acedcaac45472733d105264d7cf6f))
+
+Add .beads/last-touched to gitignore - this is an auto-generated timestamp file that changes on
+  every beads operation.
+
+Note: .beads/issues.jsonl IS tracked (contains actual task data)
+
+Authored by: Aaron Lippold<lippold@gmail.com>
+
+- Update uv.lock for v0.4.0
+  ([`0078ab7`](https://github.com/mitre/cis-bench/commit/0078ab70d960700f721602e978d3802fe1688aac))
+
+Authored by: Aaron Lippold<lippold@gmail.com>
+
+### Continuous Integration
+
+- Add manual trigger to release workflow
+  ([`3b0bd50`](https://github.com/mitre/cis-bench/commit/3b0bd5012e491204786ae315bfd5cab42aa59764))
+
+Allows re-running release via workflow_dispatch when automatic trigger fails due to race conditions.
+
+Authored by: Aaron Lippold<lippold@gmail.com>
+
+- Fix release workflow to allow manual dispatch
+  ([`5f3bc09`](https://github.com/mitre/cis-bench/commit/5f3bc0919cc7e605152fd4835ee01fd9f1227f9f))
+
+The if condition was blocking workflow_dispatch triggers.
+
+Authored by: Aaron Lippold<lippold@gmail.com>
+
+### Documentation
+
+- Update CLI documentation for simplified auth workflow
+  ([`2791e14`](https://github.com/mitre/cis-bench/commit/2791e14f78f195be79b927e2c9edd6ead4904973))
+
+- Remove --browser and --cookies flags from download/get command docs - Add --cookies option to auth
+  login documentation - Add Windows troubleshooting for Chrome App-Bound Encryption - Update CI/CD
+  example to use auth login with cookies - Update test count to 1,100+ and coverage to 96% - Update
+  version to 0.4.0 - Fix markdown list formatting in CHANGELOG
+
+Auth is now centralized: use 'cis-bench auth login' for all authentication, then other commands use
+  the saved session automatically.
+
+Authored by: Aaron Lippold<lippold@gmail.com>
+
+### Features
+
+- Add batch export for multiple benchmarks ([#7](https://github.com/mitre/cis-bench/pull/7),
+  [`9729c64`](https://github.com/mitre/cis-bench/commit/9729c640e48daa5f38ea847e4e2638268defe0f0))
+
+* feat: add batch export for multiple benchmarks
+
+- Export multiple benchmark IDs in single command - Add --output-dir option for batch exports -
+  Progress tracking with [1/N] prefix - Continue on individual failures with summary - 15 new TDD
+  tests in test_batch_export.py - Backward compatible with single ID exports - Update
+  commands-reference.md documentation
+
+Authored by: Aaron Lippold<lippold@gmail.com>
+
+* docs: fix README links to point to GitHub Pages
+
+- Update all relative doc links to use full GitHub Pages URLs - Add prominent link to
+  https://mitre.github.io/cis-bench/ - Add batch export to current features list - Fix Quick Links
+  section at bottom
+
+### Testing
+
+- Achieve 95.96% test coverage with comprehensive unit tests
+  ([`8fe8425`](https://github.com/mitre/cis-bench/commit/8fe8425cbc093760c722f2402ac524155b84c495))
+
+Add 356 new unit tests across 10 test files covering: - cli/commands/catalog.py: 32% → 100% (53
+  tests) - cli/commands/auth.py: 70% → 99% (67 tests) - cli/commands/download.py: 75% → 99% (27
+  tests) - cli/commands/get.py: 76% → 99% (included above) - catalog/parser.py: 66% → 100% (78
+  tests) - exporters/xccdf_unified_exporter.py: 56% → 98% (50 tests) - config.py: 67% → 97% (41
+  tests) - validators/disa_conventions.py: 70% → 100% (38 tests) - utils/xml_utils.py: 70% → 95% (60
+  tests) - utils/html_parser.py: 67% → 98% (included above)
+
+Total: 1106 tests passing, overall coverage 95.96%
+
+Authored by: Aaron Lippold<lippold@gmail.com>
+
+
 ## v0.4.0 (2026-01-29)
 
 ### Bug Fixes
@@ -73,7 +168,6 @@ Authored by: Aaron Lippold<lippold@gmail.com>
 
 New test files (92 tests total): - test_package_data.py: Verify YAML configs included in package (9
   tests) - test_auth_windows_fallback.py: Windows permission detection, Firefox fallback (13 tests)
-
   - test_cli_structure.py: Verify auth flags only on auth login (15 tests) -
   test_metadata_models.py: CIS Controls and Enhanced Metadata models (30 tests) -
   test_xhtml_formatter.py: XHTML element creation and serialization (25 tests)
@@ -133,7 +227,6 @@ Authored by: Aaron Lippold <lippold@gmail.com>
 Session 29-30 documentation cleanup:
 
 Design document reorganization: - Move ARCHITECTURE_PRINCIPLES.md → docs/design/design-principles.md
-
   - Move SYSTEM_ANALYSIS.md → docs/design/handler-reference.md - Move REFACTOR_PLAN.md →
   docs/design/xccdf-mapping-design.md - Move FINAL_PLAN.md → docs/design/architecture-decisions.md -
   Reduce total from 2,596 to 1,090 lines (58% reduction) - Add Design Documents section to
@@ -522,7 +615,6 @@ Authored by: Aaron Lippold <lippold@gmail.com>
   ([`5d8a92b`](https://github.com/mitre/cis-bench/commit/5d8a92bd6756dacc68cc4726f5087f6bdfdd51b9))
 
 Based on working examples from established projects: - Use psf/black@stable with use_pyproject: true
-
   - Use astral-sh/ruff-action@v3 (official action) - Use astral-sh/setup-uv@v5 for UV setup - Use uv
   sync for dependency installation - Separate jobs for format, lint, security, and test
 
@@ -577,7 +669,6 @@ Authored by: Aaron Lippold <lippold@gmail.com>
   for full executable paths - Remove shell=True on Windows (use webbrowser module) - Add subprocess
   output capture - Fix type annotation compatibility: - Add __future__ annotations for lxml/Cython
   compatibility - Auto-upgrade deprecated typing syntax (ruff --fix): - typing.Union -> X | Y syntax
-
   - typing.List -> list - collections.abc imports - Auto-format code (black) - Fix black regex
   pattern in pyproject.toml - Configure bandit to read pyproject.toml config - All checks passing:
   black ✓, ruff ✓, bandit ✓, tests ✓ (512 passed)
