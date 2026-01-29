@@ -1,6 +1,7 @@
 """Diff command - compare benchmark versions."""
 
 import difflib
+import hashlib
 import json
 import logging
 from pathlib import Path
@@ -15,6 +16,76 @@ from cis_bench.config import Config
 
 console = Console()
 logger = logging.getLogger(__name__)
+
+
+def _auto_fetch_benchmark(benchmark_id: str) -> dict | None:
+    """Attempt to fetch a benchmark from CIS WorkBench.
+
+    Args:
+        benchmark_id: The benchmark ID to fetch.
+
+    Returns:
+        Benchmark data dict if successful, None otherwise.
+
+    Raises:
+        click.ClickException: If authentication fails or other errors.
+    """
+    from cis_bench.fetcher.auth import AuthManager
+    from cis_bench.fetcher.workbench import WorkbenchScraper
+
+    console.print(f"[cyan]Fetching benchmark {benchmark_id} from CIS WorkBench...[/cyan]")
+
+    # Get authenticated session
+    try:
+        session = AuthManager.get_or_create_session()
+    except ValueError as e:
+        raise click.ClickException(
+            f"Benchmark '{benchmark_id}' not found locally.\n\n"
+            "To fetch from CIS WorkBench, authenticate first:\n"
+            "  cis-bench auth login --browser chrome\n\n"
+            "Or provide a local file path."
+        ) from e
+    except Exception as e:
+        raise click.ClickException(
+            f"Authentication failed: {e}\n\n"
+            "Your session may have expired. Try:\n"
+            "  cis-bench auth login --browser chrome"
+        ) from e
+
+    # Create scraper and download
+    scraper = WorkbenchScraper(session)
+    url = f"https://workbench.cisecurity.org/benchmarks/{benchmark_id}"
+
+    try:
+        from cis_bench.cli.helpers.download_helper import download_with_progress
+
+        benchmark = download_with_progress(scraper, url, prefix="")
+
+        # Save to catalog database
+        catalog_db_path = Config.get_catalog_db_path()
+        if catalog_db_path.exists():
+            try:
+                content_json = benchmark.model_dump_json()
+                content_hash = hashlib.sha256(content_json.encode()).hexdigest()
+                recommendation_count = len(benchmark.recommendations)
+
+                db = CatalogDatabase(catalog_db_path)
+                db.save_downloaded(
+                    benchmark_id=benchmark_id,
+                    content_json=content_json,
+                    content_hash=content_hash,
+                    recommendation_count=recommendation_count,
+                )
+                console.print(f"[green]✓[/green] Cached benchmark {benchmark_id}")
+            except Exception as e:
+                logger.warning(f"Failed to cache benchmark: {e}")
+
+        # Return as dict for comparison
+        return json.loads(benchmark.model_dump_json())
+
+    except Exception as e:
+        logger.error(f"Failed to fetch benchmark {benchmark_id}: {e}")
+        raise click.ClickException(f"Failed to fetch benchmark '{benchmark_id}': {e}") from e
 
 
 @click.command(name="diff")
@@ -39,14 +110,17 @@ def diff_cmd(ctx, old_benchmark, new_benchmark, output_format, verbose):
     """Compare two benchmark versions to see what changed.
 
     Accepts benchmark IDs (from downloaded benchmarks) or file paths.
+    Automatically fetches benchmarks from CIS WorkBench if not cached locally
+    (unless --offline mode is enabled).
 
     \b
     Examples:
-        cis-bench diff 23598 24001                    # Compare by ID
+        cis-bench diff 23598 24001                    # Compare by ID (auto-fetch)
         cis-bench diff old.json new.json              # Compare files
         cis-bench diff 23598 24001 --format markdown  # Markdown output
         cis-bench diff 23598 24001 --format json      # JSON output
         cis-bench diff 23598 24001 --verbose          # Show field details
+        cis-bench --offline diff 23598 24001          # Use cached only
 
     \b
     Change Types Detected:
@@ -55,10 +129,13 @@ def diff_cmd(ctx, old_benchmark, new_benchmark, output_format, verbose):
         ⟳ Modified   - Same ref, but content changed
         ? Renumbered - Similar content, different ref (>85% title match)
     """
+    # Check if offline mode
+    offline = ctx.obj.get("offline", False) if ctx.obj else False
+
     # Load benchmarks
     try:
-        old_data = _load_benchmark(old_benchmark)
-        new_data = _load_benchmark(new_benchmark)
+        old_data = _load_benchmark(old_benchmark, offline=offline)
+        new_data = _load_benchmark(new_benchmark, offline=offline)
     except Exception as e:
         console.print(f"[red]Error loading benchmarks:[/red] {e}")
         raise click.Abort() from e
@@ -77,8 +154,20 @@ def diff_cmd(ctx, old_benchmark, new_benchmark, output_format, verbose):
         _output_table(comparison, verbose)
 
 
-def _load_benchmark(identifier: str) -> dict:
-    """Load benchmark from ID or file path."""
+def _load_benchmark(identifier: str, offline: bool = False) -> dict:
+    """Load benchmark from ID or file path.
+
+    Args:
+        identifier: Benchmark ID, URL, or file path.
+        offline: If True, don't attempt to fetch from CIS WorkBench.
+
+    Returns:
+        Benchmark data as dict.
+
+    Raises:
+        FileNotFoundError: If benchmark not found locally and offline=True.
+        click.ClickException: If auto-fetch fails.
+    """
     # Try as file path first
     path = Path(identifier)
     if path.exists() and path.is_file():
@@ -100,9 +189,17 @@ def _load_benchmark(identifier: str) -> dict:
         with open(json_file) as f:
             return json.load(f)
 
-    raise FileNotFoundError(
-        f"Benchmark '{identifier}' not found. Provide a file path or downloaded benchmark ID."
-    )
+    # Not found locally - try auto-fetch if online mode
+    if offline:
+        raise FileNotFoundError(
+            f"Benchmark '{identifier}' not found locally.\n\n"
+            "In offline mode, benchmarks must be pre-downloaded.\n"
+            "Remove --offline flag to auto-fetch from CIS WorkBench."
+        )
+
+    # Auto-fetch from CIS WorkBench
+    logger.info(f"Benchmark {identifier} not cached, attempting to fetch from WorkBench")
+    return _auto_fetch_benchmark(identifier)
 
 
 def compare_benchmarks(old: dict, new: dict) -> dict:

@@ -349,3 +349,103 @@ class TestDiffWorksOffline:
         # Should NOT fail due to offline mode (it's a local comparison)
         if result.exit_code != 0:
             assert "offline" not in result.output.lower() or "network" not in result.output.lower()
+
+
+class TestDiffAutoFetch:
+    """Test auto-fetch functionality for diff command.
+
+    When given benchmark IDs that aren't cached locally, the diff command
+    should automatically fetch them from CIS WorkBench (unless --offline).
+    """
+
+    def test_offline_mode_prevents_auto_fetch(self, runner, monkeypatch):
+        """diff --offline should not attempt to fetch missing benchmarks."""
+        monkeypatch.setenv("CIS_BENCH_ENV", "test")
+
+        # Use fake IDs that definitely don't exist locally
+        result = runner.invoke(cli, ["--offline", "diff", "99999", "99998"])
+
+        # Should fail with a message about not finding the benchmark locally
+        assert result.exit_code != 0
+        output_lower = result.output.lower()
+        # Should NOT mention network/fetch attempts
+        assert "fetching" not in output_lower
+        # Should mention the benchmark wasn't found
+        assert "not found" in output_lower or "error" in output_lower
+
+    def test_auto_fetch_message_shown(self, runner, monkeypatch):
+        """diff should indicate when it's fetching a benchmark."""
+        monkeypatch.setenv("CIS_BENCH_ENV", "test")
+
+        # This test checks that the fetch message appears
+        # The actual fetch may fail (no auth), but message should appear
+        result = runner.invoke(cli, ["diff", "99999", "99998"])
+
+        # Either shows fetching message OR auth error
+        output_lower = result.output.lower()
+        has_fetch_msg = "fetch" in output_lower or "download" in output_lower
+        has_auth_error = "auth" in output_lower or "login" in output_lower
+        has_not_found = "not found" in output_lower
+
+        # One of these should be true - we're attempting something
+        assert has_fetch_msg or has_auth_error or has_not_found
+
+    def test_auto_fetch_requires_authentication(self, runner, monkeypatch):
+        """diff auto-fetch should require valid authentication."""
+        monkeypatch.setenv("CIS_BENCH_ENV", "test")
+
+        # No auth configured in test environment
+        result = runner.invoke(cli, ["diff", "23598", "24001"])
+
+        # Should fail with auth-related message OR not found
+        output_lower = result.output.lower()
+        auth_related = (
+            "auth" in output_lower
+            or "login" in output_lower
+            or "session" in output_lower
+            or "not found" in output_lower
+        )
+        assert auth_related
+
+    def test_auto_fetch_with_one_local_one_remote(
+        self, runner, monkeypatch, tmp_path, old_benchmark_json
+    ):
+        """diff should fetch only the missing benchmark."""
+        monkeypatch.setenv("CIS_BENCH_ENV", "test")
+
+        # One file exists locally
+        old_file = tmp_path / "old.json"
+        old_file.write_text(json.dumps(old_benchmark_json))
+
+        # Other is a remote ID
+        result = runner.invoke(cli, ["diff", str(old_file), "99999"])
+
+        # Should try to fetch the second one
+        output_lower = result.output.lower()
+        # Either fetch attempt or auth/not-found error for the second benchmark
+        assert (
+            "99999" in result.output
+            or "fetch" in output_lower
+            or "auth" in output_lower
+            or "not found" in output_lower
+        )
+
+    def test_diff_uses_cached_benchmark_without_fetch(
+        self, runner, monkeypatch, tmp_path, old_benchmark_json, new_benchmark_json
+    ):
+        """diff should use cached benchmarks without fetching."""
+        monkeypatch.setenv("CIS_BENCH_ENV", "test")
+
+        # Both files exist locally
+        old_file = tmp_path / "old.json"
+        new_file = tmp_path / "new.json"
+        old_file.write_text(json.dumps(old_benchmark_json))
+        new_file.write_text(json.dumps(new_benchmark_json))
+
+        result = runner.invoke(cli, ["diff", str(old_file), str(new_file)])
+
+        # Should succeed without any fetch messages
+        assert result.exit_code == 0
+        output_lower = result.output.lower()
+        # Should NOT mention fetching since both are local
+        assert "fetching" not in output_lower

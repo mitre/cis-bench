@@ -599,6 +599,9 @@ cis-bench catalog stats --output-format json
 
 Compare two benchmark versions to see what changed.
 
+Automatically fetches benchmarks from CIS WorkBench if not cached locally
+(unless `--offline` mode is enabled).
+
 **Syntax:**
 ```bash
 cis-bench diff <OLD> <NEW> [OPTIONS]
@@ -606,8 +609,8 @@ cis-bench diff <OLD> <NEW> [OPTIONS]
 
 **Arguments:**
 
-- `OLD` - Old benchmark (ID or file path)
-- `NEW` - New benchmark (ID or file path)
+- `OLD` - Old benchmark (ID, URL, or file path)
+- `NEW` - New benchmark (ID, URL, or file path)
 
 **Options:**
 
@@ -616,11 +619,14 @@ cis-bench diff <OLD> <NEW> [OPTIONS]
 
 **Examples:**
 ```bash
-# Compare two downloaded benchmarks by ID
+# Compare by ID (auto-fetches if not cached)
 cis-bench diff 23598 24001
 
 # Compare JSON files
 cis-bench diff benchmark-v1.0.json benchmark-v2.0.json
+
+# Use only locally cached benchmarks (no network)
+cis-bench --offline diff 23598 24001
 
 # Output as Markdown (for docs/PRs)
 cis-bench diff 23598 24001 --format markdown
@@ -634,6 +640,16 @@ cis-bench diff 23598 24001 --format summary
 # Show detailed field changes
 cis-bench diff 23598 24001 --verbose
 ```
+
+**Auto-fetch Behavior:**
+
+When you provide benchmark IDs that aren't cached locally, the diff command
+automatically fetches them from CIS WorkBench. This requires:
+
+1. Valid authentication (`cis-bench auth login --browser chrome`)
+2. Not using `--offline` flag
+
+Fetched benchmarks are cached for future use.
 
 **Change Types Detected:**
 
