@@ -51,6 +51,8 @@ dependencies = [
     "PyYAML>=6.0.0",
     "xsdata[cli,lxml]>=24.0.0",
     "lxml>=5.0.0",
+    # Comparison/diffing
+    "deepdiff>=8.0.0",
 ]
 
 [project.optional-dependencies]

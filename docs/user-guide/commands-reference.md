@@ -593,6 +593,75 @@ cis-bench catalog stats --output-format json
 
 ---
 
+## Version Comparison
+
+### `cis-bench diff`
+
+Compare two benchmark versions to see what changed.
+
+**Syntax:**
+```bash
+cis-bench diff <OLD> <NEW> [OPTIONS]
+```
+
+**Arguments:**
+
+- `OLD` - Old benchmark (ID or file path)
+- `NEW` - New benchmark (ID or file path)
+
+**Options:**
+
+- `-f, --format` - Output format: table|json|markdown|summary (default: table)
+- `-v, --verbose` - Show detailed field-level changes
+
+**Examples:**
+```bash
+# Compare two downloaded benchmarks by ID
+cis-bench diff 23598 24001
+
+# Compare JSON files
+cis-bench diff benchmark-v1.0.json benchmark-v2.0.json
+
+# Output as Markdown (for docs/PRs)
+cis-bench diff 23598 24001 --format markdown
+
+# Output as JSON (machine-readable)
+cis-bench diff 23598 24001 --format json
+
+# Quick summary only
+cis-bench diff 23598 24001 --format summary
+
+# Show detailed field changes
+cis-bench diff 23598 24001 --verbose
+```
+
+**Change Types Detected:**
+
+| Symbol | Type | Description |
+|--------|------|-------------|
+| ✚ | Added | New recommendations in newer version |
+| ✖ | Removed | Recommendations deleted in newer version |
+| ⟳ | Modified | Same ref, content changed |
+| ? | Renumbered | Similar content (>85% title match), different ref |
+
+**Sample Output:**
+```
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  Benchmark Comparison: Ubuntu 22.04 LTS v1.0.0 → v2.0.0    ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+Summary:
+  ✚ Added: 12  ✖ Removed: 3  ⟳ Modified: 28  ? Renumbered: 2
+
+┃ Status ┃ Ref     ┃ Title                              ┃ Changes    ┃
+│ ✚ ADD  │ 1.1.9   │ Ensure noexec option on /var/tmp   │ New in v2  │
+│ ✖ DEL  │ 2.3.1   │ Ensure NIS Server not installed    │ Removed    │
+│ ⟳ MOD  │ 3.1.1   │ Ensure SSH MaxAuthTries configured │ title,audit│
+│ ? REN  │ 5.1→6.1 │ Ensure cron daemon enabled         │ 92% match  │
+```
+
+---
+
 ## Recommendation Search
 
 ### `cis-bench find`

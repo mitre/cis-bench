@@ -70,6 +70,7 @@ from cis_bench.cli.commands import (
     auth,
     cache,
     catalog,
+    diff,
     download,
     export,
     find,
@@ -81,6 +82,7 @@ from cis_bench.cli.commands import (
 
 cli.add_command(auth.auth)
 cli.add_command(cache.cache)
+cli.add_command(diff.diff_cmd)
 cli.add_command(download.download)
 cli.add_command(export.export_cmd)
 cli.add_command(find.find_cmd)

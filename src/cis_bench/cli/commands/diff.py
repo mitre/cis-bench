@@ -1,0 +1,416 @@
+"""Diff command - compare benchmark versions."""
+
+import difflib
+import json
+import logging
+from pathlib import Path
+
+import click
+from deepdiff import DeepDiff
+from rich.console import Console
+from rich.table import Table
+
+from cis_bench.catalog.database import CatalogDatabase
+from cis_bench.config import Config
+
+console = Console()
+logger = logging.getLogger(__name__)
+
+
+@click.command(name="diff")
+@click.argument("old_benchmark")
+@click.argument("new_benchmark")
+@click.option(
+    "--format",
+    "-f",
+    "output_format",
+    type=click.Choice(["table", "json", "markdown", "summary"]),
+    default="table",
+    help="Output format (default: table)",
+)
+@click.option(
+    "--verbose",
+    "-v",
+    is_flag=True,
+    help="Show detailed field-level changes",
+)
+@click.pass_context
+def diff_cmd(ctx, old_benchmark, new_benchmark, output_format, verbose):
+    """Compare two benchmark versions to see what changed.
+
+    Accepts benchmark IDs (from downloaded benchmarks) or file paths.
+
+    \b
+    Examples:
+        cis-bench diff 23598 24001                    # Compare by ID
+        cis-bench diff old.json new.json              # Compare files
+        cis-bench diff 23598 24001 --format markdown  # Markdown output
+        cis-bench diff 23598 24001 --format json      # JSON output
+        cis-bench diff 23598 24001 --verbose          # Show field details
+
+    \b
+    Change Types Detected:
+        ✚ Added      - New recommendations in the newer version
+        ✖ Removed    - Recommendations deleted in the newer version
+        ⟳ Modified   - Same ref, but content changed
+        ? Renumbered - Similar content, different ref (>85% title match)
+    """
+    # Load benchmarks
+    try:
+        old_data = _load_benchmark(old_benchmark)
+        new_data = _load_benchmark(new_benchmark)
+    except Exception as e:
+        console.print(f"[red]Error loading benchmarks:[/red] {e}")
+        raise click.Abort() from e
+
+    # Compare benchmarks
+    comparison = compare_benchmarks(old_data, new_data)
+
+    # Output based on format
+    if output_format == "json":
+        _output_json(comparison)
+    elif output_format == "markdown":
+        _output_markdown(comparison)
+    elif output_format == "summary":
+        _output_summary(comparison)
+    else:
+        _output_table(comparison, verbose)
+
+
+def _load_benchmark(identifier: str) -> dict:
+    """Load benchmark from ID or file path."""
+    # Try as file path first
+    path = Path(identifier)
+    if path.exists() and path.is_file():
+        with open(path) as f:
+            return json.load(f)
+
+    # Try as benchmark ID from database
+    db_path = Config.get_catalog_db_path()
+    if db_path.exists():
+        db = CatalogDatabase(db_path)
+        downloaded = db.get_downloaded(identifier)
+        if downloaded and downloaded.get("content_json"):
+            return json.loads(downloaded["content_json"])
+
+    # Try as file in benchmarks directory
+    benchmarks_dir = Config.get_benchmarks_dir()
+    json_file = benchmarks_dir / f"{identifier}.json"
+    if json_file.exists():
+        with open(json_file) as f:
+            return json.load(f)
+
+    raise FileNotFoundError(
+        f"Benchmark '{identifier}' not found. Provide a file path or downloaded benchmark ID."
+    )
+
+
+def compare_benchmarks(old: dict, new: dict) -> dict:
+    """Compare two benchmarks and return structured diff.
+
+    Uses DeepDiff for structural comparison with recommendation
+    matching by ref ID.
+    """
+    old_recs = {r["ref"]: r for r in old.get("recommendations", [])}
+    new_recs = {r["ref"]: r for r in new.get("recommendations", [])}
+
+    old_refs = set(old_recs.keys())
+    new_refs = set(new_recs.keys())
+
+    # Detect added and removed
+    added_refs = new_refs - old_refs
+    removed_refs = old_refs - new_refs
+    common_refs = old_refs & new_refs
+
+    # Detect modifications in common recommendations
+    modified = []
+    unchanged = []
+    for ref in common_refs:
+        old_rec = old_recs[ref]
+        new_rec = new_recs[ref]
+
+        # Compare with DeepDiff, excluding fields that always change
+        diff = DeepDiff(
+            old_rec,
+            new_rec,
+            ignore_order=True,
+            exclude_paths=["root['url']"],  # URLs may change
+        )
+
+        if diff:
+            # Find which fields changed
+            changed_fields = _extract_changed_fields(diff)
+            modified.append(
+                {
+                    "ref": ref,
+                    "title": new_rec.get("title", ""),
+                    "old_title": old_rec.get("title", ""),
+                    "fields_changed": changed_fields,
+                    "diff": diff.to_dict(),
+                }
+            )
+        else:
+            unchanged.append({"ref": ref, "title": new_rec.get("title", "")})
+
+    # Detect renumbered (removed + added with similar titles)
+    renumbered = []
+    remaining_removed = list(removed_refs)
+    remaining_added = list(added_refs)
+
+    for old_ref in list(remaining_removed):
+        old_title = old_recs[old_ref].get("title", "")
+        for new_ref in list(remaining_added):
+            new_title = new_recs[new_ref].get("title", "")
+            similarity = difflib.SequenceMatcher(None, old_title, new_title).ratio()
+            if similarity >= 0.85:
+                renumbered.append(
+                    {
+                        "old_ref": old_ref,
+                        "new_ref": new_ref,
+                        "title": new_title,
+                        "similarity": round(similarity * 100, 1),
+                    }
+                )
+                remaining_removed.remove(old_ref)
+                remaining_added.remove(new_ref)
+                break
+
+    # Build result
+    return {
+        "old_version": old.get("version", "unknown"),
+        "new_version": new.get("version", "unknown"),
+        "benchmark_title": new.get("title", old.get("title", "Unknown")),
+        "summary": {
+            "added": len(remaining_added),
+            "removed": len(remaining_removed),
+            "modified": len(modified),
+            "unchanged": len(unchanged),
+            "renumbered": len(renumbered),
+        },
+        "changes": {
+            "added": [
+                {"ref": r, "title": new_recs[r].get("title", "")} for r in sorted(remaining_added)
+            ],
+            "removed": [
+                {"ref": r, "title": old_recs[r].get("title", "")} for r in sorted(remaining_removed)
+            ],
+            "modified": sorted(modified, key=lambda x: x["ref"]),
+            "unchanged": sorted(unchanged, key=lambda x: x["ref"]),
+            "renumbered": renumbered,
+        },
+    }
+
+
+def _extract_changed_fields(diff: DeepDiff) -> list[str]:
+    """Extract field names from DeepDiff result."""
+    fields = set()
+    for change_type in [
+        "values_changed",
+        "type_changes",
+        "iterable_item_added",
+        "iterable_item_removed",
+        "dictionary_item_added",
+        "dictionary_item_removed",
+    ]:
+        if change_type in diff:
+            for path in diff[change_type]:
+                # Extract field name from path like "root['title']"
+                if "['title']" in path:
+                    fields.add("title")
+                elif "['description']" in path:
+                    fields.add("description")
+                elif "['rationale']" in path:
+                    fields.add("rationale")
+                elif "['audit']" in path:
+                    fields.add("audit")
+                elif "['remediation']" in path:
+                    fields.add("remediation")
+                elif "['profiles']" in path:
+                    fields.add("profiles")
+                elif "['nist_controls']" in path:
+                    fields.add("nist_controls")
+                elif "['cis_controls']" in path:
+                    fields.add("cis_controls")
+                elif "['assessment_status']" in path:
+                    fields.add("assessment_status")
+    return sorted(fields)
+
+
+def _output_json(comparison: dict):
+    """Output comparison as JSON."""
+    # Remove unchanged from JSON output to reduce size
+    output = {**comparison}
+    output["changes"] = {k: v for k, v in comparison["changes"].items() if k != "unchanged"}
+    console.print(json.dumps(output, indent=2))
+
+
+def _output_markdown(comparison: dict):
+    """Output comparison as Markdown."""
+    summary = comparison["summary"]
+    changes = comparison["changes"]
+
+    lines = [
+        "# Benchmark Comparison",
+        "",
+        f"**{comparison['benchmark_title']}**: {comparison['old_version']} → {comparison['new_version']}",
+        "",
+        "## Summary",
+        "",
+        "| Change Type | Count |",
+        "|-------------|-------|",
+        f"| Added       | {summary['added']} |",
+        f"| Removed     | {summary['removed']} |",
+        f"| Modified    | {summary['modified']} |",
+        f"| Unchanged   | {summary['unchanged']} |",
+        f"| Renumbered  | {summary['renumbered']} |",
+        "",
+    ]
+
+    if changes["added"]:
+        lines.extend(
+            [
+                "## Added Recommendations",
+                "",
+                "| Ref | Title |",
+                "|-----|-------|",
+            ]
+        )
+        for item in changes["added"]:
+            lines.append(f"| {item['ref']} | {item['title']} |")
+        lines.append("")
+
+    if changes["removed"]:
+        lines.extend(
+            [
+                "## Removed Recommendations",
+                "",
+                "| Ref | Title |",
+                "|-----|-------|",
+            ]
+        )
+        for item in changes["removed"]:
+            lines.append(f"| {item['ref']} | {item['title']} |")
+        lines.append("")
+
+    if changes["modified"]:
+        lines.extend(
+            [
+                "## Modified Recommendations",
+                "",
+                "| Ref | Title | Changed Fields |",
+                "|-----|-------|----------------|",
+            ]
+        )
+        for item in changes["modified"]:
+            fields = ", ".join(item["fields_changed"])
+            lines.append(f"| {item['ref']} | {item['title']} | {fields} |")
+        lines.append("")
+
+    if changes["renumbered"]:
+        lines.extend(
+            [
+                "## Renumbered Recommendations",
+                "",
+                "| Old Ref | New Ref | Title |",
+                "|---------|---------|-------|",
+            ]
+        )
+        for item in changes["renumbered"]:
+            lines.append(f"| {item['old_ref']} | {item['new_ref']} | {item['title']} |")
+        lines.append("")
+
+    console.print("\n".join(lines))
+
+
+def _output_summary(comparison: dict):
+    """Output brief summary only."""
+    summary = comparison["summary"]
+    total = sum(summary.values())
+
+    console.print(f"Benchmark: {comparison['benchmark_title']}")
+    console.print(f"Version:   {comparison['old_version']} → {comparison['new_version']}")
+    console.print()
+    console.print(
+        f"  [green]✚ {summary['added']} added[/green]  "
+        f"[red]✖ {summary['removed']} removed[/red]  "
+        f"[yellow]⟳ {summary['modified']} modified[/yellow]  "
+        f"[cyan]? {summary['renumbered']} renumbered[/cyan]"
+    )
+    console.print()
+    console.print(f"Total: {total} recommendations ({summary['unchanged']} unchanged)")
+
+
+def _output_table(comparison: dict, verbose: bool = False):
+    """Output comparison as rich table."""
+    summary = comparison["summary"]
+    changes = comparison["changes"]
+
+    # Header
+    console.print()
+    console.rule(f"[bold]Benchmark Comparison: {comparison['benchmark_title']}[/bold]")
+    console.print(f"[dim]{comparison['old_version']} → {comparison['new_version']}[/dim]")
+    console.print()
+
+    # Summary
+    console.print("[bold]Summary:[/bold]")
+    console.print(
+        f"  [green]✚ Added:[/green]      {summary['added']} recommendations\n"
+        f"  [red]✖ Removed:[/red]    {summary['removed']} recommendations\n"
+        f"  [yellow]⟳ Modified:[/yellow]   {summary['modified']} recommendations\n"
+        f"  [dim]═ Unchanged:[/dim] {summary['unchanged']} recommendations\n"
+        f"  [cyan]? Renumbered:[/cyan] {summary['renumbered']} recommendations"
+    )
+    console.print()
+
+    # Changes table
+    if any([changes["added"], changes["removed"], changes["modified"], changes["renumbered"]]):
+        table = Table(show_header=True, header_style="bold cyan")
+        table.add_column("Status", width=8)
+        table.add_column("Ref", width=10)
+        table.add_column("Title", width=50)
+        table.add_column("Changes", width=20)
+
+        for item in changes["added"]:
+            table.add_row(
+                "[green]✚ ADD[/green]",
+                item["ref"],
+                item["title"][:50],
+                "New in v2",
+            )
+
+        for item in changes["removed"]:
+            table.add_row(
+                "[red]✖ DEL[/red]",
+                item["ref"],
+                item["title"][:50],
+                "Removed",
+            )
+
+        for item in changes["modified"]:
+            table.add_row(
+                "[yellow]⟳ MOD[/yellow]",
+                item["ref"],
+                item["title"][:50],
+                ", ".join(item["fields_changed"])[:20],
+            )
+
+        for item in changes["renumbered"]:
+            table.add_row(
+                "[cyan]? REN[/cyan]",
+                f"{item['old_ref']}→{item['new_ref']}",
+                item["title"][:50],
+                f"{item['similarity']}% match",
+            )
+
+        console.print(table)
+
+        # Verbose details
+        if verbose and changes["modified"]:
+            console.print()
+            console.print("[bold]Detailed Changes:[/bold]")
+            for item in changes["modified"]:
+                console.print(f"\n[yellow]⟳ MODIFIED: {item['ref']}[/yellow] - {item['title']}")
+                for field in item["fields_changed"]:
+                    console.print(f"  • {field} changed")
+    else:
+        console.print("[dim]No changes detected between versions.[/dim]")
