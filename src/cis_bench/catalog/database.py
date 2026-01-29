@@ -84,7 +84,31 @@ class CatalogDatabase:
                 )
             )
             session.commit()
-            logger.info("Created FTS5 virtual table")
+            logger.info("Created FTS5 virtual table for benchmarks")
+
+        # Create FTS5 virtual table for recommendations search
+        with Session(self.engine) as session:
+            session.execute(
+                text(
+                    """
+                CREATE VIRTUAL TABLE IF NOT EXISTS recommendations_fts USING fts5(
+                    benchmark_id UNINDEXED,
+                    ref UNINDEXED,
+                    title,
+                    description,
+                    rationale,
+                    audit,
+                    remediation,
+                    nist_controls,
+                    cis_controls,
+                    profiles,
+                    tokenize='porter unicode61'
+                )
+            """
+                )
+            )
+            session.commit()
+            logger.info("Created FTS5 virtual table for recommendations")
 
         logger.info("Database schema initialized")
 
@@ -514,6 +538,9 @@ class CatalogDatabase:
             session.commit()
             logger.debug(f"Saved downloaded benchmark: {benchmark_id}")
 
+        # Index recommendations for search
+        self._index_recommendations(benchmark_id, content_json)
+
     def get_downloaded(self, benchmark_id: str) -> dict | None:
         """Get downloaded benchmark."""
         with Session(self.engine) as session:
@@ -592,3 +619,138 @@ class CatalogDatabase:
         with Session(self.engine) as session:
             metadata = session.get(ScrapeMetadata, key)
             return metadata.value if metadata else None
+
+    def _index_recommendations(self, benchmark_id: str, content_json: str):
+        """Index recommendations for FTS5 search.
+
+        Extracts recommendations from benchmark JSON and indexes
+        searchable fields in the recommendations_fts table.
+        """
+        import json
+
+        try:
+            benchmark = json.loads(content_json)
+            recommendations = benchmark.get("recommendations", [])
+
+            if not recommendations:
+                logger.debug(f"No recommendations to index for {benchmark_id}")
+                return
+
+            with Session(self.engine) as session:
+                # Delete existing entries for this benchmark
+                session.execute(
+                    text("DELETE FROM recommendations_fts WHERE benchmark_id = :bid"),
+                    {"bid": benchmark_id},
+                )
+
+                # Index each recommendation
+                for rec in recommendations:
+                    # Extract and join control mappings
+                    nist = " ".join(rec.get("nist_controls", []))
+                    cis = " ".join(
+                        [
+                            f"{c.get('control', '')} {c.get('title', '')}"
+                            for c in rec.get("cis_controls", [])
+                        ]
+                    )
+                    profiles = " ".join(rec.get("profiles", []))
+
+                    session.execute(
+                        text(
+                            """
+                            INSERT INTO recommendations_fts
+                            (benchmark_id, ref, title, description, rationale,
+                             audit, remediation, nist_controls, cis_controls, profiles)
+                            VALUES
+                            (:bid, :ref, :title, :desc, :rationale,
+                             :audit, :remediation, :nist, :cis, :profiles)
+                            """
+                        ),
+                        {
+                            "bid": benchmark_id,
+                            "ref": rec.get("ref", ""),
+                            "title": rec.get("title", ""),
+                            "desc": rec.get("description", "") or "",
+                            "rationale": rec.get("rationale", "") or "",
+                            "audit": rec.get("audit", "") or "",
+                            "remediation": rec.get("remediation", "") or "",
+                            "nist": nist,
+                            "cis": cis,
+                            "profiles": profiles,
+                        },
+                    )
+
+                session.commit()
+                logger.debug(f"Indexed {len(recommendations)} recommendations for {benchmark_id}")
+
+        except json.JSONDecodeError as e:
+            logger.warning(f"Failed to parse benchmark JSON for indexing: {e}")
+        except Exception as e:
+            logger.warning(f"Failed to index recommendations: {e}")
+
+    def search_recommendations(
+        self,
+        query: str,
+        benchmark_id: str | None = None,
+        profile: str | None = None,
+        limit: int = 50,
+    ) -> list[dict]:
+        """Search recommendations using FTS5.
+
+        Args:
+            query: Search query (supports FTS5 syntax)
+            benchmark_id: Filter to specific benchmark
+            profile: Filter by profile level
+            limit: Maximum results
+
+        Returns:
+            List of matching recommendations with benchmark info
+        """
+        with Session(self.engine) as session:
+            # Build FTS5 query
+            where_clauses = ["recommendations_fts MATCH :query"]
+            params = {"query": query, "limit": limit}
+
+            if benchmark_id:
+                where_clauses.append("benchmark_id = :bid")
+                params["bid"] = benchmark_id
+
+            if profile:
+                # Profile filtering via FTS5 (approximate match)
+                where_clauses.append("profiles MATCH :profile")
+                params["profile"] = profile
+
+            where_sql = " AND ".join(where_clauses)
+
+            # Note: where_sql only contains hardcoded clause strings from where_clauses list,
+            # not user input. User values go into params dict as bound parameters.
+            sql = f"""
+                SELECT
+                    benchmark_id,
+                    ref,
+                    title,
+                    profiles,
+                    snippet(recommendations_fts, 2, '<b>', '</b>', '...', 32) as description_snippet
+                FROM recommendations_fts
+                WHERE {where_sql}
+                ORDER BY rank
+                LIMIT :limit
+            """  # noqa: S608  # nosec B608 - where_sql from internal constants only
+
+            try:
+                result = session.execute(text(sql), params)
+                rows = result.fetchall()
+
+                return [
+                    {
+                        "benchmark_id": row[0],
+                        "ref": row[1],
+                        "title": row[2],
+                        "profiles": row[3].split() if row[3] else [],
+                        "description_snippet": row[4],
+                    }
+                    for row in rows
+                ]
+            except Exception as e:
+                logger.error(f"Search failed: {e}")
+                return []

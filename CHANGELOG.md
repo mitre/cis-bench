@@ -168,6 +168,7 @@ Authored by: Aaron Lippold<lippold@gmail.com>
 
 New test files (92 tests total): - test_package_data.py: Verify YAML configs included in package (9
   tests) - test_auth_windows_fallback.py: Windows permission detection, Firefox fallback (13 tests)
+
   - test_cli_structure.py: Verify auth flags only on auth login (15 tests) -
   test_metadata_models.py: CIS Controls and Enhanced Metadata models (30 tests) -
   test_xhtml_formatter.py: XHTML element creation and serialization (25 tests)
@@ -227,6 +228,7 @@ Authored by: Aaron Lippold <lippold@gmail.com>
 Session 29-30 documentation cleanup:
 
 Design document reorganization: - Move ARCHITECTURE_PRINCIPLES.md → docs/design/design-principles.md
+
   - Move SYSTEM_ANALYSIS.md → docs/design/handler-reference.md - Move REFACTOR_PLAN.md →
   docs/design/xccdf-mapping-design.md - Move FINAL_PLAN.md → docs/design/architecture-decisions.md -
   Reduce total from 2,596 to 1,090 lines (58% reduction) - Add Design Documents section to
@@ -615,6 +617,7 @@ Authored by: Aaron Lippold <lippold@gmail.com>
   ([`5d8a92b`](https://github.com/mitre/cis-bench/commit/5d8a92bd6756dacc68cc4726f5087f6bdfdd51b9))
 
 Based on working examples from established projects: - Use psf/black@stable with use_pyproject: true
+
   - Use astral-sh/ruff-action@v3 (official action) - Use astral-sh/setup-uv@v5 for UV setup - Use uv
   sync for dependency installation - Separate jobs for format, lint, security, and test
 
@@ -669,6 +672,7 @@ Authored by: Aaron Lippold <lippold@gmail.com>
   for full executable paths - Remove shell=True on Windows (use webbrowser module) - Add subprocess
   output capture - Fix type annotation compatibility: - Add __future__ annotations for lxml/Cython
   compatibility - Auto-upgrade deprecated typing syntax (ruff --fix): - typing.Union -> X | Y syntax
+
   - typing.List -> list - collections.abc imports - Auto-format code (black) - Fix black regex
   pattern in pyproject.toml - Configure bandit to read pyproject.toml config - All checks passing:
   black ✓, ruff ✓, bandit ✓, tests ✓ (512 passed)

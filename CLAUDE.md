@@ -16,10 +16,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Development
 ```bash
-# Install with dev dependencies
-pip install -e ".[dev]"
+# Install with dev dependencies (ALWAYS use uv, not pip)
+uv pip install -e ".[dev]"
 
-# Run full test suite (600+ tests)
+# Run full test suite (1100+ tests)
 pytest tests/
 
 # Run specific test file

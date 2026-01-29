@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 import click
 from rich.console import Console
 
+from cis_bench.cli.helpers.offline import check_offline_mode
 from cis_bench.cli.helpers.output import output_data
 from cis_bench.config import Config
 from cis_bench.fetcher.auth import AuthManager
@@ -57,7 +58,8 @@ def auth():
     is_flag=True,
     help="Disable SSL certificate verification (use if encountering SSL errors)",
 )
-def login(browser, cookies, open, no_verify_ssl):
+@click.pass_context
+def login(ctx, browser, cookies, open, no_verify_ssl):
     """Log in to CIS WorkBench and save session.
 
     This command will:
@@ -78,6 +80,8 @@ def login(browser, cookies, open, no_verify_ssl):
     Windows users: If you get permission errors with Chrome/Edge,
     use Firefox or the --cookies option instead.
     """
+    check_offline_mode(ctx, "auth login")
+
     # Validate that either browser or cookies is specified
     if not browser and not cookies:
         console.print("[red]Error: Must specify either --browser or --cookies[/red]")

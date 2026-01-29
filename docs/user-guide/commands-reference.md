@@ -24,6 +24,11 @@ cis-bench --quiet <command> # Only warnings and errors
 **Per-Command Flags:**
 Most commands also accept `-v, --verbose`, `-d, --debug`, `-q, --quiet` flags at the end.
 
+**Offline Mode:**
+```bash
+cis-bench --offline <command> # Use cached data only (no network)
+```
+
 **Other Global Options:**
 ```bash
 cis-bench --version # Show version
@@ -585,6 +590,107 @@ cis-bench catalog stats --output-format json
 - Platforms count
 - Communities count
 - Last refresh date
+
+---
+
+## Recommendation Search
+
+### `cis-bench find`
+
+Search within downloaded benchmark recommendations using full-text search.
+
+**Syntax:**
+```bash
+cis-bench find <QUERY> [OPTIONS]
+```
+
+**Arguments:**
+
+- `QUERY` - Search query (supports FTS5 syntax)
+
+**Options:**
+
+- `-b, --benchmark ID` - Filter to specific benchmark
+- `-p, --profile LEVEL` - Filter by profile (e.g., "Level 1")
+- `-o, --output-format` - Output format: table|json|csv (default: table)
+- `-l, --limit N` - Maximum results (default: 50)
+
+**Examples:**
+```bash
+# Find SSH-related recommendations
+cis-bench find "SSH"
+
+# Find firewall rules in Level 1 profile
+cis-bench find "firewall" --profile "Level 1"
+
+# Find NIST AC-7 mapped controls
+cis-bench find "AC-7" --output-format json
+
+# Search in specific benchmark
+cis-bench find "SELinux" -b 12345
+```
+
+**Searches these fields:**
+
+- Recommendation title
+- Description
+- Rationale
+- Audit procedure
+- Remediation steps
+- NIST control mappings
+- CIS Controls mappings
+
+!!! note "Requires Downloaded Benchmarks"
+    The find command only searches benchmarks you've downloaded.
+    Use `cis-bench download <id>` to fetch benchmarks first.
+
+---
+
+## Cache Management
+
+### `cis-bench cache status`
+
+Show status of locally cached data (catalog and benchmarks).
+
+**Syntax:**
+```bash
+cis-bench cache status
+```
+
+**What it shows:**
+
+- Catalog status (available/missing, benchmark count)
+- Downloaded benchmarks count
+- Which commands work offline vs require network
+
+**Example:**
+```bash
+$ cis-bench cache status
+┏━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Item                  ┃ Status       ┃ Details                                                ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ Catalog               │ ✓ Available  │ 1,342 benchmarks indexed                               │
+│ Downloaded Benchmarks │ ✓ Available  │ 5 benchmarks cached                                    │
+└───────────────────────┴──────────────┴────────────────────────────────────────────────────────┘
+
+Offline-capable commands:
+  • search - Search catalog (if built)
+  • list - List downloaded benchmarks
+  • export - Export downloaded benchmarks
+  • info - Show benchmark details
+  • cache status - This command
+
+Network-required commands:
+  • auth login - Authenticate with CIS WorkBench
+  • catalog refresh - Update catalog from WorkBench
+  • download - Fetch benchmark from WorkBench
+  • get - Combined search/download/export
+```
+
+!!! tip "Offline Mode"
+    Use `cis-bench --offline <command>` to ensure no network calls are made.
+    This is useful for air-gapped environments or when you want to work
+    exclusively with cached data.
 
 ---
 
