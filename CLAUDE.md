@@ -156,6 +156,27 @@ All test data via fixtures in `tests/conftest.py`. NO hardcoded paths.
 - Choosing types based on if/else instead of config
 - Skipping config layer to "make it work faster"
 
+## CI/CD Workflow
+
+### Release Process
+- Semantic-release auto-triggers when CI passes on main
+- `feat:` commits → minor version bump (0.4.0 → 0.5.0)
+- `fix:` commits → patch version bump (0.4.0 → 0.4.1)
+- Manual trigger available: `gh workflow run release.yml --ref main`
+
+### Avoiding Race Conditions
+**Rule: Batch related changes into a single PR**
+
+Do NOT push multiple separate commits to main in quick succession. This causes race conditions where:
+1. CI starts on commit A
+2. Commit B pushed while CI running
+3. Release triggers on old commit A, fails due to branch drift
+
+**Correct workflow:**
+- Bundle all related changes (code, docs, config) into one PR
+- Wait for full CI → Release cycle before pushing more changes
+- If release fails, use manual trigger after fixing
+
 ## Dependencies
 
 ### Core
