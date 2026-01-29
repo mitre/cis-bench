@@ -135,7 +135,6 @@ navtree.json
 /benchmark_*.json
 
 # Project-specific: Internal documentation (not for repo)
-CLAUDE.md
 SESSION*.md
 RECOVERY*.md
 recovery*.
