@@ -44,7 +44,7 @@ cis-bench get "ubuntu 22.04" --format xccdf --style cis
 # Done! You have a SCAP-compliant XCCDF file
 ```
 
-**[Get Started Guide](getting-started.md)** for detailed setup
+**[Get Started Guide](https://mitre.github.io/cis-bench/getting-started/)** for detailed setup
 
 ---
 
@@ -113,31 +113,33 @@ cis-bench search oracle --output-format json | jq -r '.[].benchmark_id'
 
 ## Documentation
 
+📚 **Full documentation:** [https://mitre.github.io/cis-bench/](https://mitre.github.io/cis-bench/)
+
 ### For Users
 
-- **[Getting Started](getting-started.md)** - Installation and first steps
-- **[End-to-End Workflows](user-guide/workflows.md)** - Real-world scenarios
-- **[Commands Reference](user-guide/commands-reference.md)** - Complete command syntax and options
-- **[Catalog Guide](user-guide/catalog-guide.md)** - Search and discovery workflows
-- **[XCCDF Export Guide](user-guide/xccdf-guide.md)** - SCAP compliance export
-- **[Configuration](user-guide/configuration.md)** - Environment variables and settings
-- **[Troubleshooting](user-guide/troubleshooting.md)** - Common issues and solutions
+- **[Getting Started](https://mitre.github.io/cis-bench/getting-started/)** - Installation and first steps
+- **[End-to-End Workflows](https://mitre.github.io/cis-bench/user-guide/workflows/)** - Real-world scenarios
+- **[Commands Reference](https://mitre.github.io/cis-bench/user-guide/commands-reference/)** - Complete command syntax and options
+- **[Catalog Guide](https://mitre.github.io/cis-bench/user-guide/catalog-guide/)** - Search and discovery workflows
+- **[XCCDF Export Guide](https://mitre.github.io/cis-bench/user-guide/xccdf-guide/)** - SCAP compliance export
+- **[Configuration](https://mitre.github.io/cis-bench/user-guide/configuration/)** - Environment variables and settings
+- **[Troubleshooting](https://mitre.github.io/cis-bench/user-guide/troubleshooting/)** - Common issues and solutions
 
 ### For Developers
 
-- **[Architecture Overview](developer-guide/architecture.md)** - System design and components
-- **[Data Flow Pipeline](developer-guide/data-flow-pipeline.md)** - Complete transformation pipeline
-- **[MappingEngine Guide](developer-guide/mapping-engine-guide.md)** - Working with YAML configs
-- **[Contributing Guide](developer-guide/contributing.md)** - Code standards and development workflow
-- **[Testing Guide](developer-guide/testing.md)** - Running and writing tests
-- **[How to Add XCCDF Style](developer-guide/how-to-add-xccdf-style.md)** - Extending XCCDF export
+- **[Architecture Overview](https://mitre.github.io/cis-bench/developer-guide/architecture/)** - System design and components
+- **[Data Flow Pipeline](https://mitre.github.io/cis-bench/developer-guide/data-flow-pipeline/)** - Complete transformation pipeline
+- **[MappingEngine Guide](https://mitre.github.io/cis-bench/developer-guide/mapping-engine-guide/)** - Working with YAML configs
+- **[Contributing Guide](https://mitre.github.io/cis-bench/developer-guide/contributing/)** - Code standards and development workflow
+- **[Testing Guide](https://mitre.github.io/cis-bench/developer-guide/testing/)** - Running and writing tests
+- **[How to Add XCCDF Style](https://mitre.github.io/cis-bench/developer-guide/how-to-add-xccdf-style/)** - Extending XCCDF export
 
 ### Technical Reference
 
-- **[Data Model](technical-reference/data-model.md)** - Pydantic models and field definitions
-- **[Mapping Engine Design](technical-reference/mapping-engine-design.md)** - Technical architecture
-- **[XCCDF Styles](technical-reference/xccdf-styles.md)** - DISA vs CIS format comparison
-- **[YAML Config Reference](technical-reference/yaml-config-reference.md)** - Mapping configuration syntax
+- **[Data Model](https://mitre.github.io/cis-bench/technical-reference/data-model/)** - Pydantic models and field definitions
+- **[Mapping Engine Design](https://mitre.github.io/cis-bench/technical-reference/mapping-engine-design/)** - Technical architecture
+- **[XCCDF Styles](https://mitre.github.io/cis-bench/technical-reference/xccdf-styles/)** - DISA vs CIS format comparison
+- **[YAML Config Reference](https://mitre.github.io/cis-bench/technical-reference/yaml-config-reference/)** - Mapping configuration syntax
 
 ---
 
@@ -182,7 +184,7 @@ cis-bench export 24008 --format csv -o oci-compliance.csv
 open oci-compliance.csv
 ```
 
-** More examples in [User Guide](user-guide/workflows.md)**
+**More examples in [User Guide](https://mitre.github.io/cis-bench/user-guide/workflows/)**
 
 ---
 
@@ -216,7 +218,7 @@ cis-bench export 23598 --format xccdf --style cis
 - MITRE ATT&CK techniques (296 mappings)
 - Enhanced namespace for custom fields
 
-**[XCCDF Styles Comparison](technical-reference/xccdf-styles.md)** for detailed differences
+**[XCCDF Styles Comparison](https://mitre.github.io/cis-bench/technical-reference/xccdf-styles/)** for detailed differences
 
 ---
 
@@ -241,7 +243,7 @@ xsdata XCCDF Models
 NIST XCCDF Output
 ```
 
-**[Architecture Documentation](developer-guide/architecture.md)** for complete system design
+**[Architecture Documentation](https://mitre.github.io/cis-bench/developer-guide/architecture/)** for complete system design
 
 ---
 
@@ -260,6 +262,7 @@ NIST XCCDF Output
 - Unified `get` command
 - Database caching
 - Multiple export formats
+- Batch export (multiple benchmarks at once)
 - XCCDF export (both DISA and CIS styles)
 - Parallel catalog scraping
 - Output formats for scripting (json/csv/yaml)
@@ -270,7 +273,7 @@ NIST XCCDF Output
 - Benchmark comparison/diff
 - Recommendation search across benchmarks
 
-**[Future Features](about/future-features.md)** for roadmap
+**[Future Features](https://mitre.github.io/cis-bench/about/future-features/)** for roadmap
 
 ---
 
@@ -341,7 +344,7 @@ pre-commit install
 pytest tests/ -v
 ```
 
-**[Getting Started](getting-started.md)** for detailed installation
+**[Getting Started](https://mitre.github.io/cis-bench/getting-started/)** for detailed installation
 
 ---
 
@@ -364,9 +367,9 @@ pytest tests/ -v
 
 **Found a bug?** Open an issue at [GitHub Issues](https://github.com/mitre/cis-bench/issues)
 
-**Want to contribute?** See [Contributing Guide](developer-guide/contributing.md)
+**Want to contribute?** See [Contributing Guide](https://mitre.github.io/cis-bench/developer-guide/contributing/)
 
-**Questions?** Check [Documentation](.) or open a discussion
+**Questions?** Check [Documentation](https://mitre.github.io/cis-bench/) or open a discussion
 
 ---
 
@@ -387,21 +390,21 @@ Apache License 2.0 - See [LICENSE](LICENSE) for details
 
 **User Documentation:**
 
-- [Getting Started](getting-started.md)
-- [End-to-End Workflows](user-guide/workflows.md)
-- [Commands Reference](user-guide/commands-reference.md) Complete command syntax
-- [XCCDF Guide](user-guide/xccdf-guide.md)
+- [Getting Started](https://mitre.github.io/cis-bench/getting-started/)
+- [End-to-End Workflows](https://mitre.github.io/cis-bench/user-guide/workflows/)
+- [Commands Reference](https://mitre.github.io/cis-bench/user-guide/commands-reference/) - Complete command syntax
+- [XCCDF Guide](https://mitre.github.io/cis-bench/user-guide/xccdf-guide/)
 
 **Developer Documentation:**
 
-- [Architecture](developer-guide/architecture.md)
-- [Data Flow Pipeline](developer-guide/data-flow-pipeline.md)
-- [MappingEngine Guide](developer-guide/mapping-engine-guide.md)
-- [Contributing](developer-guide/contributing.md)
-- [Testing](developer-guide/testing.md)
+- [Architecture](https://mitre.github.io/cis-bench/developer-guide/architecture/)
+- [Data Flow Pipeline](https://mitre.github.io/cis-bench/developer-guide/data-flow-pipeline/)
+- [MappingEngine Guide](https://mitre.github.io/cis-bench/developer-guide/mapping-engine-guide/)
+- [Contributing](https://mitre.github.io/cis-bench/developer-guide/contributing/)
+- [Testing](https://mitre.github.io/cis-bench/developer-guide/testing/)
 
 **Need Help?**
 
-- Check [Troubleshooting Guide](user-guide/troubleshooting.md)
-- Review [Configuration Options](user-guide/configuration.md)
-- Browse [Documentation](.)
+- Check [Troubleshooting Guide](https://mitre.github.io/cis-bench/user-guide/troubleshooting/)
+- Review [Configuration Options](https://mitre.github.io/cis-bench/user-guide/configuration/)
+- Browse [Full Documentation](https://mitre.github.io/cis-bench/)

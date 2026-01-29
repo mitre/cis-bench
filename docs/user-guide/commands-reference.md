@@ -326,22 +326,23 @@ cis-bench download --file urls.txt
 
 ### `cis-bench export`
 
-Export benchmark to different formats.
+Export one or more benchmarks to different formats.
 
 **Syntax:**
 ```bash
-cis-bench export <IDENTIFIER> [OPTIONS]
+cis-bench export <IDENTIFIER> [IDENTIFIER...] [OPTIONS]
 ```
 
 **Arguments:**
 
-- `IDENTIFIER` - Benchmark ID (numeric) OR file path
+- `IDENTIFIER` - One or more benchmark IDs (numeric) or file paths
 
 **Export Options:**
 
 - `-f, --format` - Format (yaml|csv|markdown|md|xccdf|xml) - default: yaml
 - `--style` - XCCDF style (disa|cis) - default: disa, only for xccdf
-- `-o, --output PATH` - Output file (default: auto-generated)
+- `-o, --output PATH` - Output file (single export only)
+- `--output-dir PATH` - Output directory for batch exports (creates if needed)
 
 **Input Options:**
 
@@ -349,21 +350,31 @@ cis-bench export <IDENTIFIER> [OPTIONS]
 
 **Examples:**
 ```bash
-# Export from database by ID
+# Single export from database
 cis-bench export 23598 --format xccdf --style cis
 cis-bench export 23598 --format yaml
+
+# Batch export multiple benchmarks
+cis-bench export 23598 22605 18208 --format yaml
+cis-bench export 23598 22605 --format xccdf --style disa
+
+# Export to specific directory
+cis-bench export 23598 22605 --format xccdf --output-dir ./stig_exports
 
 # Export from file
 cis-bench export benchmark.json --format xccdf --style disa
 cis-bench export benchmark.json --format csv -o output.csv
 
-# All formats
-cis-bench export 23598 --format yaml
-cis-bench export 23598 --format csv
-cis-bench export 23598 --format markdown
-cis-bench export 23598 --format xccdf --style disa
-cis-bench export 23598 --format xccdf --style cis
+# Mixed: IDs and files together
+cis-bench export 23598 local_benchmark.json --format yaml
 ```
+
+**Batch Export Features:**
+
+- Exports continue even if individual benchmarks fail
+- Shows progress: `[1/3]`, `[2/3]`, `[3/3]`
+- Summary shows success/failure counts
+- Auto-generates filenames: `benchmark_<ID>.yaml`
 
 **XCCDF Styles:**
 
