@@ -93,6 +93,11 @@ cis-bench = "cis_bench.cli.app:cli"
 [tool.setuptools]
 packages = {find = {where = ["src"]}}
 
+[tool.setuptools.package-data]
+# Include YAML config files in package distribution
+# Fix for Issue #6: --style flag error due to missing configs
+cis_bench = ["exporters/configs/**/*.yaml"]
+
 [tool.semantic_release]
 version_toml = ["pyproject.toml:project.version"]
 branch = "main"
