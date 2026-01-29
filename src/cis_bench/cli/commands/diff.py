@@ -461,41 +461,47 @@ def _output_table(comparison: dict, verbose: bool = False):
 
     # Changes table
     if any([changes["added"], changes["removed"], changes["modified"], changes["renumbered"]]):
-        table = Table(show_header=True, header_style="bold cyan")
-        table.add_column("Status", width=8)
-        table.add_column("Ref", width=10)
-        table.add_column("Title", width=50)
-        table.add_column("Changes", width=20)
+        table = Table(show_header=True, header_style="bold cyan", expand=True)
+        table.add_column("Status", no_wrap=True)
+        table.add_column("Ref", no_wrap=True)
+        table.add_column("Title", ratio=3)  # Takes most space, wraps if needed
+        table.add_column("Changes", ratio=1)
 
         for item in changes["added"]:
             table.add_row(
                 "[green]✚ ADD[/green]",
                 item["ref"],
-                item["title"][:50],
-                "New in v2",
+                item["title"],
+                "New",
             )
 
         for item in changes["removed"]:
             table.add_row(
                 "[red]✖ DEL[/red]",
                 item["ref"],
-                item["title"][:50],
+                item["title"],
                 "Removed",
             )
 
         for item in changes["modified"]:
+            # Show first 3 fields, then "+N more" if there are more
+            fields = item["fields_changed"]
+            if len(fields) <= 3:
+                changes_text = ", ".join(fields)
+            else:
+                changes_text = ", ".join(fields[:3]) + f" +{len(fields) - 3} more"
             table.add_row(
                 "[yellow]⟳ MOD[/yellow]",
                 item["ref"],
-                item["title"][:50],
-                ", ".join(item["fields_changed"])[:20],
+                item["title"],
+                changes_text,
             )
 
         for item in changes["renumbered"]:
             table.add_row(
                 "[cyan]? REN[/cyan]",
-                f"{item['old_ref']}→{item['new_ref']}",
-                item["title"][:50],
+                f"{item['old_ref']} → {item['new_ref']}",
+                item["title"],
                 f"{item['similarity']}% match",
             )
 
