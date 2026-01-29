@@ -161,3 +161,4 @@ SESSION_PLAN.md
 /archive/
 tools/
 # Note: /archive/ only ignores top-level, allows research/archive/ tracking
+.beads/recovery-context.md
