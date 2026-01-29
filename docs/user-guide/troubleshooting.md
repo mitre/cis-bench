@@ -87,9 +87,25 @@ pipx install cis-bench
 **Solutions:**
 
 - Close all browser windows
-- Try different browser: `--browser firefox`
-- Use cookie file instead: `--cookies cookies.txt`
+- Try different browser: `cis-bench auth login --browser firefox`
+- Use cookie file instead: `cis-bench auth login --cookies cookies.txt`
 - Check you're logged into correct site
+
+### Windows: "requires admin" or permission errors
+
+**Cause:** Chrome 127+ uses App-Bound Encryption on Windows, which requires admin access for cookie extraction.
+
+**Solutions:**
+
+```bash
+# Use Firefox instead (works without admin)
+cis-bench auth login --browser firefox
+
+# Or export cookies manually and load from file
+cis-bench auth login --cookies cookies.txt
+```
+
+Firefox doesn't use App-Bound Encryption and works reliably on Windows.
 
 ### SSL Certificate Error
 
@@ -112,7 +128,11 @@ pipx install cis-bench
 
 **Solution:**
 ```bash
-cis-bench catalog refresh --browser chrome
+# First authenticate (if not already done)
+cis-bench auth login --browser chrome
+
+# Then build the catalog
+cis-bench catalog refresh
 ```
 
 ### "No benchmarks found"

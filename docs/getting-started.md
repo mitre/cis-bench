@@ -172,12 +172,22 @@ cis-bench auth login --browser chrome
 For automation or if browser cookie extraction fails:
 
 ```bash
-# Export cookies from browser using ExportCookies plugin
+# Export cookies from browser using a cookie export extension
 # Save as cookies.txt in Netscape format
 
-# Use cookie file
-cis-bench download 23598 --cookies cookies.txt
+# Login using cookie file
+cis-bench auth login --cookies cookies.txt
+
+# Now all commands work with the saved session
+cis-bench download 23598
 ```
+
+!!! tip "Windows Users"
+    If Chrome/Edge gives permission errors, use Firefox instead:
+    ```bash
+    cis-bench auth login --browser firefox
+    ```
+    Chrome 127+ uses App-Bound Encryption on Windows which requires admin access.
 
 ---
 

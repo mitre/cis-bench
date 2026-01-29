@@ -227,7 +227,7 @@ cis-bench export 23598 --format xccdf --style cis
 **Config-Driven** - XCCDF field mappings defined in YAML, not hard-coded
 **Extensible** - Strategy pattern for HTML changes, Factory pattern for exporters
 **Validated** - xsdata-generated models from NIST XSD schemas
-**Tested** - 512 tests with comprehensive coverage
+**Tested** - 1,100+ tests with 96% coverage
 
 ### Component Overview
 
@@ -247,8 +247,8 @@ NIST XCCDF Output
 
 ## Project Status
 
-**Version:** 0.3.1 (Beta)
-**Tests:** See latest CI run
+**Version:** 0.4.0 (Beta)
+**Tests:** 1,100+ tests with 96% coverage
 **Python:** 3.12+
 **License:** Apache 2.0
 

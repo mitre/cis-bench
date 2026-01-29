@@ -43,13 +43,11 @@ Log in to CIS WorkBench and save session for future use.
 cis-bench auth login --browser <browser> [OPTIONS]
 ```
 
-**Required Options:**
+**Options:**
 
 - `-b, --browser` - Browser to extract cookies from (chrome|firefox|edge|safari)
-
-**Optional Flags:**
-
-- `--open` - Open CIS WorkBench login page in browser
+- `-c, --cookies PATH` - Load cookies from file instead of browser (Netscape format)
+- `-o, --open` - Open CIS WorkBench login page in browser
 - `--no-verify-ssl` - Disable SSL certificate verification
 
 **Examples:**
@@ -60,16 +58,30 @@ cis-bench auth login --browser chrome --open
 # Login (you're already logged in browser)
 cis-bench auth login --browser chrome
 
+# Login with Firefox (recommended for Windows users)
+cis-bench auth login --browser firefox
+
+# Login using exported cookie file
+cis-bench auth login --cookies cookies.txt
+
 # Login with SSL verification disabled
 cis-bench auth login --browser chrome --no-verify-ssl
 ```
 
 **What it does:**
 1. Optionally opens browser to CIS WorkBench
-2. Extracts session cookies from your browser
+2. Extracts session cookies from your browser (or loads from file)
 3. Validates the session
-4. Saves to `~/.cis-bench/session.cookies`
+4. Saves to `~/.cis-bench/session.json`
 5. All future commands use this saved session
+
+!!! tip "Windows Users"
+    If you get permission errors with Chrome or Edge, use Firefox instead:
+    ```bash
+    cis-bench auth login --browser firefox
+    ```
+    Chrome 127+ uses App-Bound Encryption on Windows which requires admin access.
+    Firefox works without admin privileges.
 
 ---
 
@@ -211,10 +223,6 @@ cis-bench get <QUERY> [OPTIONS]
 - `--style` - XCCDF style (disa|cis) - default: disa, only for xccdf format
 - `-o, --output` - Output file path (default: auto-generated)
 
-**Auth Options:**
-
-- `-b, --browser` - Browser for auth (only needed if no saved session)
-
 **Behavior Options:**
 
 - `--non-interactive` - Disable interactive prompts (show table instead)
@@ -248,8 +256,8 @@ cis-bench get "oracle cloud" --format json --non-interactive
 
 **Requirements:**
 
-- Catalog must be initialized
-- Must be authenticated (saved session or --browser flag)
+- Catalog must be initialized: `cis-bench catalog refresh`
+- Must be authenticated: `cis-bench auth login --browser chrome`
 
 ---
 
@@ -272,20 +280,14 @@ cis-bench download <BENCHMARK_ID> [BENCHMARK_ID...] [OPTIONS]
 
 - `-f, --file PATH` - File containing URLs/IDs (one per line)
 
-**Auth Options:**
-
-- `-b, --browser` - Browser for auth (only needed if no saved session)
-- `-c, --cookies PATH` - Use cookies from file instead of saved session
-
 **Output Options:**
 
 - `-o, --output-dir PATH` - Output directory (default: ./benchmarks)
-- `--format` - Export formats (json|yaml|csv|markdown|xccdf) - can specify multiple
+- `-fmt, --format` - Export formats (json|yaml|csv|markdown|xccdf) - can specify multiple
 
 **Behavior Options:**
 
 - `--force` - Force re-download even if already cached
-- `--no-verify-ssl` - Disable SSL verification
 - `-v, --verbose` - Verbose logging
 - `-d, --debug` - Debug logging
 - `-q, --quiet` - Quiet mode
@@ -306,18 +308,19 @@ cis-bench download 23598 --format json --format xccdf
 
 # Download from file
 cis-bench download --file urls.txt
-
-# First time (no saved session)
-cis-bench download 23598 --browser chrome
 ```
 
 **What it does:**
 1. Checks if already cached (shows message if yes, unless --force)
-2. Authenticates (uses saved session or --browser)
+2. Uses saved session from `cis-bench auth login`
 3. Downloads benchmark from WorkBench with progress bar
 4. Saves to database cache
 5. Saves to file in output directory
 6. Exports to requested formats
+
+**Requirements:**
+
+- Must be authenticated first: `cis-bench auth login --browser chrome`
 
 ---
 

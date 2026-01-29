@@ -425,15 +425,16 @@ python-version: '3.11'
 run: |
 pip install -e .
 
-- name: Setup cookies
+- name: Login with cookies
 run: |
 echo "${{ secrets.CIS_COOKIES }}" > cookies.txt
+cis-bench auth login --cookies cookies.txt
 
 - name: Download benchmarks
 run: |
-cis-bench download 23598 --cookies cookies.txt # AlmaLinux 10
-cis-bench download 22162 --cookies cookies.txt # Ubuntu 22.04
-cis-bench download 24008 --cookies cookies.txt # Oracle Cloud
+cis-bench download 23598 # AlmaLinux 10
+cis-bench download 22162 # Ubuntu 22.04
+cis-bench download 24008 # Oracle Cloud
 
 - name: Export to Markdown
 run: |
