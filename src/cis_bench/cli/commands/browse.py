@@ -98,7 +98,7 @@ def browse_cmd(ctx, platform, platform_type, status, latest, query, limit):
             sys.exit(0)
 
         # Launch TUI
-        from cis_bench.cli.commands.catalog_tui import run_catalog_browser
+        from cis_bench.cli.commands.tui.catalog import run_catalog_browser
 
         run_catalog_browser(benchmarks, offline=offline)
 
