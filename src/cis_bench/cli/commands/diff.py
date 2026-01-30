@@ -1,91 +1,17 @@
 """Diff command - compare benchmark versions."""
 
 import difflib
-import hashlib
 import json
-import logging
-from pathlib import Path
+import sys
 
 import click
 from deepdiff import DeepDiff
 from rich.console import Console
 from rich.table import Table
 
-from cis_bench.catalog.database import CatalogDatabase
-from cis_bench.config import Config
+from cis_bench.cli.commands.utils import load_benchmark, output_with_pager
 
 console = Console()
-logger = logging.getLogger(__name__)
-
-
-def _auto_fetch_benchmark(benchmark_id: str) -> dict | None:
-    """Attempt to fetch a benchmark from CIS WorkBench.
-
-    Args:
-        benchmark_id: The benchmark ID to fetch.
-
-    Returns:
-        Benchmark data dict if successful, None otherwise.
-
-    Raises:
-        click.ClickException: If authentication fails or other errors.
-    """
-    from cis_bench.fetcher.auth import AuthManager
-    from cis_bench.fetcher.workbench import WorkbenchScraper
-
-    console.print(f"[cyan]Fetching benchmark {benchmark_id} from CIS WorkBench...[/cyan]")
-
-    # Get authenticated session
-    try:
-        session = AuthManager.get_or_create_session()
-    except ValueError as e:
-        raise click.ClickException(
-            f"Benchmark '{benchmark_id}' not found locally.\n\n"
-            "To fetch from CIS WorkBench, authenticate first:\n"
-            "  cis-bench auth login --browser chrome\n\n"
-            "Or provide a local file path."
-        ) from e
-    except Exception as e:
-        raise click.ClickException(
-            f"Authentication failed: {e}\n\n"
-            "Your session may have expired. Try:\n"
-            "  cis-bench auth login --browser chrome"
-        ) from e
-
-    # Create scraper and download
-    scraper = WorkbenchScraper(session)
-    url = f"https://workbench.cisecurity.org/benchmarks/{benchmark_id}"
-
-    try:
-        from cis_bench.cli.helpers.download_helper import download_with_progress
-
-        benchmark = download_with_progress(scraper, url, prefix="")
-
-        # Save to catalog database
-        catalog_db_path = Config.get_catalog_db_path()
-        if catalog_db_path.exists():
-            try:
-                content_json = benchmark.model_dump_json()
-                content_hash = hashlib.sha256(content_json.encode()).hexdigest()
-                recommendation_count = len(benchmark.recommendations)
-
-                db = CatalogDatabase(catalog_db_path)
-                db.save_downloaded(
-                    benchmark_id=benchmark_id,
-                    content_json=content_json,
-                    content_hash=content_hash,
-                    recommendation_count=recommendation_count,
-                )
-                console.print(f"[green]✓[/green] Cached benchmark {benchmark_id}")
-            except Exception as e:
-                logger.warning(f"Failed to cache benchmark: {e}")
-
-        # Return as dict for comparison
-        return json.loads(benchmark.model_dump_json())
-
-    except Exception as e:
-        logger.error(f"Failed to fetch benchmark {benchmark_id}: {e}")
-        raise click.ClickException(f"Failed to fetch benchmark '{benchmark_id}': {e}") from e
 
 
 @click.command(name="diff")
@@ -105,8 +31,14 @@ def _auto_fetch_benchmark(benchmark_id: str) -> dict | None:
     is_flag=True,
     help="Show detailed field-level changes",
 )
+@click.option(
+    "--interactive/--no-interactive",
+    "-i/-I",
+    default=None,
+    help="Interactive TUI mode (auto-detects terminal by default)",
+)
 @click.pass_context
-def diff_cmd(ctx, old_benchmark, new_benchmark, output_format, verbose):
+def diff_cmd(ctx, old_benchmark, new_benchmark, output_format, verbose, interactive):
     """Compare two benchmark versions to see what changed.
 
     Accepts benchmark IDs (from downloaded benchmarks) or file paths.
@@ -117,6 +49,7 @@ def diff_cmd(ctx, old_benchmark, new_benchmark, output_format, verbose):
     Examples:
         cis-bench diff 23598 24001                    # Compare by ID (auto-fetch)
         cis-bench diff old.json new.json              # Compare files
+        cis-bench diff 23598 24001 -i                 # Interactive TUI mode
         cis-bench diff 23598 24001 --format markdown  # Markdown output
         cis-bench diff 23598 24001 --format json      # JSON output
         cis-bench diff 23598 24001 --verbose          # Show field details
@@ -134,8 +67,8 @@ def diff_cmd(ctx, old_benchmark, new_benchmark, output_format, verbose):
 
     # Load benchmarks
     try:
-        old_data = _load_benchmark(old_benchmark, offline=offline)
-        new_data = _load_benchmark(new_benchmark, offline=offline)
+        old_data = load_benchmark(old_benchmark, offline=offline)
+        new_data = load_benchmark(new_benchmark, offline=offline)
     except Exception as e:
         console.print(f"[red]Error loading benchmarks:[/red] {e}")
         raise click.Abort() from e
@@ -143,63 +76,24 @@ def diff_cmd(ctx, old_benchmark, new_benchmark, output_format, verbose):
     # Compare benchmarks
     comparison = compare_benchmarks(old_data, new_data)
 
+    # Determine if we should use interactive mode
+    # Auto-detect: use interactive if stdout is a TTY (terminal)
+    use_interactive = interactive if interactive is not None else sys.stdout.isatty()
+
     # Output based on format
-    if output_format == "json":
+    if use_interactive:
+        from cis_bench.cli.commands.diff_tui import run_interactive_diff
+
+        run_interactive_diff(comparison, old_data, new_data)
+    elif output_format == "json":
+        # JSON output goes direct (no pager, for piping)
         _output_json(comparison)
     elif output_format == "markdown":
-        _output_markdown(comparison)
+        output_with_pager(_output_markdown, comparison)
     elif output_format == "summary":
-        _output_summary(comparison)
+        _output_summary(comparison)  # Summary is short, no pager needed
     else:
-        _output_table(comparison, verbose)
-
-
-def _load_benchmark(identifier: str, offline: bool = False) -> dict:
-    """Load benchmark from ID or file path.
-
-    Args:
-        identifier: Benchmark ID, URL, or file path.
-        offline: If True, don't attempt to fetch from CIS WorkBench.
-
-    Returns:
-        Benchmark data as dict.
-
-    Raises:
-        FileNotFoundError: If benchmark not found locally and offline=True.
-        click.ClickException: If auto-fetch fails.
-    """
-    # Try as file path first
-    path = Path(identifier)
-    if path.exists() and path.is_file():
-        with open(path) as f:
-            return json.load(f)
-
-    # Try as benchmark ID from database
-    db_path = Config.get_catalog_db_path()
-    if db_path.exists():
-        db = CatalogDatabase(db_path)
-        downloaded = db.get_downloaded(identifier)
-        if downloaded and downloaded.get("content_json"):
-            return json.loads(downloaded["content_json"])
-
-    # Try as file in benchmarks directory
-    benchmarks_dir = Config.get_benchmarks_dir()
-    json_file = benchmarks_dir / f"{identifier}.json"
-    if json_file.exists():
-        with open(json_file) as f:
-            return json.load(f)
-
-    # Not found locally - try auto-fetch if online mode
-    if offline:
-        raise FileNotFoundError(
-            f"Benchmark '{identifier}' not found locally.\n\n"
-            "In offline mode, benchmarks must be pre-downloaded.\n"
-            "Remove --offline flag to auto-fetch from CIS WorkBench."
-        )
-
-    # Auto-fetch from CIS WorkBench
-    logger.info(f"Benchmark {identifier} not cached, attempting to fetch from WorkBench")
-    return _auto_fetch_benchmark(identifier)
+        output_with_pager(_output_table, comparison, verbose)
 
 
 def compare_benchmarks(old: dict, new: dict) -> dict:
@@ -341,8 +235,9 @@ def _output_json(comparison: dict):
     console.print(json.dumps(output, indent=2))
 
 
-def _output_markdown(comparison: dict):
+def _output_markdown(comparison: dict, _console: Console | None = None):
     """Output comparison as Markdown."""
+    out = _console or console
     summary = comparison["summary"]
     changes = comparison["changes"]
 
@@ -416,7 +311,7 @@ def _output_markdown(comparison: dict):
             lines.append(f"| {item['old_ref']} | {item['new_ref']} | {item['title']} |")
         lines.append("")
 
-    console.print("\n".join(lines))
+    out.print("\n".join(lines))
 
 
 def _output_summary(comparison: dict):
@@ -437,27 +332,28 @@ def _output_summary(comparison: dict):
     console.print(f"Total: {total} recommendations ({summary['unchanged']} unchanged)")
 
 
-def _output_table(comparison: dict, verbose: bool = False):
+def _output_table(comparison: dict, verbose: bool = False, _console: Console | None = None):
     """Output comparison as rich table."""
+    out = _console or console
     summary = comparison["summary"]
     changes = comparison["changes"]
 
     # Header
-    console.print()
-    console.rule(f"[bold]Benchmark Comparison: {comparison['benchmark_title']}[/bold]")
-    console.print(f"[dim]{comparison['old_version']} → {comparison['new_version']}[/dim]")
-    console.print()
+    out.print()
+    out.rule(f"[bold]Benchmark Comparison: {comparison['benchmark_title']}[/bold]")
+    out.print(f"[dim]{comparison['old_version']} → {comparison['new_version']}[/dim]")
+    out.print()
 
     # Summary
-    console.print("[bold]Summary:[/bold]")
-    console.print(
+    out.print("[bold]Summary:[/bold]")
+    out.print(
         f"  [green]✚ Added:[/green]      {summary['added']} recommendations\n"
         f"  [red]✖ Removed:[/red]    {summary['removed']} recommendations\n"
         f"  [yellow]⟳ Modified:[/yellow]   {summary['modified']} recommendations\n"
         f"  [dim]═ Unchanged:[/dim] {summary['unchanged']} recommendations\n"
         f"  [cyan]? Renumbered:[/cyan] {summary['renumbered']} recommendations"
     )
-    console.print()
+    out.print()
 
     # Changes table
     if any([changes["added"], changes["removed"], changes["modified"], changes["renumbered"]]):
@@ -505,15 +401,15 @@ def _output_table(comparison: dict, verbose: bool = False):
                 f"{item['similarity']}% match",
             )
 
-        console.print(table)
+        out.print(table)
 
         # Verbose details
         if verbose and changes["modified"]:
-            console.print()
-            console.print("[bold]Detailed Changes:[/bold]")
+            out.print()
+            out.print("[bold]Detailed Changes:[/bold]")
             for item in changes["modified"]:
-                console.print(f"\n[yellow]⟳ MODIFIED: {item['ref']}[/yellow] - {item['title']}")
+                out.print(f"\n[yellow]⟳ MODIFIED: {item['ref']}[/yellow] - {item['title']}")
                 for field in item["fields_changed"]:
-                    console.print(f"  • {field} changed")
+                    out.print(f"  • {field} changed")
     else:
-        console.print("[dim]No changes detected between versions.[/dim]")
+        out.print("[dim]No changes detected between versions.[/dim]")

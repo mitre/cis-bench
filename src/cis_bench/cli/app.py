@@ -78,6 +78,7 @@ from cis_bench.cli.commands import (
     info,
     list_cmd,
     search,
+    view,
 )
 
 cli.add_command(auth.auth)
@@ -91,6 +92,7 @@ cli.add_command(list_cmd.list_benchmarks)
 cli.add_command(info.info)
 cli.add_command(search.search_cmd)
 cli.add_command(catalog.catalog)
+cli.add_command(view.view_cmd)
 
 
 if __name__ == "__main__":
