@@ -18,6 +18,9 @@ class CatalogBrowserApp(BaseBrowserApp):
 
     CSS = CATALOG_CSS
 
+    # Enable selection tracking
+    supports_selection = True
+
     # Extend COMMON_BINDINGS with catalog-specific bindings
     BINDINGS = COMMON_BINDINGS + [
         # Selection
@@ -38,8 +41,6 @@ class CatalogBrowserApp(BaseBrowserApp):
         self._items = benchmarks
         self._all_items = benchmarks.copy()
         self.offline = offline
-        self._sort_reverse = False
-        self._selected_indices: set[int] = set()
         self._downloaded_ids: set[str] = set()
         self._load_downloaded_ids()
 
@@ -150,16 +151,8 @@ class CatalogBrowserApp(BaseBrowserApp):
         detail_view = self.query_one("#detail-view", CatalogDetailView)
         detail_view.update_content(benchmark)
 
-    def action_toggle_select(self) -> None:
-        """Toggle selection on the current row."""
-        table = self.query_one("#changes-table", DataTable)
-        current_row = table.cursor_row
-
-        if current_row in self._selected_indices:
-            self._selected_indices.remove(current_row)
-        else:
-            self._selected_indices.add(current_row)
-
+    def _on_selection_changed(self) -> None:
+        """Override to rebuild table and update summary on selection change."""
         # Rebuild table to show updated checkboxes
         self._rebuild_table_preserve_cursor()
         self._update_summary()
@@ -219,23 +212,6 @@ class CatalogBrowserApp(BaseBrowserApp):
                 f"Export {benchmark_id}: Use 'cis-bench export {benchmark_id}'",
                 severity="information",
             )
-
-    def get_selected_items(self) -> list[dict]:
-        """Get the selected benchmarks.
-
-        Returns:
-            List of benchmark dictionaries for selected items.
-        """
-        return [
-            self._items[idx] for idx in sorted(self._selected_indices) if idx < len(self._items)
-        ]
-
-    def action_reverse_sort(self) -> None:
-        """Toggle sort order (asc/desc)."""
-        self._sort_reverse = not self._sort_reverse
-        self._rebuild_table()
-        direction = "descending" if self._sort_reverse else "ascending"
-        self.notify(f"Sort: {direction}", title="Sort Order")
 
     def _rebuild_table(self) -> None:
         """Rebuild the table with current sort order."""

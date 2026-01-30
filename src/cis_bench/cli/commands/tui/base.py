@@ -358,10 +358,14 @@ class BaseBrowserApp(App):
 
     # Override in subclass to disable search container (e.g., ViewApp)
     has_search_container = True
+    # Override in subclass to enable selection tracking (e.g., DiffApp, CatalogApp)
+    supports_selection = False
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._items = []  # Standardized: current visible items
+        self._sort_reverse = False  # Standardized: sort order state
+        self._selected_indices: set[int] = set()  # Track selected row indices
         self._focus_on_detail = False
         self._fullscreen_detail = False
         self._search_active = False
@@ -417,6 +421,61 @@ class BaseBrowserApp(App):
         Should update self._items as rows are added.
         """
         pass
+
+    @abstractmethod
+    def _rebuild_table(self) -> None:
+        """Rebuild the table with current sort order.
+
+        Subclasses must implement this to handle their specific
+        sorting logic and table rebuilding.
+        """
+        pass
+
+    def action_reverse_sort(self) -> None:
+        """Toggle sort order (asc/desc)."""
+        self._sort_reverse = not self._sort_reverse
+        self._rebuild_table()
+        direction = "descending" if self._sort_reverse else "ascending"
+        self.notify(f"Sort: {direction}", title="Sort Order")
+
+    def action_toggle_select(self) -> None:
+        """Toggle selection on the current row.
+
+        Only active if supports_selection is True.
+        """
+        if not self.supports_selection:
+            return
+
+        table = self.query_one("#changes-table", DataTable)
+        current_row = table.cursor_row
+
+        if current_row in self._selected_indices:
+            self._selected_indices.remove(current_row)
+        else:
+            self._selected_indices.add(current_row)
+
+        # Call hook for subclass-specific behavior
+        self._on_selection_changed()
+
+    def _on_selection_changed(self) -> None:
+        """Hook called after selection changes.
+
+        Override in subclass to provide custom behavior (e.g., update UI).
+        Default: notify user with selection count.
+        """
+        count = len(self._selected_indices)
+        if count > 0:
+            self.notify(f"Selected: {count} items", severity="information")
+
+    def get_selected_items(self) -> list:
+        """Get the selected items.
+
+        Returns:
+            List of items from self._items at selected indices.
+        """
+        return [
+            self._items[idx] for idx in sorted(self._selected_indices) if idx < len(self._items)
+        ]
 
     def on_mount(self) -> None:
         """Set up the table when app mounts."""

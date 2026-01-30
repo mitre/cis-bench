@@ -19,6 +19,9 @@ class DiffApp(BaseBrowserApp):
 
     CSS = COMMON_CSS
 
+    # Enable selection tracking
+    supports_selection = True
+
     # Extend COMMON_BINDINGS with diff-specific bindings
     BINDINGS = COMMON_BINDINGS + [
         # Selection
@@ -42,8 +45,6 @@ class DiffApp(BaseBrowserApp):
         # Standardized naming: _items for visible, _all_items for unfiltered
         self._items = []
         self._all_items = []  # Store all changes for search filtering
-        self._sort_reverse = False
-        self._selected_indices: set[int] = set()  # Track selected row indices
 
     def get_detail_view(self) -> Static:
         """Return the diff detail view widget."""
@@ -162,38 +163,6 @@ class DiffApp(BaseBrowserApp):
             new_rec = None
 
         detail_view.update_content(change_type, change_data, old_rec, new_rec)
-
-    def action_reverse_sort(self) -> None:
-        """Toggle sort order (asc/desc)."""
-        self._sort_reverse = not self._sort_reverse
-        self._rebuild_table()
-        direction = "descending" if self._sort_reverse else "ascending"
-        self.notify(f"Sort: {direction}", title="Sort Order")
-
-    def action_toggle_select(self) -> None:
-        """Toggle selection on the current row."""
-        table = self.query_one("#changes-table", DataTable)
-        current_row = table.cursor_row
-
-        if current_row in self._selected_indices:
-            self._selected_indices.remove(current_row)
-        else:
-            self._selected_indices.add(current_row)
-
-        # Update visual indicator (for now just notify)
-        count = len(self._selected_indices)
-        if count > 0:
-            self.notify(f"Selected: {count} items", severity="information")
-
-    def get_selected_items(self) -> list[tuple[str, dict]]:
-        """Get the selected items from the change list.
-
-        Returns:
-            List of (change_type, item_data) tuples for selected items.
-        """
-        return [
-            self._items[idx] for idx in sorted(self._selected_indices) if idx < len(self._items)
-        ]
 
     def action_filter_added(self) -> None:
         """Filter to show only added items."""

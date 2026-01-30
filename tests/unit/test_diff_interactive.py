@@ -163,6 +163,72 @@ class TestBaseBrowserAppCompose:
 
         assert hasattr(BaseBrowserApp, "has_search_container")
 
+    def test_base_browser_has_sort_reverse_attr(self):
+        """BaseBrowserApp should initialize _sort_reverse in __init__."""
+
+        # Check that BaseBrowserApp has the attribute defined in __init__
+        # We can't instantiate directly (abstract), so check DiffApp
+        from cis_bench.cli.commands.tui.diff import DiffApp
+
+        comparison = {"changes": {"added": [], "removed": [], "modified": [], "renumbered": []}}
+        app = DiffApp(comparison, {}, {})
+        assert hasattr(app, "_sort_reverse")
+        assert app._sort_reverse is False
+
+    def test_base_browser_has_action_reverse_sort(self):
+        """BaseBrowserApp should have action_reverse_sort method."""
+        from cis_bench.cli.commands.tui import BaseBrowserApp
+
+        assert hasattr(BaseBrowserApp, "action_reverse_sort")
+        assert callable(BaseBrowserApp.action_reverse_sort)
+
+    def test_base_browser_has_abstract_rebuild_table(self):
+        """BaseBrowserApp should have _rebuild_table as abstract method."""
+        from cis_bench.cli.commands.tui import BaseBrowserApp
+
+        # Check method exists
+        assert hasattr(BaseBrowserApp, "_rebuild_table")
+        # Check it's abstract (has __isabstractmethod__ attribute)
+        assert getattr(BaseBrowserApp._rebuild_table, "__isabstractmethod__", False)
+
+    def test_base_browser_has_supports_selection_attr(self):
+        """BaseBrowserApp should have supports_selection class attribute."""
+        from cis_bench.cli.commands.tui import BaseBrowserApp
+
+        assert hasattr(BaseBrowserApp, "supports_selection")
+        assert BaseBrowserApp.supports_selection is False
+
+    def test_base_browser_initializes_selected_indices_when_supports_selection(self):
+        """When supports_selection=True, _selected_indices should be initialized."""
+        from cis_bench.cli.commands.tui.diff import DiffApp
+
+        # DiffApp has supports_selection = True
+        comparison = {"changes": {"added": [], "removed": [], "modified": [], "renumbered": []}}
+        app = DiffApp(comparison, {}, {})
+        assert hasattr(app, "_selected_indices")
+        assert isinstance(app._selected_indices, set)
+
+    def test_base_browser_has_action_toggle_select(self):
+        """BaseBrowserApp should have action_toggle_select method."""
+        from cis_bench.cli.commands.tui import BaseBrowserApp
+
+        assert hasattr(BaseBrowserApp, "action_toggle_select")
+        assert callable(BaseBrowserApp.action_toggle_select)
+
+    def test_base_browser_has_get_selected_items(self):
+        """BaseBrowserApp should have get_selected_items method."""
+        from cis_bench.cli.commands.tui import BaseBrowserApp
+
+        assert hasattr(BaseBrowserApp, "get_selected_items")
+        assert callable(BaseBrowserApp.get_selected_items)
+
+    def test_base_browser_has_on_selection_changed_hook(self):
+        """BaseBrowserApp should have _on_selection_changed hook."""
+        from cis_bench.cli.commands.tui import BaseBrowserApp
+
+        assert hasattr(BaseBrowserApp, "_on_selection_changed")
+        assert callable(BaseBrowserApp._on_selection_changed)
+
 
 class TestDiffAppCreation:
     """Test DiffApp TUI component creation."""

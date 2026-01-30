@@ -29,7 +29,6 @@ class ViewApp(BaseBrowserApp):
         # Standardized naming: _items for visible, _all_items for unfiltered
         self._items = []
         self._all_items = recommendations
-        self._sort_reverse = False
 
     def get_detail_view(self) -> Static:
         """Return the view detail view widget."""
@@ -85,13 +84,6 @@ class ViewApp(BaseBrowserApp):
         rec = self._items[index]
         detail_view = self.query_one("#detail-view", ViewDetailView)
         detail_view.show_recommendation(rec)
-
-    def action_reverse_sort(self) -> None:
-        """Toggle sort order (asc/desc)."""
-        self._sort_reverse = not self._sort_reverse
-        self._rebuild_table()
-        direction = "descending" if self._sort_reverse else "ascending"
-        self.notify(f"Sort: {direction}", title="Sort Order")
 
     def _rebuild_table(self) -> None:
         """Rebuild the table with current sort order."""
