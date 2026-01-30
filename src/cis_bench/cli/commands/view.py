@@ -88,7 +88,7 @@ def view_cmd(ctx, benchmark, profile, status, interactive):
     use_interactive = interactive if interactive is not None else sys.stdout.isatty()
 
     if use_interactive:
-        from cis_bench.cli.commands.view_tui import run_interactive_view
+        from cis_bench.cli.commands.tui.view import run_interactive_view
 
         run_interactive_view(data, recommendations, offline=offline)
     else:

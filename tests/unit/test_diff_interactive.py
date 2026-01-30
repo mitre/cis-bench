@@ -10,8 +10,8 @@ from click.testing import CliRunner
 from rich.console import Console
 
 from cis_bench.cli.app import cli
-from cis_bench.cli.commands.diff_tui import DiffApp, DiffDetailView
-from cis_bench.cli.commands.tui_base import html_to_markdown
+from cis_bench.cli.commands.tui import html_to_markdown
+from cis_bench.cli.commands.tui.diff import DiffApp, DiffDetailView
 from cis_bench.cli.commands.utils import get_pager as _get_pager
 from cis_bench.cli.commands.utils import output_with_pager as _output_with_pager
 
@@ -483,7 +483,7 @@ class TestNaturalSortKey:
 
     def test_simple_refs(self):
         """Simple refs sort numerically."""
-        from cis_bench.cli.commands.tui_base import natural_sort_key
+        from cis_bench.cli.commands.tui import natural_sort_key
 
         refs = ["1.2", "1.1", "1.10", "1.3", "2.1"]
         sorted_refs = sorted(refs, key=natural_sort_key)
@@ -492,7 +492,7 @@ class TestNaturalSortKey:
 
     def test_deep_refs(self):
         """Deep refs (3+ levels) sort correctly."""
-        from cis_bench.cli.commands.tui_base import natural_sort_key
+        from cis_bench.cli.commands.tui import natural_sort_key
 
         refs = ["1.1.1", "1.1.10", "1.1.2", "1.2.1", "1.10.1"]
         sorted_refs = sorted(refs, key=natural_sort_key)
@@ -501,7 +501,7 @@ class TestNaturalSortKey:
 
     def test_mixed_depth_refs(self):
         """Refs with different depths sort correctly."""
-        from cis_bench.cli.commands.tui_base import natural_sort_key
+        from cis_bench.cli.commands.tui import natural_sort_key
 
         refs = ["1.1.1", "1.2", "1.1", "1.2.3", "1.10"]
         sorted_refs = sorted(refs, key=natural_sort_key)
@@ -510,7 +510,7 @@ class TestNaturalSortKey:
 
     def test_cis_benchmark_refs(self):
         """Real CIS benchmark ref patterns sort correctly."""
-        from cis_bench.cli.commands.tui_base import natural_sort_key
+        from cis_bench.cli.commands.tui import natural_sort_key
 
         refs = ["6.2.3.14", "6.2.3.2", "6.1.2.5", "1.1.1.1", "6.2.3.1"]
         sorted_refs = sorted(refs, key=natural_sort_key)
@@ -519,7 +519,7 @@ class TestNaturalSortKey:
 
     def test_empty_ref(self):
         """Empty ref doesn't crash, sorts to end."""
-        from cis_bench.cli.commands.tui_base import natural_sort_key
+        from cis_bench.cli.commands.tui import natural_sort_key
 
         refs = ["1.1", "", "1.2"]
         sorted_refs = sorted(refs, key=natural_sort_key)
@@ -529,7 +529,7 @@ class TestNaturalSortKey:
 
     def test_descending_sort(self):
         """Descending sort works with reverse=True."""
-        from cis_bench.cli.commands.tui_base import natural_sort_key
+        from cis_bench.cli.commands.tui import natural_sort_key
 
         refs = ["1.1", "1.2", "1.10", "2.1"]
         sorted_refs = sorted(refs, key=natural_sort_key, reverse=True)
@@ -542,7 +542,7 @@ class TestReferencesRendering:
 
     def test_references_as_string_html(self):
         """References as HTML string should render as markdown, not char-by-char."""
-        from cis_bench.cli.commands.tui_base import DetailView
+        from cis_bench.cli.commands.tui import DetailView
 
         detail_view = DetailView()
         rec = {
@@ -562,7 +562,7 @@ class TestReferencesRendering:
 
     def test_references_as_list(self):
         """References as list should render as bullet items."""
-        from cis_bench.cli.commands.tui_base import DetailView
+        from cis_bench.cli.commands.tui import DetailView
 
         detail_view = DetailView()
         rec = {
@@ -639,20 +639,20 @@ class TestSearchInTUI:
 
     def test_search_binding_exists_in_common_bindings(self):
         """The '/' key should be in COMMON_BINDINGS for search."""
-        from cis_bench.cli.commands.tui_base import COMMON_BINDINGS
+        from cis_bench.cli.commands.tui import COMMON_BINDINGS
 
         binding_keys = [b.key for b in COMMON_BINDINGS]
         assert "slash" in binding_keys or "/" in binding_keys
 
     def test_base_browser_app_has_search_action(self):
         """BaseBrowserApp should have action_start_search method."""
-        from cis_bench.cli.commands.tui_base import BaseBrowserApp
+        from cis_bench.cli.commands.tui import BaseBrowserApp
 
         assert hasattr(BaseBrowserApp, "action_start_search")
 
     def test_search_input_class_exists(self):
         """SearchInput widget should exist in tui_base."""
-        from cis_bench.cli.commands.tui_base import SearchInput
+        from cis_bench.cli.commands.tui import SearchInput
 
         assert SearchInput is not None
 
@@ -775,13 +775,13 @@ class TestHelpScreen:
 
     def test_help_screen_class_exists(self):
         """HelpScreen class should exist in tui_base."""
-        from cis_bench.cli.commands.tui_base import HelpScreen
+        from cis_bench.cli.commands.tui import HelpScreen
 
         assert HelpScreen is not None
 
     def test_help_screen_instantiation(self):
         """HelpScreen should instantiate with bindings list."""
-        from cis_bench.cli.commands.tui_base import COMMON_BINDINGS, HelpScreen
+        from cis_bench.cli.commands.tui import COMMON_BINDINGS, HelpScreen
 
         screen = HelpScreen(COMMON_BINDINGS)
         assert screen is not None
@@ -791,7 +791,7 @@ class TestHelpScreen:
         """HelpScreen should format bindings for display."""
         from textual.binding import Binding
 
-        from cis_bench.cli.commands.tui_base import HelpScreen
+        from cis_bench.cli.commands.tui import HelpScreen
 
         test_bindings = [
             Binding("q", "quit", "Quit"),
@@ -812,14 +812,14 @@ class TestHelpScreen:
 
     def test_help_binding_exists_in_common_bindings(self):
         """The '?' key should be in COMMON_BINDINGS."""
-        from cis_bench.cli.commands.tui_base import COMMON_BINDINGS
+        from cis_bench.cli.commands.tui import COMMON_BINDINGS
 
         binding_keys = [b.key for b in COMMON_BINDINGS]
         assert "question_mark" in binding_keys or "?" in binding_keys
 
     def test_base_browser_app_has_help_action(self):
         """BaseBrowserApp should have action_show_help method."""
-        from cis_bench.cli.commands.tui_base import BaseBrowserApp
+        from cis_bench.cli.commands.tui import BaseBrowserApp
 
         assert hasattr(BaseBrowserApp, "action_show_help")
 
@@ -907,14 +907,14 @@ class TestJumpToRef:
 
     def test_jump_binding_exists_in_common_bindings(self):
         """COMMON_BINDINGS should have 'g' key for jump to ref."""
-        from cis_bench.cli.commands.tui_base import COMMON_BINDINGS
+        from cis_bench.cli.commands.tui import COMMON_BINDINGS
 
         keys = [b.key for b in COMMON_BINDINGS]
         assert "g" in keys
 
     def test_base_browser_app_has_jump_action(self):
         """BaseBrowserApp should have action_jump_to_ref method."""
-        from cis_bench.cli.commands.tui_base import BaseBrowserApp
+        from cis_bench.cli.commands.tui import BaseBrowserApp
 
         assert hasattr(BaseBrowserApp, "action_jump_to_ref")
 
@@ -968,14 +968,14 @@ class TestMultiSelect:
 
     def test_select_binding_exists(self):
         """Space key should be bound for toggling selection."""
-        from cis_bench.cli.commands.diff_tui import DiffApp
+        from cis_bench.cli.commands.tui.diff import DiffApp
 
         binding_keys = [b.key for b in DiffApp.BINDINGS]
         assert "space" in binding_keys
 
     def test_diff_app_has_selection_tracking(self):
         """DiffApp should have _selected_indices set."""
-        from cis_bench.cli.commands.diff_tui import DiffApp
+        from cis_bench.cli.commands.tui.diff import DiffApp
 
         # Check that DiffApp has selection tracking
         app = DiffApp({}, {}, {})
@@ -1032,7 +1032,7 @@ class TestFilterByChangeType:
 
     def test_filter_bindings_exist(self):
         """Number keys 1-4 and 0 should be bound for change type filtering."""
-        from cis_bench.cli.commands.diff_tui import DiffApp
+        from cis_bench.cli.commands.tui.diff import DiffApp
 
         # Check that DiffApp has filter bindings
         binding_keys = [b.key for b in DiffApp.BINDINGS]
@@ -1044,7 +1044,7 @@ class TestFilterByChangeType:
 
     def test_diff_app_has_filter_action(self):
         """DiffApp should have action_filter_type method."""
-        from cis_bench.cli.commands.diff_tui import DiffApp
+        from cis_bench.cli.commands.tui.diff import DiffApp
 
         assert hasattr(DiffApp, "action_filter_added")
         assert hasattr(DiffApp, "action_filter_removed")
@@ -1106,14 +1106,14 @@ class TestCopyToClipboard:
 
     def test_copy_binding_exists_in_common_bindings(self):
         """COMMON_BINDINGS should have 'c' key for copy to clipboard."""
-        from cis_bench.cli.commands.tui_base import COMMON_BINDINGS
+        from cis_bench.cli.commands.tui import COMMON_BINDINGS
 
         keys = [b.key for b in COMMON_BINDINGS]
         assert "c" in keys
 
     def test_base_browser_app_has_copy_action(self):
         """BaseBrowserApp should have action_copy_to_clipboard method."""
-        from cis_bench.cli.commands.tui_base import BaseBrowserApp
+        from cis_bench.cli.commands.tui import BaseBrowserApp
 
         assert hasattr(BaseBrowserApp, "action_copy_to_clipboard")
 
