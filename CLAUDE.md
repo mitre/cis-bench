@@ -14,54 +14,83 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Essential Commands
 
-### Development
+### Development Setup
 ```bash
-# Install with dev dependencies (ALWAYS use uv, not pip)
-uv pip install -e ".[dev]"
+# Clone and setup (one-time)
+git clone https://github.com/mitre/cis-bench.git
+cd cis-bench
 
-# Run full test suite (1100+ tests)
-pytest tests/
+# Install uv if not installed
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Run specific test file
-pytest tests/unit/test_catalog_database.py
+# Create .venv and install all dependencies
+uv sync --all-extras
 
-# Run single test
-pytest tests/unit/test_catalog_database.py::test_function_name -v
+# Install pre-commit hooks
+uv run pre-commit install
+```
+
+### Running Commands
+
+**IMPORTANT:** This project uses `uv` with a local `.venv`. All commands must use `uv run` to ensure proper environment:
+
+```bash
+# Run tests (ALWAYS use uv run)
+uv run pytest tests/                                    # Full suite (1200+ tests)
+uv run pytest tests/unit/test_catalog_database.py      # Specific file
+uv run pytest tests/unit/test_catalog_database.py::test_function_name -v  # Single test
 
 # Linting (auto-fix)
-ruff check --fix .
-ruff format .
+uv run ruff check --fix .
+uv run ruff format .
 
 # Security scanning
-bandit -c pyproject.toml -r src/
+uv run bandit -c pyproject.toml -r src/
 
-# Pre-commit hooks (run manually)
-pre-commit run --all-files
+# Pre-commit hooks
+uv run pre-commit run --all-files
+```
+
+**Why `uv run`?** The `.venv` contains all dependencies. Running bare `pytest` or `python` uses system Python which may not have dependencies installed.
+
+### Auto-Activation with direnv (Optional)
+
+For automatic venv activation when entering the project directory:
+
+```bash
+# Install direnv (one-time)
+brew install direnv  # macOS
+# Add to ~/.zshrc: eval "$(direnv hook zsh)"
+
+# Allow direnv for this project (one-time)
+direnv allow
+
+# Now entering the directory auto-activates .venv
+cd /path/to/cis-bench  # .venv activates automatically
+pytest tests/          # Works without uv run!
 ```
 
 ### CLI Usage (Testing Changes)
 ```bash
-# Run via installed package
-cis-bench --help
+# Run CLI commands via uv
+uv run cis-bench --help
+uv run cis-bench auth login --browser chrome
+uv run cis-bench catalog refresh
+uv run cis-bench search "ubuntu 22"
+uv run cis-bench download 23598
+uv run cis-bench export 23598 --format xccdf --style cis
+uv run cis-bench get "ubuntu 22" --format xccdf
 
-# Run via module (always works)
-python -m cis_bench --help
-
-# Key commands
-cis-bench auth login --browser chrome
-cis-bench catalog refresh
-cis-bench search "ubuntu 22"
-cis-bench download 23598
-cis-bench export 23598 --format xccdf --style cis
-cis-bench get "ubuntu 22" --format xccdf
+# Alternative: Run via module
+uv run python -m cis_bench --help
 ```
 
 ### Test Markers
 ```bash
-pytest -m unit           # Fast, isolated tests
-pytest -m integration    # Component integration
-pytest -m e2e            # Full CLI workflows
-pytest -m architecture   # Architecture compliance
+uv run pytest -m unit           # Fast, isolated tests
+uv run pytest -m integration    # Component integration
+uv run pytest -m e2e            # Full CLI workflows
+uv run pytest -m architecture   # Architecture compliance
 ```
 
 ## Architecture

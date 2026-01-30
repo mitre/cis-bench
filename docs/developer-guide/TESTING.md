@@ -29,7 +29,7 @@ cis-bench catalog refresh
 **Test (automatic in pytest):**
 ```bash
 # Set automatically by pytest fixture
-pytest tests/
+uv run pytest tests/
 # Uses: /tmp/cis-bench-test/catalog.db
 ```
 
@@ -58,30 +58,33 @@ pytest tests/
 
 ## Running Tests
 
+!!! important "Always use `uv run`"
+    This project uses `uv` with a local `.venv`. All commands must use `uv run` to ensure the correct environment is used.
+
 ### Full Test Suite
 ```bash
-pytest tests/
-# 405 tests, uses test database automatically
+uv run pytest tests/
+# 1200+ tests, uses test database automatically
 ```
 
 ### Specific Test Modules
 ```bash
-pytest tests/unit/test_catalog_database.py # Unit tests
-pytest tests/integration/ # Integration tests
-pytest tests/e2e/ # End-to-end CLI tests
+uv run pytest tests/unit/test_catalog_database.py  # Unit tests
+uv run pytest tests/integration/                    # Integration tests
+uv run pytest tests/e2e/                            # End-to-end CLI tests
 ```
 
 ### With Coverage
 ```bash
-pytest tests/ --cov=src/cis_bench --cov-report=html
+uv run pytest tests/ --cov=src/cis_bench --cov-report=html
 open htmlcov/index.html
 ```
 
 ### Verbose Output
 ```bash
-pytest tests/ -v # Verbose test names
-pytest tests/ -vv # Very verbose
-pytest tests/ -s # Show print statements
+uv run pytest tests/ -v    # Verbose test names
+uv run pytest tests/ -vv   # Very verbose
+uv run pytest tests/ -s    # Show print statements
 ```
 
 ---
@@ -199,14 +202,14 @@ Full test suite runs in CI/CD (when set up):
 # .github/workflows/test.yml
 
 - name: Run tests
-run: pytest tests/ --cov
+  run: uv run pytest tests/ --cov
 ```
 
 ---
 
 ## Test Coverage
 
-Current coverage: 405 tests across:
+Current coverage: 1200+ tests across:
 
 - 285 original tests (exporters, fetchers, models)
 - 41 catalog database tests
