@@ -259,10 +259,11 @@ class CatalogBrowserApp(BaseBrowserApp):
 
         for benchmark in self._all_benchmarks:
             # Check if query matches ID, title, platform, or description
+            # Handle None values safely with `or ""`
             benchmark_id = str(benchmark.get("benchmark_id", ""))
-            title = benchmark.get("title", "").lower()
-            platform = benchmark.get("platform", "").lower()
-            description = benchmark.get("description", "").lower()
+            title = (benchmark.get("title") or "").lower()
+            platform = (benchmark.get("platform") or "").lower()
+            description = (benchmark.get("description") or "").lower()
 
             if query and not any(
                 [
