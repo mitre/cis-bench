@@ -84,7 +84,7 @@ def diff_cmd(ctx, old_benchmark, new_benchmark, output_format, verbose, interact
     if use_interactive:
         from cis_bench.cli.commands.diff_tui import run_interactive_diff
 
-        run_interactive_diff(comparison, old_data, new_data)
+        run_interactive_diff(comparison, old_data, new_data, offline=offline)
     elif output_format == "json":
         # JSON output goes direct (no pager, for piping)
         _output_json(comparison)

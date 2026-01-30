@@ -634,6 +634,63 @@ class TestDiffDetailViewContent:
         assert "95.5%" in content
 
 
+class TestOfflineIndicator:
+    """Tests for offline mode indicator in TUI."""
+
+    def test_diff_app_accepts_offline_parameter(
+        self, sample_comparison, sample_old_data, sample_new_data
+    ):
+        """DiffApp should accept an offline parameter."""
+        old_recs = {r["ref"]: r for r in sample_old_data.get("recommendations", [])}
+        new_recs = {r["ref"]: r for r in sample_new_data.get("recommendations", [])}
+
+        app = DiffApp(sample_comparison, old_recs, new_recs, offline=True)
+        assert app.offline is True
+
+    def test_diff_app_offline_defaults_false(
+        self, sample_comparison, sample_old_data, sample_new_data
+    ):
+        """DiffApp offline should default to False."""
+        old_recs = {r["ref"]: r for r in sample_old_data.get("recommendations", [])}
+        new_recs = {r["ref"]: r for r in sample_new_data.get("recommendations", [])}
+
+        app = DiffApp(sample_comparison, old_recs, new_recs)
+        assert app.offline is False
+
+    @pytest.mark.asyncio
+    async def test_diff_app_shows_offline_indicator(
+        self, sample_comparison, sample_old_data, sample_new_data
+    ):
+        """DiffApp should show offline indicator when offline=True."""
+        old_recs = {r["ref"]: r for r in sample_old_data.get("recommendations", [])}
+        new_recs = {r["ref"]: r for r in sample_new_data.get("recommendations", [])}
+
+        app = DiffApp(sample_comparison, old_recs, new_recs, offline=True)
+
+        async with app.run_test() as pilot:
+            # Check that offline indicator is visible in summary
+            # The summary is built with _build_summary which includes [OFFLINE]
+            assert app.offline is True
+            # Verify _build_summary includes OFFLINE text
+            summary_text = str(app._build_summary())
+            assert "OFFLINE" in summary_text
+
+    @pytest.mark.asyncio
+    async def test_diff_app_no_offline_indicator_when_online(
+        self, sample_comparison, sample_old_data, sample_new_data
+    ):
+        """DiffApp should not show offline indicator when offline=False."""
+        old_recs = {r["ref"]: r for r in sample_old_data.get("recommendations", [])}
+        new_recs = {r["ref"]: r for r in sample_new_data.get("recommendations", [])}
+
+        app = DiffApp(sample_comparison, old_recs, new_recs, offline=False)
+
+        async with app.run_test() as pilot:
+            # Verify _build_summary does not include OFFLINE text
+            summary_text = str(app._build_summary())
+            assert "OFFLINE" not in summary_text
+
+
 class TestHelpScreen:
     """Tests for the help screen modal (? key)."""
 

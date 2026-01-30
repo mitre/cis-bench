@@ -90,7 +90,7 @@ def view_cmd(ctx, benchmark, profile, status, interactive):
     if use_interactive:
         from cis_bench.cli.commands.view_tui import run_interactive_view
 
-        run_interactive_view(data, recommendations)
+        run_interactive_view(data, recommendations, offline=offline)
     else:
         output_with_pager(_output_table, data, recommendations)
 

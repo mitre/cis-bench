@@ -127,11 +127,14 @@ class DiffApp(BaseBrowserApp):
         Binding("f", "toggle_fullscreen", "Fullscreen", show=True),
     ]
 
-    def __init__(self, comparison: dict, old_recs: dict, new_recs: dict, **kwargs):
+    def __init__(
+        self, comparison: dict, old_recs: dict, new_recs: dict, offline: bool = False, **kwargs
+    ):
         super().__init__(**kwargs)
         self.comparison = comparison
         self.old_recs = old_recs
         self.new_recs = new_recs
+        self.offline = offline
         self._change_list = []
         self._sort_reverse = False
 
@@ -155,6 +158,8 @@ class DiffApp(BaseBrowserApp):
         """Build summary text."""
         s = self.comparison["summary"]
         text = Text()
+        if self.offline:
+            text.append("[OFFLINE] ", style="bold yellow")
         text.append(f"{self.comparison['benchmark_title']}: ", style="bold")
         text.append(
             f"{self.comparison['old_version']} → {self.comparison['new_version']}  ",
@@ -417,18 +422,21 @@ class DiffApp(BaseBrowserApp):
             self.notify(f"Error saving: {e}", title="Save Failed", severity="error")
 
 
-def run_interactive_diff(comparison: dict, old_data: dict, new_data: dict) -> None:
+def run_interactive_diff(
+    comparison: dict, old_data: dict, new_data: dict, offline: bool = False
+) -> None:
     """Run the interactive diff TUI.
 
     Args:
         comparison: The comparison result from compare_benchmarks()
         old_data: The old benchmark data dict
         new_data: The new benchmark data dict
+        offline: Whether running in offline mode (shows indicator)
     """
     # Build recommendation lookup dicts
     old_recs = {r["ref"]: r for r in old_data.get("recommendations", [])}
     new_recs = {r["ref"]: r for r in new_data.get("recommendations", [])}
 
-    app = DiffApp(comparison, old_recs, new_recs)
+    app = DiffApp(comparison, old_recs, new_recs, offline=offline)
     app.title = "CIS Benchmark Diff"
     app.run()

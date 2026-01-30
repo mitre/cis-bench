@@ -3,11 +3,11 @@
 from rich.text import Text
 from textual import on
 from textual.app import ComposeResult
-from textual.binding import Binding
 from textual.containers import Container, Horizontal, VerticalScroll
 from textual.widgets import DataTable, Footer, Header, Static
 
 from cis_bench.cli.commands.tui_base import (
+    COMMON_BINDINGS,
     COMMON_CSS,
     BaseBrowserApp,
     DetailView,
@@ -29,25 +29,13 @@ class ViewApp(BaseBrowserApp):
     """Interactive TUI for browsing benchmark recommendations."""
 
     CSS = COMMON_CSS
+    BINDINGS = COMMON_BINDINGS
 
-    BINDINGS = [
-        Binding("q", "quit", "Quit"),
-        Binding("escape", "quit", "Quit"),
-        Binding("tab", "toggle_focus", "Switch Pane", show=True),
-        Binding("j", "cursor_down", "Down", show=False),
-        Binding("k", "cursor_up", "Up", show=False),
-        Binding("down", "cursor_down", "Down", show=False),
-        Binding("up", "cursor_up", "Up", show=False),
-        Binding("pagedown", "page_down", "Page Down", show=False),
-        Binding("pageup", "page_up", "Page Up", show=False),
-        Binding("s", "save_report", "Save Report", show=True),
-        Binding("f", "toggle_fullscreen", "Fullscreen", show=True),
-    ]
-
-    def __init__(self, benchmark: dict, recommendations: list, **kwargs):
+    def __init__(self, benchmark: dict, recommendations: list, offline: bool = False, **kwargs):
         super().__init__(**kwargs)
         self.benchmark = benchmark
         self.recommendations = recommendations
+        self.offline = offline
         self._rec_list = []
         self._sort_reverse = False
 
@@ -70,6 +58,8 @@ class ViewApp(BaseBrowserApp):
     def _build_summary(self) -> Text:
         """Build summary text."""
         text = Text()
+        if self.offline:
+            text.append("[OFFLINE] ", style="bold yellow")
         text.append(f"{self.benchmark.get('title', 'Benchmark')}", style="bold")
         text.append(f" v{self.benchmark.get('version', '?')}  ", style="dim")
         text.append(f"{len(self.recommendations)} recommendations", style="cyan")
@@ -217,13 +207,14 @@ class ViewApp(BaseBrowserApp):
             self.notify(f"Error saving: {e}", title="Save Failed", severity="error")
 
 
-def run_interactive_view(benchmark: dict, recommendations: list) -> None:
+def run_interactive_view(benchmark: dict, recommendations: list, offline: bool = False) -> None:
     """Run the interactive view TUI.
 
     Args:
         benchmark: The benchmark data dict
         recommendations: List of recommendations to display (may be filtered)
+        offline: Whether running in offline mode (shows indicator)
     """
-    app = ViewApp(benchmark, recommendations)
+    app = ViewApp(benchmark, recommendations, offline=offline)
     app.title = "CIS Benchmark Viewer"
     app.run()
