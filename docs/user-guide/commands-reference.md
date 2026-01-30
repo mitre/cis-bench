@@ -616,6 +616,13 @@ cis-bench diff <OLD> <NEW> [OPTIONS]
 
 - `-f, --format` - Output format: table|json|markdown|summary (default: table)
 - `-v, --verbose` - Show detailed field-level changes
+- `-i, --interactive` - Force interactive TUI mode
+- `-I, --no-interactive` - Force table output (no TUI)
+
+**Interactive TUI Mode:**
+
+When running in a terminal, diff automatically opens an interactive browser
+with keyboard navigation, search (`/`), and help (`?`). Use `-I` to disable.
 
 **Examples:**
 ```bash
@@ -674,6 +681,87 @@ Summary:
 │ ✖ DEL  │ 2.3.1   │ Ensure NIS Server not installed    │ Removed    │
 │ ⟳ MOD  │ 3.1.1   │ Ensure SSH MaxAuthTries configured │ title,audit│
 │ ? REN  │ 5.1→6.1 │ Ensure cron daemon enabled         │ 92% match  │
+```
+
+---
+
+### `cis-bench view`
+
+Interactively browse a benchmark's recommendations.
+
+**Syntax:**
+```bash
+cis-bench view <BENCHMARK> [OPTIONS]
+```
+
+**Arguments:**
+
+- `BENCHMARK` - Benchmark ID or file path
+
+**Filter Options:**
+
+- `-p, --profile` - Filter by profile (e.g., "Level 1", "Level 2")
+- `-s, --status` - Filter by assessment status (automated|manual|all) - default: all
+
+**Mode Options:**
+
+- `-i, --interactive` - Force interactive TUI mode
+- `-I, --no-interactive` - Force table output (no TUI)
+
+**Examples:**
+```bash
+# Interactive TUI browser (auto-detects terminal)
+cis-bench view 23598
+
+# Filter by profile
+cis-bench view 23598 --profile "Level 1"
+
+# Filter by automated controls only
+cis-bench view 23598 --status automated
+
+# Force table output (for piping/scripting)
+cis-bench view 23598 -I
+```
+
+---
+
+## Interactive TUI Mode
+
+Both `diff` and `view` commands support an interactive TUI (Text User Interface) mode
+that auto-activates when running in a terminal.
+
+### Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| `?` | Show help screen with all shortcuts |
+| `/` | Start search (filters items in real-time) |
+| `Tab` | Switch focus between list and detail panes |
+| `↑/↓` or `j/k` | Navigate up/down in list |
+| `Page Up/Down` | Scroll detail pane |
+| `f` | Toggle fullscreen detail view |
+| `r` | Reverse sort order (asc/desc) |
+| `s` | Save report to file |
+| `q` or `Esc` | Quit |
+
+### Search Mode
+
+Press `/` to open the search bar:
+
+- Type to filter items in real-time
+- Shows match count (e.g., "12/45")
+- Press `Enter` to keep filter and return to list
+- Press `Escape` to cancel and restore all items
+
+### Offline Indicator
+
+When running with `--offline` flag, a yellow `[OFFLINE]` indicator appears
+in the header to remind you that network access is disabled.
+
+```bash
+# Shows [OFFLINE] in TUI header
+cis-bench --offline diff 23598 24001
+cis-bench --offline view 23598
 ```
 
 ---

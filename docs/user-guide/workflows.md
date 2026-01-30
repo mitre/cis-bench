@@ -851,6 +851,65 @@ cis-bench catalog refresh # Network required
 
 ---
 
+## Scenario 15: Interactive Benchmark Exploration
+
+**Context:**
+You want to explore a benchmark's recommendations interactively, search for specific controls, or compare two versions side-by-side.
+
+### Browse a Benchmark with TUI
+
+```bash
+# Open interactive browser for a benchmark
+cis-bench view 23598
+
+# Filter to Level 1 controls only
+cis-bench view 23598 --profile "Level 1"
+
+# Show only automated controls
+cis-bench view 23598 --status automated
+```
+
+**TUI Keyboard Shortcuts:**
+
+| Key | Action |
+|-----|--------|
+| `?` | Show help with all shortcuts |
+| `/` | Search/filter items |
+| `Tab` | Switch between list and detail panes |
+| `↑/↓` or `j/k` | Navigate list |
+| `f` | Toggle fullscreen detail |
+| `r` | Reverse sort order |
+| `s` | Save report to file |
+| `q` | Quit |
+
+### Compare Two Benchmark Versions
+
+```bash
+# Interactive diff comparison
+cis-bench diff 23598 24001
+
+# Search within diff results
+# Press '/' then type to filter (e.g., "SSH" to find SSH changes)
+```
+
+### Search Within a Benchmark
+
+While in the TUI:
+
+1. Press `/` to open search
+2. Type your search query (e.g., "firewall", "SSH", "1.2.3")
+3. Results filter in real-time
+4. Press `Enter` to keep filter, `Escape` to clear
+
+### Save Report from TUI
+
+1. Browse to items of interest
+2. Press `s` to open save dialog
+3. Enter filename (default: auto-generated)
+4. Press `Enter` to save Markdown report
+
+---
+
 ## Common Command Combinations
 
 ### Quick Reference Table
