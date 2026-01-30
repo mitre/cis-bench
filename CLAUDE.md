@@ -193,3 +193,69 @@ Do NOT push multiple separate commits to main in quick succession. This causes r
 - **ruff** - Linting/formatting
 - **bandit** - Security scanning
 - **pre-commit** - Git hooks
+
+## Beads Task Tracking
+
+This project uses [beads](https://github.com/steveyegge/beads) for task tracking with dependencies.
+
+### Structure: Parent/Child vs Dependencies
+
+| Concept | Command | Purpose |
+|---------|---------|---------|
+| **Parent/Child** | `--parent <epic-id>` | Organizational grouping - "this task belongs to this epic" |
+| **Dependencies** | `bd dep add <task> <blocker>` | Workflow blocking - "can't start until blocker is done" |
+
+**Use BOTH together:**
+- `--parent` groups all tasks under an epic (so `bd children <epic>` shows them)
+- `bd dep add` enforces implementation order (so `bd ready` shows unblocked work)
+
+### Creating Epics with Tasks
+
+```bash
+# 1. Create the epic
+bd create "Feature Name" --type epic -d "Full description of the feature"
+# Returns: cis-bench-xxx
+
+# 2. Create tasks as children of the epic
+bd create "Task 1" --parent cis-bench-xxx --type task
+bd create "Task 2" --parent cis-bench-xxx --type task
+bd create "Task 3" --parent cis-bench-xxx --type task
+
+# 3. Add dependencies (Task 3 blocked by Task 1 and Task 2)
+bd dep add <task-3-id> <task-1-id>
+bd dep add <task-3-id> <task-2-id>
+```
+
+### Navigation Commands
+
+```bash
+bd show <epic-id>           # See epic details + vision
+bd children <epic-id>       # See all tasks under epic
+bd epic status <epic-id>    # See completion progress (X/Y complete)
+bd ready                    # What can I work on now? (no blockers)
+bd blocked                  # What's waiting on what?
+bd dep tree <task-id>       # See dependency chain
+bd list --parent <epic-id>  # Alternative to bd children
+```
+
+### Workflow
+
+```bash
+# Starting work
+bd ready                              # Find available work
+bd show <task-id>                     # Review task details
+bd update <task-id> --status in_progress  # Claim it
+
+# Completing work
+bd close <task-id>                    # Mark complete
+bd sync                               # Push to remote
+```
+
+### Session Recovery
+
+When starting a new session, recover context with:
+```bash
+bd ready                    # See what's available
+bd show <current-epic>      # Get full context
+bd children <current-epic>  # See all related tasks
+```
