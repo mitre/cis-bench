@@ -12,6 +12,7 @@ from cis_bench.cli.commands.tui_base import (
     BaseBrowserApp,
     DetailView,
     SaveDialog,
+    SearchInput,
     html_to_markdown,
     natural_sort_key,
 )
@@ -136,6 +137,7 @@ class DiffApp(BaseBrowserApp):
         self.new_recs = new_recs
         self.offline = offline
         self._change_list = []
+        self._all_changes = []  # Store all changes for search filtering
         self._sort_reverse = False
 
     def compose(self) -> ComposeResult:
@@ -151,6 +153,11 @@ class DiffApp(BaseBrowserApp):
                 id="detail-container",
             ),
             id="main-container",
+        )
+        yield Container(
+            SearchInput(),
+            Static("", id="search-count"),
+            id="search-container",
         )
         yield Footer()
 
@@ -188,6 +195,17 @@ class DiffApp(BaseBrowserApp):
         renumbered = sorted(
             changes["renumbered"], key=lambda x: natural_sort_key(x.get("new_ref", ""))
         )
+
+        # Build full change list for filtering
+        self._all_changes = []
+        for item in added:
+            self._all_changes.append(("added", item))
+        for item in removed:
+            self._all_changes.append(("removed", item))
+        for item in modified:
+            self._all_changes.append(("modified", item))
+        for item in renumbered:
+            self._all_changes.append(("renumbered", item))
 
         # Add rows and track change data
         for item in added:
@@ -348,6 +366,67 @@ class DiffApp(BaseBrowserApp):
                 self._truncate(item["title"], 45),
                 f"{item['similarity']}%",
             )
+
+        if self._change_list:
+            self._show_detail(0)
+
+    def _apply_search_filter(self, query: str) -> None:
+        """Filter the table based on search query."""
+        query = query.lower().strip()
+        table = self.query_one("#changes-table", DataTable)
+        table.clear()
+        self._change_list = []
+
+        for change_type, item in self._all_changes:
+            # Check if query matches ref or title
+            ref = item.get("ref", "") or item.get("new_ref", "") or item.get("old_ref", "")
+            title = item.get("title", "")
+
+            if query and query not in ref.lower() and query not in title.lower():
+                continue
+
+            self._change_list.append((change_type, item))
+
+            if change_type == "added":
+                table.add_row(
+                    Text("✚ Added", style="green"),
+                    item["ref"],
+                    self._truncate(item["title"], 45),
+                    "New",
+                )
+            elif change_type == "removed":
+                table.add_row(
+                    Text("✖ Removed", style="red"),
+                    item["ref"],
+                    self._truncate(item["title"], 45),
+                    "Removed",
+                )
+            elif change_type == "modified":
+                fields = item["fields_changed"]
+                if len(fields) <= 2:
+                    details = ", ".join(fields)
+                else:
+                    details = ", ".join(fields[:2]) + f" +{len(fields) - 2}"
+                table.add_row(
+                    Text("⟳ Modified", style="yellow"),
+                    item["ref"],
+                    self._truncate(item["title"], 45),
+                    details,
+                )
+            elif change_type == "renumbered":
+                table.add_row(
+                    Text("↷ Renum", style="cyan"),
+                    f"{item['old_ref']}→{item['new_ref']}",
+                    self._truncate(item["title"], 45),
+                    f"{item['similarity']}%",
+                )
+
+        # Update search count
+        search_count = self.query_one("#search-count", Static)
+        if query:
+            search_count.update(f"{len(self._change_list)}/{len(self._all_changes)}")
+        else:
+            search_count.update("")
 
         if self._change_list:
             self._show_detail(0)

@@ -17,6 +17,26 @@ from textual.widgets import (
 )
 
 
+class SearchInput(Input):
+    """Search input widget that filters results in real-time."""
+
+    BINDINGS = [
+        Binding("escape", "cancel_search", "Cancel"),
+        Binding("enter", "submit_search", "Search"),
+    ]
+
+    def __init__(self, **kwargs):
+        super().__init__(placeholder="Search...", id="search-input", **kwargs)
+
+    def action_cancel_search(self) -> None:
+        """Cancel search and hide input."""
+        self.app.action_cancel_search()
+
+    def action_submit_search(self) -> None:
+        """Submit search (keep filter active)."""
+        self.app.action_submit_search()
+
+
 def natural_sort_key(ref: str) -> tuple:
     """Generate a sort key for natural/version sorting of CIS refs.
 
@@ -360,6 +380,29 @@ DataTable:focus {
     text-align: center;
     dock: bottom;
 }
+
+#search-container {
+    dock: bottom;
+    height: 3;
+    width: 100%;
+    background: $surface;
+    padding: 0 1;
+    display: none;
+}
+
+#search-container.visible {
+    display: block;
+}
+
+#search-input {
+    width: 100%;
+}
+
+#search-count {
+    dock: right;
+    width: auto;
+    padding: 0 1;
+}
 """
 
 # Common key bindings
@@ -367,6 +410,7 @@ COMMON_BINDINGS = [
     Binding("q", "quit", "Quit"),
     Binding("escape", "quit", "Quit"),
     Binding("question_mark", "show_help", "Help", show=True),
+    Binding("slash", "start_search", "Search", show=True),
     Binding("tab", "toggle_focus", "Switch Pane", show=True),
     Binding("j", "cursor_down", "Down", show=False),
     Binding("k", "cursor_up", "Up", show=False),
@@ -391,6 +435,42 @@ class BaseBrowserApp(App):
         self._item_list = []
         self._focus_on_detail = False
         self._fullscreen_detail = False
+        self._search_active = False
+        self._search_query = ""
+
+    def action_start_search(self) -> None:
+        """Open the search input."""
+        self._search_active = True
+        search_container = self.query_one("#search-container")
+        search_container.add_class("visible")
+        search_input = self.query_one("#search-input", SearchInput)
+        search_input.value = ""
+        search_input.focus()
+
+    def action_cancel_search(self) -> None:
+        """Cancel search and restore all items."""
+        self._search_active = False
+        self._search_query = ""
+        search_container = self.query_one("#search-container")
+        search_container.remove_class("visible")
+        self._apply_search_filter("")
+        self.query_one("#changes-table", DataTable).focus()
+
+    def action_submit_search(self) -> None:
+        """Submit search and keep filter active."""
+        search_container = self.query_one("#search-container")
+        search_container.remove_class("visible")
+        self.query_one("#changes-table", DataTable).focus()
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        """Handle search input changes for real-time filtering."""
+        if event.input.id == "search-input":
+            self._search_query = event.value
+            self._apply_search_filter(event.value)
+
+    def _apply_search_filter(self, query: str) -> None:
+        """Apply search filter to the table. Override in subclass."""
+        pass  # Subclasses implement this
 
     def action_show_help(self) -> None:
         """Show the help screen with keyboard shortcuts."""

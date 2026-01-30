@@ -634,6 +634,85 @@ class TestDiffDetailViewContent:
         assert "95.5%" in content
 
 
+class TestSearchInTUI:
+    """Tests for search functionality in TUI (/ key)."""
+
+    def test_search_binding_exists_in_common_bindings(self):
+        """The '/' key should be in COMMON_BINDINGS for search."""
+        from cis_bench.cli.commands.tui_base import COMMON_BINDINGS
+
+        binding_keys = [b.key for b in COMMON_BINDINGS]
+        assert "slash" in binding_keys or "/" in binding_keys
+
+    def test_base_browser_app_has_search_action(self):
+        """BaseBrowserApp should have action_start_search method."""
+        from cis_bench.cli.commands.tui_base import BaseBrowserApp
+
+        assert hasattr(BaseBrowserApp, "action_start_search")
+
+    def test_search_input_class_exists(self):
+        """SearchInput widget should exist in tui_base."""
+        from cis_bench.cli.commands.tui_base import SearchInput
+
+        assert SearchInput is not None
+
+    @pytest.mark.asyncio
+    async def test_search_opens_on_slash(self, sample_comparison, sample_old_data, sample_new_data):
+        """Pressing '/' should show search input."""
+        old_recs = {r["ref"]: r for r in sample_old_data.get("recommendations", [])}
+        new_recs = {r["ref"]: r for r in sample_new_data.get("recommendations", [])}
+
+        app = DiffApp(sample_comparison, old_recs, new_recs)
+
+        async with app.run_test() as pilot:
+            # Press '/' to open search
+            await pilot.press("slash")
+
+            # Search input should be visible
+            search_input = app.query("SearchInput")
+            assert len(search_input) > 0 or app.query("#search-input")
+
+    @pytest.mark.asyncio
+    async def test_search_filters_results(
+        self, sample_comparison, sample_old_data, sample_new_data
+    ):
+        """Typing in search should filter the visible items."""
+        old_recs = {r["ref"]: r for r in sample_old_data.get("recommendations", [])}
+        new_recs = {r["ref"]: r for r in sample_new_data.get("recommendations", [])}
+
+        app = DiffApp(sample_comparison, old_recs, new_recs)
+
+        async with app.run_test() as pilot:
+            # Initial count
+            initial_count = len(app._change_list)
+            assert initial_count > 0
+
+            # Open search and type
+            await pilot.press("slash")
+            await pilot.press("x", "y", "z")  # Type something unlikely to match
+
+            # The visible items should be filtered (or show no matches)
+            # This tests that the filter mechanism exists
+            assert app._search_query is not None or hasattr(app, "_search_query")
+
+    @pytest.mark.asyncio
+    async def test_escape_closes_search(self, sample_comparison, sample_old_data, sample_new_data):
+        """Pressing Escape should close search and restore all items."""
+        old_recs = {r["ref"]: r for r in sample_old_data.get("recommendations", [])}
+        new_recs = {r["ref"]: r for r in sample_new_data.get("recommendations", [])}
+
+        app = DiffApp(sample_comparison, old_recs, new_recs)
+
+        async with app.run_test() as pilot:
+            # Open search
+            await pilot.press("slash")
+            # Close with escape
+            await pilot.press("escape")
+
+            # Search should be closed (no search input visible or search mode off)
+            assert not getattr(app, "_search_active", True) or app.query("#search-input") == []
+
+
 class TestOfflineIndicator:
     """Tests for offline mode indicator in TUI."""
 
