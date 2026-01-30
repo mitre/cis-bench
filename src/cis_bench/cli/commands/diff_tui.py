@@ -117,6 +117,10 @@ class DiffApp(BaseBrowserApp):
     BINDINGS = [
         Binding("q", "quit", "Quit"),
         Binding("escape", "quit", "Quit"),
+        Binding("question_mark", "show_help", "Help", show=True),
+        Binding("slash", "start_search", "Search", show=True),
+        Binding("g", "jump_to_ref", "Go to Ref", show=True),
+        Binding("c", "copy_to_clipboard", "Copy", show=True),
         Binding("tab", "toggle_focus", "Switch Pane", show=True),
         Binding("j", "cursor_down", "Down", show=False),
         Binding("k", "cursor_up", "Up", show=False),
@@ -126,6 +130,13 @@ class DiffApp(BaseBrowserApp):
         Binding("pageup", "page_up", "Page Up", show=False),
         Binding("s", "save_report", "Save Report", show=True),
         Binding("f", "toggle_fullscreen", "Fullscreen", show=True),
+        Binding("r", "reverse_sort", "Reverse", show=True),
+        # Filter by change type
+        Binding("1", "filter_added", "Added Only", show=False),
+        Binding("2", "filter_removed", "Removed Only", show=False),
+        Binding("3", "filter_modified", "Modified Only", show=False),
+        Binding("4", "filter_renumbered", "Renumbered Only", show=False),
+        Binding("0", "filter_all", "Show All", show=False),
     ]
 
     def __init__(
@@ -295,6 +306,88 @@ class DiffApp(BaseBrowserApp):
         self._rebuild_table()
         direction = "descending" if self._sort_reverse else "ascending"
         self.notify(f"Sort: {direction}", title="Sort Order")
+
+    def action_filter_added(self) -> None:
+        """Filter to show only added items."""
+        self._filter_by_type("added")
+        self.notify("Showing: Added only", severity="information")
+
+    def action_filter_removed(self) -> None:
+        """Filter to show only removed items."""
+        self._filter_by_type("removed")
+        self.notify("Showing: Removed only", severity="information")
+
+    def action_filter_modified(self) -> None:
+        """Filter to show only modified items."""
+        self._filter_by_type("modified")
+        self.notify("Showing: Modified only", severity="information")
+
+    def action_filter_renumbered(self) -> None:
+        """Filter to show only renumbered items."""
+        self._filter_by_type("renumbered")
+        self.notify("Showing: Renumbered only", severity="information")
+
+    def action_filter_all(self) -> None:
+        """Reset filter to show all items."""
+        self._filter_by_type(None)
+        self.notify("Showing: All changes", severity="information")
+
+    def _filter_by_type(self, change_type: str | None) -> None:
+        """Filter the table to show only items of a specific type.
+
+        Args:
+            change_type: Type to filter by (added/removed/modified/renumbered) or None for all.
+        """
+        table = self.query_one("#changes-table", DataTable)
+        table.clear()
+        self._change_list = []
+
+        # Filter from _all_changes
+        if change_type is None:
+            # Show all
+            filtered = self._all_changes
+        else:
+            filtered = [(t, item) for t, item in self._all_changes if t == change_type]
+
+        # Re-sort the filtered list
+        filtered = sorted(
+            filtered,
+            key=lambda x: natural_sort_key(x[1].get("ref", "") or x[1].get("new_ref", "")),
+            reverse=self._sort_reverse,
+        )
+
+        # Add to table
+        for change_type_item, item in filtered:
+            self._change_list.append((change_type_item, item))
+            if change_type_item == "added":
+                table.add_row(
+                    Text("✚ Added", style="green"),
+                    item["ref"],
+                    self._truncate(item["title"], 45),
+                    "New",
+                )
+            elif change_type_item == "removed":
+                table.add_row(
+                    Text("✖ Removed", style="red"),
+                    item["ref"],
+                    self._truncate(item["title"], 45),
+                    "Removed",
+                )
+            elif change_type_item == "modified":
+                fields = ", ".join(item.get("fields_changed", [])[:3])
+                table.add_row(
+                    Text("⟳ Modified", style="yellow"),
+                    item["ref"],
+                    self._truncate(item["title"], 45),
+                    fields,
+                )
+            elif change_type_item == "renumbered":
+                table.add_row(
+                    Text("↷ Renumbered", style="cyan"),
+                    f"{item['old_ref']}→{item['new_ref']}",
+                    self._truncate(item["title"], 45),
+                    f"{item['similarity']}%",
+                )
 
     def _rebuild_table(self) -> None:
         """Rebuild the table with current sort order."""

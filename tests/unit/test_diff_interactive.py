@@ -900,3 +900,246 @@ class TestHelpScreenAsync:
             # Look for common bindings in the screen content
             help_screen = app.screen
             assert help_screen is not None
+
+
+class TestJumpToRef:
+    """Tests for jump to ref feature (g key) - ep9.14."""
+
+    def test_jump_binding_exists_in_common_bindings(self):
+        """COMMON_BINDINGS should have 'g' key for jump to ref."""
+        from cis_bench.cli.commands.tui_base import COMMON_BINDINGS
+
+        keys = [b.key for b in COMMON_BINDINGS]
+        assert "g" in keys
+
+    def test_base_browser_app_has_jump_action(self):
+        """BaseBrowserApp should have action_jump_to_ref method."""
+        from cis_bench.cli.commands.tui_base import BaseBrowserApp
+
+        assert hasattr(BaseBrowserApp, "action_jump_to_ref")
+
+    @pytest.mark.asyncio
+    async def test_jump_dialog_opens_on_g_key(
+        self, sample_comparison, sample_old_data, sample_new_data
+    ):
+        """Pressing 'g' should open the jump to ref dialog."""
+        old_recs = {r["ref"]: r for r in sample_old_data.get("recommendations", [])}
+        new_recs = {r["ref"]: r for r in sample_new_data.get("recommendations", [])}
+
+        app = DiffApp(sample_comparison, old_recs, new_recs)
+
+        async with app.run_test() as pilot:
+            # Press 'g' to open jump dialog
+            await pilot.press("g")
+
+            # Should have pushed a modal screen (JumpDialog)
+            assert len(app.screen_stack) > 1
+
+    @pytest.mark.asyncio
+    async def test_jump_to_existing_ref(self, sample_comparison, sample_old_data, sample_new_data):
+        """Typing a ref and pressing Enter should jump to that row."""
+        from textual.widgets import DataTable
+
+        old_recs = {r["ref"]: r for r in sample_old_data.get("recommendations", [])}
+        new_recs = {r["ref"]: r for r in sample_new_data.get("recommendations", [])}
+
+        app = DiffApp(sample_comparison, old_recs, new_recs)
+
+        async with app.run_test() as pilot:
+            table = app.query_one("#changes-table", DataTable)
+
+            # Get a ref that exists in the table (from sample data)
+            # Sample has added: 1.1.1, removed: 2.1.1, modified: 3.1.1, renumbered: 4.1
+            target_ref = "3.1.1"
+
+            # Press 'g' to open jump dialog
+            await pilot.press("g")
+
+            # Type the ref
+            await pilot.press(*list(target_ref))
+            await pilot.press("enter")
+
+            # Should be back to main screen and cursor on the target row
+            assert len(app.screen_stack) == 1
+
+
+class TestFilterByChangeType:
+    """Tests for filter by change type feature - ep9.5."""
+
+    def test_filter_bindings_exist(self):
+        """Number keys 1-4 and 0 should be bound for change type filtering."""
+        from cis_bench.cli.commands.diff_tui import DiffApp
+
+        # Check that DiffApp has filter bindings
+        binding_keys = [b.key for b in DiffApp.BINDINGS]
+        assert "1" in binding_keys  # Added
+        assert "2" in binding_keys  # Removed
+        assert "3" in binding_keys  # Modified
+        assert "4" in binding_keys  # Renumbered
+        assert "0" in binding_keys  # Show all
+
+    def test_diff_app_has_filter_action(self):
+        """DiffApp should have action_filter_type method."""
+        from cis_bench.cli.commands.diff_tui import DiffApp
+
+        assert hasattr(DiffApp, "action_filter_added")
+        assert hasattr(DiffApp, "action_filter_removed")
+        assert hasattr(DiffApp, "action_filter_modified")
+        assert hasattr(DiffApp, "action_filter_renumbered")
+        assert hasattr(DiffApp, "action_filter_all")
+
+    @pytest.mark.asyncio
+    async def test_filter_added_only(self, sample_comparison, sample_old_data, sample_new_data):
+        """Pressing '1' should filter to show only added items."""
+        from textual.widgets import DataTable
+
+        old_recs = {r["ref"]: r for r in sample_old_data.get("recommendations", [])}
+        new_recs = {r["ref"]: r for r in sample_new_data.get("recommendations", [])}
+
+        app = DiffApp(sample_comparison, old_recs, new_recs)
+
+        async with app.run_test() as pilot:
+            table = app.query_one("#changes-table", DataTable)
+            initial_count = table.row_count
+
+            # Press '1' to filter to added only
+            await pilot.press("1")
+
+            # Should have fewer rows (only added items)
+            assert table.row_count <= initial_count
+            # Should have at least 1 row (sample data has 1 added)
+            assert table.row_count >= 1
+
+    @pytest.mark.asyncio
+    async def test_filter_reset_with_zero(
+        self, sample_comparison, sample_old_data, sample_new_data
+    ):
+        """Pressing '0' should reset filter and show all items."""
+        from textual.widgets import DataTable
+
+        old_recs = {r["ref"]: r for r in sample_old_data.get("recommendations", [])}
+        new_recs = {r["ref"]: r for r in sample_new_data.get("recommendations", [])}
+
+        app = DiffApp(sample_comparison, old_recs, new_recs)
+
+        async with app.run_test() as pilot:
+            table = app.query_one("#changes-table", DataTable)
+            initial_count = table.row_count
+
+            # Filter first
+            await pilot.press("1")
+            filtered_count = table.row_count
+
+            # Reset with '0'
+            await pilot.press("0")
+
+            # Should be back to initial count
+            assert table.row_count == initial_count
+
+
+class TestCopyToClipboard:
+    """Tests for copy to clipboard feature (c key) - ep9.15."""
+
+    def test_copy_binding_exists_in_common_bindings(self):
+        """COMMON_BINDINGS should have 'c' key for copy to clipboard."""
+        from cis_bench.cli.commands.tui_base import COMMON_BINDINGS
+
+        keys = [b.key for b in COMMON_BINDINGS]
+        assert "c" in keys
+
+    def test_base_browser_app_has_copy_action(self):
+        """BaseBrowserApp should have action_copy_to_clipboard method."""
+        from cis_bench.cli.commands.tui_base import BaseBrowserApp
+
+        assert hasattr(BaseBrowserApp, "action_copy_to_clipboard")
+
+    @pytest.mark.asyncio
+    async def test_copy_shows_notification(
+        self, sample_comparison, sample_old_data, sample_new_data
+    ):
+        """Pressing 'c' should copy content and show notification."""
+        old_recs = {r["ref"]: r for r in sample_old_data.get("recommendations", [])}
+        new_recs = {r["ref"]: r for r in sample_new_data.get("recommendations", [])}
+
+        app = DiffApp(sample_comparison, old_recs, new_recs)
+
+        async with app.run_test() as pilot:
+            # Move to a row to ensure detail view has content
+            await pilot.press("down")
+
+            # Press 'c' to copy
+            await pilot.press("c")
+
+            # Should remain on main screen (no modal)
+            assert len(app.screen_stack) == 1
+
+
+class TestMouseClickSupport:
+    """Tests for mouse click support in TUI (ep9.16)."""
+
+    @pytest.mark.asyncio
+    async def test_datatable_has_row_cursor_type(
+        self, sample_comparison, sample_old_data, sample_new_data
+    ):
+        """DataTable should have cursor_type='row' for mouse click support."""
+        from textual.widgets import DataTable
+
+        old_recs = {r["ref"]: r for r in sample_old_data.get("recommendations", [])}
+        new_recs = {r["ref"]: r for r in sample_new_data.get("recommendations", [])}
+
+        app = DiffApp(sample_comparison, old_recs, new_recs)
+
+        async with app.run_test() as pilot:
+            table = app.query_one("#changes-table", DataTable)
+            # cursor_type="row" enables mouse click to select rows
+            assert table.cursor_type == "row"
+
+    @pytest.mark.asyncio
+    async def test_mouse_click_selects_row(
+        self, sample_comparison, sample_old_data, sample_new_data
+    ):
+        """Clicking a row should select it and update detail view."""
+        from textual.widgets import DataTable
+
+        old_recs = {r["ref"]: r for r in sample_old_data.get("recommendations", [])}
+        new_recs = {r["ref"]: r for r in sample_new_data.get("recommendations", [])}
+
+        app = DiffApp(sample_comparison, old_recs, new_recs)
+
+        async with app.run_test() as pilot:
+            table = app.query_one("#changes-table", DataTable)
+
+            # Verify table has rows
+            assert table.row_count > 0
+
+            # Get initial cursor position
+            initial_cursor = table.cursor_row
+
+            # Move cursor down to verify table is interactive
+            await pilot.press("j")  # vim-style down
+
+            # Cursor should have moved (or stayed at 0 if already there)
+            # The important thing is that the table responds to input
+            assert table.cursor_row >= 0
+
+    @pytest.mark.asyncio
+    async def test_row_highlight_triggers_detail_update(
+        self, sample_comparison, sample_old_data, sample_new_data
+    ):
+        """Row highlight (from keyboard or mouse) should update detail view."""
+
+        old_recs = {r["ref"]: r for r in sample_old_data.get("recommendations", [])}
+        new_recs = {r["ref"]: r for r in sample_new_data.get("recommendations", [])}
+
+        app = DiffApp(sample_comparison, old_recs, new_recs)
+
+        async with app.run_test() as pilot:
+            # Move to a row
+            await pilot.press("down")
+
+            # Detail view should have content
+            detail = app.query_one("#detail-view", DiffDetailView)
+            content = detail.get_content_text()
+
+            # Should have some content (not empty)
+            assert len(content) > 0

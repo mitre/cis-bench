@@ -164,6 +164,33 @@ class SaveDialog(ModalScreen):
         self.dismiss(None)
 
 
+class JumpDialog(ModalScreen):
+    """Modal dialog for jumping to a specific ref."""
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel"),
+    ]
+
+    def compose(self) -> ComposeResult:
+        yield Container(
+            Label("Jump to Ref", id="jump-title"),
+            Label("Enter ref (e.g., 1.2.3):", id="ref-label"),
+            Input(placeholder="1.2.3", id="jump-input"),
+            Label("Press Enter to jump, Escape to cancel", id="jump-hint"),
+            id="jump-dialog",
+        )
+
+    def on_mount(self) -> None:
+        self.query_one("#jump-input", Input).focus()
+
+    @on(Input.Submitted)
+    def on_submit(self, event: Input.Submitted) -> None:
+        self.dismiss(event.value)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
 class DetailView(Static):
     """Base class for detailed content display with markdown rendering."""
 
@@ -403,6 +430,34 @@ DataTable:focus {
     width: auto;
     padding: 0 1;
 }
+
+#jump-dialog {
+    align: center middle;
+    width: 50;
+    height: 10;
+    border: solid $primary;
+    background: $surface;
+    padding: 1 2;
+}
+
+#jump-title {
+    text-style: bold;
+    width: 100%;
+    text-align: center;
+    padding-bottom: 1;
+}
+
+#jump-input {
+    width: 100%;
+    margin: 1 0;
+}
+
+#jump-hint {
+    text-style: italic;
+    color: $text-muted;
+    width: 100%;
+    text-align: center;
+}
 """
 
 # Common key bindings
@@ -411,6 +466,8 @@ COMMON_BINDINGS = [
     Binding("escape", "quit", "Quit"),
     Binding("question_mark", "show_help", "Help", show=True),
     Binding("slash", "start_search", "Search", show=True),
+    Binding("g", "jump_to_ref", "Go to Ref", show=True),
+    Binding("c", "copy_to_clipboard", "Copy", show=True),
     Binding("tab", "toggle_focus", "Switch Pane", show=True),
     Binding("j", "cursor_down", "Down", show=False),
     Binding("k", "cursor_up", "Up", show=False),
@@ -526,6 +583,65 @@ class BaseBrowserApp(App):
         else:
             list_container.styles.display = "block"
             detail_container.styles.width = "60%"
+
+    def action_jump_to_ref(self) -> None:
+        """Open the jump to ref dialog."""
+
+        def handle_jump(ref: str | None) -> None:
+            """Handle the ref from the dialog."""
+            if ref:
+                self._jump_to_ref(ref)
+            self.query_one("#changes-table", DataTable).focus()
+
+        self.push_screen(JumpDialog(), handle_jump)
+
+    def action_copy_to_clipboard(self) -> None:
+        """Copy current detail view content to clipboard."""
+        try:
+            import pyperclip
+
+            # Get the detail view content
+            detail = self.query_one("#detail-view")
+            if hasattr(detail, "get_content_text"):
+                content = detail.get_content_text()
+                if content:
+                    pyperclip.copy(content)
+                    self.notify("Copied to clipboard", severity="information")
+                else:
+                    self.notify("No content to copy", severity="warning")
+            else:
+                self.notify("Cannot copy from this view", severity="warning")
+        except ImportError:
+            self.notify("Clipboard not available (install pyperclip)", severity="error")
+        except Exception as e:
+            self.notify(f"Copy failed: {e}", severity="error")
+
+    def _jump_to_ref(self, target_ref: str) -> None:
+        """Jump to a specific ref in the table.
+
+        Args:
+            target_ref: The ref to jump to (e.g., "1.2.3").
+        """
+        table = self.query_one("#changes-table", DataTable)
+        target_ref = target_ref.strip()
+
+        # Search through table rows for matching ref
+        for row_idx, row_key in enumerate(table.rows):
+            # Get the first column value (ref) from the row
+            row_data = table.get_row(row_key)
+            if row_data:
+                # First column is typically the ref or status+ref
+                ref_cell = str(row_data[0]) if row_data else ""
+                # Also check second column in case first is status indicator
+                ref_cell2 = str(row_data[1]) if len(row_data) > 1 else ""
+
+                if target_ref in ref_cell or target_ref in ref_cell2:
+                    # Found the ref, move cursor to this row
+                    table.move_cursor(row=row_idx)
+                    return
+
+        # If not found, notify user (could use a notification widget)
+        self.notify(f"Ref '{target_ref}' not found", severity="warning")
 
     def _truncate(self, text: str, length: int) -> str:
         """Truncate text with ellipsis."""

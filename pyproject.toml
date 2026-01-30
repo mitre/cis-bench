@@ -56,6 +56,7 @@ dependencies = [
     "deepdiff>=8.0.0",
     # HTML to text/markdown conversion
     "html2text>=2024.2.26",
+    "pyperclip>=1.11.0",
 ]
 
 [project.optional-dependencies]
