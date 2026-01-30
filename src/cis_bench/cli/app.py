@@ -68,6 +68,7 @@ def cli(ctx, verbose, debug, quiet, offline):
 # Import and register commands
 from cis_bench.cli.commands import (
     auth,
+    browse,
     cache,
     catalog,
     diff,
@@ -82,6 +83,7 @@ from cis_bench.cli.commands import (
 )
 
 cli.add_command(auth.auth)
+cli.add_command(browse.browse_cmd)
 cli.add_command(cache.cache)
 cli.add_command(diff.diff_cmd)
 cli.add_command(download.download)
