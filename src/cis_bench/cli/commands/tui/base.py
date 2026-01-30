@@ -1,13 +1,15 @@
 """Base TUI components for cis-bench interactive commands."""
 
 import re
+from abc import abstractmethod
 
 import html2text
 from rich.markdown import Markdown
-from textual.app import App
+from textual import on
+from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import VerticalScroll
-from textual.widgets import DataTable, Input, Static
+from textual.containers import Container, Horizontal, VerticalScroll
+from textual.widgets import DataTable, Footer, Header, Input, Static
 
 from cis_bench.cli.commands.tui.widgets import HelpScreen, JumpDialog, SearchInput
 
@@ -354,13 +356,123 @@ class BaseBrowserApp(App):
     CSS = COMMON_CSS
     BINDINGS = COMMON_BINDINGS
 
+    # Override in subclass to disable search container (e.g., ViewApp)
+    has_search_container = True
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self._item_list = []
+        self._items = []  # Standardized: current visible items
         self._focus_on_detail = False
         self._fullscreen_detail = False
         self._search_active = False
         self._search_query = ""
+
+    @abstractmethod
+    def get_detail_view(self) -> Static:
+        """Return the detail view widget for this app.
+
+        Subclasses must implement this to return their specific detail view.
+
+        Returns:
+            A Static widget (or subclass) to display item details.
+        """
+        pass
+
+    @abstractmethod
+    def _build_summary(self):
+        """Build the summary text for the header.
+
+        Subclasses must implement this to return their specific summary.
+
+        Returns:
+            A Text object or string for the summary display.
+        """
+        pass
+
+    @abstractmethod
+    def _show_detail(self, index: int) -> None:
+        """Show detail for the selected item.
+
+        Subclasses must implement this to update their detail view.
+
+        Args:
+            index: Index of the item in self._items to display.
+        """
+        pass
+
+    @abstractmethod
+    def _get_columns(self) -> list[str]:
+        """Return column headers for the data table.
+
+        Returns:
+            List of column header strings.
+        """
+        pass
+
+    @abstractmethod
+    def _populate_table(self) -> None:
+        """Populate the table with data.
+
+        Subclasses must implement this to add rows to the table.
+        Should update self._items as rows are added.
+        """
+        pass
+
+    def on_mount(self) -> None:
+        """Set up the table when app mounts."""
+        table = self.query_one("#changes-table", DataTable)
+        table.cursor_type = "row"
+        table.zebra_stripes = True
+
+        # Add columns from subclass
+        table.add_columns(*self._get_columns())
+
+        # Populate table (subclass implements)
+        self._populate_table()
+
+        # Show first item details if available
+        if self._items:
+            self._show_detail(0)
+
+        # Focus the table initially
+        table.focus()
+
+    @on(DataTable.RowHighlighted)
+    def on_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
+        """Update detail view when row selection changes."""
+        if event.cursor_row is not None and event.cursor_row < len(self._items):
+            self._show_detail(event.cursor_row)
+
+    def compose(self) -> ComposeResult:
+        """Compose the standard browser layout.
+
+        Structure:
+        - Header
+        - Summary line
+        - Main container (list + detail)
+        - Optional search container
+        - Footer
+        """
+        yield Header()
+        yield Static(self._build_summary(), id="summary")
+        yield Horizontal(
+            Container(
+                DataTable(id="changes-table"),
+                id="list-container",
+            ),
+            VerticalScroll(
+                self.get_detail_view(),
+                id="detail-container",
+            ),
+            id="main-container",
+        )
+        if self.has_search_container:
+            yield Container(
+                SearchInput(),
+                Static("", id="search-count"),
+                id="search-container",
+            )
+        yield Footer()
 
     def action_start_search(self) -> None:
         """Open the search input."""

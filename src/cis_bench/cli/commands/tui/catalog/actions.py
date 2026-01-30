@@ -6,67 +6,19 @@ from textual.containers import Container, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, Label
 
-# CSS specific to catalog browser (extends COMMON_CSS)
-CATALOG_CSS = """
-#main-container {
-    height: 100%;
-    width: 100%;
-}
+from cis_bench.cli.commands.tui.base import COMMON_CSS
 
+# CSS specific to catalog browser - extends COMMON_CSS with overrides
+CATALOG_CSS = (
+    COMMON_CSS
+    + """
+/* Catalog-specific overrides */
 #list-container {
     width: 45%;
-    height: 100%;
-    border: solid $primary;
 }
 
 #detail-container {
     width: 55%;
-    height: 100%;
-    border: solid $secondary;
-    padding: 1;
-    overflow-y: auto;
-}
-
-#detail-container:focus-within {
-    border: solid $accent;
-}
-
-#summary {
-    height: 3;
-    padding: 0 1;
-    background: $surface;
-    dock: top;
-}
-
-DataTable {
-    height: 100%;
-}
-
-DataTable:focus {
-    border: solid $accent;
-}
-
-#search-container {
-    dock: bottom;
-    height: 3;
-    width: 100%;
-    background: $surface;
-    padding: 0 1;
-    display: none;
-}
-
-#search-container.visible {
-    display: block;
-}
-
-#search-input {
-    width: 100%;
-}
-
-#search-count {
-    dock: right;
-    width: auto;
-    padding: 0 1;
 }
 
 /* Action menu styles */
@@ -105,6 +57,7 @@ DataTable:focus {
     margin-top: 1;
 }
 """
+)
 
 
 class ActionMenu(ModalScreen):

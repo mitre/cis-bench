@@ -3,16 +3,12 @@
 import logging
 
 from rich.text import Text
-from textual import on
-from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, Horizontal, VerticalScroll
-from textual.widgets import DataTable, Footer, Header, Static
+from textual.widgets import DataTable, Static
 
-from cis_bench.cli.commands.tui.base import BaseBrowserApp
+from cis_bench.cli.commands.tui.base import COMMON_BINDINGS, BaseBrowserApp
 from cis_bench.cli.commands.tui.catalog.actions import CATALOG_CSS, ActionMenu
 from cis_bench.cli.commands.tui.catalog.detail import CatalogDetailView
-from cis_bench.cli.commands.tui.widgets import SearchInput
 
 logger = logging.getLogger(__name__)
 
@@ -22,22 +18,8 @@ class CatalogBrowserApp(BaseBrowserApp):
 
     CSS = CATALOG_CSS
 
-    BINDINGS = [
-        Binding("q", "quit", "Quit"),
-        Binding("escape", "quit", "Quit"),
-        Binding("question_mark", "show_help", "Help", show=True),
-        Binding("slash", "start_search", "Search", show=True),
-        Binding("g", "jump_to_ref", "Go to ID", show=True),
-        Binding("c", "copy_to_clipboard", "Copy", show=True),
-        Binding("tab", "toggle_focus", "Switch Pane", show=True),
-        Binding("j", "cursor_down", "Down", show=False),
-        Binding("k", "cursor_up", "Up", show=False),
-        Binding("down", "cursor_down", "Down", show=False),
-        Binding("up", "cursor_up", "Up", show=False),
-        Binding("pagedown", "page_down", "Page Down", show=False),
-        Binding("pageup", "page_up", "Page Up", show=False),
-        Binding("f", "toggle_fullscreen", "Fullscreen", show=True),
-        Binding("r", "reverse_sort", "Reverse", show=True),
+    # Extend COMMON_BINDINGS with catalog-specific bindings
+    BINDINGS = COMMON_BINDINGS + [
         # Selection
         Binding("space", "toggle_select", "Select", show=True),
         # Actions
@@ -52,13 +34,18 @@ class CatalogBrowserApp(BaseBrowserApp):
             offline: Whether running in offline mode.
         """
         super().__init__(**kwargs)
-        self._benchmarks = benchmarks
-        self._all_benchmarks = benchmarks.copy()
+        # Standardized naming: _items for visible, _all_items for unfiltered
+        self._items = benchmarks
+        self._all_items = benchmarks.copy()
         self.offline = offline
         self._sort_reverse = False
         self._selected_indices: set[int] = set()
         self._downloaded_ids: set[str] = set()
         self._load_downloaded_ids()
+
+    def get_detail_view(self) -> Static:
+        """Return the catalog detail view widget."""
+        return CatalogDetailView(id="detail-view")
 
     def _load_downloaded_ids(self) -> None:
         """Load set of downloaded benchmark IDs from database."""
@@ -77,27 +64,6 @@ class CatalogBrowserApp(BaseBrowserApp):
         except Exception as e:
             # Downloaded status is optional enhancement - log and continue
             logger.debug(f"Could not load downloaded IDs: {e}")
-
-    def compose(self) -> ComposeResult:
-        yield Header()
-        yield Static(self._build_summary(), id="summary")
-        yield Horizontal(
-            Container(
-                DataTable(id="changes-table"),
-                id="list-container",
-            ),
-            VerticalScroll(
-                CatalogDetailView(id="detail-view"),
-                id="detail-container",
-            ),
-            id="main-container",
-        )
-        yield Container(
-            SearchInput(),
-            Static("", id="search-count"),
-            id="search-container",
-        )
-        yield Footer()
 
     def on_resize(self, event) -> None:
         """Handle terminal resize for responsive layout."""
@@ -132,7 +98,7 @@ class CatalogBrowserApp(BaseBrowserApp):
         if self.offline:
             text.append("[OFFLINE] ", style="bold yellow")
         text.append("CIS Benchmark Catalog  ", style="bold")
-        text.append(f"{len(self._benchmarks)} benchmarks", style="dim")
+        text.append(f"{len(self._items)} benchmarks", style="dim")
         if self._selected_indices:
             text.append(f"  ({len(self._selected_indices)} selected)", style="cyan")
         return text
@@ -142,29 +108,15 @@ class CatalogBrowserApp(BaseBrowserApp):
         summary = self.query_one("#summary", Static)
         summary.update(self._build_summary())
 
-    def on_mount(self) -> None:
-        """Set up the table when app mounts."""
-        table = self.query_one("#changes-table", DataTable)
-        table.cursor_type = "row"
-        table.zebra_stripes = True
-
-        # Columns: Selection checkbox, ID, Title (with version), Platform
-        table.add_columns("", "ID", "Title", "Platform")
-
-        self._populate_table()
-
-        # Show first item details if available
-        if self._benchmarks:
-            self._show_detail(0)
-
-        # Focus the table initially
-        table.focus()
+    def _get_columns(self) -> list[str]:
+        """Return column headers for catalog table."""
+        return ["", "ID", "Title", "Platform"]
 
     def _populate_table(self) -> None:
         """Populate the table with benchmark data."""
         table = self.query_one("#changes-table", DataTable)
 
-        for idx, benchmark in enumerate(self._benchmarks):
+        for idx, benchmark in enumerate(self._items):
             # Selection checkbox
             is_selected = idx in self._selected_indices
             checkbox = Text("●", style="cyan bold") if is_selected else Text("○", style="dim")
@@ -189,18 +141,12 @@ class CatalogBrowserApp(BaseBrowserApp):
                 platform,
             )
 
-    @on(DataTable.RowHighlighted)
-    def on_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
-        """Update detail view when row selection changes."""
-        if event.cursor_row is not None and event.cursor_row < len(self._benchmarks):
-            self._show_detail(event.cursor_row)
-
     def _show_detail(self, index: int) -> None:
         """Show detail for the selected benchmark."""
-        if index < 0 or index >= len(self._benchmarks):
+        if index < 0 or index >= len(self._items):
             return
 
-        benchmark = self._benchmarks[index]
+        benchmark = self._items[index]
         detail_view = self.query_one("#detail-view", CatalogDetailView)
         detail_view.update_content(benchmark)
 
@@ -224,7 +170,7 @@ class CatalogBrowserApp(BaseBrowserApp):
         current_row = table.cursor_row
         table.clear()
         self._populate_table()
-        if current_row is not None and current_row < len(self._benchmarks):
+        if current_row is not None and current_row < len(self._items):
             table.move_cursor(row=current_row)
 
     def action_open_actions(self) -> None:
@@ -232,11 +178,11 @@ class CatalogBrowserApp(BaseBrowserApp):
         table = self.query_one("#changes-table", DataTable)
         current_row = table.cursor_row
 
-        if current_row is None or current_row >= len(self._benchmarks):
+        if current_row is None or current_row >= len(self._items):
             self.notify("No benchmark selected", severity="warning")
             return
 
-        benchmark = self._benchmarks[current_row]
+        benchmark = self._items[current_row]
         benchmark_id = str(benchmark.get("benchmark_id", ""))
         is_downloaded = benchmark_id in self._downloaded_ids
 
@@ -281,9 +227,7 @@ class CatalogBrowserApp(BaseBrowserApp):
             List of benchmark dictionaries for selected items.
         """
         return [
-            self._benchmarks[idx]
-            for idx in sorted(self._selected_indices)
-            if idx < len(self._benchmarks)
+            self._items[idx] for idx in sorted(self._selected_indices) if idx < len(self._items)
         ]
 
     def action_reverse_sort(self) -> None:
@@ -300,8 +244,8 @@ class CatalogBrowserApp(BaseBrowserApp):
         self._selected_indices.clear()  # Clear selections on rebuild
 
         # Sort by published date
-        self._benchmarks = sorted(
-            self._benchmarks,
+        self._items = sorted(
+            self._items,
             key=lambda x: x.get("published_date", "") or "",
             reverse=not self._sort_reverse,  # Default is newest first
         )
@@ -309,7 +253,7 @@ class CatalogBrowserApp(BaseBrowserApp):
         self._populate_table()
         self._update_summary()
 
-        if self._benchmarks:
+        if self._items:
             self._show_detail(0)
 
     def _apply_search_filter(self, query: str) -> None:
@@ -317,10 +261,10 @@ class CatalogBrowserApp(BaseBrowserApp):
         query = query.lower().strip()
         table = self.query_one("#changes-table", DataTable)
         table.clear()
-        self._benchmarks = []
+        self._items = []
         self._selected_indices.clear()  # Clear selections on filter
 
-        for benchmark in self._all_benchmarks:
+        for benchmark in self._all_items:
             # Check if query matches ID, title, platform, or description
             # Handle None values safely with `or ""`
             benchmark_id = str(benchmark.get("benchmark_id", ""))
@@ -340,7 +284,7 @@ class CatalogBrowserApp(BaseBrowserApp):
             ):
                 continue
 
-            self._benchmarks.append(benchmark)
+            self._items.append(benchmark)
 
         self._populate_table()
         self._update_summary()
@@ -348,11 +292,11 @@ class CatalogBrowserApp(BaseBrowserApp):
         # Update search count
         search_count = self.query_one("#search-count", Static)
         if query:
-            search_count.update(f"{len(self._benchmarks)}/{len(self._all_benchmarks)}")
+            search_count.update(f"{len(self._items)}/{len(self._all_items)}")
         else:
             search_count.update("")
 
-        if self._benchmarks:
+        if self._items:
             self._show_detail(0)
 
 

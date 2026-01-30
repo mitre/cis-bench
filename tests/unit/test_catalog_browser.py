@@ -3,6 +3,38 @@
 import pytest
 
 
+class TestCatalogCSSExtension:
+    """Test that CATALOG_CSS properly extends COMMON_CSS."""
+
+    def test_catalog_css_contains_common_css(self):
+        """CATALOG_CSS should include all of COMMON_CSS."""
+        from cis_bench.cli.commands.tui import COMMON_CSS
+        from cis_bench.cli.commands.tui.catalog.actions import CATALOG_CSS
+
+        # Key elements from COMMON_CSS should be in CATALOG_CSS
+        assert "#main-container" in CATALOG_CSS
+        assert "#detail-container" in CATALOG_CSS
+        assert "#search-container" in CATALOG_CSS
+        # COMMON_CSS has dialogs that catalog should inherit
+        assert "#save-dialog" in CATALOG_CSS or COMMON_CSS in CATALOG_CSS
+        assert "#help-dialog" in CATALOG_CSS or COMMON_CSS in CATALOG_CSS
+
+    def test_catalog_css_has_overrides(self):
+        """CATALOG_CSS should have catalog-specific overrides."""
+        from cis_bench.cli.commands.tui.catalog.actions import CATALOG_CSS
+
+        # Catalog uses different widths
+        assert "45%" in CATALOG_CSS  # list-container
+        assert "55%" in CATALOG_CSS  # detail-container
+
+    def test_catalog_css_has_action_menu(self):
+        """CATALOG_CSS should include action menu styles."""
+        from cis_bench.cli.commands.tui.catalog.actions import CATALOG_CSS
+
+        assert "#action-menu" in CATALOG_CSS
+        assert "#action-buttons" in CATALOG_CSS
+
+
 class TestCatalogBrowserAppExists:
     """Test that CatalogBrowserApp class exists and has expected structure."""
 
@@ -35,6 +67,18 @@ class TestCatalogBrowserAppExists:
 
 class TestCatalogBrowserBindings:
     """Test that catalog browser has expected key bindings."""
+
+    def test_bindings_include_common_bindings(self):
+        """CatalogBrowserApp BINDINGS should include all COMMON_BINDINGS."""
+        from cis_bench.cli.commands.tui import COMMON_BINDINGS
+        from cis_bench.cli.commands.tui.catalog import CatalogBrowserApp
+
+        app_keys = [b.key for b in CatalogBrowserApp.BINDINGS]
+        common_keys = [b.key for b in COMMON_BINDINGS]
+
+        # All common keys should be in app bindings
+        for key in common_keys:
+            assert key in app_keys, f"Missing common binding: {key}"
 
     def test_has_search_binding(self):
         """Catalog browser should have search binding (/)."""
@@ -124,8 +168,9 @@ class TestCatalogBrowserInitialization:
         from cis_bench.cli.commands.tui.catalog import CatalogBrowserApp
 
         app = CatalogBrowserApp(benchmarks=sample_benchmarks)
-        assert hasattr(app, "_benchmarks")
-        assert app._benchmarks == sample_benchmarks
+        # Standardized naming: _items for current visible items
+        assert hasattr(app, "_items")
+        assert app._items == sample_benchmarks
 
     def test_initializes_empty_selection(self, sample_benchmarks):
         """CatalogBrowserApp should initialize with empty selection set."""
@@ -137,12 +182,13 @@ class TestCatalogBrowserInitialization:
         assert len(app._selected_indices) == 0
 
     def test_stores_all_benchmarks(self, sample_benchmarks):
-        """CatalogBrowserApp should store all benchmarks for filtering."""
+        """CatalogBrowserApp should store all items for filtering."""
         from cis_bench.cli.commands.tui.catalog import CatalogBrowserApp
 
         app = CatalogBrowserApp(benchmarks=sample_benchmarks)
-        assert hasattr(app, "_all_benchmarks")
-        assert app._all_benchmarks == sample_benchmarks
+        # Standardized naming: _all_items for unfiltered source
+        assert hasattr(app, "_all_items")
+        assert app._all_items == sample_benchmarks
 
 
 class TestCatalogDetailViewContent:

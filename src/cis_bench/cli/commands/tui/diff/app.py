@@ -1,19 +1,17 @@
 """Diff browser TUI application."""
 
 from rich.text import Text
-from textual import on
-from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, Horizontal, VerticalScroll
-from textual.widgets import DataTable, Footer, Header, Static
+from textual.widgets import DataTable, Static
 
 from cis_bench.cli.commands.tui.base import (
+    COMMON_BINDINGS,
     COMMON_CSS,
     BaseBrowserApp,
     natural_sort_key,
 )
 from cis_bench.cli.commands.tui.diff.detail import DiffDetailView
-from cis_bench.cli.commands.tui.widgets import SaveDialog, SearchInput
+from cis_bench.cli.commands.tui.widgets import SaveDialog
 
 
 class DiffApp(BaseBrowserApp):
@@ -21,23 +19,8 @@ class DiffApp(BaseBrowserApp):
 
     CSS = COMMON_CSS
 
-    BINDINGS = [
-        Binding("q", "quit", "Quit"),
-        Binding("escape", "quit", "Quit"),
-        Binding("question_mark", "show_help", "Help", show=True),
-        Binding("slash", "start_search", "Search", show=True),
-        Binding("g", "jump_to_ref", "Go to Ref", show=True),
-        Binding("c", "copy_to_clipboard", "Copy", show=True),
-        Binding("tab", "toggle_focus", "Switch Pane", show=True),
-        Binding("j", "cursor_down", "Down", show=False),
-        Binding("k", "cursor_up", "Up", show=False),
-        Binding("down", "cursor_down", "Down", show=False),
-        Binding("up", "cursor_up", "Up", show=False),
-        Binding("pagedown", "page_down", "Page Down", show=False),
-        Binding("pageup", "page_up", "Page Up", show=False),
-        Binding("s", "save_report", "Save Report", show=True),
-        Binding("f", "toggle_fullscreen", "Fullscreen", show=True),
-        Binding("r", "reverse_sort", "Reverse", show=True),
+    # Extend COMMON_BINDINGS with diff-specific bindings
+    BINDINGS = COMMON_BINDINGS + [
         # Selection
         Binding("space", "toggle_select", "Select", show=True),
         # Filter by change type
@@ -56,31 +39,19 @@ class DiffApp(BaseBrowserApp):
         self.old_recs = old_recs
         self.new_recs = new_recs
         self.offline = offline
-        self._change_list = []
-        self._all_changes = []  # Store all changes for search filtering
+        # Standardized naming: _items for visible, _all_items for unfiltered
+        self._items = []
+        self._all_items = []  # Store all changes for search filtering
         self._sort_reverse = False
         self._selected_indices: set[int] = set()  # Track selected row indices
 
-    def compose(self) -> ComposeResult:
-        yield Header()
-        yield Static(self._build_summary(), id="summary")
-        yield Horizontal(
-            Container(
-                DataTable(id="changes-table"),
-                id="list-container",
-            ),
-            VerticalScroll(
-                DiffDetailView(id="detail-view"),
-                id="detail-container",
-            ),
-            id="main-container",
-        )
-        yield Container(
-            SearchInput(),
-            Static("", id="search-count"),
-            id="search-container",
-        )
-        yield Footer()
+    def get_detail_view(self) -> Static:
+        """Return the diff detail view widget."""
+        return DiffDetailView(id="detail-view")
+
+    def _get_columns(self) -> list[str]:
+        """Return column headers for diff table."""
+        return ["Status", "Ref", "Title", "Details"]
 
     def _build_summary(self) -> Text:
         """Build summary text."""
@@ -99,14 +70,9 @@ class DiffApp(BaseBrowserApp):
         text.append(f"↷{s['renumbered']}", style="cyan")
         return text
 
-    def on_mount(self) -> None:
-        """Set up the table when app mounts."""
+    def _populate_table(self) -> None:
+        """Populate the table with change data."""
         table = self.query_one("#changes-table", DataTable)
-        table.cursor_type = "row"
-        table.zebra_stripes = True
-
-        table.add_columns("Status", "Ref", "Title", "Details")
-
         changes = self.comparison["changes"]
 
         # Sort each category by ref (natural/version sort)
@@ -118,19 +84,19 @@ class DiffApp(BaseBrowserApp):
         )
 
         # Build full change list for filtering
-        self._all_changes = []
+        self._all_items = []
         for item in added:
-            self._all_changes.append(("added", item))
+            self._all_items.append(("added", item))
         for item in removed:
-            self._all_changes.append(("removed", item))
+            self._all_items.append(("removed", item))
         for item in modified:
-            self._all_changes.append(("modified", item))
+            self._all_items.append(("modified", item))
         for item in renumbered:
-            self._all_changes.append(("renumbered", item))
+            self._all_items.append(("renumbered", item))
 
         # Add rows and track change data
         for item in added:
-            self._change_list.append(("added", item))
+            self._items.append(("added", item))
             table.add_row(
                 Text("✚ Added", style="green"),
                 item["ref"],
@@ -139,7 +105,7 @@ class DiffApp(BaseBrowserApp):
             )
 
         for item in removed:
-            self._change_list.append(("removed", item))
+            self._items.append(("removed", item))
             table.add_row(
                 Text("✖ Removed", style="red"),
                 item["ref"],
@@ -148,7 +114,7 @@ class DiffApp(BaseBrowserApp):
             )
 
         for item in modified:
-            self._change_list.append(("modified", item))
+            self._items.append(("modified", item))
             fields = item["fields_changed"]
             if len(fields) <= 2:
                 details = ", ".join(fields)
@@ -162,7 +128,7 @@ class DiffApp(BaseBrowserApp):
             )
 
         for item in renumbered:
-            self._change_list.append(("renumbered", item))
+            self._items.append(("renumbered", item))
             table.add_row(
                 Text("↷ Renum", style="cyan"),
                 f"{item['old_ref']}→{item['new_ref']}",
@@ -170,25 +136,12 @@ class DiffApp(BaseBrowserApp):
                 f"{item['similarity']}%",
             )
 
-        # Show first item details if available
-        if self._change_list:
-            self._show_detail(0)
-
-        # Focus the table initially
-        table.focus()
-
-    @on(DataTable.RowHighlighted)
-    def on_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
-        """Update detail view when row selection changes."""
-        if event.cursor_row is not None and event.cursor_row < len(self._change_list):
-            self._show_detail(event.cursor_row)
-
     def _show_detail(self, index: int) -> None:
         """Show detail for the selected change."""
-        if index < 0 or index >= len(self._change_list):
+        if index < 0 or index >= len(self._items):
             return
 
-        change_type, change_data = self._change_list[index]
+        change_type, change_data = self._items[index]
         detail_view = self.query_one("#detail-view", DiffDetailView)
 
         # Get old/new recommendation data
@@ -239,9 +192,7 @@ class DiffApp(BaseBrowserApp):
             List of (change_type, item_data) tuples for selected items.
         """
         return [
-            self._change_list[idx]
-            for idx in sorted(self._selected_indices)
-            if idx < len(self._change_list)
+            self._items[idx] for idx in sorted(self._selected_indices) if idx < len(self._items)
         ]
 
     def action_filter_added(self) -> None:
@@ -277,14 +228,14 @@ class DiffApp(BaseBrowserApp):
         """
         table = self.query_one("#changes-table", DataTable)
         table.clear()
-        self._change_list = []
+        self._items = []
 
         # Filter from _all_changes
         if change_type is None:
             # Show all
-            filtered = self._all_changes
+            filtered = self._all_items
         else:
-            filtered = [(t, item) for t, item in self._all_changes if t == change_type]
+            filtered = [(t, item) for t, item in self._all_items if t == change_type]
 
         # Re-sort the filtered list
         filtered = sorted(
@@ -295,7 +246,7 @@ class DiffApp(BaseBrowserApp):
 
         # Add to table
         for change_type_item, item in filtered:
-            self._change_list.append((change_type_item, item))
+            self._items.append((change_type_item, item))
             if change_type_item == "added":
                 table.add_row(
                     Text("✚ Added", style="green"),
@@ -330,7 +281,7 @@ class DiffApp(BaseBrowserApp):
         """Rebuild the table with current sort order."""
         table = self.query_one("#changes-table", DataTable)
         table.clear()
-        self._change_list = []
+        self._items = []
 
         changes = self.comparison["changes"]
 
@@ -357,7 +308,7 @@ class DiffApp(BaseBrowserApp):
         )
 
         for item in added:
-            self._change_list.append(("added", item))
+            self._items.append(("added", item))
             table.add_row(
                 Text("✚ Added", style="green"),
                 item["ref"],
@@ -366,7 +317,7 @@ class DiffApp(BaseBrowserApp):
             )
 
         for item in removed:
-            self._change_list.append(("removed", item))
+            self._items.append(("removed", item))
             table.add_row(
                 Text("✖ Removed", style="red"),
                 item["ref"],
@@ -375,7 +326,7 @@ class DiffApp(BaseBrowserApp):
             )
 
         for item in modified:
-            self._change_list.append(("modified", item))
+            self._items.append(("modified", item))
             fields = item["fields_changed"]
             if len(fields) <= 2:
                 details = ", ".join(fields)
@@ -389,7 +340,7 @@ class DiffApp(BaseBrowserApp):
             )
 
         for item in renumbered:
-            self._change_list.append(("renumbered", item))
+            self._items.append(("renumbered", item))
             table.add_row(
                 Text("↷ Renum", style="cyan"),
                 f"{item['old_ref']}→{item['new_ref']}",
@@ -397,7 +348,7 @@ class DiffApp(BaseBrowserApp):
                 f"{item['similarity']}%",
             )
 
-        if self._change_list:
+        if self._items:
             self._show_detail(0)
 
     def _apply_search_filter(self, query: str) -> None:
@@ -405,9 +356,9 @@ class DiffApp(BaseBrowserApp):
         query = query.lower().strip()
         table = self.query_one("#changes-table", DataTable)
         table.clear()
-        self._change_list = []
+        self._items = []
 
-        for change_type, item in self._all_changes:
+        for change_type, item in self._all_items:
             # Check if query matches ref or title
             ref = item.get("ref", "") or item.get("new_ref", "") or item.get("old_ref", "")
             title = item.get("title", "")
@@ -415,7 +366,7 @@ class DiffApp(BaseBrowserApp):
             if query and query not in ref.lower() and query not in title.lower():
                 continue
 
-            self._change_list.append((change_type, item))
+            self._items.append((change_type, item))
 
             if change_type == "added":
                 table.add_row(
@@ -454,11 +405,11 @@ class DiffApp(BaseBrowserApp):
         # Update search count
         search_count = self.query_one("#search-count", Static)
         if query:
-            search_count.update(f"{len(self._change_list)}/{len(self._all_changes)}")
+            search_count.update(f"{len(self._items)}/{len(self._all_items)}")
         else:
             search_count.update("")
 
-        if self._change_list:
+        if self._items:
             self._show_detail(0)
 
     def action_save_report(self) -> None:
@@ -498,7 +449,7 @@ class DiffApp(BaseBrowserApp):
         ]
 
         # Add each change
-        for change_type, change_data in self._change_list:
+        for change_type, change_data in self._items:
             if change_type == "added":
                 old_rec = None
                 new_rec = self.new_recs.get(change_data["ref"])

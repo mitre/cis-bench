@@ -148,6 +148,22 @@ class TestTTYDetection:
         assert "Summary" in result.output or "Benchmark Comparison" in result.output
 
 
+class TestBaseBrowserAppCompose:
+    """Test that BaseBrowserApp compose() produces expected structure."""
+
+    def test_base_browser_has_get_detail_view_method(self):
+        """BaseBrowserApp should have get_detail_view abstract method."""
+        from cis_bench.cli.commands.tui import BaseBrowserApp
+
+        assert hasattr(BaseBrowserApp, "get_detail_view")
+
+    def test_base_browser_has_search_container_attr(self):
+        """BaseBrowserApp should have has_search_container class attribute."""
+        from cis_bench.cli.commands.tui import BaseBrowserApp
+
+        assert hasattr(BaseBrowserApp, "has_search_container")
+
+
 class TestDiffAppCreation:
     """Test DiffApp TUI component creation."""
 
@@ -173,6 +189,23 @@ class TestDiffAppCreation:
         binding_keys = [b.key for b in app.BINDINGS]
         assert "q" in binding_keys
         assert "escape" in binding_keys
+
+    def test_diff_app_bindings_include_common_bindings(
+        self, sample_comparison, sample_old_data, sample_new_data
+    ):
+        """DiffApp BINDINGS should include all COMMON_BINDINGS."""
+        from cis_bench.cli.commands.tui import COMMON_BINDINGS
+
+        old_recs = {r["ref"]: r for r in sample_old_data.get("recommendations", [])}
+        new_recs = {r["ref"]: r for r in sample_new_data.get("recommendations", [])}
+
+        app = DiffApp(sample_comparison, old_recs, new_recs)
+        app_keys = [b.key for b in app.BINDINGS]
+        common_keys = [b.key for b in COMMON_BINDINGS]
+
+        # All common keys should be in app bindings
+        for key in common_keys:
+            assert key in app_keys, f"Missing common binding: {key}"
 
 
 class TestDiffAppAsync:
@@ -205,8 +238,8 @@ class TestDiffAppAsync:
         app = DiffApp(sample_comparison, old_recs, new_recs)
 
         async with app.run_test() as pilot:
-            # The change list should be populated
-            assert len(app._change_list) == 4  # 1 added + 1 removed + 1 modified + 1 renumbered
+            # The items list should be populated (standardized naming)
+            assert len(app._items) == 4  # 1 added + 1 removed + 1 modified + 1 renumbered
 
     @pytest.mark.asyncio
     async def test_diff_app_keyboard_navigation(
@@ -683,15 +716,15 @@ class TestSearchInTUI:
         app = DiffApp(sample_comparison, old_recs, new_recs)
 
         async with app.run_test() as pilot:
-            # Initial count
-            initial_count = len(app._change_list)
+            # Initial count (standardized naming: _items)
+            initial_count = len(app._items)
             assert initial_count > 0
 
             # Open search and type
             await pilot.press("slash")
             await pilot.press("x", "y", "z")  # Type something unlikely to match
 
-            # The visible items should be filtered (or show no matches)
+            # The visible _items should be filtered (or show no matches)
             # This tests that the filter mechanism exists
             assert app._search_query is not None or hasattr(app, "_search_query")
 
