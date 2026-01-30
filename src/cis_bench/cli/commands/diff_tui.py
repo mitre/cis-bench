@@ -131,6 +131,8 @@ class DiffApp(BaseBrowserApp):
         Binding("s", "save_report", "Save Report", show=True),
         Binding("f", "toggle_fullscreen", "Fullscreen", show=True),
         Binding("r", "reverse_sort", "Reverse", show=True),
+        # Selection
+        Binding("space", "toggle_select", "Select", show=True),
         # Filter by change type
         Binding("1", "filter_added", "Added Only", show=False),
         Binding("2", "filter_removed", "Removed Only", show=False),
@@ -150,6 +152,7 @@ class DiffApp(BaseBrowserApp):
         self._change_list = []
         self._all_changes = []  # Store all changes for search filtering
         self._sort_reverse = False
+        self._selected_indices: set[int] = set()  # Track selected row indices
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -306,6 +309,33 @@ class DiffApp(BaseBrowserApp):
         self._rebuild_table()
         direction = "descending" if self._sort_reverse else "ascending"
         self.notify(f"Sort: {direction}", title="Sort Order")
+
+    def action_toggle_select(self) -> None:
+        """Toggle selection on the current row."""
+        table = self.query_one("#changes-table", DataTable)
+        current_row = table.cursor_row
+
+        if current_row in self._selected_indices:
+            self._selected_indices.remove(current_row)
+        else:
+            self._selected_indices.add(current_row)
+
+        # Update visual indicator (for now just notify)
+        count = len(self._selected_indices)
+        if count > 0:
+            self.notify(f"Selected: {count} items", severity="information")
+
+    def get_selected_items(self) -> list[tuple[str, dict]]:
+        """Get the selected items from the change list.
+
+        Returns:
+            List of (change_type, item_data) tuples for selected items.
+        """
+        return [
+            self._change_list[idx]
+            for idx in sorted(self._selected_indices)
+            if idx < len(self._change_list)
+        ]
 
     def action_filter_added(self) -> None:
         """Filter to show only added items."""

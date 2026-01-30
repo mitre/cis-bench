@@ -963,6 +963,70 @@ class TestJumpToRef:
             assert len(app.screen_stack) == 1
 
 
+class TestMultiSelect:
+    """Tests for multi-select support (space key) - ep9.4."""
+
+    def test_select_binding_exists(self):
+        """Space key should be bound for toggling selection."""
+        from cis_bench.cli.commands.diff_tui import DiffApp
+
+        binding_keys = [b.key for b in DiffApp.BINDINGS]
+        assert "space" in binding_keys
+
+    def test_diff_app_has_selection_tracking(self):
+        """DiffApp should have _selected_indices set."""
+        from cis_bench.cli.commands.diff_tui import DiffApp
+
+        # Check that DiffApp has selection tracking
+        app = DiffApp({}, {}, {})
+        assert hasattr(app, "_selected_indices")
+        assert isinstance(app._selected_indices, set)
+
+    @pytest.mark.asyncio
+    async def test_space_toggles_selection(
+        self, sample_comparison, sample_old_data, sample_new_data
+    ):
+        """Pressing space should toggle selection on current row."""
+        old_recs = {r["ref"]: r for r in sample_old_data.get("recommendations", [])}
+        new_recs = {r["ref"]: r for r in sample_new_data.get("recommendations", [])}
+
+        app = DiffApp(sample_comparison, old_recs, new_recs)
+
+        async with app.run_test() as pilot:
+            # Initially no selection
+            assert len(app._selected_indices) == 0
+
+            # Press space to select current row
+            await pilot.press("space")
+
+            # Should have 1 selected
+            assert len(app._selected_indices) == 1
+
+            # Press space again to deselect
+            await pilot.press("space")
+
+            # Should be back to 0
+            assert len(app._selected_indices) == 0
+
+    @pytest.mark.asyncio
+    async def test_multiple_selections(self, sample_comparison, sample_old_data, sample_new_data):
+        """Should be able to select multiple rows."""
+        old_recs = {r["ref"]: r for r in sample_old_data.get("recommendations", [])}
+        new_recs = {r["ref"]: r for r in sample_new_data.get("recommendations", [])}
+
+        app = DiffApp(sample_comparison, old_recs, new_recs)
+
+        async with app.run_test() as pilot:
+            # Select first row
+            await pilot.press("space")
+            # Move down and select another
+            await pilot.press("j")
+            await pilot.press("space")
+
+            # Should have 2 selected
+            assert len(app._selected_indices) == 2
+
+
 class TestFilterByChangeType:
     """Tests for filter by change type feature - ep9.5."""
 

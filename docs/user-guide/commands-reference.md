@@ -736,6 +736,9 @@ that auto-activates when running in a terminal.
 |-----|--------|
 | `?` | Show help screen with all shortcuts |
 | `/` | Start search (filters items in real-time) |
+| `g` | Jump to specific ref (opens input dialog) |
+| `c` | Copy current item to clipboard |
+| `Space` | Toggle selection on current item |
 | `Tab` | Switch focus between list and detail panes |
 | `↑/↓` or `j/k` | Navigate up/down in list |
 | `Page Up/Down` | Scroll detail pane |
@@ -743,6 +746,16 @@ that auto-activates when running in a terminal.
 | `r` | Reverse sort order (asc/desc) |
 | `s` | Save report to file |
 | `q` or `Esc` | Quit |
+
+**Diff-only shortcuts:**
+
+| Key | Action |
+|-----|--------|
+| `1` | Filter to show only added items |
+| `2` | Filter to show only removed items |
+| `3` | Filter to show only modified items |
+| `4` | Filter to show only renumbered items |
+| `0` | Reset filter (show all) |
 
 ### Search Mode
 
@@ -752,6 +765,39 @@ Press `/` to open the search bar:
 - Shows match count (e.g., "12/45")
 - Press `Enter` to keep filter and return to list
 - Press `Escape` to cancel and restore all items
+
+### Jump to Ref
+
+Press `g` to open a quick-jump dialog:
+
+1. Type a ref number (e.g., `1.2.3`, `6.1.2.5`)
+2. Press `Enter` to jump to that row
+3. Press `Escape` to cancel
+
+Useful for navigating to specific controls in long benchmarks.
+
+### Copy to Clipboard
+
+Press `c` to copy the current item's detail view content to clipboard.
+The content is copied as Markdown, ready to paste into documentation or tickets.
+
+### Multi-Select
+
+Press `Space` to toggle selection on the current row:
+
+- Selected items are tracked for batch operations
+- Move to another row and press `Space` again to select multiple
+- Press `Space` on a selected item to deselect it
+
+### Filter by Change Type (Diff Only)
+
+In the diff TUI, use number keys to filter by change type:
+
+- `1` - Show only added recommendations
+- `2` - Show only removed recommendations
+- `3` - Show only modified recommendations
+- `4` - Show only renumbered recommendations
+- `0` - Reset filter and show all changes
 
 ### Offline Indicator
 
