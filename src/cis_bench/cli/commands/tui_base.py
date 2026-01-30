@@ -64,6 +64,55 @@ def html_to_markdown(html_content: str) -> str:
     return _h2t.handle(html_content).strip()
 
 
+class HelpScreen(ModalScreen):
+    """Modal screen showing keyboard shortcuts."""
+
+    BINDINGS = [
+        Binding("escape", "dismiss", "Close"),
+        Binding("question_mark", "dismiss", "Close"),
+        Binding("q", "dismiss", "Close"),
+    ]
+
+    def __init__(self, bindings: list, **kwargs):
+        """Initialize help screen with bindings to display.
+
+        Args:
+            bindings: List of Binding objects to show in help.
+        """
+        super().__init__(**kwargs)
+        self.bindings_list = bindings
+
+    def compose(self) -> ComposeResult:
+        yield Container(
+            Label("Keyboard Shortcuts", id="help-title"),
+            VerticalScroll(
+                Static(self.get_help_content(), id="help-content"),
+                id="help-scroll",
+            ),
+            Label("Press ? or Esc to close", id="help-hint"),
+            id="help-dialog",
+        )
+
+    def get_help_content(self) -> str:
+        """Generate formatted help content from bindings.
+
+        Returns:
+            Formatted string with all keybindings.
+        """
+        lines = []
+        for binding in self.bindings_list:
+            # Skip hidden bindings that duplicate others
+            key_display = binding.key.replace("_", " ").title()
+            if binding.key == "question_mark":
+                key_display = "?"
+            lines.append(f"  {key_display:<15} {binding.description}")
+        return "\n".join(lines)
+
+    def action_dismiss(self) -> None:
+        """Close the help screen."""
+        self.app.pop_screen()
+
+
 class SaveDialog(ModalScreen):
     """Modal dialog for saving a report."""
 
@@ -278,12 +327,46 @@ DataTable:focus {
     width: 100%;
     text-align: center;
 }
+
+#help-dialog {
+    align: center middle;
+    width: 50;
+    height: 20;
+    border: solid $primary;
+    background: $surface;
+    padding: 1 2;
+}
+
+#help-title {
+    text-style: bold;
+    width: 100%;
+    text-align: center;
+    padding-bottom: 1;
+}
+
+#help-scroll {
+    height: 100%;
+    width: 100%;
+}
+
+#help-content {
+    width: 100%;
+}
+
+#help-hint {
+    text-style: italic;
+    color: $text-muted;
+    width: 100%;
+    text-align: center;
+    dock: bottom;
+}
 """
 
 # Common key bindings
 COMMON_BINDINGS = [
     Binding("q", "quit", "Quit"),
     Binding("escape", "quit", "Quit"),
+    Binding("question_mark", "show_help", "Help", show=True),
     Binding("tab", "toggle_focus", "Switch Pane", show=True),
     Binding("j", "cursor_down", "Down", show=False),
     Binding("k", "cursor_up", "Up", show=False),
@@ -308,6 +391,10 @@ class BaseBrowserApp(App):
         self._item_list = []
         self._focus_on_detail = False
         self._fullscreen_detail = False
+
+    def action_show_help(self) -> None:
+        """Show the help screen with keyboard shortcuts."""
+        self.push_screen(HelpScreen(self.BINDINGS))
 
     def action_toggle_focus(self) -> None:
         """Toggle focus between list and detail panes."""

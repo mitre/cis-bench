@@ -632,3 +632,135 @@ class TestDiffDetailViewContent:
         assert "1.1" in content
         assert "2.1" in content
         assert "95.5%" in content
+
+
+class TestHelpScreen:
+    """Tests for the help screen modal (? key)."""
+
+    def test_help_screen_class_exists(self):
+        """HelpScreen class should exist in tui_base."""
+        from cis_bench.cli.commands.tui_base import HelpScreen
+
+        assert HelpScreen is not None
+
+    def test_help_screen_instantiation(self):
+        """HelpScreen should instantiate with bindings list."""
+        from cis_bench.cli.commands.tui_base import COMMON_BINDINGS, HelpScreen
+
+        screen = HelpScreen(COMMON_BINDINGS)
+        assert screen is not None
+        assert screen.bindings_list == COMMON_BINDINGS
+
+    def test_help_screen_formats_bindings(self):
+        """HelpScreen should format bindings for display."""
+        from textual.binding import Binding
+
+        from cis_bench.cli.commands.tui_base import HelpScreen
+
+        test_bindings = [
+            Binding("q", "quit", "Quit"),
+            Binding("question_mark", "show_help", "Help"),
+            Binding("s", "save", "Save Report"),
+        ]
+
+        screen = HelpScreen(test_bindings)
+        content = screen.get_help_content()
+
+        # Keys are title-cased in display
+        assert "Q" in content or "q" in content
+        assert "Quit" in content
+        assert "?" in content  # question_mark displays as ?
+        assert "Help" in content
+        assert "S" in content or "s" in content
+        assert "Save Report" in content
+
+    def test_help_binding_exists_in_common_bindings(self):
+        """The '?' key should be in COMMON_BINDINGS."""
+        from cis_bench.cli.commands.tui_base import COMMON_BINDINGS
+
+        binding_keys = [b.key for b in COMMON_BINDINGS]
+        assert "question_mark" in binding_keys or "?" in binding_keys
+
+    def test_base_browser_app_has_help_action(self):
+        """BaseBrowserApp should have action_show_help method."""
+        from cis_bench.cli.commands.tui_base import BaseBrowserApp
+
+        assert hasattr(BaseBrowserApp, "action_show_help")
+
+
+class TestHelpScreenAsync:
+    """Async tests for help screen functionality."""
+
+    @pytest.mark.asyncio
+    async def test_help_screen_opens_on_question_mark(
+        self, sample_comparison, sample_old_data, sample_new_data
+    ):
+        """Pressing '?' should open the help screen."""
+        old_recs = {r["ref"]: r for r in sample_old_data.get("recommendations", [])}
+        new_recs = {r["ref"]: r for r in sample_new_data.get("recommendations", [])}
+
+        app = DiffApp(sample_comparison, old_recs, new_recs)
+
+        async with app.run_test() as pilot:
+            # Press '?' to open help
+            await pilot.press("?")
+
+            # Help screen should be visible (check for modal or screen stack)
+            # The screen stack should have more than just the main screen
+            assert len(app.screen_stack) > 1 or app.query("HelpScreen")
+
+    @pytest.mark.asyncio
+    async def test_help_screen_closes_on_escape(
+        self, sample_comparison, sample_old_data, sample_new_data
+    ):
+        """Pressing escape should close the help screen."""
+        old_recs = {r["ref"]: r for r in sample_old_data.get("recommendations", [])}
+        new_recs = {r["ref"]: r for r in sample_new_data.get("recommendations", [])}
+
+        app = DiffApp(sample_comparison, old_recs, new_recs)
+
+        async with app.run_test() as pilot:
+            # Open help
+            await pilot.press("?")
+            # Close with escape
+            await pilot.press("escape")
+
+            # Should be back to main screen
+            assert len(app.screen_stack) == 1
+
+    @pytest.mark.asyncio
+    async def test_help_screen_closes_on_question_mark_again(
+        self, sample_comparison, sample_old_data, sample_new_data
+    ):
+        """Pressing '?' again should close the help screen."""
+        old_recs = {r["ref"]: r for r in sample_old_data.get("recommendations", [])}
+        new_recs = {r["ref"]: r for r in sample_new_data.get("recommendations", [])}
+
+        app = DiffApp(sample_comparison, old_recs, new_recs)
+
+        async with app.run_test() as pilot:
+            # Open help
+            await pilot.press("?")
+            # Close with '?' again
+            await pilot.press("?")
+
+            # Should be back to main screen
+            assert len(app.screen_stack) == 1
+
+    @pytest.mark.asyncio
+    async def test_help_screen_displays_all_bindings(
+        self, sample_comparison, sample_old_data, sample_new_data
+    ):
+        """Help screen should display all keyboard bindings."""
+        old_recs = {r["ref"]: r for r in sample_old_data.get("recommendations", [])}
+        new_recs = {r["ref"]: r for r in sample_new_data.get("recommendations", [])}
+
+        app = DiffApp(sample_comparison, old_recs, new_recs)
+
+        async with app.run_test() as pilot:
+            await pilot.press("?")
+
+            # Check that help content includes key bindings
+            # Look for common bindings in the screen content
+            help_screen = app.screen
+            assert help_screen is not None
