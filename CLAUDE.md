@@ -93,6 +93,34 @@ uv run pytest -m e2e            # Full CLI workflows
 uv run pytest -m architecture   # Architecture compliance
 ```
 
+### Test Organization Pattern
+
+**IMPORTANT:** Follow the established test organization pattern when writing new tests.
+
+```
+tests/
+├── unit/                    # Sync tests - isolated components
+│   ├── test_main_tui_app.py       # MainTUIApp config, bindings
+│   └── test_catalog_tab_pane.py   # CatalogTabPane bindings, methods
+├── integration/             # Async tests - component interaction
+│   └── test_main_tui.py           # App behavior with run_test()
+├── e2e/                     # CLI workflow tests
+└── regression/              # Architecture compliance
+```
+
+**Design Decisions:**
+- **Unit tests** (`tests/unit/`): Sync only, no `app.run_test()`, test methods/bindings/config
+- **Integration tests** (`tests/integration/`): Async with `app.run_test()`, test full behavior
+- **Split mixed files**: If a test file has both sync and async tests, split them
+
+**Example - TUI tests:**
+| Component | Unit Tests | Integration Tests |
+|-----------|------------|-------------------|
+| MainTUIApp | `test_main_tui_app.py` (18 tests) | `test_main_tui.py` (16 tests) |
+| CatalogTabPane | `test_catalog_tab_pane.py` (23 tests) | `test_main_tui.py` |
+
+See `docs/developer-guide/testing.md` for full documentation.
+
 ## Architecture
 
 ### Package Structure (src/ layout)
