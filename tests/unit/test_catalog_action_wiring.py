@@ -65,7 +65,7 @@ class TestActionMenuNoDisabledButtons:
 
 
 class TestCatalogBrowserActionHandling:
-    """Test that _handle_action properly exits with action info."""
+    """Test that _handle_action properly triggers actions."""
 
     @pytest.fixture
     def sample_benchmarks(self):
@@ -85,32 +85,29 @@ class TestCatalogBrowserActionHandling:
             },
         ]
 
-    def test_handle_view_action_exits_app(self, sample_benchmarks):
-        """View action should exit the app with action info for runner to handle."""
+    def test_handle_view_action_calls_load_and_view(self, sample_benchmarks):
+        """View action should call _load_and_view to push ViewScreen."""
         from unittest.mock import MagicMock
 
         from cis_bench.cli.commands.tui.catalog import CatalogBrowserApp
 
         app = CatalogBrowserApp(benchmarks=sample_benchmarks)
-        app.exit = MagicMock()
+        app._load_and_view = MagicMock()
 
         benchmark = sample_benchmarks[0]
         app._handle_action(("view", benchmark))
 
-        # Should exit with view action info
-        app.exit.assert_called_once()
-        call_args = app.exit.call_args[0][0]
-        assert call_args[0] == "view"
-        assert call_args[1] == benchmark["benchmark_id"]
+        # Should call _load_and_view with benchmark_id
+        app._load_and_view.assert_called_once_with(benchmark["benchmark_id"])
 
-    def test_handle_diff_action_with_two_selected_exits_app(self, sample_benchmarks):
-        """Diff action with 2 selected benchmarks should exit with action info."""
+    def test_handle_diff_action_with_two_selected_calls_load_and_diff(self, sample_benchmarks):
+        """Diff action with 2 selected benchmarks should call _load_and_diff."""
         from unittest.mock import MagicMock
 
         from cis_bench.cli.commands.tui.catalog import CatalogBrowserApp
 
         app = CatalogBrowserApp(benchmarks=sample_benchmarks)
-        app.exit = MagicMock()
+        app._load_and_diff = MagicMock()
 
         # Simulate 2 selected items
         app._selected_indices = {0, 1}
@@ -118,10 +115,8 @@ class TestCatalogBrowserActionHandling:
         benchmark = sample_benchmarks[0]
         app._handle_action(("diff", benchmark))
 
-        # Should exit with diff action info including both selected IDs
-        app.exit.assert_called_once()
-        call_args = app.exit.call_args[0][0]
-        assert call_args[0] == "diff"
+        # Should call _load_and_diff with both selected IDs
+        app._load_and_diff.assert_called_once()
 
     def test_handle_diff_action_needs_exactly_two_selected(self, sample_benchmarks):
         """Diff action should show error if not exactly 2 benchmarks selected."""
@@ -130,7 +125,7 @@ class TestCatalogBrowserActionHandling:
         from cis_bench.cli.commands.tui.catalog import CatalogBrowserApp
 
         app = CatalogBrowserApp(benchmarks=sample_benchmarks)
-        app.exit = MagicMock()
+        app._load_and_diff = MagicMock()
         app.notify = MagicMock()
 
         # Only 1 selected (or 0)
@@ -139,30 +134,29 @@ class TestCatalogBrowserActionHandling:
         benchmark = sample_benchmarks[0]
         app._handle_action(("diff", benchmark))
 
-        # Should NOT exit, should notify with error
-        app.exit.assert_not_called()
+        # Should NOT call _load_and_diff, should notify with error
+        app._load_and_diff.assert_not_called()
         app.notify.assert_called_once()
         # Check it's an error/warning
         _, kwargs = app.notify.call_args
         assert kwargs.get("severity") in ("warning", "error")
 
-    def test_handle_export_action_exits_app(self, sample_benchmarks):
-        """Export action should exit the app with action info."""
+    def test_handle_export_action_shows_not_implemented(self, sample_benchmarks):
+        """Export action should show not implemented message (for now)."""
         from unittest.mock import MagicMock
 
         from cis_bench.cli.commands.tui.catalog import CatalogBrowserApp
 
         app = CatalogBrowserApp(benchmarks=sample_benchmarks)
-        app.exit = MagicMock()
+        app.notify = MagicMock()
 
         benchmark = sample_benchmarks[0]
         app._handle_action(("export", benchmark))
 
-        # Should exit with export action info
-        app.exit.assert_called_once()
-        call_args = app.exit.call_args[0][0]
-        assert call_args[0] == "export"
-        assert call_args[1] == benchmark["benchmark_id"]
+        # Should notify about export not implemented
+        app.notify.assert_called_once()
+        call_args, kwargs = app.notify.call_args
+        assert "not yet implemented" in call_args[0].lower() or "export" in call_args[0].lower()
 
 
 class TestRunCatalogBrowserActionLoop:

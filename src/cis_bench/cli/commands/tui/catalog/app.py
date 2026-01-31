@@ -3,6 +3,7 @@
 import logging
 
 from rich.text import Text
+from textual import work
 from textual.binding import Binding
 from textual.widgets import DataTable, Static
 
@@ -47,16 +48,7 @@ class CatalogBrowserApp(BaseBrowserApp):
         self._all_items = benchmarks.copy()
         self.offline = offline
         self._downloaded_ids: set[str] = set()
-        self._pending_notification: tuple[str, str] | None = None
         self._load_downloaded_ids()
-
-    def on_mount(self) -> None:
-        """Handle mount event - show any pending notifications."""
-        super().on_mount()
-        if self._pending_notification:
-            severity, message = self._pending_notification
-            self.notify(message, severity=severity, timeout=10)
-            self._pending_notification = None
 
     def get_detail_view(self) -> Static:
         """Return the catalog detail view widget."""
@@ -201,8 +193,8 @@ class CatalogBrowserApp(BaseBrowserApp):
     def _handle_action(self, result: tuple | None) -> None:
         """Handle the result from the action menu.
 
-        Exits the app with action info for the runner to handle launching
-        the appropriate TUI (ViewApp, DiffApp, etc.).
+        Pushes appropriate screen onto the stack (no exit/restart needed).
+        Uses workers for async loading to keep UI responsive.
         """
         if result is None:
             return
@@ -212,15 +204,13 @@ class CatalogBrowserApp(BaseBrowserApp):
 
         if action == "download":
             # Download is handled by auto-fetch in view/diff/export
-            # Show info message - user can also use CLI for explicit download
             self.notify(
                 f"Content is fetched automatically when viewing/exporting. "
                 f"For explicit download: cis-bench download {benchmark_id}",
                 severity="information",
             )
         elif action == "view":
-            # Exit app with view action - runner will launch ViewApp
-            self.exit(("view", benchmark_id))
+            self._load_and_view(benchmark_id)
         elif action == "diff":
             # Validate exactly 2 benchmarks selected
             if len(self._selected_indices) != 2:
@@ -229,16 +219,76 @@ class CatalogBrowserApp(BaseBrowserApp):
                     severity="warning",
                 )
                 return
-            # Get the two selected benchmark IDs
             selected_ids = [
                 str(self._items[idx].get("benchmark_id", ""))
                 for idx in sorted(self._selected_indices)
             ]
-            # Exit app with diff action - runner will launch DiffApp
-            self.exit(("diff", selected_ids[0], selected_ids[1]))
+            self._load_and_diff(selected_ids[0], selected_ids[1])
         elif action == "export":
-            # Exit app with export action - runner will handle export
-            self.exit(("export", benchmark_id))
+            # TODO: Export dialog (ep9.7)
+            self.notify(
+                f"Export dialog not yet implemented. Use: cis-bench export {benchmark_id}",
+                severity="warning",
+            )
+
+    def _load_and_view(self, benchmark_id: str) -> None:
+        """Load benchmark and push ViewScreen."""
+        self.notify(f"Loading {benchmark_id}...", severity="information")
+        self._start_view_worker(benchmark_id)
+
+    @work(exclusive=True, thread=True)
+    def _start_view_worker(self, benchmark_id: str) -> None:
+        """Worker to load benchmark in background thread."""
+        from cis_bench.cli.commands.utils import load_benchmark
+
+        try:
+            data = load_benchmark(benchmark_id, offline=self.offline)
+            recommendations = data.get("recommendations", [])
+            # Call back to main thread to push screen
+            self.call_from_thread(self._push_view_screen, data, recommendations)
+        except Exception as e:
+            self.call_from_thread(
+                self.notify,
+                f"Failed to load {benchmark_id}: {e}",
+                severity="error",
+                timeout=10,
+            )
+
+    def _push_view_screen(self, data: dict, recommendations: list) -> None:
+        """Push the ViewScreen onto the stack (called from main thread)."""
+        from cis_bench.cli.commands.tui.screens import ViewScreen
+
+        self.push_screen(ViewScreen(data, recommendations, offline=self.offline))
+
+    def _load_and_diff(self, old_id: str, new_id: str) -> None:
+        """Load both benchmarks and push DiffScreen."""
+        self.notify(f"Loading {old_id} and {new_id}...", severity="information")
+        self._start_diff_worker(old_id, new_id)
+
+    @work(exclusive=True, thread=True)
+    def _start_diff_worker(self, old_id: str, new_id: str) -> None:
+        """Worker to load both benchmarks in background thread."""
+        from cis_bench.cli.commands.diff import compare_benchmarks
+        from cis_bench.cli.commands.utils import load_benchmark
+
+        try:
+            old_data = load_benchmark(old_id, offline=self.offline)
+            new_data = load_benchmark(new_id, offline=self.offline)
+            comparison = compare_benchmarks(old_data, new_data)
+            self.call_from_thread(self._push_diff_screen, comparison, old_data, new_data)
+        except Exception as e:
+            self.call_from_thread(
+                self.notify,
+                f"Failed to load benchmarks: {e}",
+                severity="error",
+                timeout=10,
+            )
+
+    def _push_diff_screen(self, comparison: dict, old_data: dict, new_data: dict) -> None:
+        """Push the DiffScreen onto the stack (called from main thread)."""
+        from cis_bench.cli.commands.tui.screens import DiffScreen
+
+        self.push_screen(DiffScreen(comparison, old_data, new_data, offline=self.offline))
 
     def action_view_benchmark(self) -> None:
         """Direct view action - 'v' key. Skips the action menu."""
@@ -251,7 +301,7 @@ class CatalogBrowserApp(BaseBrowserApp):
 
         benchmark = self._items[current_row]
         benchmark_id = str(benchmark.get("benchmark_id", ""))
-        self.exit(("view", benchmark_id))
+        self._load_and_view(benchmark_id)
 
     def action_diff_benchmarks(self) -> None:
         """Direct diff action - 'd' key. Requires exactly 2 selected."""
@@ -265,7 +315,7 @@ class CatalogBrowserApp(BaseBrowserApp):
         selected_ids = [
             str(self._items[idx].get("benchmark_id", "")) for idx in sorted(self._selected_indices)
         ]
-        self.exit(("diff", selected_ids[0], selected_ids[1]))
+        self._load_and_diff(selected_ids[0], selected_ids[1])
 
     def action_export_benchmark(self) -> None:
         """Direct export action - 'e' or 's' key. Skips the action menu."""
@@ -278,7 +328,11 @@ class CatalogBrowserApp(BaseBrowserApp):
 
         benchmark = self._items[current_row]
         benchmark_id = str(benchmark.get("benchmark_id", ""))
-        self.exit(("export", benchmark_id))
+        # TODO: Export dialog (ep9.7)
+        self.notify(
+            f"Export dialog not yet implemented. Use: cis-bench export {benchmark_id}",
+            severity="warning",
+        )
 
     def _rebuild_table(self) -> None:
         """Rebuild the table with current sort order."""
@@ -344,77 +398,15 @@ class CatalogBrowserApp(BaseBrowserApp):
 
 
 def run_catalog_browser(benchmarks: list[dict], offline: bool = False) -> None:
-    """Run the catalog browser TUI with action handling.
+    """Run the catalog browser TUI.
 
-    When the user selects an action (View, Diff, Export), the catalog exits
-    and this function launches the appropriate TUI. After that TUI exits,
-    control returns to the catalog browser.
+    ViewScreen and DiffScreen are pushed onto the screen stack when triggered.
+    Esc/q pops back to catalog instantly. No exit/restart loop needed.
 
     Args:
         benchmarks: List of benchmark dictionaries from catalog search.
         offline: Whether running in offline mode (shows indicator).
     """
-    from rich.console import Console
-
-    from cis_bench.cli.commands.diff import compare_benchmarks
-    from cis_bench.cli.commands.tui.diff import run_interactive_diff
-    from cis_bench.cli.commands.tui.view import run_interactive_view
-    from cis_bench.cli.commands.utils import load_benchmark
-
-    console = Console()
-    pending_error: str | None = None
-
-    while True:
-        app = CatalogBrowserApp(benchmarks=benchmarks, offline=offline)
-        app.title = "CIS Benchmark Catalog"
-
-        # Show any pending error from previous action
-        if pending_error:
-            app._pending_notification = ("error", pending_error)
-            pending_error = None
-
-        result = app.run()
-
-        if result is None:
-            # User quit the catalog - exit the loop
-            break
-
-        action = result[0]
-
-        if action == "view":
-            benchmark_id = result[1]
-            try:
-                console.print(f"[dim]Loading benchmark {benchmark_id}...[/dim]")
-                data = load_benchmark(benchmark_id, offline=offline)
-                recommendations = data.get("recommendations", [])
-                run_interactive_view(data, recommendations, offline=offline)
-            except FileNotFoundError as e:
-                pending_error = f"Benchmark {benchmark_id} not found: {e}"
-                logger.error(pending_error)
-            except Exception as e:
-                pending_error = f"Failed to load benchmark {benchmark_id}: {e}"
-                logger.error(pending_error)
-
-        elif action == "diff":
-            old_id, new_id = result[1], result[2]
-            try:
-                console.print(f"[dim]Loading benchmarks {old_id} and {new_id}...[/dim]")
-                old_data = load_benchmark(old_id, offline=offline)
-                new_data = load_benchmark(new_id, offline=offline)
-                comparison = compare_benchmarks(old_data, new_data)
-                run_interactive_diff(comparison, old_data, new_data, offline=offline)
-            except FileNotFoundError as e:
-                pending_error = f"Benchmark not found: {e}"
-                logger.error(pending_error)
-            except Exception as e:
-                pending_error = f"Failed to load benchmarks for diff: {e}"
-                logger.error(pending_error)
-
-        elif action == "export":
-            benchmark_id = result[1]
-            # TODO: Launch export dialog TUI (ep9.7)
-            pending_error = (
-                f"Export dialog not yet implemented. Use: cis-bench export {benchmark_id}"
-            )
-
-        # After any action completes, loop returns to catalog browser
+    app = CatalogBrowserApp(benchmarks=benchmarks, offline=offline)
+    app.title = "CIS Benchmark Catalog"
+    app.run()
