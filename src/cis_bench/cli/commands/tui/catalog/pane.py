@@ -9,6 +9,7 @@ Compound widget following Textual framework best practices:
 
 import logging
 
+from rich.text import Text
 from textual import work
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -148,18 +149,18 @@ class CatalogTabPane(BaseTabPane):
         self._items = benchmarks
 
         for idx, benchmark in enumerate(benchmarks):
-            # Selection checkbox
+            # Selection checkbox (cyan when selected, dim when not)
             is_selected = idx in self._selected_indices
-            checkbox = "●" if is_selected else "○"
+            checkbox = Text("●", style="cyan bold") if is_selected else Text("○", style="dim")
 
-            # Downloaded/cached status indicator
+            # Downloaded/cached status indicator (green checkmark)
             benchmark_id = str(benchmark.get("benchmark_id", ""))
             is_cached = benchmark_id in self._downloaded_ids
-            downloaded = "✓" if is_cached else ""
+            downloaded = Text("✓", style="green") if is_cached else Text("")
 
             title = benchmark.get("title", "")
             version = benchmark.get("version", "")
-            latest = "★" if benchmark.get("is_latest") else ""
+            latest = Text("★", style="yellow bold") if benchmark.get("is_latest") else Text("")
             published = benchmark.get("published_date", "")
             platform = benchmark.get("platform", "")
 
