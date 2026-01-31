@@ -149,8 +149,8 @@ class CatalogBrowserApp(BaseBrowserApp):
             # Latest indicator (separate column)
             latest = Text("★", style="yellow bold") if benchmark.get("is_latest") else Text("")
 
-            # Platform (truncated for narrow screens)
-            platform = (benchmark.get("platform") or "")[:12]
+            # Platform (max is "oracle-database" at 15 chars)
+            platform = (benchmark.get("platform") or "")[:15]
 
             table.add_row(
                 checkbox,
