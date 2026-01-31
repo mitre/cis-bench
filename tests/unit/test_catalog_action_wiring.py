@@ -280,3 +280,78 @@ class TestViewActionIntegration:
         from cis_bench.cli.commands.tui.diff import run_interactive_diff
 
         assert callable(run_interactive_diff)
+
+
+class TestBaseBrowserScreen:
+    """Test BaseBrowserScreen base class."""
+
+    def test_base_browser_screen_importable(self):
+        """BaseBrowserScreen should be importable."""
+        from cis_bench.cli.commands.tui import BaseBrowserScreen
+
+        assert BaseBrowserScreen is not None
+
+    def test_screen_bindings_importable(self):
+        """SCREEN_BINDINGS should be importable."""
+        from cis_bench.cli.commands.tui import SCREEN_BINDINGS
+
+        assert SCREEN_BINDINGS is not None
+        # Should have escape binding for "go_back"
+        binding_actions = [b.action for b in SCREEN_BINDINGS]
+        assert "go_back" in binding_actions
+
+    def test_base_browser_screen_has_go_back_not_quit(self):
+        """BaseBrowserScreen should use go_back instead of quit."""
+        from cis_bench.cli.commands.tui import BaseBrowserScreen
+
+        # Should have action_go_back method
+        assert hasattr(BaseBrowserScreen, "action_go_back")
+
+    def test_base_browser_screen_inherits_from_screen(self):
+        """BaseBrowserScreen should inherit from Screen."""
+        from textual.screen import Screen
+
+        from cis_bench.cli.commands.tui import BaseBrowserScreen
+
+        assert issubclass(BaseBrowserScreen, Screen)
+
+
+class TestLoadingModal:
+    """Test LoadingModal widget."""
+
+    def test_loading_modal_importable(self):
+        """LoadingModal should be importable."""
+        from cis_bench.cli.commands.tui import LoadingModal
+
+        assert LoadingModal is not None
+
+    def test_loading_modal_has_cancel_binding(self):
+        """LoadingModal should have escape binding for cancel."""
+        from cis_bench.cli.commands.tui.widgets import LoadingModal
+
+        binding_keys = [b.key for b in LoadingModal.BINDINGS]
+        assert "escape" in binding_keys
+
+    def test_loading_modal_has_update_progress(self):
+        """LoadingModal should have update_progress method."""
+        from cis_bench.cli.commands.tui.widgets import LoadingModal
+
+        modal = LoadingModal("Test")
+        assert hasattr(modal, "update_progress")
+        assert callable(modal.update_progress)
+
+    def test_loading_modal_has_complete_method(self):
+        """LoadingModal should have complete method."""
+        from cis_bench.cli.commands.tui.widgets import LoadingModal
+
+        modal = LoadingModal("Test")
+        assert hasattr(modal, "complete")
+        assert callable(modal.complete)
+
+    def test_loading_modal_is_cancelled_property(self):
+        """LoadingModal should have is_cancelled property."""
+        from cis_bench.cli.commands.tui.widgets import LoadingModal
+
+        modal = LoadingModal("Test")
+        assert hasattr(modal, "is_cancelled")
+        assert modal.is_cancelled is False
