@@ -1,49 +1,30 @@
 """Pushable screens for TUI navigation.
 
 These screens can be pushed onto any App's screen stack for seamless navigation.
+They inherit from BaseBrowserScreen which provides all common functionality.
 """
 
 from rich.text import Text
 from textual.binding import Binding
-from textual.containers import Container, Horizontal, VerticalScroll
-from textual.screen import Screen
-from textual.widgets import DataTable, Footer, Header, Static
+from textual.widgets import DataTable, Static
 
 from cis_bench.cli.commands.tui.base import (
-    COMMON_CSS,
+    BaseBrowserScreen,
     natural_sort_key,
 )
 from cis_bench.cli.commands.tui.diff.detail import DiffDetailView
 from cis_bench.cli.commands.tui.view.detail import ViewDetailView
-from cis_bench.cli.commands.tui.widgets import HelpScreen, JumpDialog, SaveDialog
+from cis_bench.cli.commands.tui.widgets import SaveDialog
 
 
-class ViewScreen(Screen):
+class ViewScreen(BaseBrowserScreen):
     """Screen for viewing a single benchmark's recommendations.
 
     Push this screen onto an App to view benchmark details.
     Pop to return to the previous screen.
     """
 
-    CSS = COMMON_CSS
-
-    BINDINGS = [
-        Binding("escape", "pop_screen", "Back", show=True),
-        Binding("q", "pop_screen", "Back"),
-        Binding("question_mark", "show_help", "Help", show=True),
-        Binding("g", "jump_to_ref", "Go to Ref", show=True),
-        Binding("c", "copy_to_clipboard", "Copy", show=True),
-        Binding("tab", "toggle_focus", "Switch Pane", show=True),
-        Binding("j", "cursor_down", "Down", show=False),
-        Binding("k", "cursor_up", "Up", show=False),
-        Binding("down", "cursor_down", "Down", show=False),
-        Binding("up", "cursor_up", "Up", show=False),
-        Binding("pagedown", "page_down", "Page Down", show=False),
-        Binding("pageup", "page_up", "Page Up", show=False),
-        Binding("s", "save_report", "Save Report", show=True),
-        Binding("f", "toggle_fullscreen", "Fullscreen", show=True),
-        Binding("r", "reverse_sort", "Reverse", show=True),
-    ]
+    has_search_container = False  # ViewScreen doesn't need search
 
     def __init__(
         self,
@@ -56,36 +37,12 @@ class ViewScreen(Screen):
         self.benchmark = benchmark
         self.recommendations = recommendations
         self.offline = offline
-        self._items: list = []
-        self._sort_reverse = False
-        self._focus_on_detail = False
-        self._fullscreen_detail = False
 
-    def compose(self):
-        yield Header()
-        yield Static(self._build_summary(), id="summary")
-        yield Horizontal(
-            Container(
-                DataTable(id="changes-table"),
-                id="list-container",
-            ),
-            VerticalScroll(
-                ViewDetailView(id="detail-view"),
-                id="detail-container",
-            ),
-            id="main-container",
-        )
-        yield Footer()
+    def get_detail_view(self) -> Static:
+        return ViewDetailView(id="detail-view")
 
-    def on_mount(self) -> None:
-        table = self.query_one("#changes-table", DataTable)
-        table.cursor_type = "row"
-        table.zebra_stripes = True
-        table.add_columns("Ref", "Title", "Profiles", "Status")
-        self._populate_table()
-        if self._items:
-            self._show_detail(0)
-        table.focus()
+    def _get_columns(self) -> list[str]:
+        return ["Ref", "Title", "Profiles", "Status"]
 
     def _build_summary(self) -> Text:
         text = Text()
@@ -123,22 +80,7 @@ class ViewScreen(Screen):
                 status_display,
             )
 
-    def _show_detail(self, index: int) -> None:
-        if index < 0 or index >= len(self._items):
-            return
-        rec = self._items[index]
-        detail_view = self.query_one("#detail-view", ViewDetailView)
-        detail_view.show_recommendation(rec)
-
-    def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
-        if event.cursor_row is not None and event.cursor_row < len(self._items):
-            self._show_detail(event.cursor_row)
-
-    def action_pop_screen(self) -> None:
-        self.app.pop_screen()
-
-    def action_reverse_sort(self) -> None:
-        self._sort_reverse = not self._sort_reverse
+    def _rebuild_table(self) -> None:
         table = self.query_one("#changes-table", DataTable)
         table.clear()
         self._items = []
@@ -146,82 +88,12 @@ class ViewScreen(Screen):
         if self._items:
             self._show_detail(0)
 
-    def action_toggle_focus(self) -> None:
-        self._focus_on_detail = not self._focus_on_detail
-        if self._focus_on_detail:
-            self.query_one("#detail-container", VerticalScroll).focus()
-        else:
-            self.query_one("#changes-table", DataTable).focus()
-
-    def action_cursor_down(self) -> None:
-        if self._focus_on_detail:
-            self.query_one("#detail-container", VerticalScroll).scroll_down()
-        else:
-            self.query_one("#changes-table", DataTable).action_cursor_down()
-
-    def action_cursor_up(self) -> None:
-        if self._focus_on_detail:
-            self.query_one("#detail-container", VerticalScroll).scroll_up()
-        else:
-            self.query_one("#changes-table", DataTable).action_cursor_up()
-
-    def action_page_down(self) -> None:
-        if self._focus_on_detail:
-            self.query_one("#detail-container", VerticalScroll).scroll_page_down()
-
-    def action_page_up(self) -> None:
-        if self._focus_on_detail:
-            self.query_one("#detail-container", VerticalScroll).scroll_page_up()
-
-    def action_toggle_fullscreen(self) -> None:
-        self._fullscreen_detail = not self._fullscreen_detail
-        list_container = self.query_one("#list-container")
-        detail_container = self.query_one("#detail-container")
-        if self._fullscreen_detail:
-            list_container.styles.display = "none"
-            detail_container.styles.width = "100%"
-        else:
-            list_container.styles.display = "block"
-            detail_container.styles.width = "60%"
-
-    def action_show_help(self) -> None:
-        self.app.push_screen(HelpScreen(self.BINDINGS))
-
-    def action_jump_to_ref(self) -> None:
-        def handle_jump(ref: str | None) -> None:
-            if ref:
-                self._jump_to_ref(ref)
-            self.query_one("#changes-table", DataTable).focus()
-
-        self.app.push_screen(JumpDialog(), handle_jump)
-
-    def _jump_to_ref(self, target_ref: str) -> None:
-        table = self.query_one("#changes-table", DataTable)
-        target_ref = target_ref.strip()
-        for row_idx, row_key in enumerate(table.rows):
-            row_data = table.get_row(row_key)
-            if row_data:
-                ref_cell = str(row_data[0]) if row_data else ""
-                if target_ref in ref_cell:
-                    table.move_cursor(row=row_idx)
-                    return
-        self.notify(f"Ref '{target_ref}' not found", severity="warning")
-
-    def action_copy_to_clipboard(self) -> None:
-        try:
-            import pyperclip
-
-            detail = self.query_one("#detail-view", ViewDetailView)
-            content = detail.get_content_text()
-            if content:
-                pyperclip.copy(content)
-                self.notify("Copied to clipboard", severity="information")
-            else:
-                self.notify("No content to copy", severity="warning")
-        except ImportError:
-            self.notify("Clipboard not available (install pyperclip)", severity="error")
-        except Exception as e:
-            self.notify(f"Copy failed: {e}", severity="error")
+    def _show_detail(self, index: int) -> None:
+        if index < 0 or index >= len(self._items):
+            return
+        rec = self._items[index]
+        detail_view = self.query_one("#detail-view", ViewDetailView)
+        detail_view.show_recommendation(rec)
 
     def action_save_report(self) -> None:
         title = self.benchmark.get("title", "benchmark")
@@ -254,38 +126,18 @@ class ViewScreen(Screen):
         except Exception as e:
             self.notify(f"Error saving: {e}", title="Save Failed", severity="error")
 
-    def _truncate(self, text: str, length: int) -> str:
-        if len(text) <= length:
-            return text
-        return text[: length - 3] + "..."
 
-
-class DiffScreen(Screen):
+class DiffScreen(BaseBrowserScreen):
     """Screen for viewing benchmark diff comparison.
 
     Push this screen onto an App to view diff details.
     Pop to return to the previous screen.
     """
 
-    CSS = COMMON_CSS
+    has_search_container = False  # DiffScreen doesn't need search
 
-    BINDINGS = [
-        Binding("escape", "pop_screen", "Back", show=True),
-        Binding("q", "pop_screen", "Back"),
-        Binding("question_mark", "show_help", "Help", show=True),
-        Binding("g", "jump_to_ref", "Go to Ref", show=True),
-        Binding("c", "copy_to_clipboard", "Copy", show=True),
-        Binding("tab", "toggle_focus", "Switch Pane", show=True),
-        Binding("j", "cursor_down", "Down", show=False),
-        Binding("k", "cursor_up", "Up", show=False),
-        Binding("down", "cursor_down", "Down", show=False),
-        Binding("up", "cursor_up", "Up", show=False),
-        Binding("pagedown", "page_down", "Page Down", show=False),
-        Binding("pageup", "page_up", "Page Up", show=False),
-        Binding("s", "save_report", "Save Report", show=True),
-        Binding("f", "toggle_fullscreen", "Fullscreen", show=True),
-        Binding("r", "reverse_sort", "Reverse", show=True),
-        # Filter by change type
+    # Add filter bindings on top of base screen bindings
+    BINDINGS = BaseBrowserScreen.BINDINGS + [
         Binding("1", "filter_added", "Added Only", show=False),
         Binding("2", "filter_removed", "Removed Only", show=False),
         Binding("3", "filter_modified", "Modified Only", show=False),
@@ -306,42 +158,17 @@ class DiffScreen(Screen):
         self.old_data = old_data
         self.new_data = new_data
         self.offline = offline
-        self._items: list = []
         self._all_items: list = []
-        self._sort_reverse = False
-        self._focus_on_detail = False
-        self._fullscreen_detail = False
         self._current_filter = "all"
         # Build recommendation lookup dicts
         self._old_recs = {r["ref"]: r for r in old_data.get("recommendations", [])}
         self._new_recs = {r["ref"]: r for r in new_data.get("recommendations", [])}
 
-    def compose(self):
-        yield Header()
-        yield Static(self._build_summary(), id="summary")
-        yield Horizontal(
-            Container(
-                DataTable(id="changes-table"),
-                id="list-container",
-            ),
-            VerticalScroll(
-                DiffDetailView(id="detail-view"),
-                id="detail-container",
-            ),
-            id="main-container",
-        )
-        yield Footer()
+    def get_detail_view(self) -> Static:
+        return DiffDetailView(id="detail-view")
 
-    def on_mount(self) -> None:
-        table = self.query_one("#changes-table", DataTable)
-        table.cursor_type = "row"
-        table.zebra_stripes = True
-        table.add_columns("Status", "Ref", "Title", "Details")
-        self._build_all_items()
-        self._populate_table()
-        if self._items:
-            self._show_detail(0)
-        table.focus()
+    def _get_columns(self) -> list[str]:
+        return ["Status", "Ref", "Title", "Details"]
 
     def _build_summary(self) -> Text:
         text = Text()
@@ -358,6 +185,11 @@ class DiffScreen(Screen):
         text.append(f"~{summary.get('modified', 0)}", style="yellow")
         text.append("  [Esc] Back", style="dim italic")
         return text
+
+    def on_mount(self) -> None:
+        # Build all items before standard mount (which calls _populate_table)
+        self._build_all_items()
+        super().on_mount()
 
     def _build_all_items(self) -> None:
         """Build the list of all change items."""
@@ -405,8 +237,8 @@ class DiffScreen(Screen):
                 {
                     "type": "renumbered",
                     "old_ref": item["old_ref"],
-                    "new_ref": item["new_ref"],  # Required by DiffDetailView.update_content()
-                    "ref": item["new_ref"],  # For table lookup consistency
+                    "new_ref": item["new_ref"],
+                    "ref": item["new_ref"],
                     "title": item["title"],
                     "details": f"{item['old_ref']} → {item['new_ref']}",
                     "similarity": item.get("similarity", "?"),
@@ -452,6 +284,11 @@ class DiffScreen(Screen):
                 item.get("details", ""),
             )
 
+    def _rebuild_table(self) -> None:
+        self._populate_table()
+        if self._items:
+            self._show_detail(0)
+
     def _show_detail(self, index: int) -> None:
         if index < 0 or index >= len(self._items):
             return
@@ -477,19 +314,7 @@ class DiffScreen(Screen):
             new_rec = self._new_recs.get(ref, {})
             detail_view.update_content(item_type, item, old_rec, new_rec)
 
-    def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
-        if event.cursor_row is not None and event.cursor_row < len(self._items):
-            self._show_detail(event.cursor_row)
-
-    def action_pop_screen(self) -> None:
-        self.app.pop_screen()
-
-    def action_reverse_sort(self) -> None:
-        self._sort_reverse = not self._sort_reverse
-        self._populate_table()
-        if self._items:
-            self._show_detail(0)
-
+    # Filter actions
     def action_filter_added(self) -> None:
         self._current_filter = "added"
         self._populate_table()
@@ -514,83 +339,6 @@ class DiffScreen(Screen):
         self._current_filter = "all"
         self._populate_table()
         self.notify("Showing: All changes", severity="information")
-
-    def action_toggle_focus(self) -> None:
-        self._focus_on_detail = not self._focus_on_detail
-        if self._focus_on_detail:
-            self.query_one("#detail-container", VerticalScroll).focus()
-        else:
-            self.query_one("#changes-table", DataTable).focus()
-
-    def action_cursor_down(self) -> None:
-        if self._focus_on_detail:
-            self.query_one("#detail-container", VerticalScroll).scroll_down()
-        else:
-            self.query_one("#changes-table", DataTable).action_cursor_down()
-
-    def action_cursor_up(self) -> None:
-        if self._focus_on_detail:
-            self.query_one("#detail-container", VerticalScroll).scroll_up()
-        else:
-            self.query_one("#changes-table", DataTable).action_cursor_up()
-
-    def action_page_down(self) -> None:
-        if self._focus_on_detail:
-            self.query_one("#detail-container", VerticalScroll).scroll_page_down()
-
-    def action_page_up(self) -> None:
-        if self._focus_on_detail:
-            self.query_one("#detail-container", VerticalScroll).scroll_page_up()
-
-    def action_toggle_fullscreen(self) -> None:
-        self._fullscreen_detail = not self._fullscreen_detail
-        list_container = self.query_one("#list-container")
-        detail_container = self.query_one("#detail-container")
-        if self._fullscreen_detail:
-            list_container.styles.display = "none"
-            detail_container.styles.width = "100%"
-        else:
-            list_container.styles.display = "block"
-            detail_container.styles.width = "60%"
-
-    def action_show_help(self) -> None:
-        self.app.push_screen(HelpScreen(self.BINDINGS))
-
-    def action_jump_to_ref(self) -> None:
-        def handle_jump(ref: str | None) -> None:
-            if ref:
-                self._jump_to_ref(ref)
-            self.query_one("#changes-table", DataTable).focus()
-
-        self.app.push_screen(JumpDialog(), handle_jump)
-
-    def _jump_to_ref(self, target_ref: str) -> None:
-        table = self.query_one("#changes-table", DataTable)
-        target_ref = target_ref.strip()
-        for row_idx, row_key in enumerate(table.rows):
-            row_data = table.get_row(row_key)
-            if row_data and len(row_data) > 1:
-                ref_cell = str(row_data[1])
-                if target_ref in ref_cell:
-                    table.move_cursor(row=row_idx)
-                    return
-        self.notify(f"Ref '{target_ref}' not found", severity="warning")
-
-    def action_copy_to_clipboard(self) -> None:
-        try:
-            import pyperclip
-
-            detail = self.query_one("#detail-view", DiffDetailView)
-            content = detail.get_content_text()
-            if content:
-                pyperclip.copy(content)
-                self.notify("Copied to clipboard", severity="information")
-            else:
-                self.notify("No content to copy", severity="warning")
-        except ImportError:
-            self.notify("Clipboard not available (install pyperclip)", severity="error")
-        except Exception as e:
-            self.notify(f"Copy failed: {e}", severity="error")
 
     def action_save_report(self) -> None:
         old_ver = self.comparison.get("old_version", "old")
@@ -628,8 +376,3 @@ class DiffScreen(Screen):
             self.notify(f"Saved to {filename}", title="Report Saved")
         except Exception as e:
             self.notify(f"Error saving: {e}", title="Save Failed", severity="error")
-
-    def _truncate(self, text: str, length: int) -> str:
-        if len(text) <= length:
-            return text
-        return text[: length - 3] + "..."
