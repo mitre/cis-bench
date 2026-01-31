@@ -1,6 +1,7 @@
 """Catalog browser TUI application."""
 
 import logging
+from pathlib import Path
 
 from rich.text import Text
 from textual import work
@@ -11,6 +12,13 @@ from textual.worker import get_current_worker
 from cis_bench.cli.commands.tui.base import COMMON_BINDINGS, BaseBrowserApp
 from cis_bench.cli.commands.tui.catalog.actions import CATALOG_CSS, ActionMenu
 from cis_bench.cli.commands.tui.catalog.detail import CatalogDetailView
+from cis_bench.cli.commands.tui.dialogs import (
+    BatchProgressModal,
+    ExportConfigDialog,
+    ExportDialogResult,
+    OutputPathDialog,
+)
+from cis_bench.services.export_service import ExportConfig, ExportService
 
 logger = logging.getLogger(__name__)
 
@@ -227,11 +235,12 @@ class CatalogBrowserApp(BaseBrowserApp):
             old_id, new_id = self._get_ordered_diff_ids()
             self._load_and_diff(old_id, new_id)
         elif action == "export":
-            # TODO: Export dialog (ep9.7)
-            self.notify(
-                f"Export dialog not yet implemented. Use: cis-bench export {benchmark_id}",
-                severity="warning",
-            )
+            # Determine context based on selection count
+            if len(self._selected_indices) > 1:
+                context = "batch"
+            else:
+                context = "single"
+            self._start_export_flow(context)
 
     def _load_and_view(self, benchmark_id: str) -> None:
         """Load benchmark with loading modal and push ViewScreen."""
@@ -551,20 +560,18 @@ class CatalogBrowserApp(BaseBrowserApp):
 
     def action_export_benchmark(self) -> None:
         """Direct export action - 'e' or 's' key. Skips the action menu."""
-        table = self.query_one("#changes-table", DataTable)
-        current_row = table.cursor_row
-
-        if current_row is None or current_row >= len(self._items):
-            self.notify("No benchmark selected", severity="warning")
-            return
-
-        benchmark = self._items[current_row]
-        benchmark_id = str(benchmark.get("benchmark_id", ""))
-        # TODO: Export dialog (ep9.7)
-        self.notify(
-            f"Export dialog not yet implemented. Use: cis-bench export {benchmark_id}",
-            severity="warning",
-        )
+        # Determine context based on selection count
+        if len(self._selected_indices) > 1:
+            context = "batch"
+        else:
+            # Validate we have a current row for single export
+            table = self.query_one("#changes-table", DataTable)
+            current_row = table.cursor_row
+            if current_row is None or current_row >= len(self._items):
+                self.notify("No benchmark selected", severity="warning")
+                return
+            context = "single"
+        self._start_export_flow(context)
 
     def _rebuild_table(self) -> None:
         """Rebuild the table with current sort order."""
@@ -627,6 +634,297 @@ class CatalogBrowserApp(BaseBrowserApp):
 
         if self._items:
             self._show_detail(0)
+
+    # --- Export Flow ---
+
+    def _start_export_flow(self, context: str) -> None:
+        """Start export flow by pushing format selection dialog.
+
+        Args:
+            context: Export context - 'single' or 'batch'
+        """
+        self._export_context = context
+        dialog = ExportConfigDialog(context=context)
+        self.push_screen(dialog, self._on_export_config)
+
+    def _on_export_config(self, result: ExportDialogResult | None) -> None:
+        """Handle export config dialog result.
+
+        Args:
+            result: Export config result or None if cancelled
+        """
+        if not result:
+            return
+
+        self._export_format = result.format
+        self._export_style = result.style
+
+        # Show output path dialog
+        dialog = OutputPathDialog(
+            default_dir=Path.cwd(),
+            show_pattern=self._export_context == "batch",
+        )
+        self.push_screen(dialog, self._on_output_path)
+
+    def _on_output_path(self, result: tuple[Path, str | None] | None) -> None:
+        """Handle output path dialog result.
+
+        Args:
+            result: (output_dir, pattern) or None if cancelled
+        """
+        if not result:
+            return
+
+        output_dir, pattern = result
+
+        # Build export config
+        config = ExportConfig(
+            format=self._export_format,
+            output_dir=output_dir,
+            style=self._export_style,
+            filename_pattern=pattern,
+        )
+
+        # Execute export based on context
+        if self._export_context == "batch":
+            self._do_batch_export(config)
+        else:
+            self._do_single_export(config)
+
+    def _do_single_export(self, config: ExportConfig) -> None:
+        """Execute single benchmark export.
+
+        Args:
+            config: Export configuration
+        """
+        # Get current benchmark
+        table = self.query_one("#changes-table", DataTable)
+        current_row = table.cursor_row
+        if current_row is None or current_row >= len(self._items):
+            self.notify("No benchmark selected", severity="warning")
+            return
+
+        benchmark = self._items[current_row]
+        benchmark_id = str(benchmark.get("benchmark_id", ""))
+
+        # Load benchmark and export
+        self._pending_export_id = benchmark_id
+        self._pending_export_config = config
+        self._load_and_export_single(benchmark_id, config)
+
+    def _load_and_export_single(self, benchmark_id: str, config: ExportConfig) -> None:
+        """Load benchmark with loading modal and export.
+
+        Args:
+            benchmark_id: Benchmark ID to export
+            config: Export configuration
+        """
+        from cis_bench.cli.commands.tui.widgets import LoadingModal
+
+        self._pending_export_id = benchmark_id
+        self._pending_export_config = config
+
+        modal = LoadingModal(f"Exporting {benchmark_id}...")
+        self._loading_modal = modal
+        self.push_screen(modal)
+
+        self._start_export_worker(benchmark_id, config)
+
+    @work(exclusive=True, thread=True)
+    def _start_export_worker(self, benchmark_id: str, config: ExportConfig) -> None:
+        """Worker to load and export benchmark in background thread.
+
+        Args:
+            benchmark_id: Benchmark ID to export
+            config: Export configuration
+        """
+        from cis_bench.cli.commands.utils import load_benchmark
+
+        worker = get_current_worker()
+        modal = getattr(self, "_loading_modal", None)
+
+        def progress_callback(current: int, total: int, message: str) -> None:
+            if worker.is_cancelled or (modal and modal.is_cancelled):
+                return
+            if modal and total > 0:
+                progress = int((current / total) * 80) + 10
+                self.call_from_thread(modal.update_progress, progress, message)
+
+        try:
+            if modal:
+                self.call_from_thread(modal.update_progress, 5, "Loading benchmark...")
+
+            # Load benchmark
+            benchmark = load_benchmark(
+                benchmark_id=benchmark_id,
+                progress_callback=progress_callback,
+            )
+
+            if worker.is_cancelled or (modal and modal.is_cancelled):
+                self.call_from_thread(self._export_cancelled)
+                return
+
+            if not benchmark:
+                self.call_from_thread(
+                    self._export_failed,
+                    f"Could not load benchmark {benchmark_id}",
+                )
+                return
+
+            if modal:
+                self.call_from_thread(modal.update_progress, 90, "Exporting...")
+
+            # Export benchmark
+            service = ExportService()
+            result = service.export_single(benchmark, config)
+
+            if result.success:
+                self.call_from_thread(self._export_completed, result.path)
+            else:
+                self.call_from_thread(self._export_failed, result.error or "Unknown error")
+
+        except Exception as e:
+            logger.error(f"Export worker error: {e}")
+            self.call_from_thread(self._export_failed, str(e))
+
+    def _export_completed(self, path: Path | None) -> None:
+        """Handle successful export.
+
+        Args:
+            path: Path to exported file
+        """
+        modal = getattr(self, "_loading_modal", None)
+        if modal:
+            self.pop_screen()
+
+        if path:
+            self.notify(f"Exported to {path}", title="Export Complete")
+        else:
+            self.notify("Export completed", title="Export Complete")
+
+    def _export_failed(self, error: str) -> None:
+        """Handle failed export.
+
+        Args:
+            error: Error message
+        """
+        modal = getattr(self, "_loading_modal", None)
+        if modal:
+            self.pop_screen()
+
+        self.notify(f"Export failed: {error}", severity="error")
+
+    def _export_cancelled(self) -> None:
+        """Handle cancelled export."""
+        modal = getattr(self, "_loading_modal", None)
+        if modal:
+            self.pop_screen()
+
+        self.notify("Export cancelled", severity="warning")
+
+    def _do_batch_export(self, config: ExportConfig) -> None:
+        """Execute batch export for selected benchmarks.
+
+        Args:
+            config: Export configuration
+        """
+        # Get selected benchmark IDs
+        selected_benchmarks = [self._items[i] for i in sorted(self._selected_indices)]
+        if not selected_benchmarks:
+            self.notify("No benchmarks selected", severity="warning")
+            return
+
+        # Show progress modal
+        modal = BatchProgressModal(
+            title="Exporting Benchmarks",
+            total=len(selected_benchmarks),
+        )
+        self._batch_modal = modal
+        self._batch_benchmarks = selected_benchmarks
+        self._batch_config = config
+        self.push_screen(modal)
+
+        # Start batch worker
+        self._start_batch_export_worker(selected_benchmarks, config)
+
+    @work(exclusive=True, thread=True)
+    def _start_batch_export_worker(self, benchmarks: list[dict], config: ExportConfig) -> None:
+        """Worker to export multiple benchmarks.
+
+        Args:
+            benchmarks: List of benchmark metadata dicts
+            config: Export configuration
+        """
+        from cis_bench.cli.commands.utils import load_benchmark
+
+        worker = get_current_worker()
+        modal = getattr(self, "_batch_modal", None)
+
+        results = []
+
+        for i, benchmark_meta in enumerate(benchmarks, 1):
+            if worker.is_cancelled or (modal and modal.is_cancelled):
+                break
+
+            benchmark_id = str(benchmark_meta.get("benchmark_id", ""))
+
+            if modal:
+                self.call_from_thread(
+                    modal.update_progress,
+                    i,
+                    f"Loading {benchmark_id}...",
+                )
+
+            try:
+                # Load benchmark
+                benchmark = load_benchmark(benchmark_id=benchmark_id)
+
+                if not benchmark:
+                    results.append((benchmark_id, False, "Failed to load"))
+                    if modal:
+                        self.call_from_thread(modal.add_result, benchmark_id, False)
+                    continue
+
+                # Export
+                service = ExportService()
+                result = service.export_single(benchmark, config)
+
+                results.append((benchmark_id, result.success, result.error))
+                if modal:
+                    self.call_from_thread(modal.add_result, benchmark_id, result.success)
+
+            except Exception as e:
+                logger.error(f"Batch export error for {benchmark_id}: {e}")
+                results.append((benchmark_id, False, str(e)))
+                if modal:
+                    self.call_from_thread(modal.add_result, benchmark_id, False)
+
+        # Complete
+        self.call_from_thread(self._batch_export_completed, results)
+
+    def _batch_export_completed(self, results: list[tuple[str, bool, str | None]]) -> None:
+        """Handle batch export completion.
+
+        Args:
+            results: List of (benchmark_id, success, error) tuples
+        """
+        modal = getattr(self, "_batch_modal", None)
+        if modal:
+            self.pop_screen()
+
+        success_count = sum(1 for _, success, _ in results if success)
+        total = len(results)
+
+        if success_count == total:
+            self.notify(f"Exported {total} benchmarks", title="Batch Export Complete")
+        elif success_count > 0:
+            self.notify(
+                f"Exported {success_count}/{total} benchmarks",
+                title="Batch Export Partial",
+                severity="warning",
+            )
+        else:
+            self.notify("All exports failed", severity="error")
 
 
 def run_catalog_browser(benchmarks: list[dict], offline: bool = False) -> None:

@@ -1,6 +1,9 @@
 """View browser TUI application."""
 
+from pathlib import Path
+
 from rich.text import Text
+from textual.binding import Binding
 from textual.widgets import DataTable, Static
 
 from cis_bench.cli.commands.tui.base import (
@@ -9,15 +12,25 @@ from cis_bench.cli.commands.tui.base import (
     BaseBrowserApp,
     natural_sort_key,
 )
+from cis_bench.cli.commands.tui.dialogs import (
+    ExportConfigDialog,
+    ExportDialogResult,
+    OutputPathDialog,
+)
 from cis_bench.cli.commands.tui.view.detail import ViewDetailView
 from cis_bench.cli.commands.tui.widgets import SaveDialog
+from cis_bench.services.export_service import ExportConfig, ExportService
 
 
 class ViewApp(BaseBrowserApp):
     """Interactive TUI for browsing benchmark recommendations."""
 
     CSS = COMMON_CSS
-    BINDINGS = COMMON_BINDINGS
+
+    # Extend COMMON_BINDINGS with view-specific bindings
+    BINDINGS = COMMON_BINDINGS + [
+        Binding("e", "export_benchmark", "Export", show=True),
+    ]
 
     # ViewApp doesn't have a search container
     has_search_container = False
@@ -164,6 +177,62 @@ class ViewApp(BaseBrowserApp):
             self.notify(f"Saved to {filename}", title="Report Saved")
         except Exception as e:
             self.notify(f"Error saving: {e}", title="Save Failed", severity="error")
+
+    # --- Export Flow ---
+
+    def action_export_benchmark(self) -> None:
+        """Open export dialog for current benchmark."""
+        dialog = ExportConfigDialog(context="single")
+        self.push_screen(dialog, self._on_export_config)
+
+    def _on_export_config(self, result: ExportDialogResult | None) -> None:
+        """Handle export config dialog result.
+
+        Args:
+            result: Export config result or None if cancelled
+        """
+        if not result:
+            return
+
+        self._export_format = result.format
+        self._export_style = result.style
+
+        # Show output path dialog
+        dialog = OutputPathDialog(default_dir=Path.cwd())
+        self.push_screen(dialog, self._on_output_path)
+
+    def _on_output_path(self, result: tuple[Path, str | None] | None) -> None:
+        """Handle output path dialog result.
+
+        Args:
+            result: (output_dir, pattern) or None if cancelled
+        """
+        if not result:
+            return
+
+        output_dir, _ = result
+
+        # Build export config
+        config = ExportConfig(
+            format=self._export_format,
+            output_dir=output_dir,
+            style=self._export_style,
+        )
+
+        # Export (benchmark already loaded)
+        try:
+            service = ExportService()
+            export_result = service.export_single(self.benchmark, config)
+
+            if export_result.success:
+                self.notify(f"Exported to {export_result.path}", title="Export Complete")
+            else:
+                self.notify(
+                    f"Export failed: {export_result.error}",
+                    severity="error",
+                )
+        except Exception as e:
+            self.notify(f"Export failed: {e}", severity="error")
 
 
 def run_interactive_view(benchmark: dict, recommendations: list, offline: bool = False) -> None:

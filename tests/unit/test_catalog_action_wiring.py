@@ -173,22 +173,20 @@ class TestCatalogBrowserActionHandling:
         _, kwargs = app.notify.call_args
         assert kwargs.get("severity") in ("warning", "error")
 
-    def test_handle_export_action_shows_not_implemented(self, sample_benchmarks):
-        """Export action should show not implemented message (for now)."""
+    def test_handle_export_action_starts_export_flow(self, sample_benchmarks):
+        """Export action should start export flow."""
         from unittest.mock import MagicMock
 
         from cis_bench.cli.commands.tui.catalog import CatalogBrowserApp
 
         app = CatalogBrowserApp(benchmarks=sample_benchmarks)
-        app.notify = MagicMock()
+        app._start_export_flow = MagicMock()
 
         benchmark = sample_benchmarks[0]
         app._handle_action(("export", benchmark))
 
-        # Should notify about export not implemented
-        app.notify.assert_called_once()
-        call_args, kwargs = app.notify.call_args
-        assert "not yet implemented" in call_args[0].lower() or "export" in call_args[0].lower()
+        # Should start export flow with single context
+        app._start_export_flow.assert_called_once_with("single")
 
 
 class TestRunCatalogBrowserActionLoop:
