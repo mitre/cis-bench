@@ -79,11 +79,12 @@ class CatalogDetailView(DetailView):
             lines.append(benchmark["description"])
             lines.append("")
 
-        # URL (plain text - markdown links aren't clickable in terminal)
+        # URL with keybinding hint
         if benchmark.get("url"):
             lines.append("## WorkBench URL")
             lines.append("")
-            lines.append(benchmark["url"])
+            lines.append(f"{benchmark['url']}  ")
+            lines.append("*Press 'o' to open in browser*")
             lines.append("")
 
         # Actions hint

@@ -42,6 +42,7 @@ class CatalogBrowserApp(BaseBrowserApp):
         Binding("d", "diff_benchmarks", "Diff", show=True),
         Binding("e", "export_benchmark", "Export", show=False),  # Also 's'
         Binding("s", "export_benchmark", "Save/Export", show=False),
+        Binding("o", "open_in_browser", "Open URL", show=True),
     ]
 
     def __init__(self, benchmarks: list[dict], offline: bool = False, **kwargs):
@@ -547,6 +548,26 @@ class CatalogBrowserApp(BaseBrowserApp):
         benchmark = self._items[current_row]
         benchmark_id = str(benchmark.get("benchmark_id", ""))
         self._load_and_view(benchmark_id)
+
+    def action_open_in_browser(self) -> None:
+        """Open current benchmark's CIS WorkBench URL in browser - 'o' key."""
+        table = self.query_one("#changes-table", DataTable)
+        current_row = table.cursor_row
+
+        if current_row is None or current_row >= len(self._items):
+            self.notify("No benchmark selected", severity="warning")
+            return
+
+        benchmark = self._items[current_row]
+        url = benchmark.get("url")
+
+        if not url:
+            self.notify("No URL available for this benchmark", severity="warning")
+            return
+
+        # Use Textual's open_url for cross-platform browser opening
+        self.open_url(url)
+        self.notify(f"Opening in browser: {url}", severity="information")
 
     def action_diff_benchmarks(self) -> None:
         """Direct diff action - 'd' key. Requires exactly 2 selected."""

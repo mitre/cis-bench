@@ -115,6 +115,13 @@ class TestCatalogBrowserBindings:
         binding_keys = [b.key for b in CatalogBrowserApp.BINDINGS]
         assert "q" in binding_keys
 
+    def test_has_open_url_binding(self):
+        """Catalog browser should have o binding for open URL in browser."""
+        from cis_bench.cli.commands.tui.catalog import CatalogBrowserApp
+
+        binding_keys = [b.key for b in CatalogBrowserApp.BINDINGS]
+        assert "o" in binding_keys
+
 
 class TestCatalogBrowserActions:
     """Test that catalog browser has expected action methods."""
@@ -132,6 +139,13 @@ class TestCatalogBrowserActions:
 
         assert hasattr(CatalogBrowserApp, "_apply_search_filter")
         assert callable(CatalogBrowserApp._apply_search_filter)
+
+    def test_has_open_in_browser_action(self):
+        """CatalogBrowserApp should have action_open_in_browser method."""
+        from cis_bench.cli.commands.tui.catalog import CatalogBrowserApp
+
+        assert hasattr(CatalogBrowserApp, "action_open_in_browser")
+        assert callable(CatalogBrowserApp.action_open_in_browser)
 
 
 class TestCatalogBrowserInitialization:
