@@ -1,5 +1,9 @@
 """Catalog detail view component."""
 
+from rich.console import Group
+from rich.markdown import Markdown
+from rich.text import Text
+
 from cis_bench.cli.commands.tui.base import DetailView
 
 
@@ -16,29 +20,54 @@ class CatalogDetailView(DetailView):
             self.set_content("*Select a benchmark to see details*")
             return
 
-        lines = []
+        # Build rich content with styled elements
+        parts = []
 
-        # Title and ID
+        # Title (large, bold)
         title = benchmark.get("title", "Unknown Benchmark")
-        benchmark_id = benchmark.get("benchmark_id", "")
+        title_text = Text(title, style="bold cyan")
+        parts.append(title_text)
+        parts.append(Text(""))
+
+        # Version badge
         version = benchmark.get("version", "")
-        lines.append(f"# {title}")
         if version:
-            lines.append(f"**Version {version}**")
-        lines.append("")
+            version_text = Text()
+            version_text.append("Version ", style="dim")
+            version_text.append(version, style="bold green")
+            parts.append(version_text)
+            parts.append(Text(""))
 
-        # Metadata section - vertical list with line breaks
-        lines.append("## Details")
-        lines.append("")
-
-        # Each field on its own line (two trailing spaces = markdown line break)
+        # Status line with colored indicator
+        benchmark_id = benchmark.get("benchmark_id", "")
         if benchmark_id:
-            lines.append(f"**ID:** {benchmark_id}  ")
+            id_text = Text()
+            id_text.append("ID: ", style="bold")
+            id_text.append(benchmark_id, style="cyan")
+            parts.append(id_text)
+
         if benchmark.get("status"):
-            lines.append(f"**Status:** {benchmark['status']}  ")
+            status = benchmark["status"]
+            status_text = Text()
+            status_text.append("Status: ", style="bold")
+            if status == "Published":
+                status_text.append("● ", style="green")
+                status_text.append(status, style="green")
+            else:
+                status_text.append("● ", style="yellow")
+                status_text.append(status, style="yellow")
+            parts.append(status_text)
+
         if benchmark.get("is_latest"):
-            lines.append("★ **Latest Version**  ")
-        lines.append("")
+            latest_text = Text()
+            latest_text.append("★ ", style="yellow bold")
+            latest_text.append("Latest Version", style="yellow bold")
+            parts.append(latest_text)
+
+        parts.append(Text(""))
+
+        # Build markdown for the rest (sections with headers)
+        md_lines = []
 
         # Publication & Release Info
         if (
@@ -46,30 +75,26 @@ class CatalogDetailView(DetailView):
             or benchmark.get("release_type")
             or benchmark.get("last_revision_date")
         ):
-            lines.append("## Publication")
-            lines.append("")
+            md_lines.append("## Publication")
+            md_lines.append("")
             if benchmark.get("published_date"):
-                lines.append(f"**Published:** {benchmark['published_date']}  ")
+                md_lines.append(f"**Published:** {benchmark['published_date']}  ")
             if benchmark.get("last_revision_date"):
-                lines.append(f"**Last Revision:** {benchmark['last_revision_date']}  ")
+                md_lines.append(f"**Last Revision:** {benchmark['last_revision_date']}  ")
             if benchmark.get("release_type"):
-                lines.append(f"**Release Type:** {benchmark['release_type']}  ")
+                md_lines.append(f"**Release Type:** {benchmark['release_type']}  ")
             if benchmark.get("milestone_name"):
-                lines.append(f"**Milestone:** {benchmark['milestone_name']}  ")
-            lines.append("")
+                md_lines.append(f"**Milestone:** {benchmark['milestone_name']}  ")
+            md_lines.append("")
 
         # Lineage
         if benchmark.get("parent_benchmark_url"):
-            lines.append("## Lineage")
-            lines.append("")
+            md_lines.append("## Lineage")
+            md_lines.append("")
             parent_title = benchmark.get("parent_benchmark_title", "Parent Benchmark")
-            lines.append(f"**Forked From:** {parent_title}  ")
-            lines.append(f"*{benchmark['parent_benchmark_url']}*  ")
-            lines.append("")
-
-        # Assets (CPE-IDs)
-        # Note: assets come from downloaded benchmarks, not catalog
-        # Catalog might not have this data unless benchmark was downloaded
+            md_lines.append(f"**Forked From:** {parent_title}  ")
+            md_lines.append(f"*{benchmark['parent_benchmark_url']}*  ")
+            md_lines.append("")
 
         # Classification
         has_classification = any(
@@ -82,59 +107,68 @@ class CatalogDetailView(DetailView):
             ]
         )
         if has_classification:
-            lines.append("## Classification")
-            lines.append("")
+            md_lines.append("## Classification")
+            md_lines.append("")
             if benchmark.get("collections"):
-                lines.append(f"**Collections:** {benchmark['collections']}  ")
+                md_lines.append(f"**Collections:** {benchmark['collections']}  ")
             if benchmark.get("platform"):
-                lines.append(f"**Platform:** {benchmark['platform']}  ")
+                md_lines.append(f"**Platform:** {benchmark['platform']}  ")
             if benchmark.get("platform_type"):
-                lines.append(f"**Type:** {benchmark['platform_type']}  ")
+                md_lines.append(f"**Type:** {benchmark['platform_type']}  ")
             if benchmark.get("community"):
-                lines.append(f"**Community:** {benchmark['community']}  ")
+                md_lines.append(f"**Community:** {benchmark['community']}  ")
             if benchmark.get("owner"):
-                lines.append(f"**Owner:** {benchmark['owner']}  ")
-            lines.append("")
+                md_lines.append(f"**Owner:** {benchmark['owner']}  ")
+            md_lines.append("")
 
         # Description
         if benchmark.get("description"):
-            lines.append("## Description")
-            lines.append("")
-            lines.append(benchmark["description"])
-            lines.append("")
+            md_lines.append("## Description")
+            md_lines.append("")
+            md_lines.append(benchmark["description"])
+            md_lines.append("")
 
         # Contributors
         if benchmark.get("contributors"):
-            lines.append("## Contributors")
-            lines.append("")
-            # Contributors stored as comma-separated string in catalog DB
-            lines.append(benchmark["contributors"])
-            lines.append("")
+            md_lines.append("## Contributors")
+            md_lines.append("")
+            md_lines.append(benchmark["contributors"])
+            md_lines.append("")
 
         # Intended Audience
         if benchmark.get("intended_audience"):
-            lines.append("## Intended Audience")
-            lines.append("")
-            lines.append(benchmark["intended_audience"])
-            lines.append("")
+            md_lines.append("## Intended Audience")
+            md_lines.append("")
+            md_lines.append(benchmark["intended_audience"])
+            md_lines.append("")
 
         # Acknowledgements
         if benchmark.get("acknowledgements"):
-            lines.append("## Acknowledgements")
-            lines.append("")
-            lines.append(benchmark["acknowledgements"])
-            lines.append("")
+            md_lines.append("## Acknowledgements")
+            md_lines.append("")
+            md_lines.append(benchmark["acknowledgements"])
+            md_lines.append("")
 
         # URL with keybinding hint
         if benchmark.get("url"):
-            lines.append("## WorkBench URL")
-            lines.append("")
-            lines.append(f"{benchmark['url']}  ")
-            lines.append("*Press 'o' to open in browser*")
-            lines.append("")
+            md_lines.append("## WorkBench URL")
+            md_lines.append("")
+            md_lines.append(f"`{benchmark['url']}`  ")
+            md_lines.append("*Press 'o' to open in browser*")
+            md_lines.append("")
 
         # Actions hint
-        lines.append("---")
-        lines.append("*Press Enter for actions menu*")
+        md_lines.append("---")
+        md_lines.append("*Press 'v' to view, 'd' to diff, 'e' to export*")
 
-        self.set_content("\n".join(lines))
+        # Combine styled header with markdown body
+        if md_lines:
+            parts.append(Markdown("\n".join(md_lines)))
+
+        # Store plain text for copy function
+        self._content_text = f"{title}\nVersion {version}\nID: {benchmark_id}\n" + "\n".join(
+            md_lines
+        )
+
+        # Render combined content
+        self.update(Group(*parts))
