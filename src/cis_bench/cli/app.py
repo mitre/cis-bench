@@ -78,6 +78,7 @@ from cis_bench.cli.commands import (
     get,
     info,
     list_cmd,
+    main_tui,
     search,
     view,
 )
@@ -92,6 +93,7 @@ cli.add_command(find.find_cmd)
 cli.add_command(get.get_cmd)
 cli.add_command(list_cmd.list_benchmarks)
 cli.add_command(info.info)
+cli.add_command(main_tui.main_tui)
 cli.add_command(search.search_cmd)
 cli.add_command(catalog.catalog)
 cli.add_command(view.view_cmd)

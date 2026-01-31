@@ -351,6 +351,37 @@ COMMON_BINDINGS = [
 ]
 
 
+class BaseTabPane(Static):
+    """Base class for tab panes in MainTUIApp.
+
+    Provides shared bindings and common action implementations for all tab panes.
+    Extends Static to be used as a widget inside TabbedContent.
+    """
+
+    # Share common bindings at widget level
+    BINDINGS = COMMON_BINDINGS
+
+    def action_cursor_down(self) -> None:
+        """Move cursor down in DataTable."""
+        table = self.query_one("#catalog-table", DataTable)
+        table.action_cursor_down()
+
+    def action_cursor_up(self) -> None:
+        """Move cursor up in DataTable."""
+        table = self.query_one("#catalog-table", DataTable)
+        table.action_cursor_up()
+
+    def action_page_down(self) -> None:
+        """Page down in DataTable."""
+        table = self.query_one("#catalog-table", DataTable)
+        table.action_page_down()
+
+    def action_page_up(self) -> None:
+        """Page up in DataTable."""
+        table = self.query_one("#catalog-table", DataTable)
+        table.action_page_up()
+
+
 class BaseBrowserApp(App):
     """Base class for TUI apps that browse a list with detail view."""
 
