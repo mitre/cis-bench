@@ -34,10 +34,19 @@ class CatalogTabPane(BaseTabPane):
     """
 
     # Extend BaseTabPane.BINDINGS (includes arrow keys, j/k, page up/down, tab for pane switching)
+    # UX convention: lowercase = frequent/quick, uppercase = less frequent/"bigger" actions
     BINDINGS = BaseTabPane.BINDINGS + [
+        # Selection
         Binding("space", "toggle_select", "Select", show=True),
+        # Actions menu
+        Binding("enter", "open_actions", "Actions", show=True),
+        # Direct action shortcuts (skip menu)
+        Binding("v", "view_benchmark", "View", show=True),
+        Binding("d", "diff_benchmarks", "Diff", show=True),
+        Binding("e", "export_benchmark", "Export", show=False),
         Binding("o", "open_in_browser", "Open URL", show=True),
-        Binding("r", "refresh_catalog", "Refresh", show=True),  # Override reverse_sort
+        # Note: 'r' is inherited from BaseTabPane for reverse_sort
+        Binding("R", "refresh_catalog", "Refresh", show=True),  # Shift+R for network refresh
     ]
 
     def __init__(self, **kwargs):
@@ -241,6 +250,619 @@ class CatalogTabPane(BaseTabPane):
     def action_refresh_catalog(self) -> None:
         """Refresh catalog from WorkBench."""
         self.notify("Refresh catalog - implementing next")
+
+    # ========================================================================
+    # Phase 2b: View/Diff/Export Actions
+    # ========================================================================
+
+    def action_open_actions(self) -> None:
+        """Open the actions menu for the current benchmark."""
+        from cis_bench.cli.commands.tui.catalog.actions import ActionMenu
+
+        table = self.query_one("#catalog-table", DataTable)
+        current_row = table.cursor_row
+
+        if current_row is None or current_row >= len(self._items):
+            self.notify("No benchmark selected", severity="warning")
+            return
+
+        benchmark = self._items[current_row]
+        benchmark_id = str(benchmark.get("benchmark_id", ""))
+        is_downloaded = benchmark_id in self._downloaded_ids
+
+        # Use self.app.push_screen() since tab pane extends Static, not App
+        self.app.push_screen(
+            ActionMenu(benchmark, is_downloaded=is_downloaded),
+            self._handle_action,
+        )
+
+    def _handle_action(self, result: tuple | None) -> None:
+        """Handle the result from the action menu.
+
+        Args:
+            result: Tuple of (action, benchmark) or None if cancelled.
+        """
+        if result is None:
+            return
+
+        action, benchmark = result
+        benchmark_id = str(benchmark.get("benchmark_id", ""))
+
+        if action == "download":
+            self.notify(
+                f"Content is fetched automatically when viewing/exporting. "
+                f"For explicit download: cis-bench download {benchmark_id}",
+                severity="information",
+            )
+        elif action == "view":
+            self._load_and_view(benchmark_id)
+        elif action == "diff":
+            if len(self._selected_indices) != 2:
+                self.notify(
+                    "Select exactly 2 benchmarks to compare (use Space to select)",
+                    severity="warning",
+                )
+                return
+            old_id, new_id = self._get_ordered_diff_ids()
+            self._load_and_diff(old_id, new_id)
+        elif action == "export":
+            context = "batch" if len(self._selected_indices) > 1 else "single"
+            self._start_export_flow(context)
+
+    def action_view_benchmark(self) -> None:
+        """Direct view action - 'v' key. Skips the action menu."""
+        table = self.query_one("#catalog-table", DataTable)
+        current_row = table.cursor_row
+
+        if current_row is None or current_row >= len(self._items):
+            self.notify("No benchmark selected", severity="warning")
+            return
+
+        benchmark = self._items[current_row]
+        benchmark_id = str(benchmark.get("benchmark_id", ""))
+        self._load_and_view(benchmark_id)
+
+    def action_diff_benchmarks(self) -> None:
+        """Direct diff action - 'd' key. Requires exactly 2 selected."""
+        if len(self._selected_indices) != 2:
+            self.notify(
+                "Select exactly 2 benchmarks to compare (use Space to select)",
+                severity="warning",
+            )
+            return
+
+        old_id, new_id = self._get_ordered_diff_ids()
+        self._load_and_diff(old_id, new_id)
+
+    def action_export_benchmark(self) -> None:
+        """Direct export action - 'e' key. Skips the action menu."""
+        if len(self._selected_indices) > 1:
+            context = "batch"
+        else:
+            table = self.query_one("#catalog-table", DataTable)
+            current_row = table.cursor_row
+            if current_row is None or current_row >= len(self._items):
+                self.notify("No benchmark selected", severity="warning")
+                return
+            context = "single"
+        self._start_export_flow(context)
+
+    def _get_ordered_diff_ids(self) -> tuple[str, str]:
+        """Get selected benchmark IDs ordered by date (old first, new second).
+
+        Returns:
+            Tuple of (old_id, new_id) sorted by published_date.
+        """
+        selected_benchmarks = [self._items[idx] for idx in self._selected_indices]
+
+        def sort_key(b: dict) -> str:
+            return b.get("published_date") or b.get("benchmark_id", "")
+
+        sorted_benchmarks = sorted(selected_benchmarks, key=sort_key)
+
+        old_id = str(sorted_benchmarks[0].get("benchmark_id", ""))
+        new_id = str(sorted_benchmarks[1].get("benchmark_id", ""))
+
+        return old_id, new_id
+
+    def _load_and_view(self, benchmark_id: str) -> None:
+        """Load benchmark with loading modal and push ViewScreen.
+
+        Args:
+            benchmark_id: Benchmark ID to view.
+        """
+        from cis_bench.cli.commands.tui.widgets import LoadingModal
+
+        self._pending_view_id = benchmark_id
+
+        def on_modal_dismiss(completed: bool) -> None:
+            if not completed:
+                self.notify("Loading cancelled", severity="warning")
+
+        modal = LoadingModal(f"Loading {benchmark_id}...")
+        self._loading_modal = modal
+        self.app.push_screen(modal, on_modal_dismiss)
+
+        self._start_view_worker(benchmark_id)
+
+    @work(exclusive=True, thread=True)
+    def _start_view_worker(self, benchmark_id: str) -> None:
+        """Worker to load benchmark in background thread."""
+        import time
+
+        from cis_bench.cli.commands.utils import load_benchmark
+
+        worker = get_current_worker()
+        modal = getattr(self, "_loading_modal", None)
+
+        def progress_callback(current: int, total: int, message: str) -> None:
+            if worker.is_cancelled or (modal and modal.is_cancelled):
+                return
+            if modal:
+                if total > 0:
+                    download_progress = int((current / total) * 80) + 10
+                    self.app.call_from_thread(
+                        modal.update_progress,
+                        download_progress,
+                        message,
+                    )
+                else:
+                    self.app.call_from_thread(modal.update_progress, 5, message)
+
+        try:
+            if worker.is_cancelled:
+                return
+
+            time.sleep(0.1)
+
+            if not worker.is_cancelled and modal and not modal.is_cancelled:
+                self.app.call_from_thread(
+                    modal.update_progress, 5, "Connecting to CIS WorkBench..."
+                )
+
+            if worker.is_cancelled:
+                return
+
+            data = load_benchmark(
+                benchmark_id,
+                offline=False,  # Tab pane doesn't track offline mode yet
+                progress_callback=progress_callback,
+                silent=True,
+            )
+
+            if worker.is_cancelled or (modal and modal.is_cancelled):
+                return
+
+            if modal and not worker.is_cancelled:
+                self.app.call_from_thread(
+                    modal.update_progress, 95, "Processing recommendations..."
+                )
+
+            recommendations = data.get("recommendations", [])
+
+            if worker.is_cancelled or (modal and modal.is_cancelled):
+                return
+
+            if modal and not worker.is_cancelled:
+                self.app.call_from_thread(modal.update_progress, 100, "Ready!")
+
+            if not worker.is_cancelled:
+                self.app.call_from_thread(self._on_view_loaded, data, recommendations)
+
+        except Exception as e:
+            if not worker.is_cancelled:
+                self.app.call_from_thread(self._on_load_error, str(e))
+
+    def _on_view_loaded(self, data: dict, recommendations: list) -> None:
+        """Handle successful view load (called from main thread)."""
+        from cis_bench.cli.commands.tui.screens import ViewScreen
+
+        modal = getattr(self, "_loading_modal", None)
+        if modal:
+            try:
+                self.app.pop_screen()
+            except Exception as e:
+                logger.debug(f"Could not pop loading modal: {e}")
+            self._loading_modal = None
+
+        self.app.push_screen(
+            ViewScreen(data, recommendations, offline=False),
+            self._on_screen_dismissed,
+        )
+
+    def _on_screen_dismissed(self, _result=None) -> None:
+        """Callback when ViewScreen or DiffScreen is dismissed."""
+        self._load_downloaded_ids()
+        self._rebuild_table_preserve_cursor()
+
+    def _on_load_error(self, error: str) -> None:
+        """Handle load failure (called from main thread)."""
+        modal = getattr(self, "_loading_modal", None)
+        if modal:
+            try:
+                self.app.pop_screen()
+            except Exception as e:
+                logger.debug(f"Could not pop loading modal on error: {e}")
+            self._loading_modal = None
+
+        self.notify(f"Failed to load: {error}", severity="error", timeout=10)
+
+    def _load_and_diff(self, old_id: str, new_id: str) -> None:
+        """Load both benchmarks with loading modal and push DiffScreen.
+
+        Args:
+            old_id: Older benchmark ID.
+            new_id: Newer benchmark ID.
+        """
+        from cis_bench.cli.commands.tui.widgets import LoadingModal
+
+        self._pending_diff_ids = (old_id, new_id)
+
+        def on_modal_dismiss(completed: bool) -> None:
+            if not completed:
+                self.notify("Loading cancelled", severity="warning")
+
+        modal = LoadingModal("Comparing benchmarks...")
+        self._loading_modal = modal
+        self.app.push_screen(modal, on_modal_dismiss)
+
+        self._start_diff_worker(old_id, new_id)
+
+    @work(exclusive=True, thread=True)
+    def _start_diff_worker(self, old_id: str, new_id: str) -> None:
+        """Worker to load both benchmarks in background thread."""
+        import time
+
+        from cis_bench.cli.commands.diff import compare_benchmarks
+        from cis_bench.cli.commands.utils import load_benchmark
+
+        worker = get_current_worker()
+        modal = getattr(self, "_loading_modal", None)
+
+        def make_progress_callback(base_percent: int, range_percent: int, label: str):
+            def callback(current: int, total: int, message: str) -> None:
+                if worker.is_cancelled or (modal and modal.is_cancelled):
+                    return
+                if modal:
+                    if total > 0:
+                        phase_progress = int((current / total) * range_percent)
+                        self.app.call_from_thread(
+                            modal.update_progress,
+                            base_percent + phase_progress,
+                            f"{label}: [{current}/{total}]",
+                        )
+                    else:
+                        self.app.call_from_thread(modal.update_progress, base_percent, message)
+
+            return callback
+
+        try:
+            if worker.is_cancelled:
+                return
+
+            time.sleep(0.1)
+
+            if not worker.is_cancelled and modal and not modal.is_cancelled:
+                self.app.call_from_thread(modal.update_progress, 2, f"Connecting for {old_id}...")
+
+            if worker.is_cancelled:
+                return
+
+            old_data = load_benchmark(
+                old_id,
+                offline=False,
+                progress_callback=make_progress_callback(2, 38, f"Old ({old_id})"),
+                silent=True,
+            )
+
+            if worker.is_cancelled or (modal and modal.is_cancelled):
+                return
+
+            if modal and not worker.is_cancelled:
+                self.app.call_from_thread(modal.update_progress, 42, f"Connecting for {new_id}...")
+
+            if worker.is_cancelled:
+                return
+
+            new_data = load_benchmark(
+                new_id,
+                offline=False,
+                progress_callback=make_progress_callback(42, 38, f"New ({new_id})"),
+                silent=True,
+            )
+
+            if worker.is_cancelled or (modal and modal.is_cancelled):
+                return
+
+            if modal and not worker.is_cancelled:
+                self.app.call_from_thread(modal.update_progress, 85, "Comparing benchmarks...")
+
+            comparison = compare_benchmarks(old_data, new_data)
+
+            if worker.is_cancelled or (modal and modal.is_cancelled):
+                return
+
+            if modal and not worker.is_cancelled:
+                self.app.call_from_thread(modal.update_progress, 100, "Ready!")
+
+            if not worker.is_cancelled:
+                self.app.call_from_thread(self._on_diff_loaded, comparison, old_data, new_data)
+
+        except Exception as e:
+            if not worker.is_cancelled:
+                self.app.call_from_thread(self._on_load_error, str(e))
+
+    def _on_diff_loaded(self, comparison: dict, old_data: dict, new_data: dict) -> None:
+        """Handle successful diff load (called from main thread)."""
+        from cis_bench.cli.commands.tui.screens import DiffScreen
+
+        modal = getattr(self, "_loading_modal", None)
+        if modal:
+            try:
+                self.app.pop_screen()
+            except Exception as e:
+                logger.debug(f"Could not pop loading modal for diff: {e}")
+            self._loading_modal = None
+
+        self.app.push_screen(
+            DiffScreen(comparison, old_data, new_data, offline=False),
+            self._on_screen_dismissed,
+        )
+
+    def _start_export_flow(self, context: str) -> None:
+        """Start export flow by pushing format selection dialog.
+
+        Args:
+            context: Export context - 'single' or 'batch'.
+        """
+        from cis_bench.cli.commands.tui.dialogs import ExportConfigDialog
+
+        self._export_context = context
+        dialog = ExportConfigDialog(context=context)
+        self.app.push_screen(dialog, self._on_export_config)
+
+    def _on_export_config(self, result) -> None:
+        """Handle export config dialog result.
+
+        Args:
+            result: Export config result or None if cancelled.
+        """
+        from pathlib import Path
+
+        from cis_bench.cli.commands.tui.dialogs import OutputPathDialog
+
+        if not result:
+            return
+
+        self._export_format = result.format
+        self._export_style = result.style
+
+        dialog = OutputPathDialog(
+            default_dir=Path.cwd(),
+            show_pattern=self._export_context == "batch",
+        )
+        self.app.push_screen(dialog, self._on_output_path)
+
+    def _on_output_path(self, result: tuple | None) -> None:
+        """Handle output path dialog result.
+
+        Args:
+            result: (output_dir, pattern) or None if cancelled.
+        """
+        from cis_bench.services.export_service import ExportConfig
+
+        if not result:
+            return
+
+        output_dir, pattern = result
+
+        config = ExportConfig(
+            format=self._export_format,
+            output_dir=output_dir,
+            style=self._export_style,
+            filename_pattern=pattern,
+        )
+
+        if self._export_context == "batch":
+            self._do_batch_export(config)
+        else:
+            self._do_single_export(config)
+
+    def _do_single_export(self, config) -> None:
+        """Execute single benchmark export.
+
+        Args:
+            config: Export configuration.
+        """
+        from cis_bench.cli.commands.tui.widgets import LoadingModal
+
+        table = self.query_one("#catalog-table", DataTable)
+        current_row = table.cursor_row
+        if current_row is None or current_row >= len(self._items):
+            self.notify("No benchmark selected", severity="warning")
+            return
+
+        benchmark = self._items[current_row]
+        benchmark_id = str(benchmark.get("benchmark_id", ""))
+
+        self._pending_export_id = benchmark_id
+        self._pending_export_config = config
+
+        modal = LoadingModal(f"Exporting {benchmark_id}...")
+        self._loading_modal = modal
+        self.app.push_screen(modal)
+
+        self._start_export_worker(benchmark_id, config)
+
+    @work(exclusive=True, thread=True)
+    def _start_export_worker(self, benchmark_id: str, config) -> None:
+        """Worker to load and export benchmark in background thread."""
+        from cis_bench.cli.commands.utils import load_benchmark
+        from cis_bench.services.export_service import ExportService
+
+        worker = get_current_worker()
+        modal = getattr(self, "_loading_modal", None)
+
+        def progress_callback(current: int, total: int, message: str) -> None:
+            if worker.is_cancelled or (modal and modal.is_cancelled):
+                return
+            if modal and total > 0:
+                progress = int((current / total) * 80) + 10
+                self.app.call_from_thread(modal.update_progress, progress, message)
+
+        try:
+            if modal:
+                self.app.call_from_thread(modal.update_progress, 5, "Loading benchmark...")
+
+            benchmark = load_benchmark(
+                benchmark_id=benchmark_id,
+                progress_callback=progress_callback,
+            )
+
+            if worker.is_cancelled or (modal and modal.is_cancelled):
+                self.app.call_from_thread(self._export_cancelled)
+                return
+
+            if not benchmark:
+                self.app.call_from_thread(
+                    self._export_failed,
+                    f"Could not load benchmark {benchmark_id}",
+                )
+                return
+
+            if modal:
+                self.app.call_from_thread(modal.update_progress, 90, "Exporting...")
+
+            service = ExportService()
+            result = service.export_single(benchmark, config)
+
+            if result.success:
+                self.app.call_from_thread(self._export_completed, result.path)
+            else:
+                self.app.call_from_thread(self._export_failed, result.error or "Unknown error")
+
+        except Exception as e:
+            logger.error(f"Export worker error: {e}")
+            self.app.call_from_thread(self._export_failed, str(e))
+
+    def _export_completed(self, path) -> None:
+        """Handle successful export."""
+        modal = getattr(self, "_loading_modal", None)
+        if modal:
+            self.app.pop_screen()
+
+        if path:
+            self.notify(f"Exported to {path}", title="Export Complete")
+        else:
+            self.notify("Export completed", title="Export Complete")
+
+    def _export_failed(self, error: str) -> None:
+        """Handle failed export."""
+        modal = getattr(self, "_loading_modal", None)
+        if modal:
+            self.app.pop_screen()
+
+        self.notify(f"Export failed: {error}", severity="error")
+
+    def _export_cancelled(self) -> None:
+        """Handle cancelled export."""
+        modal = getattr(self, "_loading_modal", None)
+        if modal:
+            self.app.pop_screen()
+
+        self.notify("Export cancelled", severity="warning")
+
+    def _do_batch_export(self, config) -> None:
+        """Execute batch export for selected benchmarks.
+
+        Args:
+            config: Export configuration.
+        """
+        from cis_bench.cli.commands.tui.dialogs import BatchProgressModal
+
+        selected_benchmarks = [self._items[i] for i in sorted(self._selected_indices)]
+        if not selected_benchmarks:
+            self.notify("No benchmarks selected", severity="warning")
+            return
+
+        modal = BatchProgressModal(
+            title="Exporting Benchmarks",
+            total=len(selected_benchmarks),
+        )
+        self._batch_modal = modal
+        self._batch_benchmarks = selected_benchmarks
+        self._batch_config = config
+        self.app.push_screen(modal)
+
+        self._start_batch_export_worker(selected_benchmarks, config)
+
+    @work(exclusive=True, thread=True)
+    def _start_batch_export_worker(self, benchmarks: list[dict], config) -> None:
+        """Worker to export multiple benchmarks."""
+        from cis_bench.cli.commands.utils import load_benchmark
+        from cis_bench.services.export_service import ExportService
+
+        worker = get_current_worker()
+        modal = getattr(self, "_batch_modal", None)
+
+        results = []
+
+        for i, benchmark_meta in enumerate(benchmarks, 1):
+            if worker.is_cancelled or (modal and modal.is_cancelled):
+                break
+
+            benchmark_id = str(benchmark_meta.get("benchmark_id", ""))
+
+            if modal:
+                self.app.call_from_thread(
+                    modal.update_progress,
+                    i,
+                    f"Loading {benchmark_id}...",
+                )
+
+            try:
+                benchmark = load_benchmark(benchmark_id=benchmark_id)
+
+                if not benchmark:
+                    results.append((benchmark_id, False, "Failed to load"))
+                    if modal:
+                        self.app.call_from_thread(modal.add_result, benchmark_id, False)
+                    continue
+
+                service = ExportService()
+                result = service.export_single(benchmark, config)
+
+                results.append((benchmark_id, result.success, result.error))
+                if modal:
+                    self.app.call_from_thread(modal.add_result, benchmark_id, result.success)
+
+            except Exception as e:
+                logger.error(f"Batch export error for {benchmark_id}: {e}")
+                results.append((benchmark_id, False, str(e)))
+                if modal:
+                    self.app.call_from_thread(modal.add_result, benchmark_id, False)
+
+        self.app.call_from_thread(self._batch_export_completed, results)
+
+    def _batch_export_completed(self, results: list[tuple[str, bool, str | None]]) -> None:
+        """Handle batch export completion."""
+        modal = getattr(self, "_batch_modal", None)
+        if modal:
+            self.app.pop_screen()
+
+        success_count = sum(1 for _, success, _ in results if success)
+        total = len(results)
+
+        if success_count == total:
+            self.notify(f"Exported {total} benchmarks", title="Batch Export Complete")
+        elif success_count > 0:
+            self.notify(
+                f"Exported {success_count}/{total} benchmarks",
+                title="Batch Export Partial",
+                severity="warning",
+            )
+        else:
+            self.notify("All exports failed", severity="error")
 
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
         """Update detail pane when row is highlighted (framework message pattern).
