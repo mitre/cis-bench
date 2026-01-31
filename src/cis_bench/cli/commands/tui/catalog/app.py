@@ -224,11 +224,8 @@ class CatalogBrowserApp(BaseBrowserApp):
                     severity="warning",
                 )
                 return
-            selected_ids = [
-                str(self._items[idx].get("benchmark_id", ""))
-                for idx in sorted(self._selected_indices)
-            ]
-            self._load_and_diff(selected_ids[0], selected_ids[1])
+            old_id, new_id = self._get_ordered_diff_ids()
+            self._load_and_diff(old_id, new_id)
         elif action == "export":
             # TODO: Export dialog (ep9.7)
             self.notify(
@@ -516,10 +513,27 @@ class CatalogBrowserApp(BaseBrowserApp):
             )
             return
 
-        selected_ids = [
-            str(self._items[idx].get("benchmark_id", "")) for idx in sorted(self._selected_indices)
-        ]
-        self._load_and_diff(selected_ids[0], selected_ids[1])
+        old_id, new_id = self._get_ordered_diff_ids()
+        self._load_and_diff(old_id, new_id)
+
+    def _get_ordered_diff_ids(self) -> tuple[str, str]:
+        """Get selected benchmark IDs ordered by date (old first, new second).
+
+        Returns:
+            Tuple of (old_id, new_id) sorted by published_date.
+        """
+        selected_benchmarks = [self._items[idx] for idx in self._selected_indices]
+
+        # Sort by published_date (older first), fallback to benchmark_id
+        def sort_key(b: dict) -> str:
+            return b.get("published_date") or b.get("benchmark_id", "")
+
+        sorted_benchmarks = sorted(selected_benchmarks, key=sort_key)
+
+        old_id = str(sorted_benchmarks[0].get("benchmark_id", ""))
+        new_id = str(sorted_benchmarks[1].get("benchmark_id", ""))
+
+        return old_id, new_id
 
     def action_export_benchmark(self) -> None:
         """Direct export action - 'e' or 's' key. Skips the action menu."""

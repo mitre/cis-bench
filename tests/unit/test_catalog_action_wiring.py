@@ -118,6 +118,38 @@ class TestCatalogBrowserActionHandling:
         # Should call _load_and_diff with both selected IDs
         app._load_and_diff.assert_called_once()
 
+    def test_diff_orders_by_published_date_old_first(self):
+        """Diff should order benchmarks by published_date (older first)."""
+        from cis_bench.cli.commands.tui.catalog import CatalogBrowserApp
+
+        # Create benchmarks with explicit dates - newer one listed first
+        benchmarks = [
+            {
+                "benchmark_id": "24001",
+                "title": "CIS Ubuntu 22.04 Benchmark",
+                "version": "v2.0.0",
+                "platform": "Operating System",
+                "published_date": "2024-06-15",  # Newer
+            },
+            {
+                "benchmark_id": "23598",
+                "title": "CIS Ubuntu 22.04 Benchmark",
+                "version": "v1.0.0",
+                "platform": "Operating System",
+                "published_date": "2024-01-10",  # Older
+            },
+        ]
+
+        app = CatalogBrowserApp(benchmarks=benchmarks)
+        # Select both (indices 0 and 1)
+        app._selected_indices = {0, 1}
+
+        old_id, new_id = app._get_ordered_diff_ids()
+
+        # Older date (23598) should be first (old_id)
+        assert old_id == "23598", "Older benchmark should be old_id"
+        assert new_id == "24001", "Newer benchmark should be new_id"
+
     def test_handle_diff_action_needs_exactly_two_selected(self, sample_benchmarks):
         """Diff action should show error if not exactly 2 benchmarks selected."""
         from unittest.mock import MagicMock
