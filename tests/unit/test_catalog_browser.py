@@ -23,9 +23,9 @@ class TestCatalogCSSExtension:
         """CATALOG_CSS should have catalog-specific overrides."""
         from cis_bench.cli.commands.tui.catalog.actions import CATALOG_CSS
 
-        # Catalog uses different widths
-        assert "45%" in CATALOG_CSS  # list-container
-        assert "55%" in CATALOG_CSS  # detail-container
+        # Catalog uses wider list for more columns (65/35 split)
+        assert "65%" in CATALOG_CSS  # list-container
+        assert "35%" in CATALOG_CSS  # detail-container
 
     def test_catalog_css_has_action_menu(self):
         """CATALOG_CSS should include action menu styles."""
@@ -331,10 +331,13 @@ class TestCatalogBrowserCachedStatus:
         app = CatalogBrowserApp(benchmarks=sample_benchmarks)
         columns = app._get_columns()
 
-        # Should have 5 columns: checkbox, cached indicator, ID, Title, Platform
-        assert len(columns) == 5
+        # Should have 7 columns: checkbox, cached, ID, Title, Version, Latest, Platform
+        assert len(columns) == 7
         # Second column (after checkbox) should be for cached status
         assert columns[1] == "⬇"  # Download/cached column header
+        # Verify Version and Latest columns exist
+        assert "Version" in columns
+        assert "Latest" in columns
 
     def test_is_downloaded_check_works(self, sample_benchmarks):
         """Should be able to check if benchmark is downloaded."""
