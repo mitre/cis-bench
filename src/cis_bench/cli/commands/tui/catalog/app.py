@@ -232,8 +232,23 @@ class CatalogBrowserApp(BaseBrowserApp):
             )
 
     def _load_and_view(self, benchmark_id: str) -> None:
-        """Load benchmark and push ViewScreen."""
-        self.notify(f"Loading {benchmark_id}...", severity="information")
+        """Load benchmark with loading modal and push ViewScreen."""
+        from cis_bench.cli.commands.tui.widgets import LoadingModal
+
+        # Store benchmark_id for the worker
+        self._pending_view_id = benchmark_id
+
+        # Push loading modal with callback
+        def on_modal_dismiss(completed: bool) -> None:
+            if not completed:
+                # User cancelled
+                self.notify("Loading cancelled", severity="warning")
+
+        modal = LoadingModal(f"Loading {benchmark_id}...")
+        self._loading_modal = modal
+        self.push_screen(modal, on_modal_dismiss)
+
+        # Start the worker
         self._start_view_worker(benchmark_id)
 
     @work(exclusive=True, thread=True)
@@ -241,28 +256,78 @@ class CatalogBrowserApp(BaseBrowserApp):
         """Worker to load benchmark in background thread."""
         from cis_bench.cli.commands.utils import load_benchmark
 
-        try:
-            data = load_benchmark(benchmark_id, offline=self.offline)
-            recommendations = data.get("recommendations", [])
-            # Call back to main thread to push screen
-            self.call_from_thread(self._push_view_screen, data, recommendations)
-        except Exception as e:
-            self.call_from_thread(
-                self.notify,
-                f"Failed to load {benchmark_id}: {e}",
-                severity="error",
-                timeout=10,
-            )
+        modal = getattr(self, "_loading_modal", None)
 
-    def _push_view_screen(self, data: dict, recommendations: list) -> None:
-        """Push the ViewScreen onto the stack (called from main thread)."""
+        try:
+            # Update progress
+            if modal and not modal.is_cancelled:
+                self.call_from_thread(modal.update_progress, 10, "Connecting...")
+
+            data = load_benchmark(benchmark_id, offline=self.offline)
+
+            if modal and modal.is_cancelled:
+                return  # User cancelled
+
+            if modal:
+                self.call_from_thread(modal.update_progress, 80, "Processing...")
+
+            recommendations = data.get("recommendations", [])
+
+            if modal and modal.is_cancelled:
+                return  # User cancelled
+
+            # Complete loading and push screen
+            self.call_from_thread(self._on_view_loaded, data, recommendations)
+
+        except Exception as e:
+            self.call_from_thread(self._on_load_error, str(e))
+
+    def _on_view_loaded(self, data: dict, recommendations: list) -> None:
+        """Handle successful view load (called from main thread)."""
         from cis_bench.cli.commands.tui.screens import ViewScreen
 
+        # Pop loading modal if still there
+        modal = getattr(self, "_loading_modal", None)
+        if modal:
+            try:
+                self.pop_screen()  # Remove loading modal
+            except Exception as e:
+                logger.debug(f"Could not pop loading modal: {e}")
+            self._loading_modal = None
+
+        # Push view screen
         self.push_screen(ViewScreen(data, recommendations, offline=self.offline))
 
+    def _on_load_error(self, error: str) -> None:
+        """Handle load failure (called from main thread)."""
+        # Pop loading modal if still there
+        modal = getattr(self, "_loading_modal", None)
+        if modal:
+            try:
+                self.pop_screen()  # Remove loading modal
+            except Exception as e:
+                logger.debug(f"Could not pop loading modal on error: {e}")
+            self._loading_modal = None
+
+        self.notify(f"Failed to load: {error}", severity="error", timeout=10)
+
     def _load_and_diff(self, old_id: str, new_id: str) -> None:
-        """Load both benchmarks and push DiffScreen."""
-        self.notify(f"Loading {old_id} and {new_id}...", severity="information")
+        """Load both benchmarks with loading modal and push DiffScreen."""
+        from cis_bench.cli.commands.tui.widgets import LoadingModal
+
+        # Store IDs for the worker
+        self._pending_diff_ids = (old_id, new_id)
+
+        # Push loading modal with callback
+        def on_modal_dismiss(completed: bool) -> None:
+            if not completed:
+                self.notify("Loading cancelled", severity="warning")
+
+        modal = LoadingModal("Comparing benchmarks...")
+        self._loading_modal = modal
+        self.push_screen(modal, on_modal_dismiss)
+
+        # Start the worker
         self._start_diff_worker(old_id, new_id)
 
     @work(exclusive=True, thread=True)
@@ -271,23 +336,56 @@ class CatalogBrowserApp(BaseBrowserApp):
         from cis_bench.cli.commands.diff import compare_benchmarks
         from cis_bench.cli.commands.utils import load_benchmark
 
-        try:
-            old_data = load_benchmark(old_id, offline=self.offline)
-            new_data = load_benchmark(new_id, offline=self.offline)
-            comparison = compare_benchmarks(old_data, new_data)
-            self.call_from_thread(self._push_diff_screen, comparison, old_data, new_data)
-        except Exception as e:
-            self.call_from_thread(
-                self.notify,
-                f"Failed to load benchmarks: {e}",
-                severity="error",
-                timeout=10,
-            )
+        modal = getattr(self, "_loading_modal", None)
 
-    def _push_diff_screen(self, comparison: dict, old_data: dict, new_data: dict) -> None:
-        """Push the DiffScreen onto the stack (called from main thread)."""
+        try:
+            # Load first benchmark
+            if modal and not modal.is_cancelled:
+                self.call_from_thread(modal.update_progress, 10, f"Loading {old_id}...")
+
+            old_data = load_benchmark(old_id, offline=self.offline)
+
+            if modal and modal.is_cancelled:
+                return
+
+            # Load second benchmark
+            if modal:
+                self.call_from_thread(modal.update_progress, 40, f"Loading {new_id}...")
+
+            new_data = load_benchmark(new_id, offline=self.offline)
+
+            if modal and modal.is_cancelled:
+                return
+
+            # Compare
+            if modal:
+                self.call_from_thread(modal.update_progress, 70, "Comparing...")
+
+            comparison = compare_benchmarks(old_data, new_data)
+
+            if modal and modal.is_cancelled:
+                return
+
+            # Complete
+            self.call_from_thread(self._on_diff_loaded, comparison, old_data, new_data)
+
+        except Exception as e:
+            self.call_from_thread(self._on_load_error, str(e))
+
+    def _on_diff_loaded(self, comparison: dict, old_data: dict, new_data: dict) -> None:
+        """Handle successful diff load (called from main thread)."""
         from cis_bench.cli.commands.tui.screens import DiffScreen
 
+        # Pop loading modal if still there
+        modal = getattr(self, "_loading_modal", None)
+        if modal:
+            try:
+                self.pop_screen()  # Remove loading modal
+            except Exception as e:
+                logger.debug(f"Could not pop loading modal for diff: {e}")
+            self._loading_modal = None
+
+        # Push diff screen
         self.push_screen(DiffScreen(comparison, old_data, new_data, offline=self.offline))
 
     def action_view_benchmark(self) -> None:
