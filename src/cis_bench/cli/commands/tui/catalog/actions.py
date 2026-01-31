@@ -60,7 +60,7 @@ CATALOG_CSS = (
 )
 
 
-class ActionMenu(ModalScreen):
+class ActionMenu(ModalScreen[tuple[str, dict] | None]):
     """Modal menu for benchmark actions."""
 
     BINDINGS = [

@@ -114,6 +114,7 @@ class TestCatalogSearch:
             await pilot.press("/")
             await pilot.pause()
             await pilot.press("r", "h", "e", "l")
+            await pilot.pause()  # Pause after typing, before submit
             await pilot.press("enter")
             await pilot.pause()
 
@@ -138,6 +139,7 @@ class TestCatalogSearch:
             await pilot.press("/")
             await pilot.pause()
             await pilot.press("u", "b", "u", "n", "t", "u")
+            await pilot.pause()  # Pause after typing, before submit
             await pilot.press("enter")
             await pilot.pause()
 
@@ -148,8 +150,20 @@ class TestCatalogSearch:
             await pilot.press("/")
             await pilot.pause()
             # Clear the search input by pressing backspace multiple times
-            for _ in range(10):
-                await pilot.press("backspace")
+            # Use single press call with multiple keys for atomic operation
+            await pilot.press(
+                "backspace",
+                "backspace",
+                "backspace",
+                "backspace",
+                "backspace",
+                "backspace",
+                "backspace",
+                "backspace",
+                "backspace",
+                "backspace",
+            )
+            await pilot.pause()  # Pause after clearing, before submit
             await pilot.press("enter")
             await pilot.pause()
 
@@ -281,6 +295,7 @@ class TestBenchmarkSelection:
 
             # Move down and select second
             await pilot.press("down")
+            await pilot.pause()  # Pause after cursor move, before selection
             await pilot.press("space")
             await pilot.pause()
 
@@ -412,7 +427,9 @@ class TestDiffBenchmarks:
 
             # Select two items
             await pilot.press("space")
+            await pilot.pause()  # Pause after first selection
             await pilot.press("down")
+            await pilot.pause()  # Pause after cursor move
             await pilot.press("space")
             await pilot.pause()
 

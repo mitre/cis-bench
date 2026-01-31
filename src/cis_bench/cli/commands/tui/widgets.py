@@ -32,7 +32,7 @@ class SearchInput(Input):
         self.app.action_submit_search()
 
 
-class HelpScreen(ModalScreen):
+class HelpScreen(ModalScreen[None]):
     """Modal screen showing keyboard shortcuts."""
 
     BINDINGS = [
@@ -78,10 +78,10 @@ class HelpScreen(ModalScreen):
 
     def action_dismiss(self) -> None:
         """Close the help screen."""
-        self.app.pop_screen()
+        self.dismiss(None)
 
 
-class SaveDialog(ModalScreen):
+class SaveDialog(ModalScreen[str | None]):
     """Modal dialog for saving a report."""
 
     BINDINGS = [
@@ -112,7 +112,7 @@ class SaveDialog(ModalScreen):
         self.dismiss(None)
 
 
-class JumpDialog(ModalScreen):
+class JumpDialog(ModalScreen[str | None]):
     """Modal dialog for jumping to a specific ref."""
 
     BINDINGS = [
@@ -224,16 +224,19 @@ class LoadingModal(ModalScreen[bool]):
             Container(
                 Label(self._title, id="loading-title"),
                 Static("⏳ Starting...", id="loading-status"),
-                ProgressBar(id="loading-progress", show_eta=False),
+                ProgressBar(id="loading-progress", show_eta=False, show_percentage=True),
                 Label("Press Esc to cancel", id="loading-hint"),
                 id="loading-container",
             ),
         )
 
     def on_mount(self) -> None:
-        """Start the progress bar in indeterminate mode."""
-        progress = self.query_one("#loading-progress", ProgressBar)
-        progress.update(total=100, progress=0)
+        """Start the progress bar and cache widget references for thread-safe access."""
+        # Cache widget references to avoid repeated queries from threads
+        self._progress_bar = self.query_one("#loading-progress", ProgressBar)
+        self._status_widget = self.query_one("#loading-status", Static)
+        self._progress_bar.update(total=100, progress=0)
+        self._mounted = True
 
     def update_progress(self, progress: int, status: str = "") -> None:
         """Update the progress bar and status message.
@@ -250,15 +253,21 @@ class LoadingModal(ModalScreen[bool]):
         self._progress = progress
         self._status = status
 
-        try:
-            progress_bar = self.query_one("#loading-progress", ProgressBar)
-            progress_bar.update(progress=progress)
+        # Check if mounted and widgets are cached
+        if not getattr(self, "_mounted", False):
+            logger.debug("LoadingModal not mounted yet, skipping progress update")
+            return
 
-            status_widget = self.query_one("#loading-status", Static)
+        try:
+            # Use cached widget references instead of querying each time
+            self._progress_bar.update(progress=progress)
+            self._progress_bar.refresh()  # Force visual refresh
+
             if status:
-                status_widget.update(f"⏳ {status}")
+                self._status_widget.update(f"⏳ {status}")
             else:
-                status_widget.update(f"⏳ {progress}%")
+                self._status_widget.update(f"⏳ {progress}%")
+            self._status_widget.refresh()  # Force visual refresh
         except Exception as e:
             # Widget might not be mounted yet
             logger.debug(f"Could not update loading progress (widget not ready): {e}")

@@ -6,6 +6,7 @@ from rich.text import Text
 from textual import work
 from textual.binding import Binding
 from textual.widgets import DataTable, Static
+from textual.worker import get_current_worker
 
 from cis_bench.cli.commands.tui.base import COMMON_BINDINGS, BaseBrowserApp
 from cis_bench.cli.commands.tui.catalog.actions import CATALOG_CSS, ActionMenu
@@ -254,33 +255,77 @@ class CatalogBrowserApp(BaseBrowserApp):
     @work(exclusive=True, thread=True)
     def _start_view_worker(self, benchmark_id: str) -> None:
         """Worker to load benchmark in background thread."""
+        import time
+
         from cis_bench.cli.commands.utils import load_benchmark
 
+        # Get worker reference for cancellation checks (best practice)
+        worker = get_current_worker()
         modal = getattr(self, "_loading_modal", None)
 
+        def progress_callback(current: int, total: int, message: str) -> None:
+            """Update LoadingModal from download progress."""
+            # Check both worker and modal cancellation
+            if worker.is_cancelled or (modal and modal.is_cancelled):
+                return
+            if modal:
+                if total > 0:
+                    # Calculate percentage: 10% for connect, 80% for download, 10% for processing
+                    download_progress = int((current / total) * 80) + 10
+                    self.call_from_thread(
+                        modal.update_progress,
+                        download_progress,
+                        f"[{current}/{total}] {message}",
+                    )
+                else:
+                    # No total yet, just show message
+                    self.call_from_thread(modal.update_progress, 5, message)
+
         try:
-            # Update progress
-            if modal and not modal.is_cancelled:
-                self.call_from_thread(modal.update_progress, 10, "Connecting...")
+            # Check for early cancellation
+            if worker.is_cancelled:
+                return
 
-            data = load_benchmark(benchmark_id, offline=self.offline)
+            # Brief delay to ensure modal is mounted and visible
+            time.sleep(0.1)
 
-            if modal and modal.is_cancelled:
+            # Update progress - connecting
+            if not worker.is_cancelled and modal and not modal.is_cancelled:
+                self.call_from_thread(modal.update_progress, 5, "Connecting to CIS WorkBench...")
+
+            # Check before long operation
+            if worker.is_cancelled:
+                return
+
+            data = load_benchmark(
+                benchmark_id,
+                offline=self.offline,
+                progress_callback=progress_callback,
+                silent=True,  # Suppress console output in TUI mode
+            )
+
+            # Check after long operation
+            if worker.is_cancelled or (modal and modal.is_cancelled):
                 return  # User cancelled
 
-            if modal:
-                self.call_from_thread(modal.update_progress, 80, "Processing...")
+            if modal and not worker.is_cancelled:
+                self.call_from_thread(modal.update_progress, 95, "Processing recommendations...")
 
             recommendations = data.get("recommendations", [])
 
-            if modal and modal.is_cancelled:
+            if worker.is_cancelled or (modal and modal.is_cancelled):
                 return  # User cancelled
 
+            if modal and not worker.is_cancelled:
+                self.call_from_thread(modal.update_progress, 100, "Ready!")
+
             # Complete loading and push screen
-            self.call_from_thread(self._on_view_loaded, data, recommendations)
+            if not worker.is_cancelled:
+                self.call_from_thread(self._on_view_loaded, data, recommendations)
 
         except Exception as e:
-            self.call_from_thread(self._on_load_error, str(e))
+            if not worker.is_cancelled:
+                self.call_from_thread(self._on_load_error, str(e))
 
     def _on_view_loaded(self, data: dict, recommendations: list) -> None:
         """Handle successful view load (called from main thread)."""
@@ -333,44 +378,100 @@ class CatalogBrowserApp(BaseBrowserApp):
     @work(exclusive=True, thread=True)
     def _start_diff_worker(self, old_id: str, new_id: str) -> None:
         """Worker to load both benchmarks in background thread."""
+        import time
+
         from cis_bench.cli.commands.diff import compare_benchmarks
         from cis_bench.cli.commands.utils import load_benchmark
 
+        # Get worker reference for cancellation checks (best practice)
+        worker = get_current_worker()
         modal = getattr(self, "_loading_modal", None)
 
+        def make_progress_callback(base_percent: int, range_percent: int, label: str):
+            """Create a progress callback for a specific download phase."""
+
+            def callback(current: int, total: int, message: str) -> None:
+                # Check both worker and modal cancellation
+                if worker.is_cancelled or (modal and modal.is_cancelled):
+                    return
+                if modal:
+                    if total > 0:
+                        phase_progress = int((current / total) * range_percent)
+                        self.call_from_thread(
+                            modal.update_progress,
+                            base_percent + phase_progress,
+                            f"{label}: [{current}/{total}]",
+                        )
+                    else:
+                        self.call_from_thread(modal.update_progress, base_percent, message)
+
+            return callback
+
         try:
-            # Load first benchmark
-            if modal and not modal.is_cancelled:
-                self.call_from_thread(modal.update_progress, 10, f"Loading {old_id}...")
-
-            old_data = load_benchmark(old_id, offline=self.offline)
-
-            if modal and modal.is_cancelled:
+            # Check for early cancellation
+            if worker.is_cancelled:
                 return
 
-            # Load second benchmark
-            if modal:
-                self.call_from_thread(modal.update_progress, 40, f"Loading {new_id}...")
+            # Brief delay to ensure modal is mounted and visible
+            time.sleep(0.1)
 
-            new_data = load_benchmark(new_id, offline=self.offline)
+            # Load first benchmark (0-40%)
+            if not worker.is_cancelled and modal and not modal.is_cancelled:
+                self.call_from_thread(modal.update_progress, 2, f"Connecting for {old_id}...")
 
-            if modal and modal.is_cancelled:
+            # Check before long operation
+            if worker.is_cancelled:
                 return
 
-            # Compare
-            if modal:
-                self.call_from_thread(modal.update_progress, 70, "Comparing...")
+            old_data = load_benchmark(
+                old_id,
+                offline=self.offline,
+                progress_callback=make_progress_callback(2, 38, f"Old ({old_id})"),
+                silent=True,
+            )
+
+            # Check after long operation
+            if worker.is_cancelled or (modal and modal.is_cancelled):
+                return
+
+            # Load second benchmark (40-80%)
+            if modal and not worker.is_cancelled:
+                self.call_from_thread(modal.update_progress, 42, f"Connecting for {new_id}...")
+
+            # Check before long operation
+            if worker.is_cancelled:
+                return
+
+            new_data = load_benchmark(
+                new_id,
+                offline=self.offline,
+                progress_callback=make_progress_callback(42, 38, f"New ({new_id})"),
+                silent=True,
+            )
+
+            # Check after long operation
+            if worker.is_cancelled or (modal and modal.is_cancelled):
+                return
+
+            # Compare (80-95%)
+            if modal and not worker.is_cancelled:
+                self.call_from_thread(modal.update_progress, 85, "Comparing benchmarks...")
 
             comparison = compare_benchmarks(old_data, new_data)
 
-            if modal and modal.is_cancelled:
+            if worker.is_cancelled or (modal and modal.is_cancelled):
                 return
 
+            if modal and not worker.is_cancelled:
+                self.call_from_thread(modal.update_progress, 100, "Ready!")
+
             # Complete
-            self.call_from_thread(self._on_diff_loaded, comparison, old_data, new_data)
+            if not worker.is_cancelled:
+                self.call_from_thread(self._on_diff_loaded, comparison, old_data, new_data)
 
         except Exception as e:
-            self.call_from_thread(self._on_load_error, str(e))
+            if not worker.is_cancelled:
+                self.call_from_thread(self._on_load_error, str(e))
 
     def _on_diff_loaded(self, comparison: dict, old_data: dict, new_data: dict) -> None:
         """Handle successful diff load (called from main thread)."""
