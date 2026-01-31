@@ -40,15 +40,36 @@ class CatalogDetailView(DetailView):
             lines.append("★ **Latest Version**  ")
         lines.append("")
 
-        # Dates
-        if benchmark.get("published_date") or benchmark.get("last_revision_date"):
-            lines.append("## Dates")
+        # Publication & Release Info
+        if (
+            benchmark.get("published_date")
+            or benchmark.get("release_type")
+            or benchmark.get("last_revision_date")
+        ):
+            lines.append("## Publication")
             lines.append("")
             if benchmark.get("published_date"):
                 lines.append(f"**Published:** {benchmark['published_date']}  ")
             if benchmark.get("last_revision_date"):
                 lines.append(f"**Last Revision:** {benchmark['last_revision_date']}  ")
+            if benchmark.get("release_type"):
+                lines.append(f"**Release Type:** {benchmark['release_type']}  ")
+            if benchmark.get("milestone_name"):
+                lines.append(f"**Milestone:** {benchmark['milestone_name']}  ")
             lines.append("")
+
+        # Lineage
+        if benchmark.get("parent_benchmark_url"):
+            lines.append("## Lineage")
+            lines.append("")
+            parent_title = benchmark.get("parent_benchmark_title", "Parent Benchmark")
+            lines.append(f"**Forked From:** {parent_title}  ")
+            lines.append(f"*{benchmark['parent_benchmark_url']}*  ")
+            lines.append("")
+
+        # Assets (CPE-IDs)
+        # Note: assets come from downloaded benchmarks, not catalog
+        # Catalog might not have this data unless benchmark was downloaded
 
         # Classification
         has_classification = any(
@@ -80,6 +101,28 @@ class CatalogDetailView(DetailView):
             lines.append("## Description")
             lines.append("")
             lines.append(benchmark["description"])
+            lines.append("")
+
+        # Contributors
+        if benchmark.get("contributors"):
+            lines.append("## Contributors")
+            lines.append("")
+            # Contributors stored as comma-separated string in catalog DB
+            lines.append(benchmark["contributors"])
+            lines.append("")
+
+        # Intended Audience
+        if benchmark.get("intended_audience"):
+            lines.append("## Intended Audience")
+            lines.append("")
+            lines.append(benchmark["intended_audience"])
+            lines.append("")
+
+        # Acknowledgements
+        if benchmark.get("acknowledgements"):
+            lines.append("## Acknowledgements")
+            lines.append("")
+            lines.append(benchmark["acknowledgements"])
             lines.append("")
 
         # URL with keybinding hint
