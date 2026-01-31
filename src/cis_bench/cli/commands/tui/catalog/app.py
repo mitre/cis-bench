@@ -123,8 +123,8 @@ class CatalogBrowserApp(BaseBrowserApp):
 
     def _get_columns(self) -> list[str]:
         """Return column headers for catalog table."""
-        # Columns: checkbox, cached status, ID, Title, Platform
-        return ["", "⬇", "ID", "Title", "Platform"]
+        # Columns: checkbox, cached status, ID, Title, Latest, Platform
+        return ["", "⬇", "ID", "Title", "★", "Platform"]
 
     def _populate_table(self) -> None:
         """Populate the table with benchmark data."""
@@ -143,12 +143,11 @@ class CatalogBrowserApp(BaseBrowserApp):
             # Build title with version inline
             title = benchmark.get("title", "Unknown")
             version = benchmark.get("version", "")
-
-            # Add star for latest, combine title+version
-            if benchmark.get("is_latest"):
-                title = f"★ {title}"
             if version:
                 title = f"{title} {version}"
+
+            # Latest indicator (separate column)
+            latest = Text("★", style="yellow bold") if benchmark.get("is_latest") else Text("")
 
             # Platform (truncated for narrow screens)
             platform = (benchmark.get("platform") or "")[:15]
@@ -157,7 +156,8 @@ class CatalogBrowserApp(BaseBrowserApp):
                 checkbox,
                 cached_indicator,
                 benchmark_id,
-                self._truncate(title, 55),
+                self._truncate(title, 50),
+                latest,
                 platform,
             )
 
