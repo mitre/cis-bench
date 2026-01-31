@@ -12,13 +12,13 @@ from cis_bench.cli.commands.tui.base import COMMON_CSS
 CATALOG_CSS = (
     COMMON_CSS
     + """
-/* Catalog-specific overrides */
+/* Catalog-specific overrides - wider list for more columns */
 #list-container {
-    width: 45%;
+    width: 65%;
 }
 
 #detail-container {
-    width: 55%;
+    width: 35%;
 }
 
 /* Action menu styles */

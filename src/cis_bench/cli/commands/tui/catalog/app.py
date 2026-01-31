@@ -97,10 +97,10 @@ class CatalogBrowserApp(BaseBrowserApp):
                 detail_container.styles.display = "none"
                 list_container.styles.width = "100%"
             else:
-                # Wide: show both panes
+                # Wide: show both panes (65/35 split for catalog)
                 detail_container.styles.display = "block"
-                list_container.styles.width = "45%"
-                detail_container.styles.width = "55%"
+                list_container.styles.width = "65%"
+                detail_container.styles.width = "35%"
         except Exception:
             # May fail during initial compose before widgets exist
             logger.debug("Layout update skipped - widgets not ready")
@@ -123,8 +123,8 @@ class CatalogBrowserApp(BaseBrowserApp):
 
     def _get_columns(self) -> list[str]:
         """Return column headers for catalog table."""
-        # Columns: checkbox, cached status, ID, Title, Latest, Platform
-        return ["", "⬇", "ID", "Title", "Latest", "Platform"]
+        # Columns: checkbox, cached status, ID, Title, Version, Latest, Platform
+        return ["", "⬇", "ID", "Title", "Version", "Latest", "Platform"]
 
     def _populate_table(self) -> None:
         """Populate the table with benchmark data."""
@@ -140,23 +140,24 @@ class CatalogBrowserApp(BaseBrowserApp):
             is_cached = benchmark_id in self._downloaded_ids
             cached_indicator = Text("✓", style="green") if is_cached else Text("", style="dim")
 
-            # Build title with version inline
+            # Title (without version)
             title = benchmark.get("title", "Unknown")
+
+            # Version (separate column)
             version = benchmark.get("version", "")
-            if version:
-                title = f"{title} {version}"
 
             # Latest indicator (separate column)
             latest = Text("★", style="yellow bold") if benchmark.get("is_latest") else Text("")
 
             # Platform (truncated for narrow screens)
-            platform = (benchmark.get("platform") or "")[:15]
+            platform = (benchmark.get("platform") or "")[:12]
 
             table.add_row(
                 checkbox,
                 cached_indicator,
                 benchmark_id,
-                self._truncate(title, 50),
+                self._truncate(title, 40),
+                version,
                 latest,
                 platform,
             )
