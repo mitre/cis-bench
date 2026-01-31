@@ -1,11 +1,15 @@
 """Shared widget components for TUI applications."""
 
+import logging
+
 from textual import on
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, VerticalScroll
+from textual.containers import Center, Container, VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import Input, Label, Static
+from textual.widgets import Input, Label, ProgressBar, Static
+
+logger = logging.getLogger(__name__)
 
 
 class SearchInput(Input):
@@ -133,3 +137,149 @@ class JumpDialog(ModalScreen):
 
     def action_cancel(self) -> None:
         self.dismiss(None)
+
+
+# CSS for LoadingModal
+LOADING_MODAL_CSS = """
+#loading-container {
+    align: center middle;
+    width: 50;
+    height: 12;
+    border: solid $primary;
+    background: $surface;
+    padding: 1 2;
+}
+
+#loading-title {
+    text-style: bold;
+    width: 100%;
+    text-align: center;
+    padding-bottom: 1;
+}
+
+#loading-status {
+    width: 100%;
+    text-align: center;
+    padding: 1 0;
+}
+
+#loading-progress {
+    width: 100%;
+    margin: 1 0;
+}
+
+#loading-hint {
+    text-style: italic;
+    color: $text-muted;
+    width: 100%;
+    text-align: center;
+    margin-top: 1;
+}
+"""
+
+
+class LoadingModal(ModalScreen[bool]):
+    """Modal screen showing loading progress with spinner and progress bar.
+
+    Use this when loading data asynchronously to provide visual feedback.
+
+    Returns:
+        True if loading completed, False if cancelled by user.
+
+    Usage:
+        def on_load_complete(result: bool) -> None:
+            if result:
+                # Proceed with loaded data
+                pass
+            else:
+                # User cancelled
+                pass
+
+        self.push_screen(LoadingModal("Loading benchmark..."), on_load_complete)
+
+        # From worker thread, update progress:
+        self.call_from_thread(modal.update_progress, 50, "Downloading...")
+    """
+
+    CSS = LOADING_MODAL_CSS
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel"),
+    ]
+
+    def __init__(self, title: str = "Loading...", **kwargs):
+        """Initialize loading modal.
+
+        Args:
+            title: Title to show in the modal.
+        """
+        super().__init__(**kwargs)
+        self._title = title
+        self._status = ""
+        self._progress = 0
+        self._cancelled = False
+
+    def compose(self) -> ComposeResult:
+        yield Center(
+            Container(
+                Label(self._title, id="loading-title"),
+                Static("⏳ Starting...", id="loading-status"),
+                ProgressBar(id="loading-progress", show_eta=False),
+                Label("Press Esc to cancel", id="loading-hint"),
+                id="loading-container",
+            ),
+        )
+
+    def on_mount(self) -> None:
+        """Start the progress bar in indeterminate mode."""
+        progress = self.query_one("#loading-progress", ProgressBar)
+        progress.update(total=100, progress=0)
+
+    def update_progress(self, progress: int, status: str = "") -> None:
+        """Update the progress bar and status message.
+
+        Call this from a worker thread via call_from_thread().
+
+        Args:
+            progress: Progress percentage (0-100).
+            status: Status message to display.
+        """
+        if self._cancelled:
+            return
+
+        self._progress = progress
+        self._status = status
+
+        try:
+            progress_bar = self.query_one("#loading-progress", ProgressBar)
+            progress_bar.update(progress=progress)
+
+            status_widget = self.query_one("#loading-status", Static)
+            if status:
+                status_widget.update(f"⏳ {status}")
+            else:
+                status_widget.update(f"⏳ {progress}%")
+        except Exception as e:
+            # Widget might not be mounted yet
+            logger.debug(f"Could not update loading progress (widget not ready): {e}")
+
+    def complete(self, success: bool = True) -> None:
+        """Mark loading as complete and dismiss the modal.
+
+        Call this from a worker thread via call_from_thread().
+
+        Args:
+            success: Whether loading succeeded.
+        """
+        if not self._cancelled:
+            self.dismiss(success)
+
+    def action_cancel(self) -> None:
+        """Cancel the loading operation."""
+        self._cancelled = True
+        self.dismiss(False)
+
+    @property
+    def is_cancelled(self) -> bool:
+        """Check if the user cancelled the operation."""
+        return self._cancelled
