@@ -164,13 +164,17 @@ class TestCatalogBrowserInitialization:
         ]
 
     def test_accepts_benchmarks_parameter(self, sample_benchmarks):
-        """CatalogBrowserApp should accept benchmarks in constructor."""
+        """CatalogBrowserApp should accept benchmarks in constructor (sorted)."""
         from cis_bench.cli.commands.tui.catalog import CatalogBrowserApp
 
         app = CatalogBrowserApp(benchmarks=sample_benchmarks)
         # Standardized naming: _items for current visible items
         assert hasattr(app, "_items")
-        assert app._items == sample_benchmarks
+        # Items are sorted by title, check all items present
+        assert len(app._items) == len(sample_benchmarks)
+        original_ids = {b["benchmark_id"] for b in sample_benchmarks}
+        sorted_ids = {b["benchmark_id"] for b in app._items}
+        assert sorted_ids == original_ids
 
     def test_initializes_empty_selection(self, sample_benchmarks):
         """CatalogBrowserApp should initialize with empty selection set."""
@@ -182,13 +186,18 @@ class TestCatalogBrowserInitialization:
         assert len(app._selected_indices) == 0
 
     def test_stores_all_benchmarks(self, sample_benchmarks):
-        """CatalogBrowserApp should store all items for filtering."""
+        """CatalogBrowserApp should store all items for filtering (sorted)."""
         from cis_bench.cli.commands.tui.catalog import CatalogBrowserApp
 
         app = CatalogBrowserApp(benchmarks=sample_benchmarks)
         # Standardized naming: _all_items for unfiltered source
         assert hasattr(app, "_all_items")
-        assert app._all_items == sample_benchmarks
+        # Items are sorted by title, then by benchmark_id descending within groups
+        # Check all items present (order may differ due to sorting)
+        assert len(app._all_items) == len(sample_benchmarks)
+        original_ids = {b["benchmark_id"] for b in sample_benchmarks}
+        sorted_ids = {b["benchmark_id"] for b in app._all_items}
+        assert sorted_ids == original_ids
 
 
 class TestCatalogDetailViewContent:

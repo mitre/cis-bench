@@ -53,11 +53,31 @@ class CatalogBrowserApp(BaseBrowserApp):
         """
         super().__init__(**kwargs)
         # Standardized naming: _items for visible, _all_items for unfiltered
-        self._items = benchmarks
-        self._all_items = benchmarks.copy()
+        self._items = self._sort_benchmarks(benchmarks)
+        self._all_items = self._items.copy()
         self.offline = offline
         self._downloaded_ids: set[str] = set()
         self._load_downloaded_ids()
+
+    def _sort_benchmarks(self, benchmarks: list[dict]) -> list[dict]:
+        """Sort benchmarks by title, then by benchmark_id (newest first within group).
+
+        Args:
+            benchmarks: List of benchmark dictionaries.
+
+        Returns:
+            Sorted list with groups ordered alphabetically by title,
+            and within each group, newest (highest benchmark_id) first.
+        """
+        return sorted(
+            benchmarks,
+            key=lambda x: (
+                (x.get("title") or "").lower(),  # Primary: title alphabetically
+                -int(
+                    x.get("benchmark_id") or 0
+                ),  # Secondary: benchmark_id descending (newest first)
+            ),
+        )
 
     def get_detail_view(self) -> Static:
         """Return the catalog detail view widget."""
@@ -580,12 +600,8 @@ class CatalogBrowserApp(BaseBrowserApp):
         table.clear()
         self._selected_indices.clear()  # Clear selections on rebuild
 
-        # Sort by published date
-        self._items = sorted(
-            self._items,
-            key=lambda x: x.get("published_date", "") or "",
-            reverse=not self._sort_reverse,  # Default is newest first
-        )
+        # Sort by title, then benchmark_id (oldest first within each group)
+        self._items = self._sort_benchmarks(self._items)
 
         self._populate_table()
         self._update_summary()
@@ -623,6 +639,8 @@ class CatalogBrowserApp(BaseBrowserApp):
 
             self._items.append(benchmark)
 
+        # Apply consistent sorting after filtering
+        self._items = self._sort_benchmarks(self._items)
         self._populate_table()
         self._update_summary()
 
