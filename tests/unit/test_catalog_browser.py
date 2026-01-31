@@ -283,3 +283,69 @@ class TestRunCatalogBrowserFunction:
         from cis_bench.cli.commands.tui.catalog import run_catalog_browser
 
         assert callable(run_catalog_browser)
+
+
+class TestCatalogBrowserCachedStatus:
+    """Test cached/downloaded status indicator in catalog browser."""
+
+    @pytest.fixture
+    def sample_benchmarks(self):
+        """Sample benchmark data for testing."""
+        return [
+            {
+                "benchmark_id": "23598",
+                "title": "CIS Ubuntu Linux 22.04 LTS Benchmark",
+                "version": "v2.0.0",
+                "platform": "Operating System",
+                "is_latest": True,
+            },
+            {
+                "benchmark_id": "12345",
+                "title": "CIS RHEL 9 Benchmark",
+                "version": "v1.0.0",
+                "platform": "Operating System",
+                "is_latest": False,
+            },
+        ]
+
+    def test_downloaded_ids_initialized_as_set(self, sample_benchmarks):
+        """CatalogBrowserApp should initialize _downloaded_ids as set."""
+        from cis_bench.cli.commands.tui.catalog import CatalogBrowserApp
+
+        app = CatalogBrowserApp(benchmarks=sample_benchmarks)
+        assert hasattr(app, "_downloaded_ids")
+        assert isinstance(app._downloaded_ids, set)
+
+    def test_has_load_downloaded_ids_method(self, sample_benchmarks):
+        """CatalogBrowserApp should have _load_downloaded_ids method."""
+        from cis_bench.cli.commands.tui.catalog import CatalogBrowserApp
+
+        app = CatalogBrowserApp(benchmarks=sample_benchmarks)
+        assert hasattr(app, "_load_downloaded_ids")
+        assert callable(app._load_downloaded_ids)
+
+    def test_columns_include_cached_status(self, sample_benchmarks):
+        """_get_columns should include a cached status column."""
+        from cis_bench.cli.commands.tui.catalog import CatalogBrowserApp
+
+        app = CatalogBrowserApp(benchmarks=sample_benchmarks)
+        columns = app._get_columns()
+
+        # Should have 5 columns: checkbox, cached indicator, ID, Title, Platform
+        assert len(columns) == 5
+        # Second column (after checkbox) should be for cached status
+        assert columns[1] == "⬇"  # Download/cached column header
+
+    def test_is_downloaded_check_works(self, sample_benchmarks):
+        """Should be able to check if benchmark is downloaded."""
+        from cis_bench.cli.commands.tui.catalog import CatalogBrowserApp
+
+        app = CatalogBrowserApp(benchmarks=sample_benchmarks)
+
+        # Initially empty
+        assert "23598" not in app._downloaded_ids
+
+        # Manually add for testing
+        app._downloaded_ids.add("23598")
+        assert "23598" in app._downloaded_ids
+        assert "12345" not in app._downloaded_ids

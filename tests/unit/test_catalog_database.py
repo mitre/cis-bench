@@ -349,6 +349,55 @@ class TestLookupTables:
 class TestDownloadedBenchmarks:
     """Test downloaded benchmark tracking."""
 
+    def test_get_downloaded_benchmark_ids_empty(self, temp_db):
+        """Test getting downloaded IDs when none exist."""
+        ids = temp_db.get_downloaded_benchmark_ids()
+        assert isinstance(ids, set)
+        assert len(ids) == 0
+
+    def test_get_downloaded_benchmark_ids_with_data(self, temp_db, sample_benchmark_data):
+        """Test getting downloaded IDs returns correct set."""
+        # Insert catalog entries first
+        temp_db.insert_benchmark(sample_benchmark_data)
+        temp_db.insert_benchmark(
+            {
+                "benchmark_id": "12345",
+                "title": "Another Benchmark",
+                "url": "https://workbench.cisecurity.org/benchmarks/12345",
+                "status": "Published",
+            }
+        )
+
+        # Download both
+        temp_db.save_downloaded("23598", '{"test": 1}', "hash1", 100)
+        temp_db.save_downloaded("12345", '{"test": 2}', "hash2", 50)
+
+        ids = temp_db.get_downloaded_benchmark_ids()
+        assert isinstance(ids, set)
+        assert ids == {"23598", "12345"}
+
+    def test_get_downloaded_benchmark_ids_returns_only_downloaded(
+        self, temp_db, sample_benchmark_data
+    ):
+        """Test that only downloaded benchmarks are returned, not all catalog entries."""
+        # Insert multiple catalog entries
+        temp_db.insert_benchmark(sample_benchmark_data)  # 23598
+        temp_db.insert_benchmark(
+            {
+                "benchmark_id": "11111",
+                "title": "Not Downloaded",
+                "url": "https://workbench.cisecurity.org/benchmarks/11111",
+                "status": "Published",
+            }
+        )
+
+        # Only download one
+        temp_db.save_downloaded("23598", '{"test": 1}', "hash1", 100)
+
+        ids = temp_db.get_downloaded_benchmark_ids()
+        assert "23598" in ids
+        assert "11111" not in ids
+
     def test_save_downloaded(self, temp_db, sample_benchmark_data):
         """Test saving downloaded benchmark."""
         # Must have catalog entry first

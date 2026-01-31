@@ -64,11 +64,8 @@ class CatalogBrowserApp(BaseBrowserApp):
             db_path = Config.get_catalog_db_path()
             if db_path.exists():
                 db = CatalogDatabase(db_path)
-                # Get downloaded benchmark IDs from the downloaded_benchmarks table
-                downloaded = db.get_catalog_stats()
-                if downloaded.get("downloaded_benchmarks", 0) > 0:
-                    # TODO: Query actual downloaded IDs when ep9.7 implements this
-                    pass
+                self._downloaded_ids = db.get_downloaded_benchmark_ids()
+                logger.debug(f"Loaded {len(self._downloaded_ids)} downloaded benchmark IDs")
         except Exception as e:
             # Downloaded status is optional enhancement - log and continue
             logger.debug(f"Could not load downloaded IDs: {e}")
@@ -118,7 +115,8 @@ class CatalogBrowserApp(BaseBrowserApp):
 
     def _get_columns(self) -> list[str]:
         """Return column headers for catalog table."""
-        return ["", "ID", "Title", "Platform"]
+        # Columns: checkbox, cached status, ID, Title, Platform
+        return ["", "⬇", "ID", "Title", "Platform"]
 
     def _populate_table(self) -> None:
         """Populate the table with benchmark data."""
@@ -128,6 +126,11 @@ class CatalogBrowserApp(BaseBrowserApp):
             # Selection checkbox
             is_selected = idx in self._selected_indices
             checkbox = Text("●", style="cyan bold") if is_selected else Text("○", style="dim")
+
+            # Cached/downloaded status indicator
+            benchmark_id = str(benchmark.get("benchmark_id", ""))
+            is_cached = benchmark_id in self._downloaded_ids
+            cached_indicator = Text("✓", style="green") if is_cached else Text("", style="dim")
 
             # Build title with version inline
             title = benchmark.get("title", "Unknown")
@@ -144,7 +147,8 @@ class CatalogBrowserApp(BaseBrowserApp):
 
             table.add_row(
                 checkbox,
-                benchmark.get("benchmark_id", ""),
+                cached_indicator,
+                benchmark_id,
                 self._truncate(title, 55),
                 platform,
             )

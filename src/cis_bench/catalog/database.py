@@ -558,6 +558,16 @@ class CatalogDatabase:
                 "workbench_last_modified": downloaded.workbench_last_modified,
             }
 
+    def get_downloaded_benchmark_ids(self) -> set[str]:
+        """Get set of all downloaded benchmark IDs.
+
+        Returns:
+            Set of benchmark IDs that have been downloaded and cached locally.
+        """
+        with Session(self.engine) as session:
+            downloaded = session.exec(select(DownloadedBenchmark)).all()
+            return {d.benchmark_id for d in downloaded}
+
     def check_updates_available(self) -> list[dict]:
         """Check downloaded benchmarks for available updates."""
         with Session(self.engine) as session:
