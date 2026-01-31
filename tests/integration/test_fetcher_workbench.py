@@ -379,6 +379,64 @@ class TestWorkbenchScraperBenchmarkTitle:
         # Verify - empty string is returned
         assert title == ""
 
+    def test_get_benchmark_metadata_with_published_date(self, mock_session):
+        """Test metadata extraction including published_date."""
+        # HTML with published date
+        html = """
+        <html><body>
+            <wb-benchmark-title title="CIS Ubuntu Linux 22.04 LTS Benchmark v2.0.0"></wb-benchmark-title>
+            <span>Published 3 months ago on Aug 1st 2025</span>
+            <h2>Overview</h2>
+            <p>This benchmark covers security configuration for Ubuntu 22.04.</p>
+        </body></html>
+        """
+        mock_response = Mock()
+        mock_response.text = html
+        mock_response.raise_for_status = Mock()
+        mock_session.get.return_value = mock_response
+
+        scraper = WorkbenchScraper(mock_session)
+
+        # Execute
+        metadata = scraper.get_benchmark_metadata("https://workbench.cisecurity.org/benchmarks/123")
+
+        # Verify
+        assert metadata["title"] == "CIS Ubuntu Linux 22.04 LTS Benchmark v2.0.0"
+        assert metadata["published_date"] == "Aug 1st 2025"
+
+    def test_get_benchmark_metadata_without_published_date(self, mock_session):
+        """Test metadata extraction when published_date is missing."""
+        html = """
+        <html><body>
+            <wb-benchmark-title title="Test Benchmark v1.0.0"></wb-benchmark-title>
+        </body></html>
+        """
+        mock_response = Mock()
+        mock_response.text = html
+        mock_response.raise_for_status = Mock()
+        mock_session.get.return_value = mock_response
+
+        scraper = WorkbenchScraper(mock_session)
+
+        metadata = scraper.get_benchmark_metadata("https://workbench.cisecurity.org/benchmarks/123")
+
+        assert metadata["title"] == "Test Benchmark v1.0.0"
+        assert metadata.get("published_date") is None
+
+    def test_get_benchmark_title_uses_metadata(self, mock_session, sample_benchmark_title_html):
+        """Test that get_benchmark_title delegates to get_benchmark_metadata."""
+        mock_response = Mock()
+        mock_response.text = sample_benchmark_title_html
+        mock_response.raise_for_status = Mock()
+        mock_session.get.return_value = mock_response
+
+        scraper = WorkbenchScraper(mock_session)
+
+        # get_benchmark_title should return just the title
+        title = scraper.get_benchmark_title("https://workbench.cisecurity.org/benchmarks/123")
+
+        assert title == "CIS Amazon Elastic Kubernetes Service (EKS) Benchmark v1.8.0"
+
 
 # ============ Test Navigation Tree Operations ============
 
@@ -814,3 +872,132 @@ class TestWorkbenchScraperFullDownload:
 
             # Verify
             assert benchmark.version == expected_version
+
+
+class TestExtendedMetadataExtraction:
+    """Test extraction of extended metadata from benchmark detail pages."""
+
+    def test_get_benchmark_metadata_all_fields(self, mock_session):
+        """Test get_benchmark_metadata extracts all available fields."""
+        html = """
+        <html>
+        <body>
+            <wb-benchmark-title title="CIS AlmaLinux OS 9 Benchmark v2.0.0"></wb-benchmark-title>
+
+            <h1>
+                CIS AlmaLinux OS 9 Benchmark v2.0.0
+                <a href="/benchmarks/16763">CIS Fedora 34 Benchmark</a>
+            </h1>
+
+            <p><a href="/communities/139">CIS AlmaLinux OS Benchmarks</a></p>
+            <p><a href="/milestones/956">CIS AlmaLinux 9 v2.0.0</a></p>
+
+            <p>Published 1 year ago on Jun 24th 2024</p>
+            <p><strong>Release Type:</strong> Planned Update</p>
+
+            <h3>Overview</h3>
+            <p>Security guidance for AlmaLinux 9 systems.</p>
+
+            <h3>Intended Audience</h3>
+            <p>System administrators and security specialists.</p>
+
+            <h3>Acknowledgements</h3>
+            <p>Thanks to all Linux benchmark contributors.</p>
+
+            <h3>Contributors</h3>
+            <p>Eric Pinnell, Thomas Sjögren, James Trigg</p>
+
+            <h3>Assets</h3>
+            <table>
+                <thead><tr><th>Title</th><th>CPE-ID</th></tr></thead>
+                <tbody>
+                    <tr>
+                        <td>AlmaLinux OS 9</td>
+                        <td>cpe:2.3:o:almalinux:almalinux:9:*:*:*:*:*:*:*</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>Revision History</h3>
+            <table>
+                <tbody>
+                    <tr>
+                        <td>1 year ago</td>
+                        <td>Eric</td>
+                        <td>5 modifications</td>
+                        <td></td>
+                    </tr>
+                </tbody>
+            </table>
+        </body>
+        </html>
+        """
+        mock_session.get.return_value.text = html
+        scraper = WorkbenchScraper(mock_session)
+
+        metadata = scraper.get_benchmark_metadata(
+            "https://workbench.cisecurity.org/benchmarks/18208"
+        )
+
+        # Verify all fields extracted
+        assert metadata["title"] == "CIS AlmaLinux OS 9 Benchmark v2.0.0"
+        assert metadata["published_date"] == "Jun 24th 2024"
+        assert metadata["published_relative"] == "Published 1 year ago on Jun 24th 2024"
+        assert metadata["release_type"] == "Planned Update"
+        assert len(metadata["contributors"]) == 3
+        assert "Eric Pinnell" in metadata["contributors"]
+        assert "parent_benchmark_url" in metadata
+        assert "community_url" in metadata
+        assert metadata["intended_audience"] == "System administrators and security specialists."
+        assert metadata["acknowledgements"] == "Thanks to all Linux benchmark contributors."
+        assert len(metadata["assets"]) == 1
+        assert metadata["assets"][0]["cpe_id"] == "cpe:2.3:o:almalinux:almalinux:9:*:*:*:*:*:*:*"
+        assert len(metadata["revision_history"]) == 1
+        assert metadata["revision_history"][0]["author"] == "Eric"
+
+    def test_download_benchmark_populates_extended_pydantic_fields(self, mock_session):
+        """Test that download_benchmark populates all extended Pydantic model fields."""
+        html = """
+        <html>
+        <body>
+            <wb-benchmark-title title="CIS Test Benchmark v1.0.0"></wb-benchmark-title>
+            <p>Published 3 months ago on Sep 1st 2024</p>
+            <p><strong>Release Type:</strong> Bug Fix</p>
+            <h3>Contributors</h3>
+            <p>Developer One, Developer Two</p>
+            <h3>Assets</h3>
+            <table>
+                <thead><tr><th>Title</th><th>CPE-ID</th></tr></thead>
+                <tbody>
+                    <tr><td>Test OS</td><td>cpe:2.3:o:test:test:1:*:*:*:*:*:*:*</td></tr>
+                </tbody>
+            </table>
+        </body>
+        </html>
+        """
+        navtree = {"navtree": []}  # No recommendations for simplicity
+
+        def mock_get(url, **kwargs):
+            response = Mock()
+            response.raise_for_status = Mock()
+
+            if "navtree" in url:
+                response.json.return_value = navtree
+            else:
+                response.text = html
+
+            return response
+
+        mock_session.get.side_effect = mock_get
+
+        scraper = WorkbenchScraper(mock_session)
+        benchmark = scraper.download_benchmark("https://workbench.cisecurity.org/benchmarks/99999")
+
+        # Verify extended Pydantic fields populated
+        assert benchmark.published_date == "Sep 1st 2024"
+        assert benchmark.release_type == "Bug Fix"
+        assert len(benchmark.contributors) == 2
+        assert "Developer One" in benchmark.contributors
+        assert len(benchmark.assets) == 1
+        assert benchmark.assets[0].cpe_id == "cpe:2.3:o:test:test:1:*:*:*:*:*:*:*"
+        assert benchmark.assets[0].title == "Test OS"

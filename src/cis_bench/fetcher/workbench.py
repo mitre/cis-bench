@@ -120,10 +120,35 @@ class WorkbenchScraper:
         Returns:
             Benchmark title
         """
+        metadata = self.get_benchmark_metadata(benchmark_url)
+        return metadata.get("title", "Unknown Benchmark")
+
+    def get_benchmark_metadata(self, benchmark_url: str) -> dict:
+        """Fetch benchmark metadata from detail page.
+
+        Extracts title, published_date, description, etc. from the
+        benchmark's main page.
+
+        Args:
+            benchmark_url: URL to benchmark page
+
+        Returns:
+            Dictionary with title, published_date, description, etc.
+        """
+        from cis_bench.catalog.parser import WorkBenchCatalogParser
+
         html = self.fetch_html(benchmark_url)
         soup = BeautifulSoup(html, "html.parser")
+
+        # Get title from custom element
         title_elem = soup.find(name="wb-benchmark-title")
-        return title_elem.get("title") if title_elem else "Unknown Benchmark"
+        title = title_elem.get("title") if title_elem else "Unknown Benchmark"
+
+        # Get additional metadata (published_date, description, etc.)
+        metadata = WorkBenchCatalogParser.parse_benchmark_detail_page(html)
+        metadata["title"] = title
+
+        return metadata
 
     def fetch_navtree(self, benchmark_id: str) -> dict[str, Any]:
         """Fetch navigation tree for benchmark.
@@ -234,9 +259,14 @@ class WorkbenchScraper:
         benchmark_id = self.get_benchmark_id(benchmark_url)
         log(f"Fetching benchmark: {benchmark_url}", level="debug")
 
-        # Get benchmark title
-        title = self.get_benchmark_title(benchmark_url)
+        # Get benchmark metadata (ALL fields from detail page)
+        metadata = self.get_benchmark_metadata(benchmark_url)
+        title = metadata.get("title", "Unknown Benchmark")
         log(f"Benchmark title: {title}", level="debug")
+        if metadata.get("published_date"):
+            log(f"Published: {metadata['published_date']}", level="debug")
+        if metadata.get("release_type"):
+            log(f"Release Type: {metadata['release_type']}", level="debug")
 
         # Extract version from title (simple heuristic)
         version_match = re.search(r"v[\d.]+|vNEXT", title, re.IGNORECASE)
@@ -270,12 +300,33 @@ class WorkbenchScraper:
         # Sort recommendations by ref to maintain consistent order
         recommendations = sorted(result.results, key=lambda r: r.ref)
 
-        # Create Benchmark (Pydantic validates automatically)
+        # Create Benchmark with ALL metadata (Pydantic validates automatically)
         benchmark = Benchmark(
             title=title,
             benchmark_id=benchmark_id,
             url=benchmark_url,
             version=version,
+            # Core metadata
+            published_date=metadata.get("published_date"),
+            published_relative=metadata.get("published_relative"),
+            description=metadata.get("description"),
+            release_type=metadata.get("release_type"),
+            # Attribution
+            contributors=metadata.get("contributors", []),
+            # Lineage
+            parent_benchmark_url=metadata.get("parent_benchmark_url"),
+            parent_benchmark_title=metadata.get("parent_benchmark_title"),
+            # Organizational
+            community_url=metadata.get("community_url"),
+            milestone_name=metadata.get("milestone_name"),
+            milestone_url=metadata.get("milestone_url"),
+            # Documentation
+            intended_audience=metadata.get("intended_audience"),
+            acknowledgements=metadata.get("acknowledgements"),
+            # Structured data
+            assets=metadata.get("assets", []),
+            revision_history=metadata.get("revision_history", []),
+            # System metadata
             scraper_version=(
                 self._detected_strategy.version if self._detected_strategy else "manual"
             ),
