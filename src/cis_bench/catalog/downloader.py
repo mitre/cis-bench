@@ -8,6 +8,7 @@ import json
 import logging
 
 from cis_bench.catalog.database import CatalogDatabase
+from cis_bench.catalog.enrichment import EnrichmentService
 from cis_bench.catalog.search import CatalogSearch
 from cis_bench.fetcher.workbench import WorkbenchScraper
 from cis_bench.models.benchmark import Benchmark
@@ -114,6 +115,10 @@ class CatalogDownloader:
             recommendation_count=len(benchmark.recommendations),
             workbench_last_modified=catalog_entry.get("last_revision_date"),
         )
+
+        # Enrich catalog with metadata from downloaded benchmark (shared service)
+        logger.debug("Enriching catalog entry with downloaded metadata")
+        EnrichmentService.enrich_catalog_entry(benchmark_id, benchmark, self.db.engine)
 
         status = "updated" if existing else "downloaded"
 

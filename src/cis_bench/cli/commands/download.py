@@ -215,6 +215,15 @@ def download(
                     )
                     logger.debug(f"Saved benchmark {benchmark_id} to catalog database")
                     console.print(f"      [green]✓[/green] Cached in database (ID: {benchmark_id})")
+
+                    # Enrich catalog with metadata (shared service - DRY)
+                    from cis_bench.catalog.enrichment import EnrichmentService
+
+                    if EnrichmentService.enrich_catalog_entry(benchmark_id, benchmark, db.engine):
+                        logger.debug(f"Catalog enriched for {benchmark_id}")
+                    else:
+                        logger.debug(f"Enrichment skipped for {benchmark_id} (not in catalog)")
+
                 except Exception as e:
                     logger.warning(f"Failed to save to catalog database: {e}", exc_info=True)
                     console.print(f"      [yellow]⚠[/yellow] Could not cache in database: {e}")
