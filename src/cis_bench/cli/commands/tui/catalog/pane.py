@@ -13,7 +13,6 @@ from textual import work
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, VerticalScroll
-from textual.reactive import reactive
 from textual.widgets import DataTable
 from textual.worker import get_current_worker
 
@@ -33,16 +32,19 @@ class CatalogTabPane(BaseTabPane):
     - Messages bubble up to parent (MainTUIApp)
     """
 
-    # Reactive state
-    selected_benchmarks = reactive(set(), init=False)  # Set of selected benchmark IDs
-    current_benchmark = reactive(None, init=False)  # Currently highlighted benchmark
-
     # Extend BaseTabPane.BINDINGS (includes arrow keys, j/k, page up/down, tab for pane switching)
     BINDINGS = BaseTabPane.BINDINGS + [
         Binding("space", "toggle_select", "Select", show=True),
         Binding("o", "open_in_browser", "Open URL", show=True),
         Binding("r", "refresh_catalog", "Refresh", show=True),  # Override reverse_sort
     ]
+
+    def __init__(self, **kwargs):
+        """Initialize catalog tab pane with selection and download tracking."""
+        super().__init__(**kwargs)
+        self._items: list[dict] = []  # Current visible benchmarks
+        self._selected_indices: set[int] = set()  # Selected row indices
+        self._downloaded_ids: set[str] = set()  # Cached benchmark IDs
 
     def compose(self) -> ComposeResult:
         """Compose catalog browser layout (Textual compose pattern)."""
@@ -67,8 +69,36 @@ class CatalogTabPane(BaseTabPane):
         # Add columns
         table.add_columns("", "⬇", "ID", "Title", "Version", "Latest", "Published", "Platform")
 
+        # Load downloaded IDs for status display
+        self._load_downloaded_ids()
+
         # Load data in worker (non-blocking, framework best practice)
         self._load_catalog()
+
+    def _load_downloaded_ids(self) -> None:
+        """Load set of downloaded benchmark IDs from database."""
+        try:
+            from cis_bench.catalog.database import CatalogDatabase
+            from cis_bench.config import Config
+
+            db_path = Config.get_catalog_db_path()
+            if db_path.exists():
+                db = CatalogDatabase(db_path)
+                self._downloaded_ids = db.get_downloaded_benchmark_ids()
+                logger.debug(f"Loaded {len(self._downloaded_ids)} downloaded benchmark IDs")
+        except Exception as e:
+            # Downloaded status is optional enhancement - log and continue
+            logger.debug(f"Could not load downloaded IDs: {e}")
+
+    def get_selected_items(self) -> list[dict]:
+        """Get the selected benchmark items.
+
+        Returns:
+            List of benchmark dicts at selected indices.
+        """
+        return [
+            self._items[idx] for idx in sorted(self._selected_indices) if idx < len(self._items)
+        ]
 
     @work(exclusive=True, thread=True)
     def _load_catalog(self) -> None:
@@ -114,11 +144,19 @@ class CatalogTabPane(BaseTabPane):
         """
         table = self.query_one("#catalog-table", DataTable)
 
-        for benchmark in benchmarks:
-            # Format row (following existing pattern)
-            checkbox = "☑" if benchmark.get("benchmark_id") in self.selected_benchmarks else ""
-            downloaded = "✓" if False else ""  # TODO: Check downloaded status
-            benchmark_id = benchmark.get("benchmark_id", "")
+        # Store items for selection tracking
+        self._items = benchmarks
+
+        for idx, benchmark in enumerate(benchmarks):
+            # Selection checkbox
+            is_selected = idx in self._selected_indices
+            checkbox = "●" if is_selected else "○"
+
+            # Downloaded/cached status indicator
+            benchmark_id = str(benchmark.get("benchmark_id", ""))
+            is_cached = benchmark_id in self._downloaded_ids
+            downloaded = "✓" if is_cached else ""
+
             title = benchmark.get("title", "")
             version = benchmark.get("version", "")
             latest = "★" if benchmark.get("is_latest") else ""
@@ -145,11 +183,49 @@ class CatalogTabPane(BaseTabPane):
 
     def action_toggle_select(self) -> None:
         """Toggle selection of current benchmark."""
-        self.notify("Selection toggle - implementing next")
+        table = self.query_one("#catalog-table", DataTable)
+        current_row = table.cursor_row
+
+        if current_row is None or current_row >= len(self._items):
+            return
+
+        # Toggle selection
+        if current_row in self._selected_indices:
+            self._selected_indices.remove(current_row)
+        else:
+            self._selected_indices.add(current_row)
+
+        # Rebuild table to show updated checkboxes
+        self._rebuild_table_preserve_cursor()
+
+    def _rebuild_table_preserve_cursor(self) -> None:
+        """Rebuild table preserving cursor position."""
+        table = self.query_one("#catalog-table", DataTable)
+        current_row = table.cursor_row
+        table.clear()
+        self._populate_table(self._items)
+        if current_row is not None and current_row < len(self._items):
+            table.move_cursor(row=current_row)
 
     def action_open_in_browser(self) -> None:
-        """Open current benchmark URL in browser."""
-        self.notify("Open in browser - implementing next")
+        """Open current benchmark's CIS WorkBench URL in browser."""
+        table = self.query_one("#catalog-table", DataTable)
+        current_row = table.cursor_row
+
+        if current_row is None or current_row >= len(self._items):
+            self.notify("No benchmark selected", severity="warning")
+            return
+
+        benchmark = self._items[current_row]
+        url = benchmark.get("url")
+
+        if not url:
+            self.notify("No URL available for this benchmark", severity="warning")
+            return
+
+        # Use Textual's open_url for cross-platform browser opening
+        self.app.open_url(url)
+        self.notify(f"Opening in browser: {url}", severity="information")
 
     def action_toggle_focus(self) -> None:
         """Toggle focus between table and detail pane (tab key)."""
