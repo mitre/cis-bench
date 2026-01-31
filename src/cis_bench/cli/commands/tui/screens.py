@@ -405,7 +405,8 @@ class DiffScreen(Screen):
                 {
                     "type": "renumbered",
                     "old_ref": item["old_ref"],
-                    "ref": item["new_ref"],
+                    "new_ref": item["new_ref"],  # Required by DiffDetailView.update_content()
+                    "ref": item["new_ref"],  # For table lookup consistency
                     "title": item["title"],
                     "details": f"{item['old_ref']} → {item['new_ref']}",
                     "similarity": item.get("similarity", "?"),
