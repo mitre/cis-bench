@@ -156,7 +156,7 @@ class CatalogBrowserApp(BaseBrowserApp):
                 checkbox,
                 cached_indicator,
                 benchmark_id,
-                self._truncate(title, 40),
+                self._truncate(title, 55),
                 version,
                 latest,
                 platform,
