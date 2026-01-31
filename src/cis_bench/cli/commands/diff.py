@@ -1,7 +1,9 @@
 """Diff command - compare benchmark versions."""
 
 import difflib
+import html
 import json
+import re
 import sys
 
 import click
@@ -131,15 +133,23 @@ def compare_benchmarks(old: dict, new: dict) -> dict:
         if diff:
             # Find which fields changed
             changed_fields = _extract_changed_fields(diff)
-            modified.append(
-                {
-                    "ref": ref,
-                    "title": new_rec.get("title", ""),
-                    "old_title": old_rec.get("title", ""),
-                    "fields_changed": changed_fields,
-                    "diff": diff.to_dict(),
-                }
-            )
+
+            # Filter to only fields with meaningful (non-whitespace) changes
+            meaningful_fields = _filter_meaningful_changes(old_rec, new_rec, changed_fields)
+
+            if meaningful_fields:
+                modified.append(
+                    {
+                        "ref": ref,
+                        "title": new_rec.get("title", ""),
+                        "old_title": old_rec.get("title", ""),
+                        "fields_changed": meaningful_fields,
+                        "diff": diff.to_dict(),
+                    }
+                )
+            else:
+                # Only whitespace/encoding differences - treat as unchanged
+                unchanged.append({"ref": ref, "title": new_rec.get("title", "")})
         else:
             unchanged.append({"ref": ref, "title": new_rec.get("title", "")})
 
@@ -225,6 +235,47 @@ def _extract_changed_fields(diff: DeepDiff) -> list[str]:
                 elif "['assessment_status']" in path:
                     fields.add("assessment_status")
     return sorted(fields)
+
+
+def _normalize_value(value) -> str:
+    """Normalize a value for comparison, stripping insignificant differences.
+
+    Handles:
+    - HTML entity decoding (&nbsp; -> space, &amp; -> &, etc.)
+    - Whitespace normalization (multiple spaces -> single, strip)
+    - Cloudflare email obfuscation (data-cfemail attributes vary per scrape)
+    - None -> empty string
+    """
+    if value is None:
+        return ""
+    if isinstance(value, (list, dict)):
+        # For complex types, use JSON for consistent comparison
+        return json.dumps(value, sort_keys=True)
+
+    text = str(value)
+    # Remove Cloudflare email obfuscation (changes each scrape, not real content)
+    text = re.sub(r'data-cfemail="[^"]*"', "", text)
+    text = re.sub(r'<a[^>]*class="__cf_email__"[^>]*>[^<]*</a>', "[email]", text)
+    # Decode HTML entities
+    text = html.unescape(text)
+    # Normalize whitespace: collapse multiple spaces/newlines to single space
+    text = re.sub(r"\s+", " ", text)
+    # Strip leading/trailing
+    return text.strip()
+
+
+def _filter_meaningful_changes(old_rec: dict, new_rec: dict, fields: list[str]) -> list[str]:
+    """Filter changed fields to only those with meaningful (non-whitespace) differences.
+
+    Returns only fields where normalized values actually differ.
+    """
+    meaningful = []
+    for field in fields:
+        old_val = _normalize_value(old_rec.get(field))
+        new_val = _normalize_value(new_rec.get(field))
+        if old_val != new_val:
+            meaningful.append(field)
+    return meaningful
 
 
 def _output_json(comparison: dict):
