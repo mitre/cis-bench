@@ -927,7 +927,12 @@ class CatalogBrowserApp(BaseBrowserApp):
             self.notify("All exports failed", severity="error")
 
 
-def run_catalog_browser(benchmarks: list[dict], offline: bool = False) -> None:
+def run_catalog_browser(
+    benchmarks: list[dict],
+    offline: bool = False,
+    session=None,
+    keep_alive_interval: float = 5.0,
+) -> None:
     """Run the catalog browser TUI.
 
     ViewScreen and DiffScreen are pushed onto the screen stack when triggered.
@@ -936,7 +941,18 @@ def run_catalog_browser(benchmarks: list[dict], offline: bool = False) -> None:
     Args:
         benchmarks: List of benchmark dictionaries from catalog search.
         offline: Whether running in offline mode (shows indicator).
+        session: Optional authenticated requests.Session for keep-alive.
+            If provided and not offline, session will be kept alive during TUI.
+        keep_alive_interval: Minutes between keep-alive pings (default: 5).
     """
+    from cis_bench.fetcher.auth import SessionKeepAlive
+
     app = CatalogBrowserApp(benchmarks=benchmarks, offline=offline)
     app.title = "CIS Benchmark Catalog"
-    app.run()
+
+    # Start keep-alive if we have a session and not offline
+    if session is not None and not offline:
+        with SessionKeepAlive(session, interval_minutes=keep_alive_interval):
+            app.run()
+    else:
+        app.run()

@@ -518,7 +518,12 @@ class DiffApp(BaseBrowserApp):
 
 
 def run_interactive_diff(
-    comparison: dict, old_data: dict, new_data: dict, offline: bool = False
+    comparison: dict,
+    old_data: dict,
+    new_data: dict,
+    offline: bool = False,
+    session=None,
+    keep_alive_interval: float = 5.0,
 ) -> None:
     """Run the interactive diff TUI.
 
@@ -527,11 +532,22 @@ def run_interactive_diff(
         old_data: The old benchmark data dict
         new_data: The new benchmark data dict
         offline: Whether running in offline mode (shows indicator)
+        session: Optional authenticated requests.Session for keep-alive.
+            If provided and not offline, session will be kept alive during TUI.
+        keep_alive_interval: Minutes between keep-alive pings (default: 5).
     """
+    from cis_bench.fetcher.auth import SessionKeepAlive
+
     # Build recommendation lookup dicts
     old_recs = {r["ref"]: r for r in old_data.get("recommendations", [])}
     new_recs = {r["ref"]: r for r in new_data.get("recommendations", [])}
 
     app = DiffApp(comparison, old_recs, new_recs, offline=offline)
     app.title = "CIS Benchmark Diff"
-    app.run()
+
+    # Start keep-alive if we have a session and not offline
+    if session is not None and not offline:
+        with SessionKeepAlive(session, interval_minutes=keep_alive_interval):
+            app.run()
+    else:
+        app.run()

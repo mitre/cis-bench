@@ -1,5 +1,6 @@
 """Browse command - interactive TUI for catalog exploration."""
 
+import logging
 import sys
 
 import click
@@ -8,6 +9,7 @@ from rich.console import Console
 from cis_bench.config import Config
 
 console = Console()
+logger = logging.getLogger(__name__)
 
 
 @click.command(name="browse")
@@ -97,10 +99,24 @@ def browse_cmd(ctx, platform, platform_type, status, latest, query, limit):
                 console.print("\n[dim]Try removing some filters to see more results[/dim]")
             sys.exit(0)
 
+        # Get session for keep-alive (optional - TUI works without it)
+        session = None
+        if not offline:
+            try:
+                from cis_bench.fetcher.auth import AuthManager
+
+                session = AuthManager.load_saved_session()
+                if session and AuthManager.validate_session(session):
+                    logger.debug("Session loaded for keep-alive")
+                else:
+                    session = None  # Invalid session, don't use for keep-alive
+            except Exception as e:
+                logger.debug(f"Could not load session for keep-alive: {e}")
+
         # Launch TUI
         from cis_bench.cli.commands.tui.catalog import run_catalog_browser
 
-        run_catalog_browser(benchmarks, offline=offline)
+        run_catalog_browser(benchmarks, offline=offline, session=session)
 
     except Exception as e:
         console.print(f"[red]✗ Failed to browse catalog: {e}[/red]")

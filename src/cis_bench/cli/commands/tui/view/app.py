@@ -235,14 +235,31 @@ class ViewApp(BaseBrowserApp):
             self.notify(f"Export failed: {e}", severity="error")
 
 
-def run_interactive_view(benchmark: dict, recommendations: list, offline: bool = False) -> None:
+def run_interactive_view(
+    benchmark: dict,
+    recommendations: list,
+    offline: bool = False,
+    session=None,
+    keep_alive_interval: float = 5.0,
+) -> None:
     """Run the interactive view TUI.
 
     Args:
         benchmark: The benchmark data dict
         recommendations: List of recommendations to display (may be filtered)
         offline: Whether running in offline mode (shows indicator)
+        session: Optional authenticated requests.Session for keep-alive.
+            If provided and not offline, session will be kept alive during TUI.
+        keep_alive_interval: Minutes between keep-alive pings (default: 5).
     """
+    from cis_bench.fetcher.auth import SessionKeepAlive
+
     app = ViewApp(benchmark, recommendations, offline=offline)
     app.title = "CIS Benchmark Viewer"
-    app.run()
+
+    # Start keep-alive if we have a session and not offline
+    if session is not None and not offline:
+        with SessionKeepAlive(session, interval_minutes=keep_alive_interval):
+            app.run()
+    else:
+        app.run()
