@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 import sys
+from collections.abc import Callable
 from io import StringIO
 from pathlib import Path
 
@@ -76,11 +77,18 @@ def output_with_pager(output_func, *args, **kwargs) -> None:
         print(output, end="")
 
 
-def auto_fetch_benchmark(benchmark_id: str) -> dict | None:
+def auto_fetch_benchmark(
+    benchmark_id: str,
+    progress_callback: Callable | None = None,
+    silent: bool = False,
+) -> dict | None:
     """Attempt to fetch a benchmark from CIS WorkBench.
 
     Args:
         benchmark_id: The benchmark ID to fetch.
+        progress_callback: Optional callback for progress updates.
+            Called with (current, total, message) for each recommendation.
+        silent: If True, suppress console output (for TUI mode).
 
     Returns:
         Benchmark data dict if successful.
@@ -88,10 +96,13 @@ def auto_fetch_benchmark(benchmark_id: str) -> dict | None:
     Raises:
         click.ClickException: If authentication fails or other errors.
     """
+    import re
+
     from cis_bench.fetcher.auth import AuthManager
     from cis_bench.fetcher.workbench import WorkbenchScraper
 
-    console.print(f"[cyan]Fetching benchmark {benchmark_id} from CIS WorkBench...[/cyan]")
+    if not silent:
+        console.print(f"[cyan]Fetching benchmark {benchmark_id} from CIS WorkBench...[/cyan]")
 
     try:
         session = AuthManager.get_or_create_session()
@@ -113,9 +124,36 @@ def auto_fetch_benchmark(benchmark_id: str) -> dict | None:
     url = f"https://workbench.cisecurity.org/benchmarks/{benchmark_id}"
 
     try:
-        from cis_bench.cli.helpers.download_helper import download_with_progress
+        # If we have a progress callback, use direct scraper call with our callback
+        if progress_callback:
+            total_recs = 0
+            benchmark_title = ""
 
-        benchmark = download_with_progress(scraper, url, prefix="")
+            def scraper_callback(msg):
+                nonlocal total_recs, benchmark_title
+                if "Benchmark title:" in msg:
+                    benchmark_title = msg.split("Benchmark title:", 1)[1].strip()
+                    progress_callback(0, 0, f"Loading: {benchmark_title[:40]}...")
+                elif "Found" in msg and "recommendations" in msg:
+                    match = re.search(r"Found (\d+) recommendations", msg)
+                    if match:
+                        total_recs = int(match.group(1))
+                        progress_callback(
+                            0, total_recs, f"Downloading {total_recs} recommendations..."
+                        )
+                elif msg.startswith("["):
+                    match = re.search(r"\[(\d+)/(\d+)\]", msg)
+                    if match:
+                        current = int(match.group(1))
+                        total = int(match.group(2))
+                        progress_callback(current, total, f"[{current}/{total}] Processing...")
+
+            benchmark = scraper.download_benchmark(url, progress_callback=scraper_callback)
+        else:
+            # Use CLI helper with Rich progress bar
+            from cis_bench.cli.helpers.download_helper import download_with_progress
+
+            benchmark = download_with_progress(scraper, url, prefix="")
 
         # Save to catalog database
         catalog_db_path = Config.get_catalog_db_path()
@@ -132,7 +170,8 @@ def auto_fetch_benchmark(benchmark_id: str) -> dict | None:
                     content_hash=content_hash,
                     recommendation_count=recommendation_count,
                 )
-                console.print(f"[green]✓[/green] Cached benchmark {benchmark_id}")
+                if not silent:
+                    console.print(f"[green]✓[/green] Cached benchmark {benchmark_id}")
             except Exception as e:
                 logger.warning(f"Failed to cache benchmark: {e}")
 
@@ -143,12 +182,20 @@ def auto_fetch_benchmark(benchmark_id: str) -> dict | None:
         raise click.ClickException(f"Failed to fetch benchmark '{benchmark_id}': {e}") from e
 
 
-def load_benchmark(identifier: str, offline: bool = False) -> dict:
+def load_benchmark(
+    identifier: str,
+    offline: bool = False,
+    progress_callback: Callable | None = None,
+    silent: bool = False,
+) -> dict:
     """Load benchmark from ID or file path.
 
     Args:
         identifier: Benchmark ID, URL, or file path.
         offline: If True, don't attempt to fetch from CIS WorkBench.
+        progress_callback: Optional callback for progress updates during fetch.
+            Called with (current, total, message) for each recommendation.
+        silent: If True, suppress console output (for TUI mode).
 
     Returns:
         Benchmark data as dict.
@@ -187,4 +234,8 @@ def load_benchmark(identifier: str, offline: bool = False) -> dict:
         )
 
     logger.info(f"Benchmark {identifier} not cached, attempting to fetch from WorkBench")
-    return auto_fetch_benchmark(identifier)
+    return auto_fetch_benchmark(
+        identifier,
+        progress_callback=progress_callback,
+        silent=silent,
+    )
