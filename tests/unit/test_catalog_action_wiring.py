@@ -355,3 +355,57 @@ class TestLoadingModal:
         modal = LoadingModal("Test")
         assert hasattr(modal, "is_cancelled")
         assert modal.is_cancelled is False
+
+    def test_loading_modal_update_progress_before_mount(self):
+        """update_progress should safely skip if not mounted."""
+        from cis_bench.cli.commands.tui.widgets import LoadingModal
+
+        modal = LoadingModal("Test")
+        # Should not raise - just skip silently
+        modal.update_progress(50, "Testing...")
+        # Internal state should still be updated
+        assert modal._progress == 50
+        assert modal._status == "Testing..."
+
+
+class TestCISBenchApp:
+    """Test unified CISBenchApp class."""
+
+    def test_cis_bench_app_importable(self):
+        """CISBenchApp should be importable."""
+        from cis_bench.cli.commands.tui.app import CISBenchApp
+
+        assert CISBenchApp is not None
+
+    def test_cis_bench_app_has_catalog_factory(self):
+        """CISBenchApp should have catalog classmethod."""
+        from cis_bench.cli.commands.tui.app import CISBenchApp
+
+        assert hasattr(CISBenchApp, "catalog")
+        assert callable(CISBenchApp.catalog)
+
+    def test_cis_bench_app_has_view_factory(self):
+        """CISBenchApp should have view classmethod."""
+        from cis_bench.cli.commands.tui.app import CISBenchApp
+
+        assert hasattr(CISBenchApp, "view")
+        assert callable(CISBenchApp.view)
+
+    def test_cis_bench_app_has_diff_factory(self):
+        """CISBenchApp should have diff classmethod."""
+        from cis_bench.cli.commands.tui.app import CISBenchApp
+
+        assert hasattr(CISBenchApp, "diff")
+        assert callable(CISBenchApp.diff)
+
+    def test_run_cis_bench_functions_importable(self):
+        """Convenience run functions should be importable."""
+        from cis_bench.cli.commands.tui.app import (
+            run_cis_bench_catalog,
+            run_cis_bench_diff,
+            run_cis_bench_view,
+        )
+
+        assert callable(run_cis_bench_catalog)
+        assert callable(run_cis_bench_view)
+        assert callable(run_cis_bench_diff)
