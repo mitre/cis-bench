@@ -7,7 +7,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Center, Container, VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import Input, Label, ProgressBar, Static
+from textual.widgets import Input, Label, LoadingIndicator, ProgressBar, Static
 
 logger = logging.getLogger(__name__)
 
@@ -157,6 +157,12 @@ LOADING_MODAL_CSS = """
     padding-bottom: 1;
 }
 
+#loading-spinner {
+    width: 100%;
+    height: 3;
+    content-align: center middle;
+}
+
 #loading-status {
     width: 100%;
     text-align: center;
@@ -223,7 +229,8 @@ class LoadingModal(ModalScreen[bool]):
         yield Center(
             Container(
                 Label(self._title, id="loading-title"),
-                Static("⏳ Starting...", id="loading-status"),
+                LoadingIndicator(id="loading-spinner"),
+                Static("Starting...", id="loading-status"),
                 ProgressBar(id="loading-progress", show_eta=False, show_percentage=True),
                 Label("Press Esc to cancel", id="loading-hint"),
                 id="loading-container",
@@ -264,9 +271,9 @@ class LoadingModal(ModalScreen[bool]):
             self._progress_bar.refresh()  # Force visual refresh
 
             if status:
-                self._status_widget.update(f"⏳ {status}")
+                self._status_widget.update(status)
             else:
-                self._status_widget.update(f"⏳ {progress}%")
+                self._status_widget.update(f"{progress}%")
             self._status_widget.refresh()  # Force visual refresh
         except Exception as e:
             # Widget might not be mounted yet
