@@ -124,7 +124,7 @@ class CatalogBrowserApp(BaseBrowserApp):
     def _get_columns(self) -> list[str]:
         """Return column headers for catalog table."""
         # Columns: checkbox, cached status, ID, Title, Latest, Platform
-        return ["", "⬇", "ID", "Title", "★", "Platform"]
+        return ["", "⬇", "ID", "Title", "Latest", "Platform"]
 
     def _populate_table(self) -> None:
         """Populate the table with benchmark data."""
