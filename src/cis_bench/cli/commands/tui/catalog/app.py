@@ -276,10 +276,11 @@ class CatalogBrowserApp(BaseBrowserApp):
                 if total > 0:
                     # Calculate percentage: 10% for connect, 80% for download, 10% for processing
                     download_progress = int((current / total) * 80) + 10
+                    # Message already contains [current/total] from utils.py
                     self.call_from_thread(
                         modal.update_progress,
                         download_progress,
-                        f"[{current}/{total}] {message}",
+                        message,
                     )
                 else:
                     # No total yet, just show message
