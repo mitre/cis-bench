@@ -771,9 +771,13 @@ class BaseBrowserScreen(Screen):
         pass
 
     def action_go_back(self) -> None:
-        """Go back to previous screen or exit if root."""
+        """Go back to previous screen or exit if root.
+
+        Uses dismiss() instead of pop_screen() to trigger any callbacks
+        registered when this screen was pushed.
+        """
         if len(self.app.screen_stack) > 1:
-            self.app.pop_screen()
+            self.dismiss()  # Triggers callback registered with push_screen()
         else:
             self.app.exit()
 
