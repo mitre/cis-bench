@@ -5,6 +5,7 @@ Compound widget following Textual framework best practices:
 - Reactive state for selected benchmarks
 - Message passing for cross-widget communication
 - Proper lifecycle: compose → on_mount → reactive updates
+- Inline progress display (no modal screen flash)
 """
 
 import logging
@@ -14,7 +15,7 @@ from textual import work
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, VerticalScroll
-from textual.widgets import DataTable
+from textual.widgets import DataTable, Label, ProgressBar
 from textual.worker import get_current_worker
 
 from cis_bench.cli.commands.tui.base import BaseTabPane
@@ -47,6 +48,8 @@ class CatalogTabPane(BaseTabPane):
         Binding("o", "open_in_browser", "Open URL", show=True),
         # Note: 'r' is inherited from BaseTabPane for reverse_sort
         Binding("R", "refresh_catalog", "Refresh", show=True),  # Shift+R for network refresh
+        # Escape cancels loading when active, otherwise bubbles up
+        Binding("escape", "maybe_cancel_loading", "Cancel", show=False, priority=True),
     ]
 
     def __init__(self, **kwargs):
@@ -55,6 +58,25 @@ class CatalogTabPane(BaseTabPane):
         self._items: list[dict] = []  # Current visible benchmarks
         self._selected_indices: set[int] = set()  # Selected row indices
         self._downloaded_ids: set[str] = set()  # Cached benchmark IDs
+        self._is_loading: bool = False  # Track if loading operation in progress
+        self._loading_cancelled: bool = False  # Track if user cancelled loading
+
+    # CSS for inline loading progress (hidden by default)
+    DEFAULT_CSS = """
+    #loading-progress {
+        display: none;
+        width: 100%;
+        dock: bottom;
+        margin: 0 1;
+    }
+    #loading-status {
+        display: none;
+        dock: bottom;
+        text-align: center;
+        color: $text-muted;
+        margin: 0 1;
+    }
+    """
 
     def compose(self) -> ComposeResult:
         """Compose catalog browser layout (Textual compose pattern)."""
@@ -71,6 +93,11 @@ class CatalogTabPane(BaseTabPane):
             # Must wrap in VerticalScroll for content longer than screen
             with VerticalScroll(id="detail-container"):
                 yield CatalogDetailView(id="detail-view")
+
+        # Inline loading progress (hidden by default, shown during load)
+        # Uses inline widgets instead of LoadingModal to avoid screen flash
+        yield Label("", id="loading-status")
+        yield ProgressBar(total=100, show_eta=False, id="loading-progress")
 
     def on_mount(self) -> None:
         """Initialize catalog on mount (Textual lifecycle pattern)."""
@@ -99,6 +126,81 @@ class CatalogTabPane(BaseTabPane):
         except Exception as e:
             # Downloaded status is optional enhancement - log and continue
             logger.debug(f"Could not load downloaded IDs: {e}")
+
+    # ========================================================================
+    # Inline Progress Display (fixes screen flash)
+    # ========================================================================
+
+    def _show_loading(self, message: str = "Loading...") -> None:
+        """Show inline loading progress widgets.
+
+        Args:
+            message: Initial status message to display.
+        """
+        self._is_loading = True
+        self._loading_cancelled = False
+
+        progress = self.query_one("#loading-progress", ProgressBar)
+        status = self.query_one("#loading-status", Label)
+
+        # Reset and show
+        progress.update(progress=0)
+        status.update(message)
+        progress.display = True
+        status.display = True
+
+    def _update_loading(self, percent: int, message: str) -> None:
+        """Update inline loading progress.
+
+        Args:
+            percent: Progress percentage (0-100).
+            message: Status message to display.
+        """
+        if not self._is_loading:
+            return
+
+        progress = self.query_one("#loading-progress", ProgressBar)
+        status = self.query_one("#loading-status", Label)
+
+        progress.update(progress=percent)
+        status.update(message)
+
+    def _hide_loading(self) -> None:
+        """Hide inline loading progress widgets."""
+        self._is_loading = False
+
+        try:
+            progress = self.query_one("#loading-progress", ProgressBar)
+            status = self.query_one("#loading-status", Label)
+            progress.display = False
+            status.display = False
+        except Exception as e:
+            logger.debug(f"Could not hide loading widgets: {e}")
+
+    def _cancel_loading(self) -> None:
+        """Cancel the current loading operation."""
+        if not self._is_loading:
+            return
+
+        self._loading_cancelled = True
+        self._hide_loading()
+
+        # Cancel any running workers
+        self.app.workers.cancel_all()
+
+        self.notify("Loading cancelled", severity="warning")
+
+    def action_cancel_loading(self) -> None:
+        """Action to cancel loading (bound to Escape when loading)."""
+        self._cancel_loading()
+
+    def action_maybe_cancel_loading(self) -> None:
+        """Cancel loading if active, otherwise let escape bubble up to quit."""
+        if self._is_loading:
+            self._cancel_loading()
+        else:
+            # Not loading - let the app handle escape (quit)
+            self.app.action_quit()
 
     def get_selected_items(self) -> list[dict]:
         """Get the selected benchmark items.
@@ -366,61 +468,62 @@ class CatalogTabPane(BaseTabPane):
         return old_id, new_id
 
     def _load_and_view(self, benchmark_id: str) -> None:
-        """Load benchmark with loading modal and push ViewScreen.
+        """Load benchmark with inline progress and push ViewScreen.
+
+        Uses inline ProgressBar + Label instead of LoadingModal to avoid
+        the screen flash caused by push → pop → push sequence.
 
         Args:
             benchmark_id: Benchmark ID to view.
         """
-        from cis_bench.cli.commands.tui.widgets import LoadingModal
-
         self._pending_view_id = benchmark_id
 
-        def on_modal_dismiss(completed: bool) -> None:
-            if not completed:
-                self.notify("Loading cancelled", severity="warning")
+        # Show inline progress (no modal screen)
+        self._show_loading(f"Loading {benchmark_id}...")
 
-        modal = LoadingModal(f"Loading {benchmark_id}...")
-        self._loading_modal = modal
-        self.app.push_screen(modal, on_modal_dismiss)
-
+        # Start worker
         self._start_view_worker(benchmark_id)
 
     @work(exclusive=True, thread=True)
     def _start_view_worker(self, benchmark_id: str) -> None:
-        """Worker to load benchmark in background thread."""
+        """Worker to load benchmark in background thread.
+
+        Updates inline progress widgets instead of modal.
+        """
         import time
 
         from cis_bench.cli.commands.utils import load_benchmark
 
         worker = get_current_worker()
-        modal = getattr(self, "_loading_modal", None)
+
+        def is_cancelled() -> bool:
+            """Check if worker or loading was cancelled."""
+            return worker.is_cancelled or self._loading_cancelled
 
         def progress_callback(current: int, total: int, message: str) -> None:
-            if worker.is_cancelled or (modal and modal.is_cancelled):
+            if is_cancelled():
                 return
-            if modal:
-                if total > 0:
-                    download_progress = int((current / total) * 80) + 10
-                    self.app.call_from_thread(
-                        modal.update_progress,
-                        download_progress,
-                        message,
-                    )
-                else:
-                    self.app.call_from_thread(modal.update_progress, 5, message)
+            if total > 0:
+                # Map download progress to 10-90% range
+                download_progress = int((current / total) * 80) + 10
+                self.app.call_from_thread(
+                    self._update_loading,
+                    download_progress,
+                    message,
+                )
+            else:
+                self.app.call_from_thread(self._update_loading, 5, message)
 
         try:
-            if worker.is_cancelled:
+            if is_cancelled():
                 return
 
             time.sleep(0.1)
 
-            if not worker.is_cancelled and modal and not modal.is_cancelled:
-                self.app.call_from_thread(
-                    modal.update_progress, 5, "Connecting to CIS WorkBench..."
-                )
+            if not is_cancelled():
+                self.app.call_from_thread(self._update_loading, 5, "Connecting to CIS WorkBench...")
 
-            if worker.is_cancelled:
+            if is_cancelled():
                 return
 
             data = load_benchmark(
@@ -430,41 +533,39 @@ class CatalogTabPane(BaseTabPane):
                 silent=True,
             )
 
-            if worker.is_cancelled or (modal and modal.is_cancelled):
+            if is_cancelled():
                 return
 
-            if modal and not worker.is_cancelled:
-                self.app.call_from_thread(
-                    modal.update_progress, 95, "Processing recommendations..."
-                )
+            if not is_cancelled():
+                self.app.call_from_thread(self._update_loading, 95, "Processing recommendations...")
 
             recommendations = data.get("recommendations", [])
 
-            if worker.is_cancelled or (modal and modal.is_cancelled):
+            if is_cancelled():
                 return
 
-            if modal and not worker.is_cancelled:
-                self.app.call_from_thread(modal.update_progress, 100, "Ready!")
+            if not is_cancelled():
+                self.app.call_from_thread(self._update_loading, 100, "Ready!")
 
-            if not worker.is_cancelled:
+            if not is_cancelled():
                 self.app.call_from_thread(self._on_view_loaded, data, recommendations)
 
         except Exception as e:
-            if not worker.is_cancelled:
+            if not is_cancelled():
                 self.app.call_from_thread(self._on_load_error, str(e))
 
     def _on_view_loaded(self, data: dict, recommendations: list) -> None:
-        """Handle successful view load (called from main thread)."""
+        """Handle successful view load (called from main thread).
+
+        Hides inline progress and pushes ViewScreen in a single clean transition.
+        No pop_screen needed - eliminates the screen flash.
+        """
         from cis_bench.cli.commands.tui.screens import ViewScreen
 
-        modal = getattr(self, "_loading_modal", None)
-        if modal:
-            try:
-                self.app.pop_screen()
-            except Exception as e:
-                logger.debug(f"Could not pop loading modal: {e}")
-            self._loading_modal = None
+        # Hide inline progress (no pop_screen - single transition)
+        self._hide_loading()
 
+        # Push ViewScreen directly (clean single transition)
         self.app.push_screen(
             ViewScreen(data, recommendations, offline=False),
             self._on_screen_dismissed,
@@ -477,75 +578,72 @@ class CatalogTabPane(BaseTabPane):
 
     def _on_load_error(self, error: str) -> None:
         """Handle load failure (called from main thread)."""
-        modal = getattr(self, "_loading_modal", None)
-        if modal:
-            try:
-                self.app.pop_screen()
-            except Exception as e:
-                logger.debug(f"Could not pop loading modal on error: {e}")
-            self._loading_modal = None
+        # Hide inline progress
+        self._hide_loading()
 
         self.notify(f"Failed to load: {error}", severity="error", timeout=10)
 
     def _load_and_diff(self, old_id: str, new_id: str) -> None:
-        """Load both benchmarks with loading modal and push DiffScreen.
+        """Load both benchmarks with inline progress and push DiffScreen.
+
+        Uses inline ProgressBar + Label instead of LoadingModal to avoid
+        the screen flash caused by push → pop → push sequence.
 
         Args:
             old_id: Older benchmark ID.
             new_id: Newer benchmark ID.
         """
-        from cis_bench.cli.commands.tui.widgets import LoadingModal
-
         self._pending_diff_ids = (old_id, new_id)
 
-        def on_modal_dismiss(completed: bool) -> None:
-            if not completed:
-                self.notify("Loading cancelled", severity="warning")
+        # Show inline progress (no modal screen)
+        self._show_loading("Comparing benchmarks...")
 
-        modal = LoadingModal("Comparing benchmarks...")
-        self._loading_modal = modal
-        self.app.push_screen(modal, on_modal_dismiss)
-
+        # Start worker
         self._start_diff_worker(old_id, new_id)
 
     @work(exclusive=True, thread=True)
     def _start_diff_worker(self, old_id: str, new_id: str) -> None:
-        """Worker to load both benchmarks in background thread."""
+        """Worker to load both benchmarks in background thread.
+
+        Updates inline progress widgets instead of modal.
+        """
         import time
 
         from cis_bench.cli.commands.diff import compare_benchmarks
         from cis_bench.cli.commands.utils import load_benchmark
 
         worker = get_current_worker()
-        modal = getattr(self, "_loading_modal", None)
+
+        def is_cancelled() -> bool:
+            """Check if worker or loading was cancelled."""
+            return worker.is_cancelled or self._loading_cancelled
 
         def make_progress_callback(base_percent: int, range_percent: int, label: str):
             def callback(current: int, total: int, message: str) -> None:
-                if worker.is_cancelled or (modal and modal.is_cancelled):
+                if is_cancelled():
                     return
-                if modal:
-                    if total > 0:
-                        phase_progress = int((current / total) * range_percent)
-                        self.app.call_from_thread(
-                            modal.update_progress,
-                            base_percent + phase_progress,
-                            f"{label}: [{current}/{total}]",
-                        )
-                    else:
-                        self.app.call_from_thread(modal.update_progress, base_percent, message)
+                if total > 0:
+                    phase_progress = int((current / total) * range_percent)
+                    self.app.call_from_thread(
+                        self._update_loading,
+                        base_percent + phase_progress,
+                        f"{label}: [{current}/{total}]",
+                    )
+                else:
+                    self.app.call_from_thread(self._update_loading, base_percent, message)
 
             return callback
 
         try:
-            if worker.is_cancelled:
+            if is_cancelled():
                 return
 
             time.sleep(0.1)
 
-            if not worker.is_cancelled and modal and not modal.is_cancelled:
-                self.app.call_from_thread(modal.update_progress, 2, f"Connecting for {old_id}...")
+            if not is_cancelled():
+                self.app.call_from_thread(self._update_loading, 2, f"Connecting for {old_id}...")
 
-            if worker.is_cancelled:
+            if is_cancelled():
                 return
 
             old_data = load_benchmark(
@@ -555,13 +653,13 @@ class CatalogTabPane(BaseTabPane):
                 silent=True,
             )
 
-            if worker.is_cancelled or (modal and modal.is_cancelled):
+            if is_cancelled():
                 return
 
-            if modal and not worker.is_cancelled:
-                self.app.call_from_thread(modal.update_progress, 42, f"Connecting for {new_id}...")
+            if not is_cancelled():
+                self.app.call_from_thread(self._update_loading, 42, f"Connecting for {new_id}...")
 
-            if worker.is_cancelled:
+            if is_cancelled():
                 return
 
             new_data = load_benchmark(
@@ -571,39 +669,39 @@ class CatalogTabPane(BaseTabPane):
                 silent=True,
             )
 
-            if worker.is_cancelled or (modal and modal.is_cancelled):
+            if is_cancelled():
                 return
 
-            if modal and not worker.is_cancelled:
-                self.app.call_from_thread(modal.update_progress, 85, "Comparing benchmarks...")
+            if not is_cancelled():
+                self.app.call_from_thread(self._update_loading, 85, "Comparing benchmarks...")
 
             comparison = compare_benchmarks(old_data, new_data)
 
-            if worker.is_cancelled or (modal and modal.is_cancelled):
+            if is_cancelled():
                 return
 
-            if modal and not worker.is_cancelled:
-                self.app.call_from_thread(modal.update_progress, 100, "Ready!")
+            if not is_cancelled():
+                self.app.call_from_thread(self._update_loading, 100, "Ready!")
 
-            if not worker.is_cancelled:
+            if not is_cancelled():
                 self.app.call_from_thread(self._on_diff_loaded, comparison, old_data, new_data)
 
         except Exception as e:
-            if not worker.is_cancelled:
+            if not is_cancelled():
                 self.app.call_from_thread(self._on_load_error, str(e))
 
     def _on_diff_loaded(self, comparison: dict, old_data: dict, new_data: dict) -> None:
-        """Handle successful diff load (called from main thread)."""
+        """Handle successful diff load (called from main thread).
+
+        Hides inline progress and pushes DiffScreen in a single clean transition.
+        No pop_screen needed - eliminates the screen flash.
+        """
         from cis_bench.cli.commands.tui.screens import DiffScreen
 
-        modal = getattr(self, "_loading_modal", None)
-        if modal:
-            try:
-                self.app.pop_screen()
-            except Exception as e:
-                logger.debug(f"Could not pop loading modal for diff: {e}")
-            self._loading_modal = None
+        # Hide inline progress (no pop_screen - single transition)
+        self._hide_loading()
 
+        # Push DiffScreen directly (clean single transition)
         self.app.push_screen(
             DiffScreen(comparison, old_data, new_data, offline=False),
             self._on_screen_dismissed,
@@ -671,11 +769,11 @@ class CatalogTabPane(BaseTabPane):
     def _do_single_export(self, config) -> None:
         """Execute single benchmark export.
 
+        Uses inline progress instead of LoadingModal for clean transitions.
+
         Args:
             config: Export configuration.
         """
-        from cis_bench.cli.commands.tui.widgets import LoadingModal
-
         table = self.query_one("#catalog-table", DataTable)
         current_row = table.cursor_row
         if current_row is None or current_row >= len(self._items):
@@ -688,38 +786,42 @@ class CatalogTabPane(BaseTabPane):
         self._pending_export_id = benchmark_id
         self._pending_export_config = config
 
-        modal = LoadingModal(f"Exporting {benchmark_id}...")
-        self._loading_modal = modal
-        self.app.push_screen(modal)
+        # Show inline progress (no modal screen)
+        self._show_loading(f"Exporting {benchmark_id}...")
 
         self._start_export_worker(benchmark_id, config)
 
     @work(exclusive=True, thread=True)
     def _start_export_worker(self, benchmark_id: str, config) -> None:
-        """Worker to load and export benchmark in background thread."""
+        """Worker to load and export benchmark in background thread.
+
+        Updates inline progress widgets instead of modal.
+        """
         from cis_bench.cli.commands.utils import load_benchmark
         from cis_bench.services.export_service import ExportService
 
         worker = get_current_worker()
-        modal = getattr(self, "_loading_modal", None)
+
+        def is_cancelled() -> bool:
+            """Check if worker or loading was cancelled."""
+            return worker.is_cancelled or self._loading_cancelled
 
         def progress_callback(current: int, total: int, message: str) -> None:
-            if worker.is_cancelled or (modal and modal.is_cancelled):
+            if is_cancelled():
                 return
-            if modal and total > 0:
+            if total > 0:
                 progress = int((current / total) * 80) + 10
-                self.app.call_from_thread(modal.update_progress, progress, message)
+                self.app.call_from_thread(self._update_loading, progress, message)
 
         try:
-            if modal:
-                self.app.call_from_thread(modal.update_progress, 5, "Loading benchmark...")
+            self.app.call_from_thread(self._update_loading, 5, "Loading benchmark...")
 
             benchmark = load_benchmark(
                 benchmark_id=benchmark_id,
                 progress_callback=progress_callback,
             )
 
-            if worker.is_cancelled or (modal and modal.is_cancelled):
+            if is_cancelled():
                 self.app.call_from_thread(self._export_cancelled)
                 return
 
@@ -730,8 +832,7 @@ class CatalogTabPane(BaseTabPane):
                 )
                 return
 
-            if modal:
-                self.app.call_from_thread(modal.update_progress, 90, "Exporting...")
+            self.app.call_from_thread(self._update_loading, 90, "Exporting...")
 
             service = ExportService()
             result = service.export_single(benchmark, config)
@@ -747,9 +848,8 @@ class CatalogTabPane(BaseTabPane):
 
     def _export_completed(self, path) -> None:
         """Handle successful export."""
-        modal = getattr(self, "_loading_modal", None)
-        if modal:
-            self.app.pop_screen()
+        # Hide inline progress
+        self._hide_loading()
 
         if path:
             self.notify(f"Exported to {path}", title="Export Complete")
@@ -758,17 +858,15 @@ class CatalogTabPane(BaseTabPane):
 
     def _export_failed(self, error: str) -> None:
         """Handle failed export."""
-        modal = getattr(self, "_loading_modal", None)
-        if modal:
-            self.app.pop_screen()
+        # Hide inline progress
+        self._hide_loading()
 
         self.notify(f"Export failed: {error}", severity="error")
 
     def _export_cancelled(self) -> None:
         """Handle cancelled export."""
-        modal = getattr(self, "_loading_modal", None)
-        if modal:
-            self.app.pop_screen()
+        # Hide inline progress
+        self._hide_loading()
 
         self.notify("Export cancelled", severity="warning")
 
