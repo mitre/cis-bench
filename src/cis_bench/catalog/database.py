@@ -305,8 +305,13 @@ class CatalogDatabase:
                 c.name as community,
                 o.username as owner,
                 b.published_date,
+                b.last_revision_date,
                 b.is_latest,
-                b.description
+                b.description,
+                (SELECT GROUP_CONCAT(col.name, ', ')
+                 FROM benchmark_collections bc
+                 JOIN collections col ON bc.collection_id = col.collection_id
+                 WHERE bc.benchmark_id = b.benchmark_id) as collections
             FROM catalog_benchmarks b
             JOIN benchmark_statuses s ON b.status_id = s.status_id
             LEFT JOIN platforms p ON b.platform_id = p.platform_id
@@ -387,9 +392,14 @@ class CatalogDatabase:
                     c.name as community,
                     o.username as owner,
                     b.published_date,
+                    b.last_revision_date,
                     b.is_latest,
                     b.description,
-                    f.rank
+                    f.rank,
+                    (SELECT GROUP_CONCAT(col.name, ', ')
+                     FROM benchmark_collections bc
+                     JOIN collections col ON bc.collection_id = col.collection_id
+                     WHERE bc.benchmark_id = b.benchmark_id) as collections
                 FROM catalog_benchmarks b
                 JOIN benchmarks_fts f ON b.benchmark_id = f.benchmark_id
                 JOIN benchmark_statuses s ON b.status_id = s.status_id

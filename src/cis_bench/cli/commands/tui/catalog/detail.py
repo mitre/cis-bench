@@ -57,11 +57,14 @@ class CatalogDetailView(DetailView):
                 benchmark.get("platform_type"),
                 benchmark.get("community"),
                 benchmark.get("owner"),
+                benchmark.get("collections"),
             ]
         )
         if has_classification:
             lines.append("## Classification")
             lines.append("")
+            if benchmark.get("collections"):
+                lines.append(f"**Collections:** {benchmark['collections']}  ")
             if benchmark.get("platform"):
                 lines.append(f"**Platform:** {benchmark['platform']}  ")
             if benchmark.get("platform_type"):
