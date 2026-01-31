@@ -93,13 +93,9 @@ class ActionMenu(ModalScreen):
             Label(display_title, id="action-title"),
             Vertical(
                 Button("⬇ Download", id="btn-download", variant="primary"),
-                Button(
-                    "👁 View" if self.is_downloaded else "👁 View (not downloaded)",
-                    id="btn-view",
-                    disabled=not self.is_downloaded,
-                ),
+                Button("👁 View", id="btn-view"),
                 Button("⟷ Diff versions...", id="btn-diff"),
-                Button("📤 Export...", id="btn-export", disabled=not self.is_downloaded),
+                Button("📤 Export...", id="btn-export"),
                 id="action-buttons",
             ),
             Label("Press key or click • Esc to cancel", id="action-hint"),
@@ -125,16 +121,13 @@ class ActionMenu(ModalScreen):
         self.dismiss(("download", self.benchmark))
 
     def action_view(self) -> None:
-        if self.is_downloaded:
-            self.dismiss(("view", self.benchmark))
-        else:
-            self.app.notify("Download the benchmark first", severity="warning")
+        """View action - always dismiss, auto-fetch handles missing content."""
+        self.dismiss(("view", self.benchmark))
 
     def action_diff(self) -> None:
+        """Diff action - dismiss to let catalog handle selection validation."""
         self.dismiss(("diff", self.benchmark))
 
     def action_export(self) -> None:
-        if self.is_downloaded:
-            self.dismiss(("export", self.benchmark))
-        else:
-            self.app.notify("Download the benchmark first", severity="warning")
+        """Export action - always dismiss, auto-fetch handles missing content."""
+        self.dismiss(("export", self.benchmark))

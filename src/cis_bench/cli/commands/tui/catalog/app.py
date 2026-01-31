@@ -25,8 +25,13 @@ class CatalogBrowserApp(BaseBrowserApp):
     BINDINGS = COMMON_BINDINGS + [
         # Selection
         Binding("space", "toggle_select", "Select", show=True),
-        # Actions
+        # Actions menu
         Binding("enter", "open_actions", "Actions", show=True),
+        # Direct action shortcuts (skip menu)
+        Binding("v", "view_benchmark", "View", show=True),
+        Binding("d", "diff_benchmarks", "Diff", show=True),
+        Binding("e", "export_benchmark", "Export", show=False),  # Also 's'
+        Binding("s", "export_benchmark", "Save/Export", show=False),
     ]
 
     def __init__(self, benchmarks: list[dict], offline: bool = False, **kwargs):
@@ -185,33 +190,86 @@ class CatalogBrowserApp(BaseBrowserApp):
         )
 
     def _handle_action(self, result: tuple | None) -> None:
-        """Handle the result from the action menu."""
+        """Handle the result from the action menu.
+
+        Exits the app with action info for the runner to handle launching
+        the appropriate TUI (ViewApp, DiffApp, etc.).
+        """
         if result is None:
             return
 
         action, benchmark = result
-        benchmark_id = benchmark.get("benchmark_id", "")
+        benchmark_id = str(benchmark.get("benchmark_id", ""))
 
         if action == "download":
+            # Download is handled by auto-fetch in view/diff/export
+            # Show info message - user can also use CLI for explicit download
             self.notify(
-                f"Download {benchmark_id}: Use 'cis-bench download {benchmark_id}'",
+                f"Content is fetched automatically when viewing/exporting. "
+                f"For explicit download: cis-bench download {benchmark_id}",
                 severity="information",
             )
         elif action == "view":
-            self.notify(
-                f"View {benchmark_id}: Use 'cis-bench view {benchmark_id}'",
-                severity="information",
-            )
+            # Exit app with view action - runner will launch ViewApp
+            self.exit(("view", benchmark_id))
         elif action == "diff":
-            self.notify(
-                f"Diff: Select another version to compare with {benchmark_id}",
-                severity="information",
-            )
+            # Validate exactly 2 benchmarks selected
+            if len(self._selected_indices) != 2:
+                self.notify(
+                    "Select exactly 2 benchmarks to compare (use Space to select)",
+                    severity="warning",
+                )
+                return
+            # Get the two selected benchmark IDs
+            selected_ids = [
+                str(self._items[idx].get("benchmark_id", ""))
+                for idx in sorted(self._selected_indices)
+            ]
+            # Exit app with diff action - runner will launch DiffApp
+            self.exit(("diff", selected_ids[0], selected_ids[1]))
         elif action == "export":
+            # Exit app with export action - runner will handle export
+            self.exit(("export", benchmark_id))
+
+    def action_view_benchmark(self) -> None:
+        """Direct view action - 'v' key. Skips the action menu."""
+        table = self.query_one("#changes-table", DataTable)
+        current_row = table.cursor_row
+
+        if current_row is None or current_row >= len(self._items):
+            self.notify("No benchmark selected", severity="warning")
+            return
+
+        benchmark = self._items[current_row]
+        benchmark_id = str(benchmark.get("benchmark_id", ""))
+        self.exit(("view", benchmark_id))
+
+    def action_diff_benchmarks(self) -> None:
+        """Direct diff action - 'd' key. Requires exactly 2 selected."""
+        if len(self._selected_indices) != 2:
             self.notify(
-                f"Export {benchmark_id}: Use 'cis-bench export {benchmark_id}'",
-                severity="information",
+                "Select exactly 2 benchmarks to compare (use Space to select)",
+                severity="warning",
             )
+            return
+
+        selected_ids = [
+            str(self._items[idx].get("benchmark_id", "")) for idx in sorted(self._selected_indices)
+        ]
+        self.exit(("diff", selected_ids[0], selected_ids[1]))
+
+    def action_export_benchmark(self) -> None:
+        """Direct export action - 'e' or 's' key. Skips the action menu."""
+        table = self.query_one("#changes-table", DataTable)
+        current_row = table.cursor_row
+
+        if current_row is None or current_row >= len(self._items):
+            self.notify("No benchmark selected", severity="warning")
+            return
+
+        benchmark = self._items[current_row]
+        benchmark_id = str(benchmark.get("benchmark_id", ""))
+        self.exit(("export", benchmark_id))
 
     def _rebuild_table(self) -> None:
         """Rebuild the table with current sort order."""
@@ -277,12 +335,59 @@ class CatalogBrowserApp(BaseBrowserApp):
 
 
 def run_catalog_browser(benchmarks: list[dict], offline: bool = False) -> None:
-    """Run the catalog browser TUI.
+    """Run the catalog browser TUI with action handling.
+
+    When the user selects an action (View, Diff, Export), the catalog exits
+    and this function launches the appropriate TUI. After that TUI exits,
+    control returns to the catalog browser.
 
     Args:
         benchmarks: List of benchmark dictionaries from catalog search.
         offline: Whether running in offline mode (shows indicator).
     """
-    app = CatalogBrowserApp(benchmarks=benchmarks, offline=offline)
-    app.title = "CIS Benchmark Catalog"
-    app.run()
+    from cis_bench.cli.commands.diff import compare_benchmarks
+    from cis_bench.cli.commands.tui.diff import run_interactive_diff
+    from cis_bench.cli.commands.tui.view import run_interactive_view
+    from cis_bench.cli.commands.utils import load_benchmark
+
+    while True:
+        app = CatalogBrowserApp(benchmarks=benchmarks, offline=offline)
+        app.title = "CIS Benchmark Catalog"
+        result = app.run()
+
+        if result is None:
+            # User quit the catalog - exit the loop
+            break
+
+        action = result[0]
+
+        if action == "view":
+            benchmark_id = result[1]
+            try:
+                data = load_benchmark(benchmark_id, offline=offline)
+                recommendations = data.get("recommendations", [])
+                run_interactive_view(data, recommendations, offline=offline)
+            except Exception as e:
+                # If view fails, log error and return to catalog
+                logger.error(f"Failed to load benchmark {benchmark_id}: {e}")
+                # Continue loop to return to catalog
+
+        elif action == "diff":
+            old_id, new_id = result[1], result[2]
+            try:
+                old_data = load_benchmark(old_id, offline=offline)
+                new_data = load_benchmark(new_id, offline=offline)
+                comparison = compare_benchmarks(old_data, new_data)
+                run_interactive_diff(comparison, old_data, new_data, offline=offline)
+            except Exception as e:
+                logger.error(f"Failed to load benchmarks for diff: {e}")
+                # Continue loop to return to catalog
+
+        elif action == "export":
+            benchmark_id = result[1]
+            # TODO: Launch export dialog TUI (ep9.7)
+            # For now, show message and return to catalog
+            logger.info(f"Export requested for {benchmark_id} - export dialog coming in ep9.7")
+            # Continue loop to return to catalog
+
+        # After any action completes, loop returns to catalog browser
