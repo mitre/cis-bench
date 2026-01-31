@@ -43,7 +43,7 @@ class CatalogDetailView(DetailView):
         if benchmark.get("published_date"):
             lines.append(f"**Published:** {benchmark['published_date']}  ")
         if benchmark.get("is_latest"):
-            lines.append("**Latest:** ★ Yes  ")
+            lines.append("★ **Latest Version**  ")
         lines.append("")
 
         # Description
