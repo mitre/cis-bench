@@ -354,13 +354,14 @@ class TestCatalogBrowserCachedStatus:
         app = CatalogBrowserApp(benchmarks=sample_benchmarks)
         columns = app._get_columns()
 
-        # Should have 7 columns: checkbox, cached, ID, Title, Version, Latest, Platform
-        assert len(columns) == 7
+        # Should have 8 columns: checkbox, cached, ID, Title, Version, Latest, Published, Platform
+        assert len(columns) == 8
         # Second column (after checkbox) should be for cached status
         assert columns[1] == "⬇"  # Download/cached column header
-        # Verify Version and Latest columns exist
+        # Verify key columns exist
         assert "Version" in columns
         assert "Latest" in columns
+        assert "Published" in columns
 
     def test_is_downloaded_check_works(self, sample_benchmarks):
         """Should be able to check if benchmark is downloaded."""

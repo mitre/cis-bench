@@ -144,8 +144,8 @@ class CatalogBrowserApp(BaseBrowserApp):
 
     def _get_columns(self) -> list[str]:
         """Return column headers for catalog table."""
-        # Columns: checkbox, cached status, ID, Title, Version, Latest, Platform
-        return ["", "⬇", "ID", "Title", "Version", "Latest", "Platform"]
+        # Columns: checkbox, cached, ID, Title, Version, Latest, Published, Platform
+        return ["", "⬇", "ID", "Title", "Version", "Latest", "Published", "Platform"]
 
     def _populate_table(self) -> None:
         """Populate the table with benchmark data."""
@@ -170,6 +170,9 @@ class CatalogBrowserApp(BaseBrowserApp):
             # Latest indicator (separate column)
             latest = Text("★", style="yellow bold") if benchmark.get("is_latest") else Text("")
 
+            # Published date (YYYY-MM-DD format, show as-is)
+            published = benchmark.get("published_date") or ""
+
             # Platform (max is "oracle-database" at 15 chars)
             platform = (benchmark.get("platform") or "")[:15]
 
@@ -177,9 +180,10 @@ class CatalogBrowserApp(BaseBrowserApp):
                 checkbox,
                 cached_indicator,
                 benchmark_id,
-                self._truncate(title, 55),
+                self._truncate(title, 50),  # Slightly shorter to fit Published
                 version,
                 latest,
+                published,
                 platform,
             )
 
