@@ -27,22 +27,23 @@ class CatalogDetailView(DetailView):
             lines.append(f"**Version {version}**")
         lines.append("")
 
-        # Metadata section
+        # Metadata section - vertical list with line breaks
         lines.append("## Details")
         lines.append("")
 
+        # Each field on its own line (two trailing spaces = markdown line break)
         if benchmark_id:
-            lines.append(f"**ID:** {benchmark_id}")
+            lines.append(f"**ID:** {benchmark_id}  ")
         if benchmark.get("platform"):
-            lines.append(f"**Platform:** {benchmark['platform']}")
+            lines.append(f"**Platform:** {benchmark['platform']}  ")
         if benchmark.get("community"):
-            lines.append(f"**Community:** {benchmark['community']}")
+            lines.append(f"**Community:** {benchmark['community']}  ")
         if benchmark.get("status"):
-            lines.append(f"**Status:** {benchmark['status']}")
+            lines.append(f"**Status:** {benchmark['status']}  ")
         if benchmark.get("published_date"):
-            lines.append(f"**Published:** {benchmark['published_date']}")
+            lines.append(f"**Published:** {benchmark['published_date']}  ")
         if benchmark.get("is_latest"):
-            lines.append("**Latest Version:** ★ Yes")
+            lines.append("**Latest:** ★ Yes  ")
         lines.append("")
 
         # Description
