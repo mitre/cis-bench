@@ -477,29 +477,32 @@ class CatalogDatabase:
             ]
 
     def mark_latest_versions(self):
-        """Mark latest version for each platform/title combination."""
-        with Session(self.engine) as session:
-            # Complex query to find latest versions
-            # Group by base title (without version), get max version per group
-            # This is simplified - production would need smarter version comparison
+        """Mark latest version for each title/status combination.
 
-            # For now: mark most recently published as latest
+        Groups benchmarks by title and status, marks the highest version
+        in each group as 'latest'. Uses benchmark_id as proxy for release
+        order when published_date is unavailable.
+
+        Excludes 'vNext' pre-release versions from being marked as latest.
+        """
+        with Session(self.engine) as session:
+            # Reset all is_latest flags first
+            session.execute(text("UPDATE catalog_benchmarks SET is_latest = 0"))
+
+            # Mark latest: for each (title, status) group, find the benchmark
+            # with the highest benchmark_id (excluding vNext versions)
+            # Higher benchmark_id generally means newer release
+            # Note: benchmark_id is TEXT, so CAST to INTEGER for numeric comparison
             sql = """
                 UPDATE catalog_benchmarks
-                SET is_latest = CASE
-                    WHEN benchmark_id IN (
-                        SELECT b1.benchmark_id
-                        FROM catalog_benchmarks b1
-                        WHERE NOT EXISTS (
-                            SELECT 1 FROM catalog_benchmarks b2
-                            WHERE b2.title LIKE SUBSTR(b1.title, 1, INSTR(b1.title, 'v') - 1) || '%'
-                              AND b2.published_date > b1.published_date
-                              AND b2.status_id = b1.status_id
-                        )
-                    )
-                    THEN 1
-                    ELSE 0
-                END
+                SET is_latest = 1
+                WHERE CAST(benchmark_id AS INTEGER) IN (
+                    SELECT MAX(CAST(b1.benchmark_id AS INTEGER))
+                    FROM catalog_benchmarks b1
+                    WHERE b1.version NOT LIKE '%Next%'
+                      AND b1.version IS NOT NULL
+                    GROUP BY b1.title, b1.status_id
+                )
             """
             session.execute(text(sql))
             session.commit()
