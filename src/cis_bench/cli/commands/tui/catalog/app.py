@@ -47,7 +47,16 @@ class CatalogBrowserApp(BaseBrowserApp):
         self._all_items = benchmarks.copy()
         self.offline = offline
         self._downloaded_ids: set[str] = set()
+        self._pending_notification: tuple[str, str] | None = None
         self._load_downloaded_ids()
+
+    def on_mount(self) -> None:
+        """Handle mount event - show any pending notifications."""
+        super().on_mount()
+        if self._pending_notification:
+            severity, message = self._pending_notification
+            self.notify(message, severity=severity, timeout=10)
+            self._pending_notification = None
 
     def get_detail_view(self) -> Static:
         """Return the catalog detail view widget."""
@@ -345,14 +354,25 @@ def run_catalog_browser(benchmarks: list[dict], offline: bool = False) -> None:
         benchmarks: List of benchmark dictionaries from catalog search.
         offline: Whether running in offline mode (shows indicator).
     """
+    from rich.console import Console
+
     from cis_bench.cli.commands.diff import compare_benchmarks
     from cis_bench.cli.commands.tui.diff import run_interactive_diff
     from cis_bench.cli.commands.tui.view import run_interactive_view
     from cis_bench.cli.commands.utils import load_benchmark
 
+    console = Console()
+    pending_error: str | None = None
+
     while True:
         app = CatalogBrowserApp(benchmarks=benchmarks, offline=offline)
         app.title = "CIS Benchmark Catalog"
+
+        # Show any pending error from previous action
+        if pending_error:
+            app._pending_notification = ("error", pending_error)
+            pending_error = None
+
         result = app.run()
 
         if result is None:
@@ -364,30 +384,37 @@ def run_catalog_browser(benchmarks: list[dict], offline: bool = False) -> None:
         if action == "view":
             benchmark_id = result[1]
             try:
+                console.print(f"[dim]Loading benchmark {benchmark_id}...[/dim]")
                 data = load_benchmark(benchmark_id, offline=offline)
                 recommendations = data.get("recommendations", [])
                 run_interactive_view(data, recommendations, offline=offline)
+            except FileNotFoundError as e:
+                pending_error = f"Benchmark {benchmark_id} not found: {e}"
+                logger.error(pending_error)
             except Exception as e:
-                # If view fails, log error and return to catalog
-                logger.error(f"Failed to load benchmark {benchmark_id}: {e}")
-                # Continue loop to return to catalog
+                pending_error = f"Failed to load benchmark {benchmark_id}: {e}"
+                logger.error(pending_error)
 
         elif action == "diff":
             old_id, new_id = result[1], result[2]
             try:
+                console.print(f"[dim]Loading benchmarks {old_id} and {new_id}...[/dim]")
                 old_data = load_benchmark(old_id, offline=offline)
                 new_data = load_benchmark(new_id, offline=offline)
                 comparison = compare_benchmarks(old_data, new_data)
                 run_interactive_diff(comparison, old_data, new_data, offline=offline)
+            except FileNotFoundError as e:
+                pending_error = f"Benchmark not found: {e}"
+                logger.error(pending_error)
             except Exception as e:
-                logger.error(f"Failed to load benchmarks for diff: {e}")
-                # Continue loop to return to catalog
+                pending_error = f"Failed to load benchmarks for diff: {e}"
+                logger.error(pending_error)
 
         elif action == "export":
             benchmark_id = result[1]
             # TODO: Launch export dialog TUI (ep9.7)
-            # For now, show message and return to catalog
-            logger.info(f"Export requested for {benchmark_id} - export dialog coming in ep9.7")
-            # Continue loop to return to catalog
+            pending_error = (
+                f"Export dialog not yet implemented. Use: cis-bench export {benchmark_id}"
+            )
 
         # After any action completes, loop returns to catalog browser
