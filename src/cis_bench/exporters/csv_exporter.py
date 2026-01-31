@@ -41,10 +41,25 @@ class CSVExporter(BaseExporter):
 
             # Flatten nested structures
             row = {
-                # Benchmark metadata
+                # Benchmark core metadata
                 "benchmark_title": benchmark.title,
                 "benchmark_id": benchmark.benchmark_id,
                 "benchmark_version": benchmark.version,
+                "benchmark_published_date": benchmark.published_date,
+                "benchmark_release_type": benchmark.release_type,
+                # Benchmark attribution
+                "benchmark_contributors": (
+                    ", ".join(benchmark.contributors) if benchmark.contributors else None
+                ),
+                # Benchmark lineage
+                "benchmark_parent_url": str(benchmark.parent_benchmark_url)
+                if benchmark.parent_benchmark_url
+                else None,
+                "benchmark_parent_title": benchmark.parent_benchmark_title,
+                # Benchmark assets (CPE-IDs)
+                "benchmark_cpe_ids": (
+                    ", ".join([a.cpe_id for a in benchmark.assets]) if benchmark.assets else None
+                ),
                 # Recommendation core
                 "ref": rec.ref,
                 "title": rec.title,
