@@ -42,6 +42,10 @@ class CatalogDatabase:
 
         logger.debug(f"Initialized catalog database: {self.db_path}")
 
+        # Run migrations if database exists (adds new columns to existing tables)
+        if self.db_path.exists():
+            self._run_migrations()
+
     def initialize_schema(self):
         """Create all tables and indexes."""
         logger.info("Creating database schema")
@@ -111,6 +115,82 @@ class CatalogDatabase:
             logger.info("Created FTS5 virtual table for recommendations")
 
         logger.info("Database schema initialized")
+
+        # Run migrations for schema updates
+        self._run_migrations()
+
+    def _run_migrations(self):
+        """Run database migrations for schema updates.
+
+        Handles adding new columns to existing tables AND creating new tables.
+        SQLModel.metadata.create_all() is idempotent (safe to run multiple times).
+        """
+        # First, ensure all tables exist (idempotent - won't break existing tables)
+        SQLModel.metadata.create_all(self.engine)
+
+        # Then add any missing columns to existing tables
+        with Session(self.engine) as session:
+            # Get existing columns in catalog_benchmarks table
+            result = session.execute(text("PRAGMA table_info(catalog_benchmarks)"))
+            existing_columns = {row[1] for row in result.fetchall()}
+
+            # New columns to add (if they don't exist)
+            new_columns = {
+                "release_type": "TEXT",
+                "contributors": "TEXT",
+                "parent_benchmark_id": "TEXT",
+                "parent_benchmark_url": "TEXT",
+                "intended_audience": "TEXT",
+                "acknowledgements": "TEXT",
+                "milestone_name": "TEXT",
+                "milestone_url": "TEXT",
+            }
+
+            # Add missing columns
+            for column_name, column_type in new_columns.items():
+                if column_name not in existing_columns:
+                    logger.info(f"Adding column: {column_name}")
+                    session.execute(
+                        text(
+                            f"ALTER TABLE catalog_benchmarks ADD COLUMN {column_name} {column_type}"
+                        )
+                    )
+
+            session.commit()
+
+            # Update FTS5 table if needed (drop and recreate with new fields)
+            try:
+                # Check if FTS5 table has new columns
+                result = session.execute(text("PRAGMA table_info(benchmarks_fts)"))
+                fts_columns = {row[1] for row in result.fetchall()}
+
+                # If missing new searchable fields, recreate FTS5
+                if "contributors" not in fts_columns or "intended_audience" not in fts_columns:
+                    logger.info("Recreating FTS5 table with new searchable fields")
+                    session.execute(text("DROP TABLE IF EXISTS benchmarks_fts"))
+                    session.execute(
+                        text(
+                            """
+                            CREATE VIRTUAL TABLE benchmarks_fts USING fts5(
+                                benchmark_id UNINDEXED,
+                                title,
+                                platform,
+                                community,
+                                description,
+                                intended_audience,
+                                contributors,
+                                tokenize='porter unicode61'
+                            )
+                        """
+                        )
+                    )
+                    session.commit()
+                    logger.info("FTS5 table recreated with new fields")
+            except Exception as e:
+                # FTS5 table might not exist yet on first init
+                logger.debug(f"FTS5 migration skipped: {e}")
+
+        logger.info("Migrations complete")
 
     def get_or_create_platform(self, name: str, session: Session) -> Platform:
         """Get existing platform or create new one."""
@@ -217,10 +297,21 @@ class CatalogDatabase:
                     platform_id=platform.platform_id if platform else None,
                     community_id=community.community_id if community else None,
                     owner_id=owner.owner_id if owner else None,
+                    platform_type=benchmark_data.get("platform_type"),
                     published_date=benchmark_data.get("published_date"),
                     last_revision_date=benchmark_data.get("last_revision_date"),
                     description=benchmark_data.get("description"),
+                    # Extended metadata fields
+                    release_type=benchmark_data.get("release_type"),
+                    contributors=benchmark_data.get("contributors"),
+                    parent_benchmark_id=benchmark_data.get("parent_benchmark_id"),
+                    parent_benchmark_url=benchmark_data.get("parent_benchmark_url"),
+                    intended_audience=benchmark_data.get("intended_audience"),
+                    acknowledgements=benchmark_data.get("acknowledgements"),
+                    milestone_name=benchmark_data.get("milestone_name"),
+                    milestone_url=benchmark_data.get("milestone_url"),
                     is_latest=benchmark_data.get("is_latest", False),
+                    is_vnext=benchmark_data.get("is_vnext", False),
                     metadata_json=benchmark_data.get("metadata_json"),
                 )
                 session.add(benchmark)
@@ -269,8 +360,14 @@ class CatalogDatabase:
         session.execute(
             text(
                 """
-            INSERT INTO benchmarks_fts (benchmark_id, title, platform, community, description)
-            VALUES (:bid, :title, :platform, :community, :desc)
+            INSERT INTO benchmarks_fts (
+                benchmark_id, title, platform, community, description,
+                intended_audience, contributors
+            )
+            VALUES (
+                :bid, :title, :platform, :community, :desc,
+                :intended_audience, :contributors
+            )
         """
             ),
             {
@@ -279,6 +376,8 @@ class CatalogDatabase:
                 "platform": platform_name,
                 "community": community_name,
                 "desc": benchmark.description or "",
+                "intended_audience": benchmark.intended_audience or "",
+                "contributors": benchmark.contributors or "",
             },
         )
         session.flush()  # Ensure FTS insert executes
@@ -308,6 +407,14 @@ class CatalogDatabase:
                 b.last_revision_date,
                 b.is_latest,
                 b.description,
+                b.release_type,
+                b.contributors,
+                b.parent_benchmark_id,
+                b.parent_benchmark_url,
+                b.intended_audience,
+                b.acknowledgements,
+                b.milestone_name,
+                b.milestone_url,
                 (SELECT GROUP_CONCAT(col.name, ', ')
                  FROM benchmark_collections bc
                  JOIN collections col ON bc.collection_id = col.collection_id
@@ -395,6 +502,14 @@ class CatalogDatabase:
                     b.last_revision_date,
                     b.is_latest,
                     b.description,
+                    b.release_type,
+                    b.contributors,
+                    b.parent_benchmark_id,
+                    b.parent_benchmark_url,
+                    b.intended_audience,
+                    b.acknowledgements,
+                    b.milestone_name,
+                    b.milestone_url,
                     f.rank,
                     (SELECT GROUP_CONCAT(col.name, ', ')
                      FROM benchmark_collections bc
@@ -443,21 +558,16 @@ class CatalogDatabase:
             if not benchmark:
                 return None
 
-            return {
-                "benchmark_id": benchmark.benchmark_id,
-                "title": benchmark.title,
-                "version": benchmark.version,
-                "url": benchmark.url,
-                "status": benchmark.status.name,
-                "platform": benchmark.platform.name if benchmark.platform else None,
-                "community": benchmark.community.name if benchmark.community else None,
-                "owner": benchmark.owner.username if benchmark.owner else None,
-                "published_date": benchmark.published_date,
-                "last_revision_date": benchmark.last_revision_date,
-                "description": benchmark.description,
-                "is_latest": benchmark.is_latest,
-                "metadata_json": benchmark.metadata_json,
-            }
+            # Convert model to dict (dynamic - picks up all fields automatically)
+            result = benchmark.model_dump(exclude={"status", "platform", "community", "owner"})
+
+            # Add denormalized FK values (human-readable)
+            result["status"] = benchmark.status.name
+            result["platform"] = benchmark.platform.name if benchmark.platform else None
+            result["community"] = benchmark.community.name if benchmark.community else None
+            result["owner"] = benchmark.owner.username if benchmark.owner else None
+
+            return result
 
     def list_platforms(self) -> list[dict]:
         """List all platforms with benchmark counts."""
