@@ -567,6 +567,9 @@ class BaseBrowserApp(App):
 
     def action_start_search(self) -> None:
         """Open the search input."""
+        if not self.has_search_container:
+            self.notify("Search not available in this view", severity="warning")
+            return
         self._search_active = True
         search_container = self.query_one("#search-container")
         search_container.add_class("visible")
@@ -896,6 +899,9 @@ class BaseBrowserScreen(Screen):
 
     def action_start_search(self) -> None:
         """Open the search input."""
+        if not self.has_search_container:
+            self.notify("Search not available in this view", severity="warning")
+            return
         self._search_active = True
         search_container = self.query_one("#search-container")
         search_container.add_class("visible")
