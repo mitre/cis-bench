@@ -342,8 +342,19 @@ class CatalogBrowserApp(BaseBrowserApp):
                 logger.debug(f"Could not pop loading modal: {e}")
             self._loading_modal = None
 
-        # Push view screen
-        self.push_screen(ViewScreen(data, recommendations, offline=self.offline))
+        # Push view screen with callback to refresh download status when returning
+        self.push_screen(
+            ViewScreen(data, recommendations, offline=self.offline),
+            self._on_screen_dismissed,
+        )
+
+    def _on_screen_dismissed(self, _result=None) -> None:
+        """Callback when ViewScreen or DiffScreen is dismissed.
+
+        Refreshes the downloaded IDs and rebuilds table to show updated status.
+        """
+        self._load_downloaded_ids()
+        self._rebuild_table_preserve_cursor()
 
     def _on_load_error(self, error: str) -> None:
         """Handle load failure (called from main thread)."""
@@ -488,8 +499,11 @@ class CatalogBrowserApp(BaseBrowserApp):
                 logger.debug(f"Could not pop loading modal for diff: {e}")
             self._loading_modal = None
 
-        # Push diff screen
-        self.push_screen(DiffScreen(comparison, old_data, new_data, offline=self.offline))
+        # Push diff screen with callback to refresh download status when returning
+        self.push_screen(
+            DiffScreen(comparison, old_data, new_data, offline=self.offline),
+            self._on_screen_dismissed,
+        )
 
     def action_view_benchmark(self) -> None:
         """Direct view action - 'v' key. Skips the action menu."""
