@@ -1,6 +1,59 @@
 # CHANGELOG
 
 
+## v0.5.1 (2026-04-18)
+
+### Bug Fixes
+
+- Add WorkbenchV2Strategy for Vue.js SPA HTML (closes #9)
+  ([`7d77468`](https://github.com/mitre/cis-bench/commit/7d77468d5cd167227dca447b61b5914a9a77b0ec))
+
+CIS WorkBench migrated recommendation pages to a Vue.js SPA in early 2026. Content moved out of
+  server-rendered <div id="*-recommendation-data"> blocks and into attributes on Vue web components,
+  breaking the v1 scraper strategy and causing "No compatible scraper strategy found" on every
+  recommendation. Downloads completed with recommendations: [] stubs.
+
+This change adds a new strategy and registers it at position 0 so the detector prefers it; v1 stays
+  registered as a fallback for cached HTML.
+
+New format handled:
+
+- <wb-recommendation-data attribute="X" text="..."> — all text fields (description, rationale,
+  impact, audit, remediation, default_value, artifact_equation, references, notes,
+  automated_scoring, profiles) - <wb-recommendation-feature-controls :controls="JSON.parse('...')">
+  — CIS Controls, with two quirks normalized: * \uXXXX escapes (e.g. \u0022 for ") must be decoded
+  before json.loads because Python does not decode them outside JSON string contexts * payload may
+  be a list OR a dict keyed by index ({"0": {...}}), and ig1/ig2/ig3 may be null — coerced to
+  bool(False) - <wb-recommendation-mitre-mappings :mappings="JSON.parse('...')"> — MITRE ATT&CK
+  data, previously served as an HTML table; keys are capitalized singular Technique plus plural
+  Tactics/Mitigations - <wb-recommendation-artifacts> — legacy artifacts-json attr still served,
+  with :artifacts Vue fallback
+
+The output dict shape is identical to v1's so workbench.py and the Pydantic Recommendation model are
+  untouched.
+
+Verification:
+
+- 1144/1144 full pytest suite passes, zero regressions - 23 new tests in
+  tests/integration/test_strategies_v2.py cover compatibility detection, Vue payload decoding,
+  dict/list controls normalization, null ig coercion, MITRE parsing, full Recommendation model
+  validation, and v1/v2 detector coexistence - Live download of CIS Docker Benchmark v1.6.0 (id
+  11818): 117/117 recommendations, 240 CIS Controls, scraper_version=v2_2026_01 - ruff check, ruff
+  format, bandit all clean
+
+Signed-off-by: clem-field <kc8yhe@me.com>
+
+### Documentation
+
+- Add CI/CD workflow guidance to prevent race conditions
+  ([`2cd4b10`](https://github.com/mitre/cis-bench/commit/2cd4b10f5231f176536866bd748eb8e80f3e8230))
+
+- Document semantic-release version bump rules - Add 'batch related changes' rule to avoid race
+  conditions - Include manual trigger command for recovery
+
+Authored by: Aaron Lippold<lippold@gmail.com>
+
+
 ## v0.5.0 (2026-01-29)
 
 ### Chores
