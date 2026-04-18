@@ -94,9 +94,15 @@ cis-bench = "cis_bench.cli.app:cli"
 packages = {find = {where = ["src"]}}
 
 [tool.setuptools.package-data]
-# Include YAML config files in package distribution
-# Fix for Issue #6: --style flag error due to missing configs
-cis_bench = ["exporters/configs/**/*.yaml"]
+# Include data files that are loaded at runtime via Path(__file__).parent.
+# Issue #6: XCCDF style YAML configs must ship with the wheel.
+# 0.5.1 bug: cis-cci-mapping.json is loaded by utils/cci_lookup.py on every
+# XCCDF export and must be shipped too, otherwise exports fail with
+# FileNotFoundError on fresh installs.
+cis_bench = [
+    "exporters/configs/**/*.yaml",
+    "data/*.json",
+]
 
 [tool.semantic_release]
 version_toml = ["pyproject.toml:project.version"]
