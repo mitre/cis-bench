@@ -24,6 +24,11 @@ cis-bench --quiet <command> # Only warnings and errors
 **Per-Command Flags:**
 Most commands also accept `-v, --verbose`, `-d, --debug`, `-q, --quiet` flags at the end.
 
+**Offline Mode:**
+```bash
+cis-bench --offline <command> # Use cached data only (no network)
+```
+
 **Other Global Options:**
 ```bash
 cis-bench --version # Show version
@@ -585,6 +590,326 @@ cis-bench catalog stats --output-format json
 - Platforms count
 - Communities count
 - Last refresh date
+
+---
+
+## Version Comparison
+
+### `cis-bench diff`
+
+Compare two benchmark versions to see what changed.
+
+Automatically fetches benchmarks from CIS WorkBench if not cached locally
+(unless `--offline` mode is enabled).
+
+**Syntax:**
+```bash
+cis-bench diff <OLD> <NEW> [OPTIONS]
+```
+
+**Arguments:**
+
+- `OLD` - Old benchmark (ID, URL, or file path)
+- `NEW` - New benchmark (ID, URL, or file path)
+
+**Options:**
+
+- `-f, --format` - Output format: table|json|markdown|summary (default: table)
+- `-v, --verbose` - Show detailed field-level changes
+- `-i, --interactive` - Force interactive TUI mode
+- `-I, --no-interactive` - Force table output (no TUI)
+
+**Interactive TUI Mode:**
+
+When running in a terminal, diff automatically opens an interactive browser
+with keyboard navigation, search (`/`), and help (`?`). Use `-I` to disable.
+
+**Examples:**
+```bash
+# Compare by ID (auto-fetches if not cached)
+cis-bench diff 23598 24001
+
+# Compare JSON files
+cis-bench diff benchmark-v1.0.json benchmark-v2.0.json
+
+# Use only locally cached benchmarks (no network)
+cis-bench --offline diff 23598 24001
+
+# Output as Markdown (for docs/PRs)
+cis-bench diff 23598 24001 --format markdown
+
+# Output as JSON (machine-readable)
+cis-bench diff 23598 24001 --format json
+
+# Quick summary only
+cis-bench diff 23598 24001 --format summary
+
+# Show detailed field changes
+cis-bench diff 23598 24001 --verbose
+```
+
+**Auto-fetch Behavior:**
+
+When you provide benchmark IDs that aren't cached locally, the diff command
+automatically fetches them from CIS WorkBench. This requires:
+
+1. Valid authentication (`cis-bench auth login --browser chrome`)
+2. Not using `--offline` flag
+
+Fetched benchmarks are cached for future use.
+
+**Change Types Detected:**
+
+| Symbol | Type | Description |
+|--------|------|-------------|
+| ✚ | Added | New recommendations in newer version |
+| ✖ | Removed | Recommendations deleted in newer version |
+| ⟳ | Modified | Same ref, content changed |
+| ? | Renumbered | Similar content (>85% title match), different ref |
+
+**Sample Output:**
+```
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  Benchmark Comparison: Ubuntu 22.04 LTS v1.0.0 → v2.0.0    ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+Summary:
+  ✚ Added: 12  ✖ Removed: 3  ⟳ Modified: 28  ? Renumbered: 2
+
+┃ Status ┃ Ref     ┃ Title                              ┃ Changes    ┃
+│ ✚ ADD  │ 1.1.9   │ Ensure noexec option on /var/tmp   │ New in v2  │
+│ ✖ DEL  │ 2.3.1   │ Ensure NIS Server not installed    │ Removed    │
+│ ⟳ MOD  │ 3.1.1   │ Ensure SSH MaxAuthTries configured │ title,audit│
+│ ? REN  │ 5.1→6.1 │ Ensure cron daemon enabled         │ 92% match  │
+```
+
+---
+
+### `cis-bench view`
+
+Interactively browse a benchmark's recommendations.
+
+**Syntax:**
+```bash
+cis-bench view <BENCHMARK> [OPTIONS]
+```
+
+**Arguments:**
+
+- `BENCHMARK` - Benchmark ID or file path
+
+**Filter Options:**
+
+- `-p, --profile` - Filter by profile (e.g., "Level 1", "Level 2")
+- `-s, --status` - Filter by assessment status (automated|manual|all) - default: all
+
+**Mode Options:**
+
+- `-i, --interactive` - Force interactive TUI mode
+- `-I, --no-interactive` - Force table output (no TUI)
+
+**Examples:**
+```bash
+# Interactive TUI browser (auto-detects terminal)
+cis-bench view 23598
+
+# Filter by profile
+cis-bench view 23598 --profile "Level 1"
+
+# Filter by automated controls only
+cis-bench view 23598 --status automated
+
+# Force table output (for piping/scripting)
+cis-bench view 23598 -I
+```
+
+---
+
+## Interactive TUI Mode
+
+Both `diff` and `view` commands support an interactive TUI (Text User Interface) mode
+that auto-activates when running in a terminal.
+
+### Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| `?` | Show help screen with all shortcuts |
+| `/` | Start search (filters items in real-time) |
+| `g` | Jump to specific ref (opens input dialog) |
+| `c` | Copy current item to clipboard |
+| `Space` | Toggle selection on current item |
+| `Tab` | Switch focus between list and detail panes |
+| `↑/↓` or `j/k` | Navigate up/down in list |
+| `Page Up/Down` | Scroll detail pane |
+| `f` | Toggle fullscreen detail view |
+| `r` | Reverse sort order (asc/desc) |
+| `s` | Save report to file |
+| `q` or `Esc` | Quit |
+
+**Diff-only shortcuts:**
+
+| Key | Action |
+|-----|--------|
+| `1` | Filter to show only added items |
+| `2` | Filter to show only removed items |
+| `3` | Filter to show only modified items |
+| `4` | Filter to show only renumbered items |
+| `0` | Reset filter (show all) |
+
+### Search Mode
+
+Press `/` to open the search bar:
+
+- Type to filter items in real-time
+- Shows match count (e.g., "12/45")
+- Press `Enter` to keep filter and return to list
+- Press `Escape` to cancel and restore all items
+
+### Jump to Ref
+
+Press `g` to open a quick-jump dialog:
+
+1. Type a ref number (e.g., `1.2.3`, `6.1.2.5`)
+2. Press `Enter` to jump to that row
+3. Press `Escape` to cancel
+
+Useful for navigating to specific controls in long benchmarks.
+
+### Copy to Clipboard
+
+Press `c` to copy the current item's detail view content to clipboard.
+The content is copied as Markdown, ready to paste into documentation or tickets.
+
+### Multi-Select
+
+Press `Space` to toggle selection on the current row:
+
+- Selected items are tracked for batch operations
+- Move to another row and press `Space` again to select multiple
+- Press `Space` on a selected item to deselect it
+
+### Filter by Change Type (Diff Only)
+
+In the diff TUI, use number keys to filter by change type:
+
+- `1` - Show only added recommendations
+- `2` - Show only removed recommendations
+- `3` - Show only modified recommendations
+- `4` - Show only renumbered recommendations
+- `0` - Reset filter and show all changes
+
+### Offline Indicator
+
+When running with `--offline` flag, a yellow `[OFFLINE]` indicator appears
+in the header to remind you that network access is disabled.
+
+```bash
+# Shows [OFFLINE] in TUI header
+cis-bench --offline diff 23598 24001
+cis-bench --offline view 23598
+```
+
+---
+
+## Recommendation Search
+
+### `cis-bench find`
+
+Search within downloaded benchmark recommendations using full-text search.
+
+**Syntax:**
+```bash
+cis-bench find <QUERY> [OPTIONS]
+```
+
+**Arguments:**
+
+- `QUERY` - Search query (supports FTS5 syntax)
+
+**Options:**
+
+- `-b, --benchmark ID` - Filter to specific benchmark
+- `-p, --profile LEVEL` - Filter by profile (e.g., "Level 1")
+- `-o, --output-format` - Output format: table|json|csv (default: table)
+- `-l, --limit N` - Maximum results (default: 50)
+
+**Examples:**
+```bash
+# Find SSH-related recommendations
+cis-bench find "SSH"
+
+# Find firewall rules in Level 1 profile
+cis-bench find "firewall" --profile "Level 1"
+
+# Find NIST AC-7 mapped controls
+cis-bench find "AC-7" --output-format json
+
+# Search in specific benchmark
+cis-bench find "SELinux" -b 12345
+```
+
+**Searches these fields:**
+
+- Recommendation title
+- Description
+- Rationale
+- Audit procedure
+- Remediation steps
+- NIST control mappings
+- CIS Controls mappings
+
+!!! note "Requires Downloaded Benchmarks"
+    The find command only searches benchmarks you've downloaded.
+    Use `cis-bench download <id>` to fetch benchmarks first.
+
+---
+
+## Cache Management
+
+### `cis-bench cache status`
+
+Show status of locally cached data (catalog and benchmarks).
+
+**Syntax:**
+```bash
+cis-bench cache status
+```
+
+**What it shows:**
+
+- Catalog status (available/missing, benchmark count)
+- Downloaded benchmarks count
+- Which commands work offline vs require network
+
+**Example:**
+```bash
+$ cis-bench cache status
+┏━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Item                  ┃ Status       ┃ Details                                                ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ Catalog               │ ✓ Available  │ 1,342 benchmarks indexed                               │
+│ Downloaded Benchmarks │ ✓ Available  │ 5 benchmarks cached                                    │
+└───────────────────────┴──────────────┴────────────────────────────────────────────────────────┘
+
+Offline-capable commands:
+  • search - Search catalog (if built)
+  • list - List downloaded benchmarks
+  • export - Export downloaded benchmarks
+  • info - Show benchmark details
+  • cache status - This command
+
+Network-required commands:
+  • auth login - Authenticate with CIS WorkBench
+  • catalog refresh - Update catalog from WorkBench
+  • download - Fetch benchmark from WorkBench
+  • get - Combined search/download/export
+```
+
+!!! tip "Offline Mode"
+    Use `cis-bench --offline <command>` to ensure no network calls are made.
+    This is useful for air-gapped environments or when you want to work
+    exclusively with cached data.
 
 ---
 

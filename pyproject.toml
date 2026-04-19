@@ -40,6 +40,7 @@ dependencies = [
     # CLI
     "click>=8.1.0",
     "rich>=13.7.0",
+    "textual>=0.47.0",
     "questionary>=2.0.0",
     # Authentication
     "browser-cookie3>=0.19.0",
@@ -51,6 +52,11 @@ dependencies = [
     "PyYAML>=6.0.0",
     "xsdata[cli,lxml]>=24.0.0",
     "lxml>=5.0.0",
+    # Comparison/diffing
+    "deepdiff>=8.0.0",
+    # HTML to text/markdown conversion
+    "html2text>=2024.2.26",
+    "pyperclip>=1.11.0",
 ]
 
 [project.optional-dependencies]
@@ -59,6 +65,7 @@ dev = [
     "pytest>=7.4.0",
     "pytest-mock>=3.12.0",
     "pytest-cov>=4.1.0",
+    "pytest-asyncio>=0.23.0",
     # Linting and formatting
     "ruff>=0.8.0",
     # Security
@@ -124,6 +131,8 @@ testpaths = ["tests"]
 python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 
 # Exclude scripts directory from automatic discovery (project utils, not cis-bench)
 # Run script tests explicitly with: uv run pytest tests/scripts/
@@ -225,4 +234,7 @@ skips = [
 [dependency-groups]
 dev = [
     "libcst>=1.8.6",
+]
+docs = [
+    "mkdocs-autorefs>=1.4.3",
 ]

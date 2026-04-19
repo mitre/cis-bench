@@ -65,8 +65,13 @@ cis-bench --version
 ```bash
 git clone https://github.com/mitre/cis-bench.git
 cd cis-bench
-pip install -e ".[dev]"
-pre-commit install
+
+# Using uv (recommended)
+uv sync --all-extras
+uv run pre-commit install
+
+# Then run commands with: uv run pytest tests/
+# See Contributing Guide for full details
 ```
 
 ---

@@ -9,6 +9,7 @@ import re
 from bs4 import BeautifulSoup
 
 from cis_bench.exceptions import AuthenticationError
+from cis_bench.utils.web_component_parser import WebComponentDataExtractor
 
 logger = logging.getLogger(__name__)
 
@@ -303,43 +304,251 @@ class WorkBenchCatalogParser:
     def parse_benchmark_detail_page(html: str) -> dict:
         """Parse individual benchmark page for additional metadata.
 
-        This is for Phase 2 enhancement - get published date, description, etc.
-        from the benchmark detail page (not the catalog listing).
+        Extracts comprehensive metadata including CPE-IDs, release type,
+        contributors, parent benchmark, revision history, and documentation sections.
 
         Args:
             html: HTML from benchmark detail page
 
         Returns:
-            Dictionary with published_date, description, etc.
+            Dictionary with all available metadata fields
         """
         soup = BeautifulSoup(html, "html.parser")
-
         metadata = {}
 
-        # Extract published date
-        # Format: "Published 3 months ago on Aug 1st 2025"
-        published_text = soup.find(text=re.compile(r"Published.*ago"))
-        if published_text:
-            # Try to extract actual date
-            date_match = re.search(r"on ([A-Za-z]+ \d+(?:st|nd|rd|th) \d{4})", published_text)
-            if date_match:
-                metadata["published_date"] = date_match.group(1)
-                metadata["published_relative"] = published_text.strip()
+        # ============ Published Date ============
+        # Real HTML: <p class="label label-published">Published</p>\n1 year ago on Jun 24th 2024
+        # Try to find the Published label first
+        published_label = soup.find("p", class_="label-published")
+        if published_label:
+            # Get the next text sibling (the date is outside the <p> tag)
+            next_text = published_label.next_sibling
+            if next_text and isinstance(next_text, str):
+                published_text = next_text.strip()
+                date_match = re.search(r"on ([A-Za-z]+ \d+(?:st|nd|rd|th) \d{4})", published_text)
+                if date_match:
+                    metadata["published_date"] = date_match.group(1)
+                    metadata["published_relative"] = published_text
+        else:
+            # Fallback: Try old pattern (for different HTML versions)
+            published_text = soup.find(string=re.compile(r"Published.*ago"))
+            if published_text:
+                date_match = re.search(r"on ([A-Za-z]+ \d+(?:st|nd|rd|th) \d{4})", published_text)
+                if date_match:
+                    metadata["published_date"] = date_match.group(1)
+                    metadata["published_relative"] = published_text.strip()
 
-        # Extract description from Overview section
-        overview = soup.find("h2", text=re.compile(r"Overview", re.I))
-        if overview:
-            # Get text after Overview heading
-            desc_parts = []
-            for sibling in overview.find_next_siblings():
-                if sibling.name and sibling.name.startswith("h"):
-                    break  # Stop at next heading
-                text = sibling.get_text(strip=True)
-                if text:
-                    desc_parts.append(text)
+        # ============ Release Type ============
+        # Format: <strong>Release Type:</strong> Planned Update
+        release_type_elem = soup.find("strong", string=re.compile(r"Release Type:", re.I))
+        if release_type_elem and release_type_elem.parent:
+            # Get text after the <strong> tag
+            release_text = release_type_elem.parent.get_text(strip=True)
+            # Remove "Release Type:" prefix
+            release_type = release_text.replace("Release Type:", "").strip()
+            if release_type:
+                metadata["release_type"] = release_type
 
-            if desc_parts:
-                metadata["description"] = " ".join(desc_parts[:3])  # First 3 paragraphs
+        # ============ CPE-IDs (Assets) ============
+        # Real HTML uses web component: <wb-benchmark-assets assets-json="[...]">
+        assets_data = WebComponentDataExtractor.extract_json_attribute(
+            soup, "wb-benchmark-assets", "assets-json"
+        )
+        if assets_data:
+            metadata["assets"] = assets_data
+        else:
+            # Fallback: Try table structure (for different HTML versions/tests)
+            assets_heading = soup.find("h3", string=re.compile(r"^\s*Assets\s*$", re.I))
+            if assets_heading:
+                assets_table = assets_heading.find_next("table")
+                if assets_table:
+                    assets = []
+                    rows = assets_table.find_all("tr")[1:]  # Skip header
+                    for row in rows:
+                        cells = row.find_all("td")
+                        if len(cells) >= 2:
+                            title = cells[0].get_text(strip=True)
+                            cpe_id = cells[1].get_text(strip=True)
+                            if title and cpe_id:
+                                assets.append({"title": title, "cpe_id": cpe_id})
+                    if assets:
+                        metadata["assets"] = assets
+
+        # ============ Contributors ============
+        # Real HTML has whitespace in tags: <h3>Contributors\n    </h3>
+        contributors_heading = soup.find("h3", string=re.compile(r"^\s*Contributors\s*$", re.I))
+        if contributors_heading:
+            # Get next paragraph after Contributors heading
+            contributors_p = contributors_heading.find_next("p")
+            if contributors_p:
+                contributors_text = contributors_p.get_text(strip=True)
+                # Split by comma and clean whitespace
+                contributors = [c.strip() for c in contributors_text.split(",")]
+                if contributors:
+                    metadata["contributors"] = contributors
+
+        # ============ Parent Benchmark (Forked From) ============
+        # Real HTML: <wb-html-link link-url="..." link-text="...">
+        parent_component = soup.find("wb-html-link")
+        if parent_component:
+            parent_url = parent_component.get("link-url")
+            parent_title = parent_component.get("link-text")
+            # Only if it's a benchmark link (not other types of links)
+            if parent_url and "/benchmarks/" in parent_url:
+                metadata["parent_benchmark_url"] = parent_url
+                if parent_title:
+                    metadata["parent_benchmark_title"] = parent_title
+        else:
+            # Fallback: Try h1 link (for tests/different HTML)
+            h1 = soup.find("h1")
+            if h1:
+                parent_link = h1.find("a", href=re.compile(r"/benchmarks/\d+"))
+                if parent_link:
+                    href = parent_link.get("href", "")
+                    title = parent_link.get_text(strip=True)
+                    if href and title:
+                        if not href.startswith("http"):
+                            href = f"https://workbench.cisecurity.org{href}"
+                        metadata["parent_benchmark_url"] = href
+                        metadata["parent_benchmark_title"] = title
+
+        # ============ Community URL ============
+        # Look for link to /communities/ in page
+        community_link = soup.find("a", href=re.compile(r"/communities/\d+"))
+        if community_link:
+            href = community_link.get("href", "")
+            if href:
+                if not href.startswith("http"):
+                    href = f"https://workbench.cisecurity.org{href}"
+                metadata["community_url"] = href
+
+        # ============ Milestone ============
+        # Look for link to /milestones/ in page
+        milestone_link = soup.find("a", href=re.compile(r"/milestones/\d+"))
+        if milestone_link:
+            href = milestone_link.get("href", "")
+            title = milestone_link.get_text(strip=True)
+            if href and title:
+                if not href.startswith("http"):
+                    href = f"https://workbench.cisecurity.org{href}"
+                metadata["milestone_name"] = title
+                metadata["milestone_url"] = href
+
+        # ============ Intended Audience ============
+        # Try web component first (real HTML)
+        intended_component = soup.find(
+            "wb-recommendation-data", attrs={"attribute": "intended_audience"}
+        )
+        if intended_component:
+            intended_text = WebComponentDataExtractor.extract_text_from_html_attribute(
+                BeautifulSoup(str(intended_component), "html.parser"),
+                "wb-recommendation-data",
+                "text",
+            )
+            if intended_text:
+                metadata["intended_audience"] = intended_text
+        else:
+            # Fallback: Try heading structure (for tests/different HTML)
+            intended_heading = soup.find(
+                "h3", string=re.compile(r"^\s*Intended Audience\s*$", re.I)
+            )
+            if intended_heading:
+                intended_p = intended_heading.find_next("p")
+                if intended_p:
+                    metadata["intended_audience"] = intended_p.get_text(strip=True)
+
+        # ============ Acknowledgements ============
+        # Try web component first (real HTML)
+        ack_component = soup.find("wb-recommendation-data", attrs={"attribute": "acknowledgements"})
+        if ack_component:
+            ack_text = WebComponentDataExtractor.extract_text_from_html_attribute(
+                BeautifulSoup(str(ack_component), "html.parser"), "wb-recommendation-data", "text"
+            )
+            if ack_text:
+                metadata["acknowledgements"] = ack_text
+        else:
+            # Fallback: Try heading structure (for tests/different HTML)
+            ack_heading = soup.find("h3", string=re.compile(r"^\s*Acknowledgements\s*$", re.I))
+            if ack_heading:
+                ack_p = ack_heading.find_next("p")
+                if ack_p:
+                    metadata["acknowledgements"] = ack_p.get_text(strip=True)
+
+        # ============ Description (Overview) ============
+        # Try web component first (real HTML)
+        overview_component = soup.find("wb-recommendation-data", attrs={"attribute": "overview"})
+        if overview_component:
+            overview_text = WebComponentDataExtractor.extract_text_from_html_attribute(
+                BeautifulSoup(str(overview_component), "html.parser"),
+                "wb-recommendation-data",
+                "text",
+            )
+            if overview_text:
+                metadata["description"] = overview_text
+        else:
+            # Fallback: Try heading structure (for tests/different HTML)
+            overview = soup.find("h2", string=re.compile(r"^\s*Overview\s*$", re.I))
+            if not overview:
+                overview = soup.find("h3", string=re.compile(r"^\s*Overview\s*$", re.I))
+            if overview:
+                desc_parts = []
+                for sibling in overview.find_next_siblings():
+                    if sibling.name and sibling.name.startswith("h"):
+                        break  # Stop at next heading
+                    text = sibling.get_text(strip=True)
+                    if text:
+                        desc_parts.append(text)
+                if desc_parts:
+                    metadata["description"] = " ".join(desc_parts[:3])  # First 3 paragraphs
+
+        # ============ Revision History ============
+        revision_heading = soup.find("h3", string=re.compile(r"^\s*Revision History\s*$", re.I))
+        if revision_heading:
+            revision_table = revision_heading.find_next("table")
+            if revision_table:
+                revisions = []
+                # Find tbody or use table directly
+                tbody = revision_table.find("tbody")
+                rows = tbody.find_all("tr") if tbody else revision_table.find_all("tr")
+
+                for row in rows:
+                    cells = row.find_all("td")
+                    # Skip header rows and "Current Version" rows
+                    if len(cells) >= 3:
+                        date_text = cells[0].get_text(strip=True)
+                        # Skip "Current Version" row
+                        if date_text == "Current Version":
+                            continue
+
+                        author = cells[1].get_text(strip=True) if len(cells) > 1 else None
+                        mod_text = cells[2].get_text(strip=True) if len(cells) > 2 else None
+
+                        # Parse modification count from "5 modifications" or "1 modification"
+                        mod_count = None
+                        if mod_text:
+                            count_match = re.search(r"(\d+) modification", mod_text)
+                            if count_match:
+                                mod_count = int(count_match.group(1))
+
+                        # Get diff URL if present
+                        diff_url = None
+                        if len(cells) > 3:
+                            diff_link = cells[3].find("a")
+                            if diff_link:
+                                diff_url = diff_link.get("href")
+
+                        if date_text:  # Must have at least a date
+                            revisions.append(
+                                {
+                                    "revision_date": date_text,
+                                    "author": author if author else None,
+                                    "modification_count": mod_count,
+                                    "diff_url": diff_url,
+                                }
+                            )
+
+                if revisions:
+                    metadata["revision_history"] = revisions
 
         logger.debug(f"Extracted metadata: {metadata}")
         return metadata

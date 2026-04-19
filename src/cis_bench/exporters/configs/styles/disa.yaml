@@ -110,7 +110,7 @@ benchmark:
       xml:lang: "en"
     content: ""
 
-  # Dublin Core reference (STIG requirement)
+  # Dublin Core reference (STIG requirement + extended metadata)
   reference:
     element: "reference"
     attributes:
@@ -120,6 +120,15 @@ benchmark:
         content: "CIS Security"
       - element: "dc:source"
         content: "https://workbench.cisecurity.org"
+      - element: "dc:date"
+        content: "{benchmark.published_date}"
+        optional: true
+      - element: "dc:type"
+        content: "{benchmark.release_type}"
+        optional: true
+      - element: "dc:creator"
+        content: "{benchmark.contributors_str}"
+        optional: true
 
   # Plain-text metadata (STIG convention)
   plain_text:

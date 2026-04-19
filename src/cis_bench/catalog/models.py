@@ -129,6 +129,18 @@ class CatalogBenchmark(SQLModel, table=True):
     # Content
     description: str | None = None
 
+    # Extended metadata from benchmark detail page
+    release_type: str | None = Field(
+        None, description="Release type (e.g., 'Planned Update', 'Bug Fix')"
+    )
+    contributors: str | None = Field(None, description="Comma-separated list of contributor names")
+    parent_benchmark_id: str | None = Field(None, description="Parent benchmark ID if forked")
+    parent_benchmark_url: str | None = Field(None, description="Parent benchmark URL")
+    intended_audience: str | None = Field(None, description="Intended audience description")
+    acknowledgements: str | None = Field(None, description="Acknowledgements text")
+    milestone_name: str | None = Field(None, description="Milestone/release name")
+    milestone_url: str | None = Field(None, description="Milestone URL")
+
     # Flags
     is_latest: bool = Field(default=False)
     is_vnext: bool = Field(default=False)
@@ -200,3 +212,36 @@ class ScrapeMetadata(SQLModel, table=True):
     key: str = Field(primary_key=True)
     value: str
     updated_at: datetime = Field(default_factory=utcnow)
+
+
+class BenchmarkAsset(SQLModel, table=True):
+    """Asset/CPE mapping for a benchmark."""
+
+    __tablename__ = "benchmark_assets"
+
+    asset_id: int | None = Field(default=None, primary_key=True)
+    benchmark_id: str = Field(foreign_key="catalog_benchmarks.benchmark_id", index=True)
+
+    title: str = Field(..., description="Asset title (e.g., 'AlmaLinux OS 9')")
+    cpe_id: str = Field(..., description="CPE 2.3 identifier")
+
+
+class RevisionHistory(SQLModel, table=True):
+    """Revision history entry for a benchmark."""
+
+    __tablename__ = "revision_history"
+
+    revision_id: int | None = Field(default=None, primary_key=True)
+    benchmark_id: str = Field(foreign_key="catalog_benchmarks.benchmark_id", index=True)
+
+    # Revision metadata
+    revision_date: str | None = Field(None, description="Relative date (e.g., '1 year ago')")
+    revision_date_absolute: datetime | None = Field(
+        None, description="Parsed absolute date if available"
+    )
+    author: str | None = Field(None, description="Author username")
+    modification_count: int | None = Field(None, description="Number of modifications")
+    diff_url: str | None = Field(None, description="URL to view diff")
+
+    # Order in the list (0 = most recent)
+    sort_order: int = Field(default=0, description="Display order (0 = newest)")

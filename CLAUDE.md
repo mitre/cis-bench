@@ -14,55 +14,112 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Essential Commands
 
-### Development
+### Development Setup
 ```bash
-# Install with dev dependencies
-pip install -e ".[dev]"
+# Clone and setup (one-time)
+git clone https://github.com/mitre/cis-bench.git
+cd cis-bench
 
-# Run full test suite (600+ tests)
-pytest tests/
+# Install uv if not installed
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Run specific test file
-pytest tests/unit/test_catalog_database.py
+# Create .venv and install all dependencies
+uv sync --all-extras
 
-# Run single test
-pytest tests/unit/test_catalog_database.py::test_function_name -v
+# Install pre-commit hooks
+uv run pre-commit install
+```
+
+### Running Commands
+
+**IMPORTANT:** This project uses `uv` with a local `.venv`. All commands must use `uv run` to ensure proper environment:
+
+```bash
+# Run tests (ALWAYS use uv run)
+uv run pytest tests/                                    # Full suite (1200+ tests)
+uv run pytest tests/unit/test_catalog_database.py      # Specific file
+uv run pytest tests/unit/test_catalog_database.py::test_function_name -v  # Single test
 
 # Linting (auto-fix)
-ruff check --fix .
-ruff format .
+uv run ruff check --fix .
+uv run ruff format .
 
 # Security scanning
-bandit -c pyproject.toml -r src/
+uv run bandit -c pyproject.toml -r src/
 
-# Pre-commit hooks (run manually)
-pre-commit run --all-files
+# Pre-commit hooks
+uv run pre-commit run --all-files
+```
+
+**Why `uv run`?** The `.venv` contains all dependencies. Running bare `pytest` or `python` uses system Python which may not have dependencies installed.
+
+### Auto-Activation with direnv (Optional)
+
+For automatic venv activation when entering the project directory:
+
+```bash
+# Install direnv (one-time)
+brew install direnv  # macOS
+# Add to ~/.zshrc: eval "$(direnv hook zsh)"
+
+# Allow direnv for this project (one-time)
+direnv allow
+
+# Now entering the directory auto-activates .venv
+cd /path/to/cis-bench  # .venv activates automatically
+pytest tests/          # Works without uv run!
 ```
 
 ### CLI Usage (Testing Changes)
 ```bash
-# Run via installed package
-cis-bench --help
+# Run CLI commands via uv
+uv run cis-bench --help
+uv run cis-bench auth login --browser chrome
+uv run cis-bench catalog refresh
+uv run cis-bench search "ubuntu 22"
+uv run cis-bench download 23598
+uv run cis-bench export 23598 --format xccdf --style cis
+uv run cis-bench get "ubuntu 22" --format xccdf
 
-# Run via module (always works)
-python -m cis_bench --help
-
-# Key commands
-cis-bench auth login --browser chrome
-cis-bench catalog refresh
-cis-bench search "ubuntu 22"
-cis-bench download 23598
-cis-bench export 23598 --format xccdf --style cis
-cis-bench get "ubuntu 22" --format xccdf
+# Alternative: Run via module
+uv run python -m cis_bench --help
 ```
 
 ### Test Markers
 ```bash
-pytest -m unit           # Fast, isolated tests
-pytest -m integration    # Component integration
-pytest -m e2e            # Full CLI workflows
-pytest -m architecture   # Architecture compliance
+uv run pytest -m unit           # Fast, isolated tests
+uv run pytest -m integration    # Component integration
+uv run pytest -m e2e            # Full CLI workflows
+uv run pytest -m architecture   # Architecture compliance
 ```
+
+### Test Organization Pattern
+
+**IMPORTANT:** Follow the established test organization pattern when writing new tests.
+
+```
+tests/
+├── unit/                    # Sync tests - isolated components
+│   ├── test_main_tui_app.py       # MainTUIApp config, bindings
+│   └── test_catalog_tab_pane.py   # CatalogTabPane bindings, methods
+├── integration/             # Async tests - component interaction
+│   └── test_main_tui.py           # App behavior with run_test()
+├── e2e/                     # CLI workflow tests
+└── regression/              # Architecture compliance
+```
+
+**Design Decisions:**
+- **Unit tests** (`tests/unit/`): Sync only, no `app.run_test()`, test methods/bindings/config
+- **Integration tests** (`tests/integration/`): Async with `app.run_test()`, test full behavior
+- **Split mixed files**: If a test file has both sync and async tests, split them
+
+**Example - TUI tests:**
+| Component | Unit Tests | Integration Tests |
+|-----------|------------|-------------------|
+| MainTUIApp | `test_main_tui_app.py` (18 tests) | `test_main_tui.py` (16 tests) |
+| CatalogTabPane | `test_catalog_tab_pane.py` (23 tests) | `test_main_tui.py` |
+
+See `docs/developer-guide/testing.md` for full documentation.
 
 ## Architecture
 
@@ -193,3 +250,69 @@ Do NOT push multiple separate commits to main in quick succession. This causes r
 - **ruff** - Linting/formatting
 - **bandit** - Security scanning
 - **pre-commit** - Git hooks
+
+## Beads Task Tracking
+
+This project uses [beads](https://github.com/steveyegge/beads) for task tracking with dependencies.
+
+### Structure: Parent/Child vs Dependencies
+
+| Concept | Command | Purpose |
+|---------|---------|---------|
+| **Parent/Child** | `--parent <epic-id>` | Organizational grouping - "this task belongs to this epic" |
+| **Dependencies** | `bd dep add <task> <blocker>` | Workflow blocking - "can't start until blocker is done" |
+
+**Use BOTH together:**
+- `--parent` groups all tasks under an epic (so `bd children <epic>` shows them)
+- `bd dep add` enforces implementation order (so `bd ready` shows unblocked work)
+
+### Creating Epics with Tasks
+
+```bash
+# 1. Create the epic
+bd create "Feature Name" --type epic -d "Full description of the feature"
+# Returns: cis-bench-xxx
+
+# 2. Create tasks as children of the epic
+bd create "Task 1" --parent cis-bench-xxx --type task
+bd create "Task 2" --parent cis-bench-xxx --type task
+bd create "Task 3" --parent cis-bench-xxx --type task
+
+# 3. Add dependencies (Task 3 blocked by Task 1 and Task 2)
+bd dep add <task-3-id> <task-1-id>
+bd dep add <task-3-id> <task-2-id>
+```
+
+### Navigation Commands
+
+```bash
+bd show <epic-id>           # See epic details + vision
+bd children <epic-id>       # See all tasks under epic
+bd epic status <epic-id>    # See completion progress (X/Y complete)
+bd ready                    # What can I work on now? (no blockers)
+bd blocked                  # What's waiting on what?
+bd dep tree <task-id>       # See dependency chain
+bd list --parent <epic-id>  # Alternative to bd children
+```
+
+### Workflow
+
+```bash
+# Starting work
+bd ready                              # Find available work
+bd show <task-id>                     # Review task details
+bd update <task-id> --status in_progress  # Claim it
+
+# Completing work
+bd close <task-id>                    # Mark complete
+bd sync                               # Push to remote
+```
+
+### Session Recovery
+
+When starting a new session, recover context with:
+```bash
+bd ready                    # See what's available
+bd show <current-epic>      # Get full context
+bd children <current-epic>  # See all related tasks
+```

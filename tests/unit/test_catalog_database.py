@@ -349,6 +349,55 @@ class TestLookupTables:
 class TestDownloadedBenchmarks:
     """Test downloaded benchmark tracking."""
 
+    def test_get_downloaded_benchmark_ids_empty(self, temp_db):
+        """Test getting downloaded IDs when none exist."""
+        ids = temp_db.get_downloaded_benchmark_ids()
+        assert isinstance(ids, set)
+        assert len(ids) == 0
+
+    def test_get_downloaded_benchmark_ids_with_data(self, temp_db, sample_benchmark_data):
+        """Test getting downloaded IDs returns correct set."""
+        # Insert catalog entries first
+        temp_db.insert_benchmark(sample_benchmark_data)
+        temp_db.insert_benchmark(
+            {
+                "benchmark_id": "12345",
+                "title": "Another Benchmark",
+                "url": "https://workbench.cisecurity.org/benchmarks/12345",
+                "status": "Published",
+            }
+        )
+
+        # Download both
+        temp_db.save_downloaded("23598", '{"test": 1}', "hash1", 100)
+        temp_db.save_downloaded("12345", '{"test": 2}', "hash2", 50)
+
+        ids = temp_db.get_downloaded_benchmark_ids()
+        assert isinstance(ids, set)
+        assert ids == {"23598", "12345"}
+
+    def test_get_downloaded_benchmark_ids_returns_only_downloaded(
+        self, temp_db, sample_benchmark_data
+    ):
+        """Test that only downloaded benchmarks are returned, not all catalog entries."""
+        # Insert multiple catalog entries
+        temp_db.insert_benchmark(sample_benchmark_data)  # 23598
+        temp_db.insert_benchmark(
+            {
+                "benchmark_id": "11111",
+                "title": "Not Downloaded",
+                "url": "https://workbench.cisecurity.org/benchmarks/11111",
+                "status": "Published",
+            }
+        )
+
+        # Only download one
+        temp_db.save_downloaded("23598", '{"test": 1}', "hash1", 100)
+
+        ids = temp_db.get_downloaded_benchmark_ids()
+        assert "23598" in ids
+        assert "11111" not in ids
+
     def test_save_downloaded(self, temp_db, sample_benchmark_data):
         """Test saving downloaded benchmark."""
         # Must have catalog entry first
@@ -583,6 +632,214 @@ class TestEdgeCases:
     def test_mark_latest_versions_no_benchmarks(self, temp_db):
         """Test mark_latest on empty database doesn't error."""
         temp_db.mark_latest_versions()  # Should not raise
+
+
+class TestMarkLatestVersions:
+    """Tests for mark_latest_versions() logic."""
+
+    def test_single_group_marks_highest_benchmark_id(self, temp_db):
+        """Highest benchmark_id in group should be marked as latest."""
+        # Insert benchmarks with same title, different benchmark_ids
+        for bid in ["100", "200", "150"]:
+            temp_db.insert_benchmark(
+                {
+                    "benchmark_id": bid,
+                    "title": "Ubuntu Linux",
+                    "version": f"v{bid}",
+                    "url": f"https://example.com/{bid}",
+                    "status": "Published",
+                }
+            )
+
+        temp_db.mark_latest_versions()
+
+        # Get all benchmarks and check is_latest flags
+        benchmarks = temp_db.search("")
+        for b in benchmarks:
+            if b["benchmark_id"] == "200":  # Highest ID
+                assert b["is_latest"] == 1, "benchmark_id 200 should be latest"
+            else:
+                assert b["is_latest"] == 0, f"benchmark_id {b['benchmark_id']} should not be latest"
+
+    def test_multiple_groups_each_has_own_latest(self, temp_db):
+        """Each title/status group should have its own latest."""
+        # Group 1: Ubuntu
+        temp_db.insert_benchmark(
+            {
+                "benchmark_id": "100",
+                "title": "Ubuntu",
+                "version": "v1",
+                "status": "Published",
+                "url": "https://example.com/100",
+            }
+        )
+        temp_db.insert_benchmark(
+            {
+                "benchmark_id": "200",
+                "title": "Ubuntu",
+                "version": "v2",
+                "status": "Published",
+                "url": "https://example.com/200",
+            }
+        )
+        # Group 2: AlmaLinux
+        temp_db.insert_benchmark(
+            {
+                "benchmark_id": "300",
+                "title": "AlmaLinux",
+                "version": "v1",
+                "status": "Published",
+                "url": "https://example.com/300",
+            }
+        )
+        temp_db.insert_benchmark(
+            {
+                "benchmark_id": "400",
+                "title": "AlmaLinux",
+                "version": "v2",
+                "status": "Published",
+                "url": "https://example.com/400",
+            }
+        )
+
+        temp_db.mark_latest_versions()
+
+        benchmarks = temp_db.search("")
+        latest_ids = [b["benchmark_id"] for b in benchmarks if b["is_latest"] == 1]
+
+        # Both 200 (Ubuntu latest) and 400 (AlmaLinux latest) should be marked
+        assert "200" in latest_ids
+        assert "400" in latest_ids
+        assert len(latest_ids) == 2
+
+    def test_next_version_excluded_from_latest(self, temp_db):
+        """Versions containing 'Next' should not be marked as latest."""
+        temp_db.insert_benchmark(
+            {
+                "benchmark_id": "100",
+                "title": "CentOS",
+                "version": "v1.0.0",
+                "status": "Published",
+                "url": "https://example.com/100",
+            }
+        )
+        temp_db.insert_benchmark(
+            {
+                "benchmark_id": "500",
+                "title": "CentOS",
+                "version": "vNext",
+                "status": "Published",
+                "url": "https://example.com/500",
+            }
+        )
+
+        temp_db.mark_latest_versions()
+
+        benchmarks = temp_db.search("")
+        for b in benchmarks:
+            if b["benchmark_id"] == "100":
+                assert b["is_latest"] == 1, "v1.0.0 should be latest (vNext excluded)"
+            else:
+                assert b["is_latest"] == 0, "vNext should not be latest"
+
+    def test_null_version_excluded_from_latest(self, temp_db):
+        """Benchmarks with NULL version should not be marked as latest."""
+        temp_db.insert_benchmark(
+            {
+                "benchmark_id": "100",
+                "title": "Debian",
+                "version": "v1.0.0",
+                "status": "Published",
+                "url": "https://example.com/100",
+            }
+        )
+        temp_db.insert_benchmark(
+            {
+                "benchmark_id": "500",
+                "title": "Debian",
+                "version": None,
+                "status": "Published",
+                "url": "https://example.com/500",
+            }
+        )
+
+        temp_db.mark_latest_versions()
+
+        benchmarks = temp_db.search("")
+        for b in benchmarks:
+            if b["benchmark_id"] == "100":
+                assert b["is_latest"] == 1, "v1.0.0 should be latest (NULL excluded)"
+            else:
+                assert b["is_latest"] == 0, "NULL version should not be latest"
+
+    def test_integer_comparison_not_string(self, temp_db):
+        """Benchmark_id comparison should be numeric, not string."""
+        # If string comparison: "9" > "100" (9 > 1 lexicographically)
+        # If integer comparison: 100 > 9
+        temp_db.insert_benchmark(
+            {
+                "benchmark_id": "9",
+                "title": "Test",
+                "version": "v1",
+                "status": "Published",
+                "url": "https://example.com/9",
+            }
+        )
+        temp_db.insert_benchmark(
+            {
+                "benchmark_id": "100",
+                "title": "Test",
+                "version": "v2",
+                "status": "Published",
+                "url": "https://example.com/100",
+            }
+        )
+
+        temp_db.mark_latest_versions()
+
+        benchmarks = temp_db.search("")
+        for b in benchmarks:
+            if b["benchmark_id"] == "100":
+                assert b["is_latest"] == 1, "100 should be latest (integer comparison)"
+            else:
+                assert b["is_latest"] == 0, "9 should not be latest"
+
+    def test_resets_previous_latest_flags(self, temp_db):
+        """mark_latest_versions should reset all is_latest before marking."""
+        temp_db.insert_benchmark(
+            {
+                "benchmark_id": "100",
+                "title": "Fedora",
+                "version": "v1",
+                "status": "Published",
+                "url": "https://example.com/100",
+            }
+        )
+
+        # First run
+        temp_db.mark_latest_versions()
+
+        # Add newer version
+        temp_db.insert_benchmark(
+            {
+                "benchmark_id": "200",
+                "title": "Fedora",
+                "version": "v2",
+                "status": "Published",
+                "url": "https://example.com/200",
+            }
+        )
+
+        # Second run
+        temp_db.mark_latest_versions()
+
+        benchmarks = temp_db.search("")
+        latest_count = sum(1 for b in benchmarks if b["is_latest"] == 1)
+        assert latest_count == 1, "Only one should be latest after re-run"
+
+        for b in benchmarks:
+            if b["benchmark_id"] == "200":
+                assert b["is_latest"] == 1
 
 
 class TestConcurrency:

@@ -42,6 +42,10 @@ class CatalogDatabase:
 
         logger.debug(f"Initialized catalog database: {self.db_path}")
 
+        # Run migrations if database exists (adds new columns to existing tables)
+        if self.db_path.exists():
+            self._run_migrations()
+
     def initialize_schema(self):
         """Create all tables and indexes."""
         logger.info("Creating database schema")
@@ -84,9 +88,109 @@ class CatalogDatabase:
                 )
             )
             session.commit()
-            logger.info("Created FTS5 virtual table")
+            logger.info("Created FTS5 virtual table for benchmarks")
+
+        # Create FTS5 virtual table for recommendations search
+        with Session(self.engine) as session:
+            session.execute(
+                text(
+                    """
+                CREATE VIRTUAL TABLE IF NOT EXISTS recommendations_fts USING fts5(
+                    benchmark_id UNINDEXED,
+                    ref UNINDEXED,
+                    title,
+                    description,
+                    rationale,
+                    audit,
+                    remediation,
+                    nist_controls,
+                    cis_controls,
+                    profiles,
+                    tokenize='porter unicode61'
+                )
+            """
+                )
+            )
+            session.commit()
+            logger.info("Created FTS5 virtual table for recommendations")
 
         logger.info("Database schema initialized")
+
+        # Run migrations for schema updates
+        self._run_migrations()
+
+    def _run_migrations(self):
+        """Run database migrations for schema updates.
+
+        Handles adding new columns to existing tables AND creating new tables.
+        SQLModel.metadata.create_all() is idempotent (safe to run multiple times).
+        """
+        # First, ensure all tables exist (idempotent - won't break existing tables)
+        SQLModel.metadata.create_all(self.engine)
+
+        # Then add any missing columns to existing tables
+        with Session(self.engine) as session:
+            # Get existing columns in catalog_benchmarks table
+            result = session.execute(text("PRAGMA table_info(catalog_benchmarks)"))
+            existing_columns = {row[1] for row in result.fetchall()}
+
+            # New columns to add (if they don't exist)
+            new_columns = {
+                "release_type": "TEXT",
+                "contributors": "TEXT",
+                "parent_benchmark_id": "TEXT",
+                "parent_benchmark_url": "TEXT",
+                "intended_audience": "TEXT",
+                "acknowledgements": "TEXT",
+                "milestone_name": "TEXT",
+                "milestone_url": "TEXT",
+            }
+
+            # Add missing columns
+            for column_name, column_type in new_columns.items():
+                if column_name not in existing_columns:
+                    logger.info(f"Adding column: {column_name}")
+                    session.execute(
+                        text(
+                            f"ALTER TABLE catalog_benchmarks ADD COLUMN {column_name} {column_type}"
+                        )
+                    )
+
+            session.commit()
+
+            # Update FTS5 table if needed (drop and recreate with new fields)
+            try:
+                # Check if FTS5 table has new columns
+                result = session.execute(text("PRAGMA table_info(benchmarks_fts)"))
+                fts_columns = {row[1] for row in result.fetchall()}
+
+                # If missing new searchable fields, recreate FTS5
+                if "contributors" not in fts_columns or "intended_audience" not in fts_columns:
+                    logger.info("Recreating FTS5 table with new searchable fields")
+                    session.execute(text("DROP TABLE IF EXISTS benchmarks_fts"))
+                    session.execute(
+                        text(
+                            """
+                            CREATE VIRTUAL TABLE benchmarks_fts USING fts5(
+                                benchmark_id UNINDEXED,
+                                title,
+                                platform,
+                                community,
+                                description,
+                                intended_audience,
+                                contributors,
+                                tokenize='porter unicode61'
+                            )
+                        """
+                        )
+                    )
+                    session.commit()
+                    logger.info("FTS5 table recreated with new fields")
+            except Exception as e:
+                # FTS5 table might not exist yet on first init
+                logger.debug(f"FTS5 migration skipped: {e}")
+
+        logger.info("Migrations complete")
 
     def get_or_create_platform(self, name: str, session: Session) -> Platform:
         """Get existing platform or create new one."""
@@ -193,10 +297,21 @@ class CatalogDatabase:
                     platform_id=platform.platform_id if platform else None,
                     community_id=community.community_id if community else None,
                     owner_id=owner.owner_id if owner else None,
+                    platform_type=benchmark_data.get("platform_type"),
                     published_date=benchmark_data.get("published_date"),
                     last_revision_date=benchmark_data.get("last_revision_date"),
                     description=benchmark_data.get("description"),
+                    # Extended metadata fields
+                    release_type=benchmark_data.get("release_type"),
+                    contributors=benchmark_data.get("contributors"),
+                    parent_benchmark_id=benchmark_data.get("parent_benchmark_id"),
+                    parent_benchmark_url=benchmark_data.get("parent_benchmark_url"),
+                    intended_audience=benchmark_data.get("intended_audience"),
+                    acknowledgements=benchmark_data.get("acknowledgements"),
+                    milestone_name=benchmark_data.get("milestone_name"),
+                    milestone_url=benchmark_data.get("milestone_url"),
                     is_latest=benchmark_data.get("is_latest", False),
+                    is_vnext=benchmark_data.get("is_vnext", False),
                     metadata_json=benchmark_data.get("metadata_json"),
                 )
                 session.add(benchmark)
@@ -245,8 +360,14 @@ class CatalogDatabase:
         session.execute(
             text(
                 """
-            INSERT INTO benchmarks_fts (benchmark_id, title, platform, community, description)
-            VALUES (:bid, :title, :platform, :community, :desc)
+            INSERT INTO benchmarks_fts (
+                benchmark_id, title, platform, community, description,
+                intended_audience, contributors
+            )
+            VALUES (
+                :bid, :title, :platform, :community, :desc,
+                :intended_audience, :contributors
+            )
         """
             ),
             {
@@ -255,6 +376,8 @@ class CatalogDatabase:
                 "platform": platform_name,
                 "community": community_name,
                 "desc": benchmark.description or "",
+                "intended_audience": benchmark.intended_audience or "",
+                "contributors": benchmark.contributors or "",
             },
         )
         session.flush()  # Ensure FTS insert executes
@@ -281,8 +404,21 @@ class CatalogDatabase:
                 c.name as community,
                 o.username as owner,
                 b.published_date,
+                b.last_revision_date,
                 b.is_latest,
-                b.description
+                b.description,
+                b.release_type,
+                b.contributors,
+                b.parent_benchmark_id,
+                b.parent_benchmark_url,
+                b.intended_audience,
+                b.acknowledgements,
+                b.milestone_name,
+                b.milestone_url,
+                (SELECT GROUP_CONCAT(col.name, ', ')
+                 FROM benchmark_collections bc
+                 JOIN collections col ON bc.collection_id = col.collection_id
+                 WHERE bc.benchmark_id = b.benchmark_id) as collections
             FROM catalog_benchmarks b
             JOIN benchmark_statuses s ON b.status_id = s.status_id
             LEFT JOIN platforms p ON b.platform_id = p.platform_id
@@ -363,9 +499,22 @@ class CatalogDatabase:
                     c.name as community,
                     o.username as owner,
                     b.published_date,
+                    b.last_revision_date,
                     b.is_latest,
                     b.description,
-                    f.rank
+                    b.release_type,
+                    b.contributors,
+                    b.parent_benchmark_id,
+                    b.parent_benchmark_url,
+                    b.intended_audience,
+                    b.acknowledgements,
+                    b.milestone_name,
+                    b.milestone_url,
+                    f.rank,
+                    (SELECT GROUP_CONCAT(col.name, ', ')
+                     FROM benchmark_collections bc
+                     JOIN collections col ON bc.collection_id = col.collection_id
+                     WHERE bc.benchmark_id = b.benchmark_id) as collections
                 FROM catalog_benchmarks b
                 JOIN benchmarks_fts f ON b.benchmark_id = f.benchmark_id
                 JOIN benchmark_statuses s ON b.status_id = s.status_id
@@ -409,21 +558,16 @@ class CatalogDatabase:
             if not benchmark:
                 return None
 
-            return {
-                "benchmark_id": benchmark.benchmark_id,
-                "title": benchmark.title,
-                "version": benchmark.version,
-                "url": benchmark.url,
-                "status": benchmark.status.name,
-                "platform": benchmark.platform.name if benchmark.platform else None,
-                "community": benchmark.community.name if benchmark.community else None,
-                "owner": benchmark.owner.username if benchmark.owner else None,
-                "published_date": benchmark.published_date,
-                "last_revision_date": benchmark.last_revision_date,
-                "description": benchmark.description,
-                "is_latest": benchmark.is_latest,
-                "metadata_json": benchmark.metadata_json,
-            }
+            # Convert model to dict (dynamic - picks up all fields automatically)
+            result = benchmark.model_dump(exclude={"status", "platform", "community", "owner"})
+
+            # Add denormalized FK values (human-readable)
+            result["status"] = benchmark.status.name
+            result["platform"] = benchmark.platform.name if benchmark.platform else None
+            result["community"] = benchmark.community.name if benchmark.community else None
+            result["owner"] = benchmark.owner.username if benchmark.owner else None
+
+            return result
 
     def list_platforms(self) -> list[dict]:
         """List all platforms with benchmark counts."""
@@ -453,29 +597,32 @@ class CatalogDatabase:
             ]
 
     def mark_latest_versions(self):
-        """Mark latest version for each platform/title combination."""
-        with Session(self.engine) as session:
-            # Complex query to find latest versions
-            # Group by base title (without version), get max version per group
-            # This is simplified - production would need smarter version comparison
+        """Mark latest version for each title/status combination.
 
-            # For now: mark most recently published as latest
+        Groups benchmarks by title and status, marks the highest version
+        in each group as 'latest'. Uses benchmark_id as proxy for release
+        order when published_date is unavailable.
+
+        Excludes 'vNext' pre-release versions from being marked as latest.
+        """
+        with Session(self.engine) as session:
+            # Reset all is_latest flags first
+            session.execute(text("UPDATE catalog_benchmarks SET is_latest = 0"))
+
+            # Mark latest: for each (title, status) group, find the benchmark
+            # with the highest benchmark_id (excluding vNext versions)
+            # Higher benchmark_id generally means newer release
+            # Note: benchmark_id is TEXT, so CAST to INTEGER for numeric comparison
             sql = """
                 UPDATE catalog_benchmarks
-                SET is_latest = CASE
-                    WHEN benchmark_id IN (
-                        SELECT b1.benchmark_id
-                        FROM catalog_benchmarks b1
-                        WHERE NOT EXISTS (
-                            SELECT 1 FROM catalog_benchmarks b2
-                            WHERE b2.title LIKE SUBSTR(b1.title, 1, INSTR(b1.title, 'v') - 1) || '%'
-                              AND b2.published_date > b1.published_date
-                              AND b2.status_id = b1.status_id
-                        )
-                    )
-                    THEN 1
-                    ELSE 0
-                END
+                SET is_latest = 1
+                WHERE CAST(benchmark_id AS INTEGER) IN (
+                    SELECT MAX(CAST(b1.benchmark_id AS INTEGER))
+                    FROM catalog_benchmarks b1
+                    WHERE b1.version NOT LIKE '%Next%'
+                      AND b1.version IS NOT NULL
+                    GROUP BY b1.title, b1.status_id
+                )
             """
             session.execute(text(sql))
             session.commit()
@@ -514,6 +661,9 @@ class CatalogDatabase:
             session.commit()
             logger.debug(f"Saved downloaded benchmark: {benchmark_id}")
 
+        # Index recommendations for search
+        self._index_recommendations(benchmark_id, content_json)
+
     def get_downloaded(self, benchmark_id: str) -> dict | None:
         """Get downloaded benchmark."""
         with Session(self.engine) as session:
@@ -530,6 +680,16 @@ class CatalogDatabase:
                 "recommendation_count": downloaded.recommendation_count,
                 "workbench_last_modified": downloaded.workbench_last_modified,
             }
+
+    def get_downloaded_benchmark_ids(self) -> set[str]:
+        """Get set of all downloaded benchmark IDs.
+
+        Returns:
+            Set of benchmark IDs that have been downloaded and cached locally.
+        """
+        with Session(self.engine) as session:
+            downloaded = session.exec(select(DownloadedBenchmark)).all()
+            return {d.benchmark_id for d in downloaded}
 
     def check_updates_available(self) -> list[dict]:
         """Check downloaded benchmarks for available updates."""
@@ -592,3 +752,138 @@ class CatalogDatabase:
         with Session(self.engine) as session:
             metadata = session.get(ScrapeMetadata, key)
             return metadata.value if metadata else None
+
+    def _index_recommendations(self, benchmark_id: str, content_json: str):
+        """Index recommendations for FTS5 search.
+
+        Extracts recommendations from benchmark JSON and indexes
+        searchable fields in the recommendations_fts table.
+        """
+        import json
+
+        try:
+            benchmark = json.loads(content_json)
+            recommendations = benchmark.get("recommendations", [])
+
+            if not recommendations:
+                logger.debug(f"No recommendations to index for {benchmark_id}")
+                return
+
+            with Session(self.engine) as session:
+                # Delete existing entries for this benchmark
+                session.execute(
+                    text("DELETE FROM recommendations_fts WHERE benchmark_id = :bid"),
+                    {"bid": benchmark_id},
+                )
+
+                # Index each recommendation
+                for rec in recommendations:
+                    # Extract and join control mappings
+                    nist = " ".join(rec.get("nist_controls", []))
+                    cis = " ".join(
+                        [
+                            f"{c.get('control', '')} {c.get('title', '')}"
+                            for c in rec.get("cis_controls", [])
+                        ]
+                    )
+                    profiles = " ".join(rec.get("profiles", []))
+
+                    session.execute(
+                        text(
+                            """
+                            INSERT INTO recommendations_fts
+                            (benchmark_id, ref, title, description, rationale,
+                             audit, remediation, nist_controls, cis_controls, profiles)
+                            VALUES
+                            (:bid, :ref, :title, :desc, :rationale,
+                             :audit, :remediation, :nist, :cis, :profiles)
+                            """
+                        ),
+                        {
+                            "bid": benchmark_id,
+                            "ref": rec.get("ref", ""),
+                            "title": rec.get("title", ""),
+                            "desc": rec.get("description", "") or "",
+                            "rationale": rec.get("rationale", "") or "",
+                            "audit": rec.get("audit", "") or "",
+                            "remediation": rec.get("remediation", "") or "",
+                            "nist": nist,
+                            "cis": cis,
+                            "profiles": profiles,
+                        },
+                    )
+
+                session.commit()
+                logger.debug(f"Indexed {len(recommendations)} recommendations for {benchmark_id}")
+
+        except json.JSONDecodeError as e:
+            logger.warning(f"Failed to parse benchmark JSON for indexing: {e}")
+        except Exception as e:
+            logger.warning(f"Failed to index recommendations: {e}")
+
+    def search_recommendations(
+        self,
+        query: str,
+        benchmark_id: str | None = None,
+        profile: str | None = None,
+        limit: int = 50,
+    ) -> list[dict]:
+        """Search recommendations using FTS5.
+
+        Args:
+            query: Search query (supports FTS5 syntax)
+            benchmark_id: Filter to specific benchmark
+            profile: Filter by profile level
+            limit: Maximum results
+
+        Returns:
+            List of matching recommendations with benchmark info
+        """
+        with Session(self.engine) as session:
+            # Build FTS5 query
+            where_clauses = ["recommendations_fts MATCH :query"]
+            params = {"query": query, "limit": limit}
+
+            if benchmark_id:
+                where_clauses.append("benchmark_id = :bid")
+                params["bid"] = benchmark_id
+
+            if profile:
+                # Profile filtering via FTS5 (approximate match)
+                where_clauses.append("profiles MATCH :profile")
+                params["profile"] = profile
+
+            where_sql = " AND ".join(where_clauses)
+
+            # Note: where_sql only contains hardcoded clause strings from where_clauses list,
+            # not user input. User values go into params dict as bound parameters.
+            sql = f"""
+                SELECT
+                    benchmark_id,
+                    ref,
+                    title,
+                    profiles,
+                    snippet(recommendations_fts, 2, '<b>', '</b>', '...', 32) as description_snippet
+                FROM recommendations_fts
+                WHERE {where_sql}
+                ORDER BY rank
+                LIMIT :limit
+            """  # noqa: S608  # nosec B608 - where_sql from internal constants only
+
+            try:
+                result = session.execute(text(sql), params)
+                rows = result.fetchall()
+
+                return [
+                    {
+                        "benchmark_id": row[0],
+                        "ref": row[1],
+                        "title": row[2],
+                        "profiles": row[3].split() if row[3] else [],
+                        "description_snippet": row[4],
+                    }
+                    for row in rows
+                ]
+            except Exception as e:
+                logger.error(f"Search failed: {e}")
+                return []

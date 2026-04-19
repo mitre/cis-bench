@@ -17,8 +17,11 @@ console = Console()
     "--debug", "-d", is_flag=True, help="Enable maximum debug logging (same as --verbose)"
 )
 @click.option("--quiet", "-q", is_flag=True, help="Quiet mode (warnings and errors only)")
+@click.option(
+    "--offline", is_flag=True, help="Offline mode - block network calls, use cached data only"
+)
 @click.pass_context
-def cli(ctx, verbose, debug, quiet):
+def cli(ctx, verbose, debug, quiet, offline):
     """CIS Benchmark CLI - Fetch and manage CIS benchmarks.
 
     Download CIS benchmarks from CIS WorkBench and export to multiple formats
@@ -47,6 +50,7 @@ def cli(ctx, verbose, debug, quiet):
         --verbose, -v    Show DEBUG level logs
         --debug, -d      Same as --verbose
         --quiet, -q      Only warnings and errors
+        --offline        Use cached data only (no network)
     """
     # --debug is same as --verbose
     verbose = verbose or debug
@@ -58,19 +62,41 @@ def cli(ctx, verbose, debug, quiet):
     ctx.ensure_object(dict)
     ctx.obj["verbose"] = verbose
     ctx.obj["quiet"] = quiet
+    ctx.obj["offline"] = offline
 
 
 # Import and register commands
-from cis_bench.cli.commands import auth, catalog, download, export, get, info, list_cmd, search
+from cis_bench.cli.commands import (
+    auth,
+    browse,
+    cache,
+    catalog,
+    diff,
+    download,
+    export,
+    find,
+    get,
+    info,
+    list_cmd,
+    main_tui,
+    search,
+    view,
+)
 
 cli.add_command(auth.auth)
+cli.add_command(browse.browse_cmd)
+cli.add_command(cache.cache)
+cli.add_command(diff.diff_cmd)
 cli.add_command(download.download)
 cli.add_command(export.export_cmd)
+cli.add_command(find.find_cmd)
 cli.add_command(get.get_cmd)
 cli.add_command(list_cmd.list_benchmarks)
 cli.add_command(info.info)
+cli.add_command(main_tui.main_tui)
 cli.add_command(search.search_cmd)
 cli.add_command(catalog.catalog)
+cli.add_command(view.view_cmd)
 
 
 if __name__ == "__main__":
