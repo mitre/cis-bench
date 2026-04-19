@@ -1,6 +1,43 @@
 # CHANGELOG
 
 
+## v0.5.2 (2026-04-19)
+
+### Bug Fixes
+
+- Ship cis-cci-mapping.json in the wheel
+  ([`d7dc223`](https://github.com/mitre/cis-bench/commit/d7dc2233f48cb254786943220b1252c7c96109ad))
+
+After the 0.5.1 release, every XCCDF export failed with:
+
+FileNotFoundError: [Errno 2] No such file or directory:
+  '.../site-packages/cis_bench/data/cis-cci-mapping.json'
+
+Root cause: cci_lookup.py loads the CCI mapping at import time via Path(__file__).parent.parent /
+  "data" / "cis-cci-mapping.json", but the [tool.setuptools.package-data] list in pyproject.toml
+  only included "exporters/configs/**/*.yaml". Setuptools therefore dropped the JSON file when
+  building the wheel, and every export path that touches MappingEngine -> get_cci_service() crashed
+  on fresh installs.
+
+The bug was invisible to developers running `pip install -e .` or `uv sync` because editable
+  installs resolve package resources from the source tree rather than the wheel — only release
+  builds and clean pip installs exhibit it.
+
+Add "data/*.json" to the package-data glob so the JSON file is included alongside the existing YAML
+  configs.
+
+Verification:
+
+- Reproduced on upstream/main: a clean `uv build --wheel` (with no stale src/cis_bench.egg-info)
+  produces a wheel whose RECORD contains no data/ entries — matching the broken PyPI 0.5.1 wheel. -
+  After the fix, a clean rebuild includes cis_bench/data/cis-cci-mapping.json. - Installed the fixed
+  wheel into a throwaway uv venv (not the dev editable install) and ran `cis-bench export 11818
+  --format xccdf --style disa`: 117 recommendations exported to a 326 KB XCCDF DISA XML file, CCI
+  lookup active, no FileNotFoundError.
+
+Signed-off-by: clem-field <kc8yhe@me.com>
+
+
 ## v0.5.1 (2026-04-18)
 
 ### Bug Fixes
