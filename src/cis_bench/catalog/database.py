@@ -9,6 +9,7 @@ from pathlib import Path
 from sqlalchemy import text
 from sqlmodel import Session, SQLModel, create_engine, select
 
+from cis_bench.catalog.fts import build_fts_query
 from cis_bench.catalog.models import (
     BenchmarkCollection,
     BenchmarkStatusModel,
@@ -343,12 +344,7 @@ class CatalogDatabase:
                 return self._list_all(platform, platform_type, status, latest_only, limit, session)
 
             # FTS5 query formatting
-            # Note: FTS5 doesn't support leading wildcards (*word)
-            # Only trailing wildcards work (word*)
-            if not query.endswith("*"):
-                fts_query = f"{query}*"
-            else:
-                fts_query = query
+            fts_query = build_fts_query(query)
 
             # Use raw SQL for FTS5 + joins
             sql = """
