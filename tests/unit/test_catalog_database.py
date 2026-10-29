@@ -341,6 +341,46 @@ class TestFTS5Search:
         results = populated_db.search("nonexistent")
         assert len(results) == 0
 
+    def test_search_dotted_version_and_hyphenated_queries(self, populated_db):
+        """Test dotted versions and hyphenated terms match cleanly against SQLite FTS5."""
+        ubuntu_results = populated_db.search("ubuntu 20.04")
+        assert [row["benchmark_id"] for row in ubuntu_results] == ["1"]
+
+        rhel_results = populated_db.search("red-hat")
+        assert [row["benchmark_id"] for row in rhel_results] == ["2"]
+
+    def test_search_fts5_boolean_keywords_treated_as_literal_prefixes(self, populated_db):
+        """Test uppercase FTS5 operators execute as literal prefix searches without syntax errors."""
+        populated_db.insert_benchmark(
+            {
+                "benchmark_id": "6",
+                "title": "CIS Oracle Database 19c Benchmark",
+                "url": "https://workbench.cisecurity.org/benchmarks/6",
+                "status": "Published",
+                "platform": "Database",
+                "description": "Ubuntu and Oracle database hardening",
+            }
+        )
+
+        oracle_results = populated_db.search("OR")
+        assert [row["benchmark_id"] for row in oracle_results] == ["6"]
+
+        combined_results = populated_db.search("ubuntu AND")
+        assert [row["benchmark_id"] for row in combined_results] == ["6"]
+
+        assert populated_db.search("NOT") == []
+        assert populated_db.search("NEAR") == []
+
+    def test_search_punctuation_only_returns_empty_without_listing_all(self, populated_db):
+        """Test punctuation-only queries return empty list while whitespace lists all published."""
+        assert populated_db.search("...") == []
+        assert populated_db.search("!!!") == []
+        assert populated_db.search("***") == []
+        assert populated_db.search("___") == []
+
+        whitespace_results = populated_db.search("   ")
+        assert sorted(row["benchmark_id"] for row in whitespace_results) == ["1", "2", "3"]
+
 
 class TestLookupTables:
     """Test lookup table operations."""
