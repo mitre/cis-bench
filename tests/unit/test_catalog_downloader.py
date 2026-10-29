@@ -1,11 +1,12 @@
 """Unit tests for catalog downloader."""
 
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, create_autospec, patch
 
 import pytest
 
 from cis_bench.catalog.database import CatalogDatabase
 from cis_bench.catalog.downloader import CatalogDownloader
+from cis_bench.fetcher.workbench import WorkbenchScraper
 from cis_bench.models.benchmark import Benchmark
 
 
@@ -35,7 +36,7 @@ def temp_db(tmp_path):
 @pytest.fixture
 def mock_scraper(sample_recommendation_minimal):
     """Mock WorkbenchScraper."""
-    scraper = Mock()
+    scraper = create_autospec(WorkbenchScraper, instance=True)
 
     # Create real Benchmark object using conftest fixture
     recs = [sample_recommendation_minimal] * 10
@@ -49,7 +50,7 @@ def mock_scraper(sample_recommendation_minimal):
         recommendations=recs,
     )
 
-    scraper.fetch_benchmark = Mock(return_value=mock_benchmark)
+    scraper.download_benchmark.return_value = mock_benchmark
 
     return scraper
 
@@ -70,7 +71,9 @@ class TestDownloadByID:
         assert result["status"] == "downloaded"
         assert result["benchmark_id"] == "23598"
         assert "content_hash" in result
-        mock_scraper.fetch_benchmark.assert_called_once()
+        mock_scraper.download_benchmark.assert_called_once_with(
+            "https://workbench.cisecurity.org/benchmarks/23598"
+        )
 
     def test_download_updates_database(self, downloader, temp_db):
         """Test download saves to database."""
@@ -96,7 +99,7 @@ class TestDownloadByID:
 
         assert result["status"] == "already_current"
         # Should have called fetch only once (first time)
-        assert mock_scraper.fetch_benchmark.call_count == 1
+        assert mock_scraper.download_benchmark.call_count == 1
 
     def test_download_force_redownloads(self, downloader, mock_scraper):
         """Test force flag re-downloads."""
@@ -104,10 +107,10 @@ class TestDownloadByID:
         downloader.download_by_id("23598")
 
         # Force re-download
-        result = downloader.download_by_id("23598", force=True)
+        downloader.download_by_id("23598", force=True)
 
         # Should have called fetch twice
-        assert mock_scraper.fetch_benchmark.call_count == 2
+        assert mock_scraper.download_benchmark.call_count == 2
 
     def test_download_unchanged_content_updates_timestamp(self, downloader):
         """Test downloading same content multiple times."""
@@ -131,7 +134,9 @@ class TestDownloadByName:
         result = downloader.download_by_name("ubuntu")
 
         assert result["benchmark_id"] == "23598"
-        mock_scraper.fetch_benchmark.assert_called_once()
+        mock_scraper.download_benchmark.assert_called_once_with(
+            "https://workbench.cisecurity.org/benchmarks/23598"
+        )
 
     def test_download_by_name_no_matches(self, downloader):
         """Test download by name with no matches raises error."""
@@ -181,6 +186,30 @@ class TestDownloadByName:
 
         assert result["benchmark_id"] == "23598"
         mock_select.assert_called_once()
+
+    @pytest.mark.parametrize("cancelled_value", [None, ""])
+    @patch("questionary.select")
+    def test_download_by_name_interactive_cancelled_raises(
+        self, mock_select, cancelled_value, downloader, temp_db, mock_scraper
+    ):
+        """Test cancelled interactive selection raises ValueError without downloading."""
+        temp_db.insert_benchmark(
+            {
+                "benchmark_id": "12345",
+                "title": "CIS Ubuntu Linux 22.04 LTS Benchmark",
+                "version": "v1.0.0",
+                "url": "https://workbench.cisecurity.org/benchmarks/12345",
+                "status": "Published",
+                "is_latest": True,
+            }
+        )
+
+        mock_select.return_value.ask = Mock(return_value=cancelled_value)
+
+        with pytest.raises(ValueError, match="Benchmark selection cancelled"):
+            downloader.download_by_name("ubuntu", interactive=True)
+
+        mock_scraper.download_benchmark.assert_not_called()
 
 
 class TestGetDownloaded:

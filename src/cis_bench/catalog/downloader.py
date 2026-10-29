@@ -77,7 +77,7 @@ class CatalogDownloader:
         # Download from WorkBench
         logger.info(f"Fetching from WorkBench: {catalog_entry['url']}")
 
-        benchmark = self.scraper.fetch_benchmark(catalog_entry["url"])
+        benchmark = self.scraper.download_benchmark(catalog_entry["url"])
 
         # Serialize to JSON
         content_json = benchmark.model_dump_json(indent=2)
@@ -188,6 +188,8 @@ class CatalogDownloader:
         choices = [f"[{r['benchmark_id']}] {r['title']} {r.get('version', '')}" for r in results]
 
         selection = questionary.select("Select benchmark:", choices=choices).ask()
+        if not isinstance(selection, str) or not selection:
+            raise ValueError("Benchmark selection cancelled")
 
         # Extract ID from selection
         benchmark_id = selection.split("]")[0].lstrip("[")
