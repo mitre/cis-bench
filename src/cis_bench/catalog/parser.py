@@ -318,8 +318,8 @@ class WorkBenchCatalogParser:
 
         # Extract published date
         # Format: "Published 3 months ago on Aug 1st 2025"
-        published_text = soup.find(text=re.compile(r"Published.*ago"))
-        if published_text:
+        published_text = soup.find(string=re.compile(r"Published.*ago"))
+        if isinstance(published_text, str):
             # Try to extract actual date
             date_match = re.search(r"on ([A-Za-z]+ \d+(?:st|nd|rd|th) \d{4})", published_text)
             if date_match:
@@ -327,7 +327,14 @@ class WorkBenchCatalogParser:
                 metadata["published_relative"] = published_text.strip()
 
         # Extract description from Overview section
-        overview = soup.find("h2", text=re.compile(r"Overview", re.I))
+        overview = next(
+            (
+                heading
+                for heading in soup.find_all("h2")
+                if re.search(r"Overview", heading.get_text(), re.I)
+            ),
+            None,
+        )
         if overview:
             # Get text after Overview heading
             desc_parts = []

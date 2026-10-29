@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeRemainingColumn
+from sqlalchemy.exc import IntegrityError, OperationalError
 
 from cis_bench import __version__
 from cis_bench.catalog.database import CatalogDatabase
@@ -73,10 +74,7 @@ class CatalogScraper:
         logger.info(f"Will scrape {total_pages} pages (detected from pagination)")
 
         # Save first page
-        for bench in first_page_benchmarks:
-            self.db.insert_benchmark(bench)
-
-        total_benchmarks = len(first_page_benchmarks)
+        total_benchmarks = self._insert_page_benchmarks(first_page_benchmarks, page_num=1)
         failed_pages = []
 
         # Progress bar with additional info
@@ -115,11 +113,9 @@ class CatalogScraper:
 
                             if benchmarks:
                                 # Save to database
-                                for bench in benchmarks:
-                                    self.db.insert_benchmark(bench)
-
-                                total_benchmarks += len(benchmarks)
-                                logger.debug(f"Page {page_num}: {len(benchmarks)} benchmarks")
+                                inserted_count = self._insert_page_benchmarks(benchmarks, page_num)
+                                total_benchmarks += inserted_count
+                                logger.debug(f"Page {page_num}: {inserted_count} benchmarks")
                             else:
                                 logger.warning(f"Page {page_num} returned no benchmarks")
 
@@ -130,6 +126,8 @@ class CatalogScraper:
                                 description=f"Scraping catalog | {total_benchmarks} benchmarks found",
                             )
 
+                        except OperationalError:
+                            raise
                         except Exception as e:
                             logger.error(f"Failed to scrape page {page_num}: {e}")
                             failed_pages.append(page_num)
@@ -194,21 +192,32 @@ class CatalogScraper:
 
         new_count = 0
         updated_count = 0
+        unchanged_count = 0
 
         for bench in benchmarks:
-            existing = self.db.get_benchmark(bench["benchmark_id"])
+            benchmark_id = bench.get("benchmark_id") if isinstance(bench, dict) else None
+            if not benchmark_id:
+                self._try_insert_benchmark(bench, page_num=1)
+                continue
+
+            existing = self.db.get_benchmark(benchmark_id)
 
             if not existing:
                 # New benchmark
-                self.db.insert_benchmark(bench)
-                new_count += 1
-                logger.debug(f"New: {bench['benchmark_id']} - {bench['title']}")
+                if self._try_insert_benchmark(bench, page_num=1):
+                    new_count += 1
+                    logger.debug(f"New: {benchmark_id} - {bench.get('title', '')}")
 
             elif existing.get("last_revision_date") != bench.get("last_revision_date"):
                 # Updated (if we had revision dates - for now just update)
-                self.db.insert_benchmark(bench)
-                updated_count += 1
-                logger.debug(f"Updated: {bench['benchmark_id']}")
+                if self._try_insert_benchmark(bench, page_num=1):
+                    updated_count += 1
+                    logger.debug(f"Updated: {benchmark_id}")
+            else:
+                unchanged_count += 1
+
+        if benchmarks and (new_count + updated_count + unchanged_count) == 0:
+            raise ValueError(f"All {len(benchmarks)} benchmarks on page 1 failed validation")
 
         # Update metadata
         from datetime import UTC, datetime
@@ -220,6 +229,36 @@ class CatalogScraper:
         logger.info(f"Update complete: {new_count} new, {updated_count} updated")
 
         return stats
+
+    def _try_insert_benchmark(self, bench: dict, page_num: int) -> bool:
+        """Insert a single parsed benchmark row, isolating row-level data errors."""
+        try:
+            self.db.insert_benchmark(bench)
+            return True
+        except (ValueError, KeyError, TypeError, IntegrityError) as exc:
+            bench_id = (
+                bench.get("benchmark_id", "<unknown>") if isinstance(bench, dict) else "<unknown>"
+            )
+            logger.warning(f"Skipping invalid benchmark {bench_id} on page {page_num}: {exc}")
+            return False
+
+    def _insert_page_benchmarks(self, benchmarks: list[dict], page_num: int) -> int:
+        """Insert all parsed benchmarks for a catalog page.
+
+        Returns the count of successfully inserted rows. Raises ValueError when a
+        non-empty page has zero valid rows so the caller records the page as failed.
+        """
+        if not benchmarks:
+            return 0
+
+        inserted_count = sum(
+            1 for bench in benchmarks if self._try_insert_benchmark(bench, page_num)
+        )
+        if inserted_count == 0:
+            raise ValueError(
+                f"All {len(benchmarks)} benchmarks on page {page_num} failed validation"
+            )
+        return inserted_count
 
     def _fetch_page(self, page_num: int) -> str:
         """Fetch single catalog page.
@@ -259,7 +298,7 @@ class CatalogScraper:
         Raises:
             Exception: If fetch or parse fails after all retries
         """
-        last_error = None
+        last_error: Exception | None = None
 
         for attempt in range(max_retries):
             try:
@@ -282,7 +321,9 @@ class CatalogScraper:
                 else:
                     logger.error(f"Page {page_num} failed after {max_retries} attempts: {e}")
 
-        raise last_error
+        if last_error is not None:
+            raise last_error
+        raise RuntimeError(f"Page {page_num} failed without capturing an exception")
 
     def test_connection(self) -> bool:
         """Test if we can connect and are authenticated.

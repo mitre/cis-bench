@@ -865,3 +865,26 @@ class TestBenchmarkDetailPageParsing:
         # Empty paragraphs are stripped/skipped
         assert "Actual content" in metadata["description"]
         assert "More content" in metadata["description"]
+
+    def test_parse_benchmark_detail_emits_no_deprecation_warnings(self):
+        """Test detail page parsing extracts published date and overview without deprecations."""
+        import warnings
+
+        html = """
+        <html>
+        <body>
+            <p>Published 3 months ago on Aug 1st 2025</p>
+            <h2>Overview</h2>
+            <p>Hardening guidance for servers.</p>
+        </body>
+        </html>
+        """
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            metadata = WorkBenchCatalogParser.parse_benchmark_detail_page(html)
+
+        assert metadata == {
+            "published_date": "Aug 1st 2025",
+            "published_relative": "Published 3 months ago on Aug 1st 2025",
+            "description": "Hardening guidance for servers.",
+        }

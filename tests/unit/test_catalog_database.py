@@ -89,12 +89,69 @@ class TestDatabaseInitialization:
         conn.close()
 
     def test_default_statuses_inserted(self, temp_db):
-        """Test default benchmark statuses are inserted."""
-        stats = temp_db.get_catalog_stats()
+        """Test default benchmark statuses are inserted with expected active flags and order."""
+        from sqlmodel import Session, select
 
-        # Should have at least the 5 default statuses
-        # (Published, Accepted, Draft, Archived, Rejected)
-        assert stats is not None
+        from cis_bench.catalog.models import BenchmarkStatus, BenchmarkStatusModel
+
+        assert BenchmarkStatus.FINAL_UPDATE.value == "Final Update"
+
+        with Session(temp_db.engine) as session:
+            rows = session.exec(
+                select(BenchmarkStatusModel).order_by(BenchmarkStatusModel.sort_order)
+            ).all()
+
+        actual = [(row.name, row.is_active, row.sort_order) for row in rows]
+        assert actual == [
+            ("Published", True, 1),
+            ("Accepted", True, 2),
+            ("Draft", False, 3),
+            ("Archived", False, 4),
+            ("Rejected", False, 5),
+            ("Final Update", False, 6),
+        ]
+
+    def test_initialize_schema_backfills_missing_default_statuses(self, tmp_path):
+        """Test initialize_schema backfills new default statuses into an existing 5-status DB."""
+        from sqlalchemy import text
+        from sqlmodel import Session, select
+
+        from cis_bench.catalog.models import BenchmarkStatusModel
+
+        db = CatalogDatabase(tmp_path / "legacy_catalog.db")
+        db.initialize_schema()
+
+        # Simulate a pre-existing database created before Final Update existed
+        with Session(db.engine) as session:
+            published = session.exec(
+                select(BenchmarkStatusModel).where(BenchmarkStatusModel.name == "Published")
+            ).one()
+            original_published_id = published.status_id
+            session.execute(
+                text("DELETE FROM benchmark_statuses WHERE name = :name"),
+                {"name": "Final Update"},
+            )
+            session.commit()
+
+        # Re-running initialize_schema must backfill Final Update without duplicating existing rows
+        db.initialize_schema()
+
+        with Session(db.engine) as session:
+            rows = session.exec(
+                select(BenchmarkStatusModel).order_by(BenchmarkStatusModel.sort_order)
+            ).all()
+
+        actual = [(row.name, row.is_active, row.sort_order) for row in rows]
+        assert actual == [
+            ("Published", True, 1),
+            ("Accepted", True, 2),
+            ("Draft", False, 3),
+            ("Archived", False, 4),
+            ("Rejected", False, 5),
+            ("Final Update", False, 6),
+        ]
+        published_after = next(row for row in rows if row.name == "Published")
+        assert published_after.status_id == original_published_id
 
 
 class TestBenchmarkOperations:
@@ -337,13 +394,73 @@ class TestLookupTables:
             assert isinstance(status_id, int)
             assert status_id > 0
 
-    def test_get_invalid_status_raises(self, temp_db):
-        """Test getting invalid status raises error."""
+    def test_get_or_create_status_registers_unseen_status_idempotently(self, temp_db):
+        """Test unseen non-empty statuses are normalized, created inactive, and not duplicated."""
+        from sqlmodel import Session, select
+
+        from cis_bench.catalog.models import BenchmarkStatusModel
+
+        with Session(temp_db.engine) as session:
+            created = temp_db.get_or_create_status("  Community Review  ", session)
+            assert created.name == "Community Review"
+            assert created.is_active is False
+            assert created.sort_order == 7
+            assert created.status_id is not None
+            created_id = created.status_id
+            session.commit()
+
+        with Session(temp_db.engine) as session:
+            looked_up_id = temp_db.get_status_id("Community Review", session)
+            matching_rows = session.exec(
+                select(BenchmarkStatusModel).where(BenchmarkStatusModel.name == "Community Review")
+            ).all()
+            assert looked_up_id == created_id
+            assert len(matching_rows) == 1
+
+    def test_get_empty_status_raises(self, temp_db):
+        """Test empty or whitespace-only status names raise ValueError."""
         from sqlmodel import Session
 
         with Session(temp_db.engine) as session:
-            with pytest.raises(ValueError, match="Unknown status"):
-                temp_db.get_status_id("InvalidStatus", session)
+            with pytest.raises(ValueError, match="Status name cannot be empty"):
+                temp_db.get_or_create_status("", session)
+            with pytest.raises(ValueError, match="Status name cannot be empty"):
+                temp_db.get_status_id("   ", session)
+
+    def test_insert_and_search_benchmarks_with_final_update_and_unseen_status(self, temp_db):
+        """Test inserting and searching benchmarks with Final Update and unseen WorkBench statuses."""
+        temp_db.insert_benchmark(
+            {
+                "benchmark_id": "9001",
+                "title": "CIS CentOS Linux 7 Benchmark",
+                "url": "https://workbench.cisecurity.org/benchmarks/9001",
+                "status": "Final Update",
+                "platform": "Operating System",
+            }
+        )
+        temp_db.insert_benchmark(
+            {
+                "benchmark_id": "9002",
+                "title": "CIS Legacy Appliance Benchmark",
+                "url": "https://workbench.cisecurity.org/benchmarks/9002",
+                "status": "Sunset",
+                "platform": "Operating System",
+            }
+        )
+
+        final_update_bench = temp_db.get_benchmark("9001")
+        assert final_update_bench is not None
+        assert final_update_bench["status"] == "Final Update"
+
+        sunset_bench = temp_db.get_benchmark("9002")
+        assert sunset_bench is not None
+        assert sunset_bench["status"] == "Sunset"
+
+        final_results = temp_db.search("CentOS", status="Final Update")
+        assert [row["benchmark_id"] for row in final_results] == ["9001"]
+
+        sunset_results = temp_db.search("Appliance", status="Sunset")
+        assert [row["benchmark_id"] for row in sunset_results] == ["9002"]
 
 
 class TestDownloadedBenchmarks:

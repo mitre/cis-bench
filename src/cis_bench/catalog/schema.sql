@@ -26,7 +26,8 @@ INSERT INTO benchmark_statuses (name, is_active, sort_order) VALUES
     ('Accepted', 1, 2),
     ('Draft', 0, 3),
     ('Archived', 0, 4),
-    ('Rejected', 0, 5);
+    ('Rejected', 0, 5),
+    ('Final Update', 0, 6);
 
 -- Communities
 CREATE TABLE communities (

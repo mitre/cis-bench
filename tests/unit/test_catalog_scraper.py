@@ -242,3 +242,219 @@ class TestErrorHandling:
         assert "failed_pages" in stats
         # At least page 1 should have succeeded
         assert stats["total_benchmarks"] > 0
+
+    def test_scrape_full_catalog_skips_invalid_row_and_keeps_valid_rows(
+        self, temp_db, mock_session, monkeypatch, caplog
+    ):
+        """Test malformed benchmark rows are logged and skipped without failing the page."""
+        import logging
+
+        from cis_bench.catalog.parser import WorkBenchCatalogParser
+
+        pages = {
+            1: [
+                {
+                    "benchmark_id": "101",
+                    "title": "CIS Ubuntu Linux 24.04 LTS Benchmark",
+                    "url": "https://workbench.cisecurity.org/benchmarks/101",
+                    "status": "Published",
+                },
+                {
+                    "benchmark_id": "102",
+                    "title": "Malformed Empty Status Benchmark",
+                    "url": "https://workbench.cisecurity.org/benchmarks/102",
+                    "status": "",
+                },
+                {
+                    "benchmark_id": "103",
+                    "title": "CIS CentOS Linux 7 Benchmark",
+                    "url": "https://workbench.cisecurity.org/benchmarks/103",
+                    "status": "Final Update",
+                },
+            ],
+            2: [
+                {
+                    "benchmark_id": "201",
+                    "url": "https://workbench.cisecurity.org/benchmarks/201",
+                    "status": "Published",
+                },
+                {
+                    "benchmark_id": "202",
+                    "title": "CIS Custom Lifecycle Benchmark",
+                    "url": "https://workbench.cisecurity.org/benchmarks/202",
+                    "status": "Sunset",
+                },
+            ],
+        }
+
+        scraper = CatalogScraper(temp_db, mock_session)
+        monkeypatch.setattr(scraper, "_fetch_page", lambda page_num: f"page-{page_num}")
+        monkeypatch.setattr(
+            WorkBenchCatalogParser,
+            "extract_pagination_info",
+            staticmethod(lambda html: {"total_pages": 2}),
+        )
+        monkeypatch.setattr(
+            WorkBenchCatalogParser,
+            "parse_catalog_page",
+            staticmethod(lambda html: pages[int(html.split("-")[1])]),
+        )
+
+        with caplog.at_level(logging.WARNING):
+            stats = scraper.scrape_full_catalog(max_pages=2, rate_limit_seconds=0)
+
+        assert stats["failed_pages"] == []
+        assert stats["total_benchmarks"] == 3
+        assert temp_db.get_benchmark("101")["status"] == "Published"
+        assert temp_db.get_benchmark("102") is None
+        assert temp_db.get_benchmark("103")["status"] == "Final Update"
+        assert temp_db.get_benchmark("201") is None
+        assert temp_db.get_benchmark("202")["status"] == "Sunset"
+        assert "102" in caplog.text
+        assert "201" in caplog.text
+
+    def test_scrape_full_catalog_marks_page_failed_when_all_rows_invalid(
+        self, temp_db, mock_session, monkeypatch, caplog
+    ):
+        """Test a non-empty page where every row fails validation tries all rows then fails page."""
+        import logging
+
+        from cis_bench.catalog.parser import WorkBenchCatalogParser
+
+        def fake_parse(html: str) -> list[dict]:
+            page_num = int(html.split("-")[1])
+            if page_num == 2:
+                return [
+                    {
+                        "benchmark_id": "bad-a",
+                        "title": "Bad A",
+                        "url": "https://workbench.cisecurity.org/benchmarks/bad-a",
+                        "status": "",
+                    },
+                    {
+                        "benchmark_id": "bad-b",
+                        "title": "Bad B",
+                        "url": "https://workbench.cisecurity.org/benchmarks/bad-b",
+                        "status": "   ",
+                    },
+                ]
+            return [
+                {
+                    "benchmark_id": f"ok-{page_num}",
+                    "title": f"Valid Benchmark {page_num}",
+                    "url": f"https://workbench.cisecurity.org/benchmarks/ok-{page_num}",
+                    "status": "Published",
+                }
+            ]
+
+        scraper = CatalogScraper(temp_db, mock_session)
+        monkeypatch.setattr(scraper, "_fetch_page", lambda page_num: f"page-{page_num}")
+        monkeypatch.setattr(
+            WorkBenchCatalogParser,
+            "extract_pagination_info",
+            staticmethod(lambda html: {"total_pages": 20}),
+        )
+        monkeypatch.setattr(WorkBenchCatalogParser, "parse_catalog_page", staticmethod(fake_parse))
+
+        with caplog.at_level(logging.WARNING):
+            stats = scraper.scrape_full_catalog(max_pages=20, rate_limit_seconds=0)
+
+        assert stats["failed_pages"] == [2]
+        assert stats["total_benchmarks"] == 19
+        assert "bad-a" in caplog.text
+        assert "bad-b" in caplog.text
+        assert "All 2 benchmarks on page 2 failed validation" in caplog.text
+
+    def test_scrape_full_catalog_propagates_database_operational_error(
+        self, temp_db, mock_session, monkeypatch
+    ):
+        """Test SQLite OperationalError is re-raised immediately rather than swallowed."""
+        from sqlalchemy.exc import OperationalError
+
+        from cis_bench.catalog.parser import WorkBenchCatalogParser
+
+        scraper = CatalogScraper(temp_db, mock_session)
+        monkeypatch.setattr(scraper, "_fetch_page", lambda page_num: f"page-{page_num}")
+        monkeypatch.setattr(
+            WorkBenchCatalogParser,
+            "extract_pagination_info",
+            staticmethod(lambda html: {"total_pages": 2}),
+        )
+        monkeypatch.setattr(
+            WorkBenchCatalogParser,
+            "parse_catalog_page",
+            staticmethod(
+                lambda html: [
+                    {
+                        "benchmark_id": f"id-{html}",
+                        "title": f"Benchmark {html}",
+                        "url": f"https://workbench.cisecurity.org/benchmarks/{html}",
+                        "status": "Published",
+                    }
+                ]
+            ),
+        )
+
+        original_insert = temp_db.insert_benchmark
+
+        def fail_on_page_two(bench: dict) -> None:
+            if bench["benchmark_id"] == "id-page-2":
+                raise OperationalError("INSERT", {}, Exception("database is locked"))
+            original_insert(bench)
+
+        monkeypatch.setattr(temp_db, "insert_benchmark", fail_on_page_two)
+
+        with pytest.raises(OperationalError, match="database is locked"):
+            scraper.scrape_full_catalog(max_pages=2, rate_limit_seconds=0)
+
+    def test_scrape_page_one_update_skips_invalid_row_and_fails_if_all_invalid(
+        self, temp_db, mock_session, monkeypatch
+    ):
+        """Test quick page-1 update skips single bad rows but raises when every row fails."""
+        from cis_bench.catalog.parser import WorkBenchCatalogParser
+
+        scraper = CatalogScraper(temp_db, mock_session)
+        monkeypatch.setattr(scraper, "_fetch_page", lambda page_num: "page-1")
+
+        mixed_rows = [
+            {
+                "benchmark_id": "301",
+                "title": "CIS Debian Linux 12 Benchmark",
+                "url": "https://workbench.cisecurity.org/benchmarks/301",
+                "status": "Final Update",
+            },
+            {
+                "benchmark_id": "302",
+                "title": "Invalid Empty Status",
+                "url": "https://workbench.cisecurity.org/benchmarks/302",
+                "status": "   ",
+            },
+            {
+                "url": "https://workbench.cisecurity.org/benchmarks/missing-id",
+                "title": "Missing ID Row",
+                "status": "Published",
+            },
+        ]
+        monkeypatch.setattr(
+            WorkBenchCatalogParser, "parse_catalog_page", staticmethod(lambda html: mixed_rows)
+        )
+
+        stats = scraper.scrape_page_one_update(rate_limit_seconds=0)
+        assert stats == {"new_count": 1, "updated_count": 0}
+        assert temp_db.get_benchmark("301")["status"] == "Final Update"
+        assert temp_db.get_benchmark("302") is None
+
+        all_bad_rows = [
+            {
+                "benchmark_id": "303",
+                "title": "All Bad",
+                "url": "https://workbench.cisecurity.org/benchmarks/303",
+                "status": "",
+            }
+        ]
+        monkeypatch.setattr(
+            WorkBenchCatalogParser, "parse_catalog_page", staticmethod(lambda html: all_bad_rows)
+        )
+
+        with pytest.raises(ValueError, match="failed validation"):
+            scraper.scrape_page_one_update(rate_limit_seconds=0)

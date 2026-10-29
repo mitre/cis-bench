@@ -6,11 +6,12 @@ Provides CRUD operations, search, and management for the CIS benchmark catalog.
 import logging
 from pathlib import Path
 
-from sqlalchemy import text
-from sqlmodel import Session, SQLModel, create_engine, select
+from sqlalchemy import func, text
+from sqlmodel import Session, SQLModel, col, create_engine, select
 
 from cis_bench.catalog.models import (
     BenchmarkCollection,
+    BenchmarkStatus,
     BenchmarkStatusModel,
     CatalogBenchmark,
     Collection,
@@ -22,6 +23,15 @@ from cis_bench.catalog.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_BENCHMARK_STATUSES: tuple[tuple[str, bool, int], ...] = (
+    (BenchmarkStatus.PUBLISHED.value, True, 1),
+    (BenchmarkStatus.ACCEPTED.value, True, 2),
+    (BenchmarkStatus.DRAFT.value, False, 3),
+    (BenchmarkStatus.ARCHIVED.value, False, 4),
+    (BenchmarkStatus.REJECTED.value, False, 5),
+    (BenchmarkStatus.FINAL_UPDATE.value, False, 6),
+)
 
 
 class CatalogDatabase:
@@ -49,20 +59,17 @@ class CatalogDatabase:
         # Create all tables from SQLModel models
         SQLModel.metadata.create_all(self.engine)
 
-        # Insert default statuses
+        # Insert or backfill default statuses idempotently
         with Session(self.engine) as session:
-            # Check if already populated
-            existing = session.exec(select(BenchmarkStatusModel)).first()
+            existing_names = set(session.exec(select(BenchmarkStatusModel.name)).all())
+            missing_statuses = [
+                BenchmarkStatusModel(name=name, is_active=is_active, sort_order=sort_order)
+                for name, is_active, sort_order in DEFAULT_BENCHMARK_STATUSES
+                if name not in existing_names
+            ]
 
-            if not existing:
-                statuses = [
-                    BenchmarkStatusModel(name="Published", is_active=True, sort_order=1),
-                    BenchmarkStatusModel(name="Accepted", is_active=True, sort_order=2),
-                    BenchmarkStatusModel(name="Draft", is_active=False, sort_order=3),
-                    BenchmarkStatusModel(name="Archived", is_active=False, sort_order=4),
-                    BenchmarkStatusModel(name="Rejected", is_active=False, sort_order=5),
-                ]
-                for status in statuses:
+            if missing_statuses:
+                for status in missing_statuses:
                     session.add(status)
                 session.commit()
                 logger.info("Inserted default benchmark statuses")
@@ -132,15 +139,35 @@ class CatalogDatabase:
 
         return collection
 
-    def get_status_id(self, status_name: str, session: Session) -> int:
-        """Get status ID by name."""
+    def get_or_create_status(self, status_name: str, session: Session) -> BenchmarkStatusModel:
+        """Get existing benchmark status or register an unseen non-empty status."""
+        if not isinstance(status_name, str) or not status_name.strip():
+            raise ValueError("Status name cannot be empty")
+
+        normalized = status_name.strip()
         status = session.exec(
-            select(BenchmarkStatusModel).where(BenchmarkStatusModel.name == status_name)
+            select(BenchmarkStatusModel).where(BenchmarkStatusModel.name == normalized)
         ).first()
 
         if not status:
-            raise ValueError(f"Unknown status: {status_name}")
+            max_sort_order = session.exec(select(func.max(BenchmarkStatusModel.sort_order))).one()
+            next_sort_order = (max_sort_order or 0) + 1
+            status = BenchmarkStatusModel(
+                name=normalized,
+                is_active=False,
+                sort_order=next_sort_order,
+            )
+            session.add(status)
+            session.flush()
+            logger.info(f"Registered new benchmark status: {normalized}")
 
+        return status
+
+    def get_status_id(self, status_name: str, session: Session) -> int:
+        """Get status ID by name, registering unseen non-empty statuses automatically."""
+        status = self.get_or_create_status(status_name, session)
+        if status.status_id is None:
+            raise RuntimeError(f"Failed to assign status_id for status: {status.name}")
         return status.status_id
 
     def insert_benchmark(self, benchmark_data: dict):
@@ -266,9 +293,11 @@ class CatalogDatabase:
         status: str | None = "Published",
         latest_only: bool = False,
         limit: int = 50,
-        session: Session = None,
+        session: Session | None = None,
     ) -> list[dict]:
         """List all benchmarks (no FTS5 search)."""
+        if session is None:
+            raise ValueError("session is required")
         sql = """
             SELECT
                 b.benchmark_id,
@@ -291,7 +320,7 @@ class CatalogDatabase:
             WHERE 1=1
         """
 
-        params = {}
+        params: dict[str, object] = {}
 
         if platform:
             sql += " AND p.name = :platform"
@@ -375,7 +404,7 @@ class CatalogDatabase:
                 WHERE benchmarks_fts MATCH :query
             """
 
-            params = {"query": fts_query}
+            params: dict[str, object] = {"query": fts_query}
 
             if platform:
                 sql += " AND p.name = :platform"
@@ -444,7 +473,7 @@ class CatalogDatabase:
         """List all communities with benchmark counts."""
         with Session(self.engine) as session:
             communities = session.exec(
-                select(Community).order_by(Community.benchmark_count.desc())
+                select(Community).order_by(col(Community.benchmark_count).desc())
             ).all()
 
             return [
@@ -555,7 +584,7 @@ class CatalogDatabase:
         """Get catalog statistics."""
         with Session(self.engine) as session:
             total = session.exec(
-                select(CatalogBenchmark).where(CatalogBenchmark.benchmark_id.is_not(None))
+                select(CatalogBenchmark).where(col(CatalogBenchmark.benchmark_id).is_not(None))
             ).all()
 
             published = session.exec(
