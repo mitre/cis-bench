@@ -29,7 +29,7 @@ cis-bench catalog refresh
 **Test (automatic in pytest):**
 ```bash
 # Set automatically by pytest fixture
-pytest tests/
+uv run pytest tests/
 # Uses: /tmp/cis-bench-test/catalog.db
 ```
 
@@ -58,35 +58,54 @@ pytest tests/
 
 ## Running Tests
 
+!!! important "Always use `uv run`"
+    This project uses `uv` with a local `.venv`. All commands must use `uv run` to ensure the correct environment is used.
+
 ### Full Test Suite
 ```bash
-pytest tests/
-# 405 tests, uses test database automatically
+uv run pytest tests/
+# 1200+ tests, uses test database automatically
 ```
 
 ### Specific Test Modules
 ```bash
-pytest tests/unit/test_catalog_database.py # Unit tests
-pytest tests/integration/ # Integration tests
-pytest tests/e2e/ # End-to-end CLI tests
+uv run pytest tests/unit/test_catalog_database.py  # Unit tests
+uv run pytest tests/integration/                    # Integration tests
+uv run pytest tests/e2e/                            # End-to-end CLI tests
 ```
 
 ### With Coverage
 ```bash
-pytest tests/ --cov=src/cis_bench --cov-report=html
+uv run pytest tests/ --cov=src/cis_bench --cov-report=html
 open htmlcov/index.html
 ```
 
 ### Verbose Output
 ```bash
-pytest tests/ -v # Verbose test names
-pytest tests/ -vv # Very verbose
-pytest tests/ -s # Show print statements
+uv run pytest tests/ -v    # Verbose test names
+uv run pytest tests/ -vv   # Very verbose
+uv run pytest tests/ -s    # Show print statements
 ```
 
 ---
 
 ## Test Organization
+
+### Folder Structure
+
+```
+tests/
+├── unit/                    # Isolated component tests (sync)
+│   ├── test_catalog_tab_pane.py   # Widget bindings, methods
+│   └── test_*.py
+├── integration/             # Component interaction tests
+│   ├── test_main_tui.py           # Async app tests with run_test()
+│   └── test_*.py
+├── e2e/                     # Full CLI workflow tests
+│   └── test_cli_*.py
+└── regression/              # Architecture compliance tests
+    └── test_*_compliance.py
+```
 
 ### Unit Tests (`tests/unit/`)
 
@@ -94,12 +113,39 @@ pytest tests/ -s # Show print statements
 - Use mocks for external dependencies
 - Fast (run in < 1 second each)
 - Use `tmp_path` fixtures for temporary files/databases
+- **Sync only** - no `async def` or `app.run_test()`
+
+**Example: Widget unit tests**
+```python
+class TestCatalogTabPaneBindings:
+    """Test bindings exist (sync, no app context needed)."""
+
+    def test_has_view_binding(self):
+        from cis_bench.cli.commands.tui.catalog.pane import CatalogTabPane
+        binding_keys = [b.key for b in CatalogTabPane.BINDINGS]
+        assert "v" in binding_keys
+```
 
 ### Integration Tests (`tests/integration/`)
 
 - Test components working together
 - May use real files/databases (in temp locations)
 - Test exporters, fetchers, validators
+- **Async TUI tests** - use `async with app.run_test()`
+
+**Example: TUI integration tests**
+```python
+class TestMainTUIStructure:
+    """Test app behavior (async, requires app context)."""
+
+    @pytest.mark.asyncio
+    async def test_app_has_tabbed_content(self):
+        app = MainTUIApp()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            tabbed = app.query_one(TabbedContent)
+            assert tabbed is not None
+```
 
 ### E2E Tests (`tests/e2e/`)
 
@@ -107,6 +153,31 @@ pytest tests/ -s # Show print statements
 - Use `CliRunner` to invoke commands
 - Test user-facing behavior
 - Still isolated (test environment)
+
+### Design Decision: Splitting Mixed Test Files
+
+When a test file has both sync (unit) and async (integration) tests, **split them**:
+
+| Test Type | Characteristics | Location |
+|-----------|-----------------|----------|
+| Sync unit | Method existence, bindings, pure functions | `tests/unit/` |
+| Async integration | `app.run_test()`, full widget behavior | `tests/integration/` |
+
+**Example split (TUI tests):**
+```
+# Before: All in one file
+tests/integration/test_main_tui.py  # 39 mixed tests
+
+# After: Split by type
+tests/unit/test_catalog_tab_pane.py       # 23 sync unit tests
+tests/integration/test_main_tui.py        # 16 async integration tests
+```
+
+This pattern:
+
+- Makes unit tests faster (no async overhead)
+- Clarifies test purpose
+- Follows Python/pytest conventions
 
 ---
 
@@ -153,6 +224,9 @@ return {
 3. **Mock external APIs** - Do not hit real CIS WorkBench in tests
 4. **Test isolation** - Each test independent
 5. **Proper cleanup** - Use fixtures with yield/cleanup
+6. **Separate sync from async** - Don't mix unit and integration tests in one file
+7. **Mirror source structure** - `test_catalog_tab_pane.py` tests `catalog/pane.py`
+8. **One class per feature area** - Group related tests in test classes
 
 ---
 
@@ -199,14 +273,14 @@ Full test suite runs in CI/CD (when set up):
 # .github/workflows/test.yml
 
 - name: Run tests
-run: pytest tests/ --cov
+  run: uv run pytest tests/ --cov
 ```
 
 ---
 
 ## Test Coverage
 
-Current coverage: 405 tests across:
+Current coverage: 1200+ tests across:
 
 - 285 original tests (exporters, fetchers, models)
 - 41 catalog database tests

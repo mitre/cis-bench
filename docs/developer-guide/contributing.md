@@ -80,6 +80,26 @@ uv run pre-commit install
 uv run pytest tests/
 ```
 
+### Auto-Activation with direnv (Optional)
+
+For automatic venv activation when entering the project directory:
+
+```bash
+# Install direnv (one-time)
+brew install direnv  # macOS
+# Or: sudo apt install direnv  # Ubuntu/Debian
+
+# Add to ~/.zshrc or ~/.bashrc:
+eval "$(direnv hook zsh)"  # or bash
+
+# Allow direnv for this project (one-time)
+cd cis-bench
+direnv allow
+
+# Now .venv activates automatically when you enter the directory
+# You can use bare commands: pytest tests/
+```
+
 ### Alternative: Setup with pip
 
 ```bash
@@ -115,10 +135,10 @@ pytest tests/
 - No bandit security issues
 
 ```bash
-# Run before committing
-pytest tests/
-ruff check --fix .
-ruff format .
+# Run before committing (ALWAYS use uv run)
+uv run pytest tests/
+uv run ruff check --fix .
+uv run ruff format .
 ```
 
 Pre-commit hooks enforce this automatically.
@@ -324,8 +344,8 @@ Authored by: Your Name <email@example.com>
 # Add files specifically
 git add file1.py file2.py
 
-# Run tests first
-pytest tests/
+# Run tests first (use uv run for proper environment)
+uv run pytest tests/
 
 # Then commit
 git commit -m "feat: Add specific feature"
@@ -393,17 +413,17 @@ export CIS_BENCH_ENV=dev
 ### Running Tests
 
 ```bash
-# All tests
-pytest tests/
+# All tests (ALWAYS use uv run)
+uv run pytest tests/
 
 # Specific module
-pytest tests/unit/test_catalog_database.py
+uv run pytest tests/unit/test_catalog_database.py
 
 # With coverage
-pytest tests/ --cov=src/cis_bench
+uv run pytest tests/ --cov=src/cis_bench
 
 # Verbose
-pytest tests/ -v
+uv run pytest tests/ -v
 ```
 
 ---

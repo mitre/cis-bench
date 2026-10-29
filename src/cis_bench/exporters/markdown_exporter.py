@@ -33,13 +33,52 @@ class MarkdownExporter(BaseExporter):
         )
 
         with open(output_path, "w", encoding="utf-8") as f:
-            # Title and metadata
+            # Title and core metadata
             f.write(f"# {benchmark.title}\n\n")
             f.write(f"**Version:** {benchmark.version}  \n")
             f.write(f"**Benchmark ID:** {benchmark.benchmark_id}  \n")
+
+            # Publication info
+            if benchmark.published_date:
+                f.write(f"**Published:** {benchmark.published_date}  \n")
+            if benchmark.release_type:
+                f.write(f"**Release Type:** {benchmark.release_type}  \n")
+
+            # Lineage
+            if benchmark.parent_benchmark_title:
+                parent_md = (
+                    f"[{benchmark.parent_benchmark_title}]({benchmark.parent_benchmark_url})"
+                )
+                f.write(f"**Forked From:** {parent_md}  \n")
+
+            # Organizational
+            if benchmark.milestone_name:
+                f.write(f"**Milestone:** {benchmark.milestone_name}  \n")
+
+            # Contributors
+            if benchmark.contributors:
+                contributors_str = ", ".join(benchmark.contributors)
+                f.write(f"**Contributors:** {contributors_str}  \n")
+
+            # Assets (CPE-IDs)
+            if benchmark.assets:
+                f.write("**Assets:**  \n")
+                for asset in benchmark.assets:
+                    f.write(f"- {asset.title}: `{asset.cpe_id}`  \n")
+
+            # System metadata
             f.write(f"**Total Recommendations:** {benchmark.total_recommendations}  \n")
             f.write(f"**Downloaded:** {benchmark.downloaded_at.strftime('%Y-%m-%d %H:%M:%S')}  \n")
             f.write(f"**Source:** {benchmark.url}\n\n")
+
+            # Description sections
+            if benchmark.description:
+                f.write(f"**Description:** {benchmark.description}\n\n")
+            if benchmark.intended_audience:
+                f.write(f"**Intended Audience:** {benchmark.intended_audience}\n\n")
+            if benchmark.acknowledgements:
+                f.write(f"**Acknowledgements:** {benchmark.acknowledgements}\n\n")
+
             f.write("---\n\n")
 
             # Table of Contents

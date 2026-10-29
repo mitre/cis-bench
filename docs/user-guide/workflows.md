@@ -344,48 +344,61 @@ CIS updated the AlmaLinux 8 benchmark from v3.0.0 to v4.0.0. You need to see wha
 ### Complete Workflow
 
 ```bash
-# 1. Download both versions
-cis-bench download 15287 23598
+# Compare two benchmark versions directly by ID
+# (auto-fetches from CIS WorkBench if not cached)
+cis-bench diff 15287 23598
+```
 
-# 2. Export both to JSON (full data)
-cis-bench export 15287 --format json -o alma8-v3.json
-cis-bench export 23598 --format json -o alma8-v4.json
+That's it! The diff command automatically:
 
-# 3. Compare recommendation counts
-jq '.total_recommendations' alma8-v3.json
-jq '.total_recommendations' alma8-v4.json
+- Fetches benchmarks if not cached locally
+- Detects added, removed, modified, and renumbered recommendations
+- Displays a formatted comparison table
 
-# 4. Extract recommendation refs
-jq -r '.recommendations[].ref' alma8-v3.json | sort > v3-refs.txt
-jq -r '.recommendations[].ref' alma8-v4.json | sort > v4-refs.txt
+**Output Formats:**
 
-# 5. Find differences
-comm -23 v3-refs.txt v4-refs.txt > removed.txt # In v3, not in v4
-comm -13 v3-refs.txt v4-refs.txt > added.txt # In v4, not in v3
-comm -12 v3-refs.txt v4-refs.txt > common.txt # In both
+```bash
+# Default table output
+cis-bench diff 15287 23598
 
-# 6. Summary
-echo "Removed: $(wc -l < removed.txt) recommendations"
-echo "Added: $(wc -l < added.txt) recommendations"
-echo "Common: $(wc -l < common.txt) recommendations"
+# Markdown (for docs, PRs, wikis)
+cis-bench diff 15287 23598 --format markdown
 
-# 7. Detail on new recommendations
-echo "New recommendations in v4.0.0:"
-cat added.txt | while read ref; do
-jq -r ".recommendations[] | select(.ref==\"$ref\") | .title" alma8-v4.json
-done
+# JSON (machine-readable for automation)
+cis-bench diff 15287 23598 --format json
+
+# Quick summary only
+cis-bench diff 15287 23598 --format summary
+
+# Detailed field-level changes
+cis-bench diff 15287 23598 --verbose
 ```
 
 **Expected Output:**
 ```
-Removed: 5 recommendations
-Added: 12 recommendations
-Common: 310 recommendations
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  Benchmark Comparison: AlmaLinux 8 v3.0.0 → v4.0.0       ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
-New recommendations in v4.0.0:
-1.1.28 Ensure bootloader password is set
-1.2.15 Ensure system-wide crypto policy is configured
+Summary:
+  ✚ Added: 12  ✖ Removed: 5  ⟳ Modified: 28  ? Renumbered: 2
+
+┃ Status ┃ Ref     ┃ Title                              ┃ Changes    ┃
+│ ✚ ADD  │ 1.1.28  │ Ensure bootloader password is set  │ New in v2  │
+│ ✚ ADD  │ 1.2.15  │ Ensure crypto policy configured    │ New in v2  │
+│ ✖ DEL  │ 2.3.1   │ Ensure NIS Server not installed    │ Removed    │
+│ ⟳ MOD  │ 3.1.1   │ Ensure SSH MaxAuthTries configured │ title,audit│
+│ ? REN  │ 5.1→6.1 │ Ensure cron daemon enabled         │ 92% match  │
 ...
+```
+
+**Offline Mode:**
+
+If you've already downloaded the benchmarks, use offline mode to skip network checks:
+
+```bash
+# Use only locally cached benchmarks
+cis-bench --offline diff 15287 23598
 ```
 
 ---
@@ -835,6 +848,65 @@ cis-bench search "ubuntu" # Works if catalog cached
 cis-bench download 12345 # New download
 cis-bench catalog refresh # Network required
 ```
+
+---
+
+## Scenario 15: Interactive Benchmark Exploration
+
+**Context:**
+You want to explore a benchmark's recommendations interactively, search for specific controls, or compare two versions side-by-side.
+
+### Browse a Benchmark with TUI
+
+```bash
+# Open interactive browser for a benchmark
+cis-bench view 23598
+
+# Filter to Level 1 controls only
+cis-bench view 23598 --profile "Level 1"
+
+# Show only automated controls
+cis-bench view 23598 --status automated
+```
+
+**TUI Keyboard Shortcuts:**
+
+| Key | Action |
+|-----|--------|
+| `?` | Show help with all shortcuts |
+| `/` | Search/filter items |
+| `Tab` | Switch between list and detail panes |
+| `↑/↓` or `j/k` | Navigate list |
+| `f` | Toggle fullscreen detail |
+| `r` | Reverse sort order |
+| `s` | Save report to file |
+| `q` | Quit |
+
+### Compare Two Benchmark Versions
+
+```bash
+# Interactive diff comparison
+cis-bench diff 23598 24001
+
+# Search within diff results
+# Press '/' then type to filter (e.g., "SSH" to find SSH changes)
+```
+
+### Search Within a Benchmark
+
+While in the TUI:
+
+1. Press `/` to open search
+2. Type your search query (e.g., "firewall", "SSH", "1.2.3")
+3. Results filter in real-time
+4. Press `Enter` to keep filter, `Escape` to clear
+
+### Save Report from TUI
+
+1. Browse to items of interest
+2. Press `s` to open save dialog
+3. Enter filename (default: auto-generated)
+4. Press `Enter` to save Markdown report
 
 ---
 

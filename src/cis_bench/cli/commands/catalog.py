@@ -10,6 +10,7 @@ from cis_bench.catalog.database import CatalogDatabase
 from cis_bench.catalog.downloader import CatalogDownloader
 from cis_bench.catalog.scraper import CatalogScraper
 from cis_bench.catalog.search import CatalogSearch
+from cis_bench.cli.helpers.offline import check_offline_mode
 from cis_bench.cli.helpers.output import output_data
 from cis_bench.config import Config
 from cis_bench.exceptions import AuthenticationError
@@ -46,7 +47,8 @@ def catalog():
 @click.option("--browser", default="chrome", help="Browser for cookie extraction")
 @click.option("--max-pages", type=int, help="Limit pages to scrape (for testing)")
 @click.option("--rate-limit", default=2.0, type=float, help="Seconds between requests")
-def refresh(browser, max_pages, rate_limit):
+@click.pass_context
+def refresh(ctx, browser, max_pages, rate_limit):
     """Refresh catalog from CIS WorkBench (scrape all pages).
 
     This builds or updates the complete catalog by scraping all benchmark
@@ -59,6 +61,8 @@ def refresh(browser, max_pages, rate_limit):
         cis-bench catalog refresh --max-pages 5  # Test with 5 pages
         cis-bench catalog refresh --rate-limit 1  # Faster (less polite)
     """
+    check_offline_mode(ctx, "catalog refresh")
+
     try:
         # Get database
         db = get_catalog_db()

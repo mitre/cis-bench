@@ -463,6 +463,145 @@ class TestBenchmark:
         assert len(benchmark.recommendations) == 2
         assert all(isinstance(r, Recommendation) for r in benchmark.recommendations)
 
+    def test_benchmark_with_optional_metadata(self, minimal_benchmark_data):
+        """Test benchmark with optional published_date and description."""
+        minimal_benchmark_data["published_date"] = "Aug 1st 2025"
+        minimal_benchmark_data["description"] = "A security benchmark for testing"
+        benchmark = Benchmark(**minimal_benchmark_data)
+        assert benchmark.published_date == "Aug 1st 2025"
+        assert benchmark.description == "A security benchmark for testing"
+
+    def test_benchmark_optional_fields_default_to_none(self, minimal_benchmark_data):
+        """Test optional fields default to None when not provided."""
+        benchmark = Benchmark(**minimal_benchmark_data)
+        assert benchmark.published_date is None
+        assert benchmark.description is None
+
+    def test_benchmark_with_only_published_date(self, minimal_benchmark_data):
+        """Test benchmark with only published_date (no description)."""
+        minimal_benchmark_data["published_date"] = "Jan 15th 2024"
+        benchmark = Benchmark(**minimal_benchmark_data)
+        assert benchmark.published_date == "Jan 15th 2024"
+        assert benchmark.description is None
+
+    def test_benchmark_with_all_extended_metadata(self, minimal_benchmark_data):
+        """Test benchmark with all extended metadata fields."""
+        minimal_benchmark_data.update(
+            {
+                "published_date": "Jun 24th 2024",
+                "published_relative": "1 year ago on Jun 24th 2024",
+                "description": "Security benchmark for AlmaLinux 9",
+                "release_type": "Planned Update",
+                "contributors": ["Eric Pinnell", "Thomas Sjögren", "James Trigg"],
+                "parent_benchmark_url": "https://workbench.cisecurity.org/benchmarks/16763",
+                "parent_benchmark_title": "CIS Fedora 34 Benchmark",
+                "community_url": "https://workbench.cisecurity.org/communities/139",
+                "milestone_name": "CIS AlmaLinux 9 v2.0.0",
+                "milestone_url": "https://workbench.cisecurity.org/community/139/milestones/956",
+                "intended_audience": "System administrators and security specialists",
+                "acknowledgements": "Thanks to all contributors",
+                "assets": [
+                    {
+                        "title": "AlmaLinux OS 9",
+                        "cpe_id": "cpe:2.3:o:almalinux:almalinux:9:*:*:*:*:*:*:*",
+                    }
+                ],
+                "revision_history": [
+                    {
+                        "revision_date": "1 year ago",
+                        "author": "Eric",
+                        "modification_count": 5,
+                        "diff_url": "https://workbench.cisecurity.org/diff/123",
+                    }
+                ],
+            }
+        )
+        benchmark = Benchmark(**minimal_benchmark_data)
+
+        assert benchmark.published_date == "Jun 24th 2024"
+        assert benchmark.release_type == "Planned Update"
+        assert len(benchmark.contributors) == 3
+        assert "Eric Pinnell" in benchmark.contributors
+        assert (
+            str(benchmark.parent_benchmark_url)
+            == "https://workbench.cisecurity.org/benchmarks/16763"
+        )
+        assert benchmark.parent_benchmark_title == "CIS Fedora 34 Benchmark"
+        assert str(benchmark.community_url) == "https://workbench.cisecurity.org/communities/139"
+        assert benchmark.milestone_name == "CIS AlmaLinux 9 v2.0.0"
+        assert (
+            str(benchmark.milestone_url)
+            == "https://workbench.cisecurity.org/community/139/milestones/956"
+        )
+        assert benchmark.intended_audience == "System administrators and security specialists"
+        assert benchmark.acknowledgements == "Thanks to all contributors"
+        assert len(benchmark.assets) == 1
+        assert benchmark.assets[0].cpe_id == "cpe:2.3:o:almalinux:almalinux:9:*:*:*:*:*:*:*"
+        assert len(benchmark.revision_history) == 1
+        assert benchmark.revision_history[0].author == "Eric"
+        assert benchmark.revision_history[0].modification_count == 5
+
+
+# ============================================================================
+# NEW MODEL TESTS
+# ============================================================================
+
+
+class TestBenchmarkAsset:
+    """Test BenchmarkAsset model."""
+
+    def test_benchmark_asset_creation(self):
+        """Test creating a BenchmarkAsset."""
+        from cis_bench.models.benchmark import BenchmarkAsset
+
+        asset = BenchmarkAsset(
+            title="AlmaLinux OS 9", cpe_id="cpe:2.3:o:almalinux:almalinux:9:*:*:*:*:*:*:*"
+        )
+
+        assert asset.title == "AlmaLinux OS 9"
+        assert asset.cpe_id == "cpe:2.3:o:almalinux:almalinux:9:*:*:*:*:*:*:*"
+
+    def test_benchmark_asset_validation(self):
+        """Test BenchmarkAsset validation."""
+        from pydantic import ValidationError
+
+        from cis_bench.models.benchmark import BenchmarkAsset
+
+        # Missing required fields should raise validation error
+        with pytest.raises(ValidationError):
+            BenchmarkAsset()
+
+
+class TestRevisionHistoryEntry:
+    """Test RevisionHistoryEntry model."""
+
+    def test_revision_history_entry_creation(self):
+        """Test creating a RevisionHistoryEntry."""
+        from cis_bench.models.benchmark import RevisionHistoryEntry
+
+        entry = RevisionHistoryEntry(
+            revision_date="1 year ago",
+            author="Eric",
+            modification_count=5,
+            diff_url="https://workbench.cisecurity.org/diff/123",
+        )
+
+        assert entry.revision_date == "1 year ago"
+        assert entry.author == "Eric"
+        assert entry.modification_count == 5
+        assert entry.diff_url == "https://workbench.cisecurity.org/diff/123"
+
+    def test_revision_history_entry_all_optional(self):
+        """Test RevisionHistoryEntry with all fields as None."""
+        from cis_bench.models.benchmark import RevisionHistoryEntry
+
+        entry = RevisionHistoryEntry()
+
+        assert entry.revision_date is None
+        assert entry.author is None
+        assert entry.modification_count is None
+        assert entry.diff_url is None
+
 
 # ============================================================================
 # SERIALIZATION TESTS

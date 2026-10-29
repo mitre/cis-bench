@@ -163,3 +163,12 @@ tools/
 # Beads task tracker - runtime artifacts (issues.jsonl IS tracked)
 .beads/recovery-context.md
 .beads/last-touched
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
+
+# Beads / Dolt files (added by bd init)
+.beads/proxieddb/
+*.gate.lock*

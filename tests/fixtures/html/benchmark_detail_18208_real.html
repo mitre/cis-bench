@@ -1,0 +1,1810 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <!-- JS script for cached pages redirection if the user is not authorized-->
+    <script  nonce="v9OXtY99KnyM6KuynrwzhXMWFxfy9UK5" >
+        window.addEventListener('pageshow', (event) => {
+            if (event.persisted || performance.getEntriesByType("navigation")[0].transferSize === 0) {
+                var domain = 'https://workbench.cisecurity.org/';
+                $.ajax({
+                    url:  "/is-authorized",
+                    type: "GET",
+                    success: function(data) {
+                        if(data.status === false) {
+                            window.history.pushState(null, "", window.location.href);
+                            window.history.back();
+                            window.history.forward();
+                            window.location = domain;
+                        }
+                    }
+                });
+            }
+        });
+    </script>
+    <!-- End of JS script for cached pages redirection -->
+    <title>CIS WorkBench / Benchmarks</title>
+            <meta charset="UTF-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="csrf-token" content="osp8eWn8tjLH48ELpVAdFcLeRaWCQyDw6ApNQEP2">
+        <meta name="inactive_time" content="60">
+        <link rel="shortcut icon" href="/favicon.ico" type="image/x-icon"/>
+    <link rel="icon" href="/images/CIS_Workbench_logo.png">
+
+                <link rel="preload" as="style" href="https://workbench.cisecurity.org/build/assets/app-DmydUVop.css" nonce="v9OXtY99KnyM6KuynrwzhXMWFxfy9UK5" /><link rel="preload" as="style" href="https://workbench.cisecurity.org/build/assets/app-B1x-LIsx.css" nonce="v9OXtY99KnyM6KuynrwzhXMWFxfy9UK5" /><link rel="preload" as="style" href="https://workbench.cisecurity.org/build/assets/tailwind-BOyIHPUB.css" nonce="v9OXtY99KnyM6KuynrwzhXMWFxfy9UK5" /><link rel="modulepreload" as="script" href="https://workbench.cisecurity.org/build/assets/app-B32TnPTT.js" nonce="v9OXtY99KnyM6KuynrwzhXMWFxfy9UK5" /><link rel="stylesheet" href="https://workbench.cisecurity.org/build/assets/app-DmydUVop.css" nonce="v9OXtY99KnyM6KuynrwzhXMWFxfy9UK5" data-navigate-track="reload" /><link rel="stylesheet" href="https://workbench.cisecurity.org/build/assets/app-B1x-LIsx.css" nonce="v9OXtY99KnyM6KuynrwzhXMWFxfy9UK5" data-navigate-track="reload" /><link rel="stylesheet" href="https://workbench.cisecurity.org/build/assets/tailwind-BOyIHPUB.css" nonce="v9OXtY99KnyM6KuynrwzhXMWFxfy9UK5" data-navigate-track="reload" /><script type="module" src="https://workbench.cisecurity.org/build/assets/app-B32TnPTT.js" nonce="v9OXtY99KnyM6KuynrwzhXMWFxfy9UK5" data-navigate-track="reload"></script>        <link rel="preload" as="style" href="https://workbench.cisecurity.org/build/assets/tailwind-BOyIHPUB.css" nonce="v9OXtY99KnyM6KuynrwzhXMWFxfy9UK5" /><link rel="stylesheet" href="https://workbench.cisecurity.org/build/assets/tailwind-BOyIHPUB.css" nonce="v9OXtY99KnyM6KuynrwzhXMWFxfy9UK5" data-navigate-track="reload" />
+    <!-- Google Tag Manager -->
+    <script  nonce="v9OXtY99KnyM6KuynrwzhXMWFxfy9UK5" >(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+                new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+            j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+            'https://www.googletagmanager.com/gtm.js?id='+i+dl;var n=d.querySelector('[nonce]');
+            n&&j.setAttribute('nonce',n.nonce||n.getAttribute('nonce'));f.parentNode.insertBefore(j,f);
+        })(window,document,'script','dataLayer','GTM-PMFL2DG');
+    </script>
+    <!-- End Google Tag Manager -->
+</head>
+<body>
+    <div id="app">
+
+	<wb-user-feedback
+		url="benchmarks/18208"
+		referer-url=""
+		route-name="benchmarks.show"
+	></wb-user-feedback>
+
+			<div id="wrapper" class=" sidebar-right-active   ">
+							<div id="sidebar-wrapper">
+					<div id="sidebar-actions">
+													<a href="#" class="offcanvas-slide pull-right"  aria-label="Hide side bar" rel="hide-sidebar"><span class="fa-regular fa-square-caret-left"></span></a>
+							<a href="#" class="offcanvas-slide pull-right" rel="show-sidebar" style="display: none;"><span class="fa-regular fa-square-caret-right"></span></a>
+												<div class="clearfix"></div>
+					</div>
+					<div id="sidebar-inner">
+						<div id="sidebar-content">
+							    <a href="https://workbench.cisecurity.org/communities/139" class="block flex hover:no-underline">
+        <span class="fa fa-3x fa-globe-americas mr-3"></span> CIS AlmaLinux OS Benchmarks
+    </a>
+
+<a href="https://workbench.cisecurity.org/benchmarks/18208" title="CIS AlmaLinux OS 9 Benchmark v2.0.0"
+   class="inline-block mt-4 truncate hover:no-underline" style="width: 280px;">
+    <span class="fa fa-book fa-fw"></span> CIS AlmaLinux OS 9 Benchmark v2.0.0
+</a>
+
+<div class="flex justify-between">
+                        <a class=""
+               href="https://workbench.cisecurity.org/benchmarks/18208/files">
+                <button class="text-gray-700 border-none bg-warm-gray-100 rounded-md px-4 py-2 transition duration-500 ease select-none hover:bg-cis-light-500 hover:text-white focus:outline-none focus:ring whitespace-nowrap disabled:opacity-50 my-2" style="width: 125px;">
+    <i class="fa fa-fw fa-file"></i> Files
+</button>
+            </a>
+
+    <div></div>
+
+            <a class=""
+           href="https://workbench.cisecurity.org/benchmarks/18208/tickets">
+            <button class="text-gray-700 border-none bg-warm-gray-100 rounded-md px-4 py-2 transition duration-500 ease select-none hover:bg-cis-light-500 hover:text-white focus:outline-none focus:ring whitespace-nowrap disabled:opacity-50 my-2" style="width: 125px;">
+    <i class="fa fa-fw fa-ticket"></i> Tickets
+</button>
+        </a>
+        </div>
+
+<div class="min-hide mt-4">
+    <wb-nav-tree
+            benchmark-id="18208"></wb-nav-tree>
+</div>
+						</div>
+					</div>
+				</div>
+						<div id="page-content-wrapper">
+
+			<header class="navbar-fixed-top navbar-prod">
+									<div class="container">
+						<div class="navbar navbar-inverse navbar-fixed-top" role="navigation">
+	<div class="container-fluid">
+		<div class="navbar-logo-header navbar-header">
+			<a class="navbar-brand" href="https://workbench.cisecurity.org">
+				<img class="navbar-logo" src="/images/CIS_Workbench_Spot.png" alt="Security Benchmarks" data-cy="navbar-logo" />
+			</a>
+		</div>
+
+		<div class="navbar-mobile">
+			<button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-collapse">
+				<span class="sr-only">Toggle navigation</span>
+				<span class="icon-bar"></span>
+				<span class="icon-bar"></span>
+				<span class="icon-bar"></span>
+			</button>
+		</div>
+
+		<div class="navbar-collapse">
+			<ul class="nav navbar-nav navbar-main">
+				<li class="dropdown dropdown-hover">
+            <a href="https://workbench.cisecurity.org/communities" class="dropdown-toggle community-nav" data-toggle="dropdown">
+				<span class="fa fa-globe-americas icon-hover">
+					<span class="hover-text hidden-lg">Communities</span>
+				</span>
+                <span class="hidden-sm"> Communities</span>
+                <span class="caret"></span>
+            </a>
+            <ul class="dropdown-menu" role="menu">
+                <li class="dropdown-header">Joined Communities</li>
+                                    <li>
+                        <a href="https://workbench.cisecurity.org/communities/14">
+                            <span class="fa fa-globe-americas fa-fw"></span> CIS Red Hat Enterprise Linux Benchmarks
+                        </a>
+                    </li>
+                                    <li>
+                        <a href="https://workbench.cisecurity.org/communities/64">
+                            <span class="fa fa-globe-americas fa-fw"></span> CIS Oracle MySQL Benchmarks
+                        </a>
+                    </li>
+                                    <li>
+                        <a href="https://workbench.cisecurity.org/communities/23">
+                            <span class="fa fa-globe-americas fa-fw"></span> CIS NGINX Benchmarks
+                        </a>
+                    </li>
+                                    <li>
+                        <a href="https://workbench.cisecurity.org/communities/37">
+                            <span class="fa fa-globe-americas fa-fw"></span> CIS Docker Benchmarks
+                        </a>
+                    </li>
+                                    <li>
+                        <a href="https://workbench.cisecurity.org/communities/12">
+                            <span class="fa fa-globe-americas fa-fw"></span> CIS CentOS Linux Benchmarks
+                        </a>
+                    </li>
+                                    <li>
+                        <a href="https://workbench.cisecurity.org/communities/26">
+                            <span class="fa fa-globe-americas fa-fw"></span> CIS Apache HTTP Server Benchmarks
+                        </a>
+                    </li>
+                                    <li>
+                        <a href="https://workbench.cisecurity.org/communities/44">
+                            <span class="fa fa-globe-americas fa-fw"></span> CIS Apache Hadoop Benchmarks
+                        </a>
+                    </li>
+                                <li>
+                    <a href="https://workbench.cisecurity.org/communities/public">
+                        See All Communities
+                    </a>
+                </li>
+            </ul>
+        </li>
+        <li>
+        <a href="https://workbench.cisecurity.org/benchmarks" class="benchmarks-nav">
+			<span class="fa fa-book icon-hover">
+				<span class="hover-text hidden-lg">Benchmarks</span>
+			</span>
+            <span class="hidden-sm"> Benchmarks</span>
+        </a>
+    </li>
+    <li>
+        <a href="https://workbench.cisecurity.org/tickets" class="tickets-nav">
+            <span class="fa fa-ticket icon-hover"><span class="hover-text hidden-lg">Tickets</span></span><span
+                    class=" hidden-sm"> Tickets</span>
+        </a>
+    </li>
+    <li>
+        <a href="https://workbench.cisecurity.org/files" class="downloads-nav">
+            <span class="fa fa-download icon-hover"><span class="hover-text hidden-lg">Downloads</span></span><span
+                    class="hidden-sm"> Downloads</span>
+        </a>
+    </li>
+
+
+    <li>
+	<a href="https://workbench.cisecurity.org/support-center"><span class="fa fa-question icon-hover"><span class="hover-text hidden-lg">Support Center</span></span><span class="hidden-sm"> Support Center</span></a>
+</li>
+
+			</ul>
+
+			<ul class="nav navbar-nav navbar-right">
+								<li class="dropdown dropdown-hover user-nav">
+    <a href="#" class="dropdown-toggle" data-toggle="dropdown" dusk="user-nav-dropdown">
+        <span class="fa fa-user" style="margin-right: 5px;" aria-hidden="true"></span>alippold
+	                    <span class="badge notification-total">148</span>
+
+        <span class="caret"></span>
+    </a>
+    <ul class="dropdown-menu" role="menu">
+        <li>
+            <a href="https://workbench.cisecurity.org/user/alippold"
+               class="username-nav tour-step-backdrop">
+                <span class="fa fa-fw fa-user"></span> alippold
+            </a>
+        </li>
+                <li>
+            <a href="https://workbench.cisecurity.org/notifications">
+                <i class="fa fa-fw fa-bell"></i>
+                Notifications
+
+            </a>
+        </li>
+        <li>
+            <a href="https://workbench.cisecurity.org/notifications?#community_default_settings">
+                <i class="fa fa-fw fa-toggle-on"></i>
+                Notification Settings
+            </a>
+        </li>
+
+        <li class="divider"></li>
+        <li>
+            <form role="form"
+             method="POST"
+             action="https://workbench.cisecurity.org/logout"
+             accept-charset="UTF-8"
+             class=""
+             style="margin-bottom: 0;"
+             id=""
+             autocomplete="off"><input type="hidden" name="_token" value="osp8eWn8tjLH48ELpVAdFcLeRaWCQyDw6ApNQEP2" />
+            <button class="btn btn-link" style="padding: 3px 20px; width: 100%; text-align: left; color: #333f48;"
+                    type="submit" data-cy="logout">
+                <span class="fa fa-fw fa-sign-out"></span> Log Out
+            </button>
+            </form>
+        </li>
+    </ul>
+</li>
+
+			</ul>
+		</div>
+	</div>
+</div>
+					</div>
+							</header>
+
+			<div id="content" >
+				<div class="container-fluid">
+																					                <div class="sticky flex justify-between bg-white z-10 py-5 shadow-md"
+     style="margin: 0 -20px 0 -20px; padding-left: 20px; padding-right: 20px; width: calc(100% - 180px); position: fixed;">
+    <div class="flex -ml-2 sticky-flex-pos">
+        <button class="text-gray-700 border-none bg-warm-gray-100 rounded-md px-4 py-2 transition duration-500 ease select-none hover:bg-cis-light-500 hover:text-white focus:outline-none focus:ring whitespace-nowrap disabled:opacity-50 m-2" style="max-height: 30px;" aria-label="Previous" disabled="disabled">
+    <i class="fa fa-caret-left"></i>
+</button>
+
+<button class="text-gray-700 border-none bg-warm-gray-100 rounded-md px-4 py-2 transition duration-500 ease select-none hover:bg-cis-light-500 hover:text-white focus:outline-none focus:ring whitespace-nowrap disabled:opacity-50 m-2" style="max-height: 30px;" aria-label="Next" disabled="disabled">
+    <i class="fa fa-caret-right"></i>
+</button>
+
+			<button class="text-gray-700 border-none bg-warm-gray-100 rounded-md px-4 py-2 transition duration-500 ease select-none hover:bg-cis-light-500 hover:text-white focus:outline-none focus:ring whitespace-nowrap disabled:opacity-50 m-2" style="max-height: 30px;" disabled="disabled">
+    Edit
+</button>
+
+	<button class="text-gray-700 border-none bg-warm-gray-100 rounded-md px-4 py-2 transition duration-500 ease select-none hover:bg-cis-light-500 hover:text-white focus:outline-none focus:ring whitespace-nowrap disabled:opacity-50 m-2" style="max-height: 30px;" disabled="disabled">
+    Propose Change
+</button>
+
+	<button class="text-gray-700 border-none bg-warm-gray-100 rounded-md px-4 py-2 transition duration-500 ease select-none hover:bg-cis-light-500 hover:text-white focus:outline-none focus:ring whitespace-nowrap disabled:opacity-50 m-2" style="max-height: 30px;" disabled="disabled">
+    Fork
+</button>
+
+	<button class="text-gray-700 border-none bg-warm-gray-100 rounded-md px-4 py-2 transition duration-500 ease select-none hover:bg-cis-light-500 hover:text-white focus:outline-none focus:ring whitespace-nowrap disabled:opacity-50 m-2" style="max-height: 30px;" disabled="disabled">
+    Duplicate
+</button>
+
+
+                            <button class="text-gray-700 border-none bg-warm-gray-100 rounded-md px-4 py-2 transition duration-500 ease select-none hover:bg-cis-light-500 hover:text-white focus:outline-none focus:ring whitespace-nowrap disabled:opacity-50 m-2" style="max-height: 30px;" disabled="disabled">
+    Export
+</button>
+
+                                    <button class="text-gray-700 border-none bg-warm-gray-100 rounded-md px-4 py-2 transition duration-500 ease select-none hover:bg-cis-light-500 hover:text-white focus:outline-none focus:ring whitespace-nowrap disabled:opacity-50 m-2" style="max-height: 30px;" disabled="disabled">
+    Profiles
+</button>
+
+                    <div class="ml-3 mt-2" style="height: auto;">
+                <wb-drop-down drop-down-class="benchmark-nav-drop-down "
+                              trigger-class="block hover:bg-warm-gray-100 rounded-md px-4 py-2"
+                >
+                    <div class="py-2 px-8 rounded-md bg-white shadow hover:no-underline hidden"
+                         style="width: 17rem;"
+                         id="dropDownMenu">
+                        <a class="block w-full no-underline whitespace-nowrap py-3 focus:outline-none hover:no-underline" href="https://workbench.cisecurity.org/benchmarks/18208/parent-tree">
+    Parent Tree
+</a>
+
+
+
+
+    <a class="block w-full no-underline whitespace-nowrap py-3 focus:outline-none hover:no-underline" href="https://workbench.cisecurity.org/benchmarks/18208/controls">
+    Controls Mappings
+</a>
+
+
+                                            </div>
+                </wb-drop-down>
+            </div>
+
+                    <div class="watch-button">
+                <wb-watch-object subscription="{&quot;community&quot;:{&quot;title&quot;:&quot;CIS AlmaLinux OS Benchmarks&quot;,&quot;url&quot;:&quot;https:\/\/workbench.cisecurity.org\/communities\/139&quot;,&quot;isSubscribed&quot;:true,&quot;notifications&quot;:{&quot;notifications_benchmark&quot;:false,&quot;notifications_ticket&quot;:true,&quot;notifications_discussion&quot;:true,&quot;notifications_method&quot;:&quot;immediate_email&quot;}},&quot;eventId&quot;:41671,&quot;isSubscribed&quot;:false,&quot;objectType&quot;:&quot;Benchmark&quot;,&quot;method&quot;:&quot;immediate_email&quot;,&quot;userId&quot;:6326,&quot;generalSettingsUrl&quot;:&quot;https:\/\/workbench.cisecurity.org\/notifications?#community_default_settings&quot;}"></wb-watch-object>
+            </div>
+            </div>
+</div>
+
+
+<div style="padding-top: 8rem;"></div>
+
+
+
+
+    <div class="row">
+        <div class="col-lg-12 col-md-12 col-sm-12">
+            <div class="page-header relative">
+                <h1 class="page-title title-height" style="min-height: 35px;">
+                    <wb-benchmark-title
+                            title="CIS AlmaLinux OS 9 Benchmark v2.0.0"
+                            diff-date=""
+                    ></wb-benchmark-title>
+
+                                            <div style="margin-left: 15px; font-size: 14px;">
+                            <wb-html-link
+                                    link-url="https://workbench.cisecurity.org/benchmarks/16763"
+                                    link-text="CIS Fedora 34 Branch Benchmark v2.0.0"
+                                    link-icon="fa fa-level-up fa-flip-horizontal"
+                            ></wb-html-link>
+                        </div>
+                                    </h1>
+                <p>
+                                            <a href="https://workbench.cisecurity.org/communities/139"><span
+                                    class="fa fa-globe-americas"></span> CIS AlmaLinux OS Benchmarks</a>
+                                                                -
+                        <a href="https://workbench.cisecurity.org/community/139/milestones/956"><span
+                                    class="fa fa-flag"></span> CIS AlmaLinux OS 9 Benchmark v2.0.0</a>
+                                    </p>
+            </div>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-lg-12 col-md-12 center-container">
+
+
+
+            <div class="row">
+                <div class="col-sm-6">
+                                            <p class="label label-published">Published</p>
+                                                    1 year ago on Jun 24th 2024
+                                                            </div>
+                <div class="col-sm-6">
+                                            <p class="text-right">
+                            <strong>Release Type:</strong> Planned Update
+                        </p>
+
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-sm-12">
+                    <a href="https://workbench.cisecurity.org/benchmarks/collection/5" class="coll-label">
+			<span class="label label-info"><span class="fa fa-bookmark"></span> Operating System</span>
+		</a>
+
+
+                </div>
+            </div>
+
+            <wb-recommendation-data
+                    attribute="overview"
+                    can-see-warning="false"
+                    text="&lt;p&gt;This document provides prescriptive guidance for establishing a secure configuration posture for AlmaLinux OS 9 systems running on x86_64 platforms.&lt;/p&gt;
+&lt;p&gt;This guide was developed and tested against AlmaLinux OS 9.4&lt;/p&gt;
+&lt;p&gt;The guidance within broadly assumes that operations are being performed as the &lt;code&gt;root&lt;/code&gt; user, and executed under the default Bash version for the applicable distribution. Operations performed using &lt;code&gt;sudo&lt;/code&gt; instead of the &lt;code&gt;root&lt;/code&gt; user, or executed under another shell, may produce unexpected results, or fail to make the intended changes to the system. Non-root users may not be able to access certain areas of the system, especially after remediation has been performed. It is advisable to verify &lt;code&gt;root&lt;/code&gt; users path integrity and the integrity of any programs being run prior to execution of commands and scripts included in this benchmark.&lt;/p&gt;
+&lt;p&gt;The default prompt for the &lt;code&gt;root&lt;/code&gt; user is &lt;code&gt;#&lt;/code&gt;, and as such all sample commands will have &lt;code&gt;#&lt;/code&gt; as an additional indication that it is to be executed as &lt;code&gt;root&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;To obtain the latest version of this guide, please visit &lt;a href=&quot;http://workbench.cisecurity.org&quot;&gt;http://workbench.cisecurity.org&lt;/a&gt;. If you have questions, comments, or have identified ways to improve this guide, please write us at &lt;a href=&quot;mailto:feedback@cisecurity.org&quot;&gt;feedback@cisecurity.org&lt;/a&gt;.&lt;/p&gt;
+"
+            ></wb-recommendation-data>
+
+            <wb-recommendation-data
+                    attribute="intended_audience"
+                    can-see-warning="false"
+                    text="&lt;p&gt;This benchmark is intended for system and application administrators, security specialists, auditors, help desk, and platform deployment personnel who plan to develop, deploy, assess, or secure solutions that incorporate AlmaLinux OS 9 on x86_64 platforms.&lt;/p&gt;
+"
+            ></wb-recommendation-data>
+
+            <wb-recommendation-data
+                    attribute="acknowledgements"
+                    can-see-warning="false"
+                    text="&lt;p&gt;This benchmark is based upon previous Linux benchmarks published and would not be possible without the contributions provided over the history of all of these benchmarks. The CIS community thanks everyone who has contributed to the Linux benchmarks.&lt;/p&gt;
+"
+            ></wb-recommendation-data>
+
+                            <h3>Contributors
+                                    </h3>
+                <p>Jonathan Lewis Christopherson, Ron Colvin, Dave Billing, Dominic Pace, Koen Laevens, Mark Birch, Eric Pinnell, Thomas Sjögren, James Trigg, Matthew Burket, Marcus Burghardt, Graham Eames, Justin Brown, Robert McSulla, Chad Streck, Ryan Jaynes, Gokhan Lus, Cory Sherman, Simon John, Randie Bejar, Steve Cobrin, Eric Pinnell</p>
+
+                            <a href="https://workbench.cisecurity.org/benchmarks/18208/change/log"
+                   class='btn btn-xs btn-primary'>View Change Log</a>
+
+
+                <wb-benchmark-assets
+                        assets-json="[{&quot;title&quot;:&quot;AlmaLinux OS 9&quot;,&quot;cpe_id&quot;:&quot;cpe:2.3:o:almalinux:almalinux:9:*:*:*:*:*:*:*&quot;}]"
+                ></wb-benchmark-assets>
+
+                <wb-benchmark-profiles
+                        profiles-json="[{&quot;title&quot;:&quot;Level 1 - Server&quot;,&quot;description&quot;:&quot;&lt;p&gt;Items in this profile intend to:&lt;\/p&gt;\n&lt;ul&gt;\n&lt;li&gt;be practical and prudent;&lt;\/li&gt;\n&lt;li&gt;provide a clear security benefit; and&lt;\/li&gt;\n&lt;li&gt;not inhibit the utility of the technology beyond acceptable means.&lt;\/li&gt;\n&lt;\/ul&gt;\n&lt;p&gt;This profile is intended for servers.&lt;\/p&gt;\n&quot;,&quot;parent_title&quot;:null},{&quot;title&quot;:&quot;Level 2 - Server&quot;,&quot;description&quot;:&quot;&lt;p&gt;This profile extends the \&quot;Level 1 - Server\&quot; profile. Items in this profile exhibit one or more of the following characteristics:&lt;\/p&gt;\n&lt;ul&gt;\n&lt;li&gt;are intended for environments or use cases where security is paramount.&lt;\/li&gt;\n&lt;li&gt;acts as defense in depth measure.&lt;\/li&gt;\n&lt;li&gt;may negatively inhibit the utility or performance of the technology.&lt;\/li&gt;\n&lt;\/ul&gt;\n&lt;p&gt;This profile is intended for servers.&lt;\/p&gt;\n&quot;,&quot;parent_title&quot;:&quot;Level 1 - Server&quot;},{&quot;title&quot;:&quot;Level 1 - Workstation&quot;,&quot;description&quot;:&quot;&lt;p&gt;Items in this profile intend to:&lt;\/p&gt;\n&lt;ul&gt;\n&lt;li&gt;be practical and prudent;&lt;\/li&gt;\n&lt;li&gt;provide a clear security benefit; and&lt;\/li&gt;\n&lt;li&gt;not inhibit the utility of the technology beyond acceptable means.&lt;\/li&gt;\n&lt;\/ul&gt;\n&lt;p&gt;This profile is intended for workstations.&lt;\/p&gt;\n&quot;,&quot;parent_title&quot;:null},{&quot;title&quot;:&quot;Level 2 - Workstation&quot;,&quot;description&quot;:&quot;&lt;p&gt;This profile extends the \&quot;Level 1 - Workstation\&quot; profile. Items in this profile exhibit one or more of the following characteristics:&lt;\/p&gt;\n&lt;ul&gt;\n&lt;li&gt;are intended for environments or use cases where security is paramount.&lt;\/li&gt;\n&lt;li&gt;acts as defense in depth measure.&lt;\/li&gt;\n&lt;li&gt;may negatively inhibit the utility or performance of the technology.&lt;\/li&gt;\n&lt;\/ul&gt;\n&lt;p&gt;This profile is intended for workstations.&lt;\/p&gt;\n&quot;,&quot;parent_title&quot;:&quot;Level 1 - Workstation&quot;}]"
+                ></wb-benchmark-profiles>
+
+                    <section>
+
+				<h3>Sections</h3>
+
+
+
+		<wb-table-listing
+			benchmark-id="18208"
+			benchmark-status="published"
+			permissions=""
+			type="section"
+            base-show-url="/benchmarks/18208/sections/"
+			statuses="{&quot;draft&quot;:&quot;Draft&quot;,&quot;accepted&quot;:&quot;Accepted&quot;,&quot;published&quot;:&quot;Published&quot;,&quot;rejected&quot;:&quot;Rejected&quot;,&quot;proposed&quot;:&quot;Proposed&quot;,&quot;proposed-new&quot;:&quot;Proposed: New&quot;,&quot;proposed-modify&quot;:&quot;Proposed: Modify&quot;,&quot;proposed-delete&quot;:&quot;Proposed: Delete&quot;}"
+            sections="[{&quot;id&quot;:2758672,&quot;benchmark_id&quot;:18208,&quot;parent_section_id&quot;:0,&quot;parent_id&quot;:2481681,&quot;title&quot;:&quot;Logging and Auditing&quot;,&quot;overview&quot;:&quot;The items in this section describe how to configure logging, log monitoring, and auditing, using tools included in most distributions.\r\n\r\nIt is recommended that `rsyslog `be used for logging (with `logwatch `providing summarization) and `auditd` be used for auditing (with `aureport `providing summarization) to automatically monitor logs for intrusion attempts and other suspicious system behavior.\r\n\r\nIn addition to the local log files created by the steps in this section, it is also recommended that sites collect copies of their system logs on a secure, centralized log server via an encrypted connection. Not only does centralized logging help sites correlate events that may be occurring on multiple systems, but having a second copy of the system log information may be critical after a system compromise where the attacker has modified the local log files on the affected system(s). If a log correlation system is deployed, configure it to process the logs described in this section.\r\n\r\nBecause it is often necessary to correlate log information from many different systems (particularly after a security incident) it is recommended that the time be synchronized among systems and devices connected to the local network. The standard Internet protocol for time synchronization is the Network Time Protocol (NTP), which is supported by most network-ready devices. Reference &lt;[http:\/\/chrony.tuxfamily.org\/](http:\/\/chrony.tuxfamily.org\/)&gt; manual page for more information on configuring chrony.\r\n\r\nIt is important that all logs described in this section be monitored on a regular basis and correlated to determine trends. A seemingly innocuous entry in one log could be more significant when compared to an entry in another log.\r\n\r\n**Note on log file permissions:** There really isn&#039;t a \&quot;one size fits all\&quot; solution to the permissions on log files. Many sites utilize group permissions so that administrators who are in a defined security group, such as \&quot;wheel\&quot; do not have to elevate privileges to root in order to read log files. Also, if a third party log aggregation tool is used, it may need to have group permissions to read the log files, which is preferable to having it run setuid to root. Therefore, there are two remediation and audit steps for log file permissions. One is for systems that do not have a secured group method implemented that only permits root to read the log files (`root:root 600`). The other is for sites that do have such a setup and are designated as `root:securegrp 640 `where `securegrp` is the defined security group (in some cases `wheel`).&quot;,&quot;status&quot;:&quot;published&quot;,&quot;order&quot;:6,&quot;view_level&quot;:&quot;6&quot;,&quot;bmdt_unique_id&quot;:{&quot;LDI&quot;:&quot;11f0170d:f581db65&quot;,&quot;LSI&quot;:&quot;11f0170d&quot;},&quot;created_by_id&quot;:null,&quot;updated_by_id&quot;:null,&quot;created_at&quot;:&quot;2024-06-07T19:20:36.000000Z&quot;,&quot;updated_at&quot;:&quot;2024-06-24T19:21:43.000000Z&quot;,&quot;deleted_at&quot;:null},{&quot;id&quot;:2758674,&quot;benchmark_id&quot;:18208,&quot;parent_section_id&quot;:0,&quot;parent_id&quot;:2481692,&quot;title&quot;:&quot;Access Control&quot;,&quot;overview&quot;:null,&quot;status&quot;:&quot;published&quot;,&quot;order&quot;:5,&quot;view_level&quot;:&quot;5&quot;,&quot;bmdt_unique_id&quot;:{&quot;LDI&quot;:&quot;d43cd60e:cf83e135&quot;,&quot;LSI&quot;:&quot;d43cd60e&quot;},&quot;created_by_id&quot;:null,&quot;updated_by_id&quot;:null,&quot;created_at&quot;:&quot;2024-06-07T19:20:36.000000Z&quot;,&quot;updated_at&quot;:&quot;2024-06-24T19:21:43.000000Z&quot;,&quot;deleted_at&quot;:null},{&quot;id&quot;:2758676,&quot;benchmark_id&quot;:18208,&quot;parent_section_id&quot;:0,&quot;parent_id&quot;:2481706,&quot;title&quot;:&quot;Initial Setup&quot;,&quot;overview&quot;:&quot;Items in this section are advised for all systems but may be difficult or require extensive preparation after the initial setup of the system.&quot;,&quot;status&quot;:&quot;published&quot;,&quot;order&quot;:1,&quot;view_level&quot;:&quot;1&quot;,&quot;bmdt_unique_id&quot;:{&quot;LDI&quot;:&quot;c13ef14f:10ffbb04&quot;,&quot;LSI&quot;:&quot;c13ef14f&quot;},&quot;created_by_id&quot;:null,&quot;updated_by_id&quot;:null,&quot;created_at&quot;:&quot;2024-06-07T19:20:36.000000Z&quot;,&quot;updated_at&quot;:&quot;2024-06-24T19:21:43.000000Z&quot;,&quot;deleted_at&quot;:null},{&quot;id&quot;:2758679,&quot;benchmark_id&quot;:18208,&quot;parent_section_id&quot;:0,&quot;parent_id&quot;:2481720,&quot;title&quot;:&quot;System Maintenance&quot;,&quot;overview&quot;:&quot;Recommendations in this section are intended as maintenance and are intended to be checked on a frequent basis to ensure system stability. Many recommendations do not have quick remediations and require investigation into the cause and best fix available and may indicate an attempted breach of system security.&quot;,&quot;status&quot;:&quot;published&quot;,&quot;order&quot;:7,&quot;view_level&quot;:&quot;7&quot;,&quot;bmdt_unique_id&quot;:{&quot;LDI&quot;:&quot;40e3741f:f975f929&quot;,&quot;LSI&quot;:&quot;40e3741f&quot;},&quot;created_by_id&quot;:null,&quot;updated_by_id&quot;:null,&quot;created_at&quot;:&quot;2024-06-07T19:20:38.000000Z&quot;,&quot;updated_at&quot;:&quot;2024-06-24T19:21:43.000000Z&quot;,&quot;deleted_at&quot;:null},{&quot;id&quot;:2758681,&quot;benchmark_id&quot;:18208,&quot;parent_section_id&quot;:0,&quot;parent_id&quot;:2481723,&quot;title&quot;:&quot;Network&quot;,&quot;overview&quot;:&quot;This section provides guidance on for securing the network configuration of the system&quot;,&quot;status&quot;:&quot;published&quot;,&quot;order&quot;:3,&quot;view_level&quot;:&quot;3&quot;,&quot;bmdt_unique_id&quot;:{&quot;LDI&quot;:&quot;2372613d:5189ffa7&quot;,&quot;LSI&quot;:&quot;2372613d&quot;},&quot;created_by_id&quot;:null,&quot;updated_by_id&quot;:null,&quot;created_at&quot;:&quot;2024-06-07T19:20:38.000000Z&quot;,&quot;updated_at&quot;:&quot;2024-06-24T19:21:43.000000Z&quot;,&quot;deleted_at&quot;:null},{&quot;id&quot;:2758686,&quot;benchmark_id&quot;:18208,&quot;parent_section_id&quot;:0,&quot;parent_id&quot;:2481727,&quot;title&quot;:&quot;Services&quot;,&quot;overview&quot;:&quot;While applying system updates and patches helps correct known vulnerabilities, one of the best ways to protect the system against as yet unreported vulnerabilities is to disable all services that are not required for normal system operation. This prevents the exploitation of vulnerabilities discovered at a later date. If a service is not enabled, it cannot be exploited. The actions in this section of the document provide guidance on some services which can be safely disabled and under which circumstances, greatly reducing the number of possible threats to the resulting system. Additionally, some services which should remain enabled but with secure configuration are covered as well as insecure service clients.&quot;,&quot;status&quot;:&quot;published&quot;,&quot;order&quot;:2,&quot;view_level&quot;:&quot;2&quot;,&quot;bmdt_unique_id&quot;:{&quot;LDI&quot;:&quot;b191726e:a5475b72&quot;,&quot;LSI&quot;:&quot;b191726e&quot;},&quot;created_by_id&quot;:null,&quot;updated_by_id&quot;:null,&quot;created_at&quot;:&quot;2024-06-07T19:20:41.000000Z&quot;,&quot;updated_at&quot;:&quot;2024-06-24T19:21:43.000000Z&quot;,&quot;deleted_at&quot;:null},{&quot;id&quot;:2758691,&quot;benchmark_id&quot;:18208,&quot;parent_section_id&quot;:0,&quot;parent_id&quot;:2729442,&quot;title&quot;:&quot;Host Based Firewall&quot;,&quot;overview&quot;:&quot;A Host Based Firewall, on a Linux system, is a set of rules used to protect machines from any unwanted traffic from outside. It enables users to\r\ncontrol incoming network traffic on host machines by defining a set of firewall rules. These rules are used to sort the incoming traffic and either block it or allow it through.\r\n\r\nIn order to configure firewall rules a firewall utility needs to be installed.  Guidance has been included for the following firewall utilities:\r\n\r\n- `firewallD`: the firewalld utility can be used for simple firewall use cases. The firewalld utility is easy to use and covers typical use cases.\r\n\r\n- `nftables`: the nftables utility is often used to set up complex and performance-critical firewalls, such as a whole network.\r\n\r\nOnly **one** method should be used to configure a firewall on the system. Use of more than one method could produce unexpected results.\r\n\r\n**Note:**\r\n- This section is intended only to ensure the resulting firewall rules are in place, not how they are configured.\r\n- The `ipset` and `iptables-nft` packages have been deprecated in Fedora 34 based Linux distributions. This includes deprecation of nft-variants such as `iptables`, `ip6tables`, `arptables`, and `ebtables` utilities. If you are using any of these tools, for example, because you upgraded from an earlier version, we recommend migrating to the nft command line tool provided by the `nftables` package.\r\n- `firewalld` with `nftables` backend does not support passing custom `nftables` rules to `firewalld`, using the ```--direct``` option.\r\n- Allow port 22(ssh) needs to be updated to only allow systems requiring ssh connectivity to connect, as per site policy.&quot;,&quot;status&quot;:&quot;published&quot;,&quot;order&quot;:4,&quot;view_level&quot;:&quot;4&quot;,&quot;bmdt_unique_id&quot;:{&quot;LDI&quot;:&quot;10e21b5f:c2e151f0&quot;,&quot;LSI&quot;:&quot;10e21b5f&quot;},&quot;created_by_id&quot;:null,&quot;updated_by_id&quot;:null,&quot;created_at&quot;:&quot;2024-06-07T19:20:42.000000Z&quot;,&quot;updated_at&quot;:&quot;2024-06-24T19:21:43.000000Z&quot;,&quot;deleted_at&quot;:null}]"
+					></wb-table-listing>
+
+</section>
+
+                <section class="revision_history">
+
+            <h3>Revision History</h3>
+        <table class="table table-hover">
+            <thead>
+                            <tr class="info">
+                                <td colspan="4">
+                        <a href="https://workbench.cisecurity.org/benchmarks/18208">Current Version</a>
+                    </td>
+                </tr>
+            </thead>
+            <tbody>
+
+
+                                    <tr>
+                                                <td>
+                            <a data-target=".history_collapsed_1" class="toggler collapsed"
+                               data-toggle="collapse" title="Aug 27, 2024 1:52pm">
+                                1 year ago
+                            </a>
+                        </td>
+                        <td>
+                                                            Tom
+                                                    </td>
+                        <td>
+                                                            1 modification
+                                                    </td>
+                        <td style="text-align: right;">
+                            <a data-target=".history_collapsed_1" class="toggler collapsed"
+                               data-toggle="collapse" title="Aug 27, 2024 1:52pm">
+                                View Diff
+                            </a>
+                        </td>
+                    </tr>
+                    <tr class="history_collapsed">
+                        <td colspan="4">
+                                                                    <div class="collapse history_collapsed_1">
+                                                                                        <ul>
+                                                                                                    <li>
+                                                        <h4>
+                                                            Benchmark
+                                                            -
+                                                            cis_cat_lite_assessment_status
+                                                        </h4>
+                                                        <strong>changed from</strong>
+                                                                                                                                                                                    latest
+                                                                                                                        <strong>to</strong>
+                                                                                                                            not_supported
+                                                                                                                                                                        </li>
+                                                                                            </ul>
+                                        </div>
+                        </td>
+                    </tr>
+
+                                    <tr>
+                                                <td>
+                            <a data-target=".history_collapsed_2" class="toggler collapsed"
+                               data-toggle="collapse" title="Jun 24, 2024 3:21pm">
+                                1 year ago
+                            </a>
+                        </td>
+                        <td>
+                                                            Eric
+                                                    </td>
+                        <td>
+                                                            1 modification
+                                                    </td>
+                        <td style="text-align: right;">
+                            <a data-target=".history_collapsed_2" class="toggler collapsed"
+                               data-toggle="collapse" title="Jun 24, 2024 3:21pm">
+                                View Diff
+                            </a>
+                        </td>
+                    </tr>
+                    <tr class="history_collapsed">
+                        <td colspan="4">
+                                                                    <div class="collapse history_collapsed_2">
+                                                                                        <ul>
+                                                                                                    <li>
+                                                        <h4>
+                                                            Benchmark
+                                                            -
+                                                            Status
+                                                        </h4>
+                                                        <strong>changed from</strong>
+                                                                                                                    <p class="label label-accepted">Accepted</p>
+                                                            to
+                                                            <p class="label label-published">Published</p>
+                                                                                                            </li>
+                                                                                            </ul>
+                                        </div>
+                        </td>
+                    </tr>
+
+                                    <tr>
+                                                <td>
+                            <a data-target=".history_collapsed_3" class="toggler collapsed"
+                               data-toggle="collapse" title="Jun 24, 2024 9:26am">
+                                1 year ago
+                            </a>
+                        </td>
+                        <td>
+                                                            Eric
+                                                    </td>
+                        <td>
+                                                            1 modification
+                                                    </td>
+                        <td style="text-align: right;">
+                            <a data-target=".history_collapsed_3" class="toggler collapsed"
+                               data-toggle="collapse" title="Jun 24, 2024 9:26am">
+                                View Diff
+                            </a>
+                        </td>
+                    </tr>
+                    <tr class="history_collapsed">
+                        <td colspan="4">
+                                                                    <div class="collapse history_collapsed_3">
+                                                                                        <ul>
+                                                                                                    <li>
+                                                        <h4>
+                                                            Benchmark
+                                                            -
+                                                            supports_aac
+                                                        </h4>
+                                                        <strong>changed from</strong>
+                                                                                                                                                                                    0
+                                                                                                                        <strong>to</strong>
+                                                                                                                            1
+                                                                                                                                                                        </li>
+                                                                                            </ul>
+                                        </div>
+                        </td>
+                    </tr>
+
+                                    <tr>
+                                                <td>
+                            <a data-target=".history_collapsed_4" class="toggler collapsed"
+                               data-toggle="collapse" title="Jun 07, 2024 3:27pm">
+                                1 year ago
+                            </a>
+                        </td>
+                        <td>
+                                                            Eric
+                                                    </td>
+                        <td>
+                                                            1 modification
+                                                    </td>
+                        <td style="text-align: right;">
+                            <a data-target=".history_collapsed_4" class="toggler collapsed"
+                               data-toggle="collapse" title="Jun 07, 2024 3:27pm">
+                                View Diff
+                            </a>
+                        </td>
+                    </tr>
+                    <tr class="history_collapsed">
+                        <td colspan="4">
+                                                                    <div class="collapse history_collapsed_4">
+                                                                                        <ul>
+                                                                                                    <li>
+                                                        <h4>
+                                                            Benchmark
+                                                            -
+                                                            Status
+                                                        </h4>
+                                                        <strong>changed from</strong>
+                                                                                                                    <p class="label label-draft">Draft</p>
+                                                            to
+                                                            <p class="label label-accepted">Accepted</p>
+                                                                                                            </li>
+                                                                                            </ul>
+                                        </div>
+                        </td>
+                    </tr>
+
+                                    <tr>
+                                                <td>
+                            <a data-target=".history_collapsed_5" class="toggler collapsed"
+                               data-toggle="collapse" title="Jun 07, 2024 3:25pm">
+                                1 year ago
+                            </a>
+                        </td>
+                        <td>
+                                                            Eric
+                                                    </td>
+                        <td>
+                                                            4 modifications
+                                                    </td>
+                        <td style="text-align: right;">
+                            <a data-target=".history_collapsed_5" class="toggler collapsed"
+                               data-toggle="collapse" title="Jun 07, 2024 3:25pm">
+                                View Diff
+                            </a>
+                        </td>
+                    </tr>
+                    <tr class="history_collapsed">
+                        <td colspan="4">
+                                                                    <div class="collapse history_collapsed_5">
+                                                                                        <ul>
+                                                                                                    <li>
+                                                        <h4>
+                                                            Benchmark
+                                                            -
+                                                            previous_version
+                                                        </h4>
+                                                        <strong>changed from</strong>
+                                                                                                                                                                                    nothing
+                                                                                                                        <strong>to</strong>
+                                                                                                                            CIS AlmaLinux OS 9 Benchmark
+                                                                                                                                                                        </li>
+                                                                                                    <li>
+                                                        <h4>
+                                                            Benchmark
+                                                            -
+                                                            cis_cat_lite_assessment_status
+                                                        </h4>
+                                                        <strong>changed from</strong>
+                                                                                                                                                                                    [blank]
+                                                                                                                        <strong>to</strong>
+                                                                                                                            1
+                                                                                                                                                                        </li>
+                                                                                                    <li>
+                                                        <h4>
+                                                            Benchmark
+                                                            -
+                                                            cis_cat_pro_assessment_status
+                                                        </h4>
+                                                        <strong>changed from</strong>
+                                                                                                                                                                                    [blank]
+                                                                                                                        <strong>to</strong>
+                                                                                                                            1
+                                                                                                                                                                        </li>
+                                                                                                    <li>
+                                                        <h4>
+                                                            Benchmark
+                                                            -
+                                                            technology_version
+                                                        </h4>
+                                                        <strong>changed from</strong>
+                                                                                                                                                                                    [blank]
+                                                                                                                        <strong>to</strong>
+                                                                                                                            9
+                                                                                                                                                                        </li>
+                                                                                            </ul>
+                                        </div>
+                        </td>
+                    </tr>
+
+                                    <tr>
+                                                <td>
+                            <a data-target=".history_collapsed_6" class="toggler collapsed"
+                               data-toggle="collapse" title="Jun 07, 2024 3:24pm">
+                                1 year ago
+                            </a>
+                        </td>
+                        <td>
+                                                            Eric
+                                                    </td>
+                        <td>
+                                                            5 modifications
+                                                    </td>
+                        <td style="text-align: right;">
+                            <a data-target=".history_collapsed_6" class="toggler collapsed"
+                               data-toggle="collapse" title="Jun 07, 2024 3:24pm">
+                                View Diff
+                            </a>
+                        </td>
+                    </tr>
+                    <tr class="history_collapsed">
+                        <td colspan="4">
+                                                                    <div class="collapse history_collapsed_6">
+                                                                                        <ul>
+                                                                                                    <li>
+                                                        <h4>
+                                                            Benchmark
+                                                            -
+                                                            primary_asset
+                                                        </h4>
+                                                        <strong>changed from</strong>
+                                                                                                                                                                                    257
+                                                                                                                        <strong>to</strong>
+                                                                                                                            269
+                                                                                                                                                                        </li>
+                                                                                                    <li>
+                                                        <h4>
+                                                            Profile
+                                                            -
+                                                            Asset
+                                                        </h4>
+                                                        <strong>changed from</strong>
+                                                                                                                                                                                    257
+                                                                                                                        <strong>to</strong>
+                                                                                                                            269
+                                                                                                                                                                        </li>
+                                                                                                    <li>
+                                                        <h4>
+                                                            Profile
+                                                            -
+                                                            Asset
+                                                        </h4>
+                                                        <strong>changed from</strong>
+                                                                                                                                                                                    257
+                                                                                                                        <strong>to</strong>
+                                                                                                                            269
+                                                                                                                                                                        </li>
+                                                                                                    <li>
+                                                        <h4>
+                                                            Profile
+                                                            -
+                                                            Asset
+                                                        </h4>
+                                                        <strong>changed from</strong>
+                                                                                                                                                                                    257
+                                                                                                                        <strong>to</strong>
+                                                                                                                            269
+                                                                                                                                                                        </li>
+                                                                                                    <li>
+                                                        <h4>
+                                                            Profile
+                                                            -
+                                                            Asset
+                                                        </h4>
+                                                        <strong>changed from</strong>
+                                                                                                                                                                                    257
+                                                                                                                        <strong>to</strong>
+                                                                                                                            269
+                                                                                                                                                                        </li>
+                                                                                            </ul>
+                                        </div>
+                        </td>
+                    </tr>
+
+                                    <tr>
+                                                <td>
+                            <a data-target=".history_collapsed_7" class="toggler collapsed"
+                               data-toggle="collapse" title="Jun 07, 2024 3:22pm">
+                                1 year ago
+                            </a>
+                        </td>
+                        <td>
+                                                            Eric
+                                                    </td>
+                        <td>
+                                                            1 modification
+                                                    </td>
+                        <td style="text-align: right;">
+                            <a data-target=".history_collapsed_7" class="toggler collapsed"
+                               data-toggle="collapse" title="Jun 07, 2024 3:22pm">
+                                View Diff
+                            </a>
+                        </td>
+                    </tr>
+                    <tr class="history_collapsed">
+                        <td colspan="4">
+                                                                    <div class="collapse history_collapsed_7">
+                                                                                        <ul>
+                                                                                                    <li>
+                                                        <h4>
+                                                            Benchmark
+                                                            -
+                                                            parent
+                                                        </h4>
+                                                        <strong>changed from</strong>
+                                                                                                                                                                                    unknown
+                                                                                                                        <strong>to</strong>
+                                                                                                                            CIS Fedora 34 Branch Benchmark
+                                                                                                                                                                        </li>
+                                                                                            </ul>
+                                        </div>
+                        </td>
+                    </tr>
+
+                                    <tr>
+                                                <td>
+                            <a data-target=".history_collapsed_8" class="toggler collapsed"
+                               data-toggle="collapse" title="Jun 07, 2024 3:20pm">
+                                1 year ago
+                            </a>
+                        </td>
+                        <td>
+                                                            Eric
+                                                    </td>
+                        <td>
+                                                            2 modifications
+                                                    </td>
+                        <td style="text-align: right;">
+                            <a data-target=".history_collapsed_8" class="toggler collapsed"
+                               data-toggle="collapse" title="Jun 07, 2024 3:20pm">
+                                View Diff
+                            </a>
+                        </td>
+                    </tr>
+                    <tr class="history_collapsed">
+                        <td colspan="4">
+                                                                    <div class="collapse history_collapsed_8">
+                                                                                        <ul>
+                                                                                                    <li>
+                                                        <h4>
+                                                            Profile
+                                                            -
+                                                            Inherent Parent
+                                                        </h4>
+                                                        <strong>changed from</strong>
+                                                                                                                                                                                    Level 1 - Server
+                                                                                                                        <strong>to</strong>
+                                                                                                                            Level 1 - Server
+                                                                                                                                                                        </li>
+                                                                                                    <li>
+                                                        <h4>
+                                                            Profile
+                                                            -
+                                                            Inherent Parent
+                                                        </h4>
+                                                        <strong>changed from</strong>
+                                                                                                                                                                                    Level 1 - Workstation
+                                                                                                                        <strong>to</strong>
+                                                                                                                            Level 1 - Workstation
+                                                                                                                                                                        </li>
+                                                                                            </ul>
+                                        </div>
+                        </td>
+                    </tr>
+                                </tbody>
+        </table>
+    </section>
+                    </div>
+    </div>
+				</div>
+			</div>
+
+			<footer>
+									<div class="footer-bottom">
+	<div class="container-fluid inner">
+		<hr>
+		<div class="row">
+			<div class="col-lg-4 col-lg-offset-4">
+				<p>&copy; 2026 <a href="http://cisecurity.org" target="_blank" rel="noopener noreferrer"><img src="/images/Logo_Text_Stacked_TMR.png" alt="CIS LOGO" height="50"></a></p></div>
+			<div class="col-lg-4"></div>
+		</div>
+	</div>
+</div>
+							</footer>
+		</div>
+
+		<div id="sidebar-right-wrapper">
+        <div id="sidebar-right-actions">
+                            <a href="#" class="offcanvas-right-slide pull-left" rel="hide-sidebar-right"
+                   aria-label="Hide Sidebar"><span class="fa-regular fa-square-caret-right"></span></a>
+                <a href="#" class="offcanvas-right-slide pull-left" style="display: none;" rel="show-sidebar-right"
+                   aria-label="Show Sidebar"><span class="fa-regular fa-square-caret-left"></span></a>
+                                        <a href="#tickets" id="tickets-tab"
+                   class="pull-left min-hide  active ">
+                    <span class="fa fa-ticket"></span> <span class="hidden-md hidden-sm hidden-xs">Tickets                             <span class="badge tickets-count">1</span>
+                        </span>
+                </a>
+                <a href="#discussions" id="discussions-tab"
+                   class="pull-left min-hide ">
+                    <span class="fa fa-comments"></span> <span class="hidden-md hidden-sm hidden-xs">Discussions                             <span class="badge">2</span>
+                        </span>
+                </a>
+                <a href="#changes" id="changes-tab"
+                   class="pull-left min-hide ">
+                    <span class="fa fa-pen-to-square"></span> <span class="hidden-md hidden-sm hidden-xs">Changes </span>
+                </a>
+                    </div>
+        <div id="sidebar-right-inner">
+            <div id="sidebar-right-content"
+                 >
+                    <div class="tab-content sidebar-right-tabs" style="height: 100%; overflow: auto;">
+	<div id="tickets" class="tab-pane fade in  in active ">
+
+		<div class="content-top">
+
+				<h4>Tickets for AlmaLinux OS 9 Benchmark</h4>
+
+
+	<table class="table table-striped table-hover table-condensed">
+		<thead>
+			<tr>
+				<th>Title</th>
+				<th>Status</th>
+				<th>Priority</th>
+				<th>Due</th>
+				<th>
+																		<a href="https://workbench.cisecurity.org/tickets/create/benchmark/18208" class="btn btn-default btn-xs header-button pull-right create-ticket">New Ticket</a>
+															</th>
+			</tr>
+		</thead>
+		<tbody>
+							<tr>
+					<td>
+						<a href="https://workbench.cisecurity.org/benchmarks/18208/tickets/25399"
+							data-sidebar-href="https://workbench.cisecurity.org/tickets/25399/sidebar"
+							data-sidebar-comments-href="https://workbench.cisecurity.org/comments/ticket/25399"
+							class="ticket-show-on-sidebar">Script not evaluating correctly</a>
+
+						<a href="https://workbench.cisecurity.org/benchmarks/18208/tickets/25399">
+							<span class="fa fa-external-link"></span>
+						</a>
+					</td>
+					<td>
+						<span class="label label-ticket-closed">closed</span>
+					</td>
+					<td>
+						<span class="ticket-medium">Medium</span>
+					</td>
+					<td><span data-toggle="tooltip" data-placement="bottom" title="" data-original-title=""></span></td>
+					<td class="actions">
+																	</td>
+				</tr>
+					</tbody>
+	</table>
+	<br>
+					</div>
+		<div class="content-bottom"></div>
+	</div>
+	<div id="discussions" class="tab-pane fade ">
+
+		<div class="content-top">
+
+				<h4>Discussions for AlmaLinux OS 9 Benchmark</h4>
+
+
+    <table class="table table-striped table-hover table-condensed">
+        <thead>
+        <tr>
+            <th>Title</th>
+            <th></th>
+            <th>
+                                                                                        <a href="https://workbench.cisecurity.org/community/139/discussions/create/benchmark/18208"
+                               class="btn btn-default btn-xs header-button pull-right create-discussion">New Discussion</a>
+                                                                        </th>
+        </tr>
+        </thead>
+        <tbody>
+                                    <tr>
+                    <td>
+
+                        <a href="https://workbench.cisecurity.org/community/139/discussions/10933"
+
+                           data-sidebar-href="https://workbench.cisecurity.org/community/139/discussions/10933/sidebar"
+                           data-sidebar-comments-href="https://workbench.cisecurity.org/comments/discussion/10933"
+
+                           class="discussion-show-on-sidebar">DRAFT CIS AlmaLinux OS 9 Benchmark v2.0.0 available for consensus review</a>
+                        <a href="https://workbench.cisecurity.org/community/139/discussions/10933">
+                            <span class="fa fa-external-link"></span>
+                        </a>
+                    </td>
+
+                    <td>
+                        <p class="pull-right" data-toggle="tooltip" data-placement="top"
+                           title="Mon, Jun 10, 2024 3:01 PM"
+                           data-original-title="Mon, Jun 10, 2024 3:01 PM">
+                            <span class="fa fa-clock-o"></span> 1 year ago
+                        </p>
+
+                    </td>
+                    <td class="actions">
+                                            </td>
+                </tr>
+                            <tr>
+                    <td>
+
+                        <a href="https://workbench.cisecurity.org/community/139/discussions/10966"
+
+                           data-sidebar-href="https://workbench.cisecurity.org/community/139/discussions/10966/sidebar"
+                           data-sidebar-comments-href="https://workbench.cisecurity.org/comments/discussion/10966"
+
+                           class="discussion-show-on-sidebar">PUBLISHED - CIS AlmaLinux OS 9 Benchmark v2.0.0</a>
+                        <a href="https://workbench.cisecurity.org/community/139/discussions/10966">
+                            <span class="fa fa-external-link"></span>
+                        </a>
+                    </td>
+
+                    <td>
+                        <p class="pull-right" data-toggle="tooltip" data-placement="top"
+                           title="Mon, Jun 24, 2024 4:05 PM"
+                           data-original-title="Mon, Jun 24, 2024 4:05 PM">
+                            <span class="fa fa-clock-o"></span> 1 year ago
+                        </p>
+
+                    </td>
+                    <td class="actions">
+                                            </td>
+                </tr>
+                            </tbody>
+    </table>
+    <br>
+					</div>
+		<div class="content-bottom"></div>
+	</div>
+	<div id="changes" class="tab-pane fade ">
+
+			<h4>Changes for AlmaLinux OS 9 Benchmark</h4>
+
+
+		<div class="text-center">
+			<br>
+
+			<h3>No changes currently Open.</h3>
+
+			<br>
+		</div>
+
+
+
+
+	</div>
+</div>
+
+            </div>
+        </div>
+    </div>
+	</div>
+    </div>
+            <script   nonce="v9OXtY99KnyM6KuynrwzhXMWFxfy9UK5" >
+	var isUserLoggedIn = true;
+    window.addEventListener("load", (event) => {
+
+	$(document).ready(function(){
+
+		// Setup click event for accepting a change
+	$('a.accept-change').click( function(){
+
+		var current_object = $(this);
+			// Show the user a sweet confirmation dialog
+		swal({
+			title: "Are you sure?",
+			text: "Accepting this change will automatically apply it's content to the original.",
+			type: "warning",
+			showCancelButton: true,
+			confirmButtonClass: "btn-success",
+			confirmButtonText: "Yes, accept it!",
+			showLoaderOnConfirm: true,
+		}).then(function(){
+			$.ajax({
+				url : current_object.attr('href'),
+				cache : false,
+				method : 'POST',
+				success : function(value) {
+
+						// Check return status
+					if (value.status) {
+
+							// Check return action
+						if (typeof value.url != 'undefined') {
+
+								// Redirect to the given url
+							window.location = value.url;
+						}
+					} else {
+
+							// Show the user a not-so-sweet error message
+						swal("Oops...", "Looks like something went wrong on our end.", "error");
+					}
+				},
+				error : function() {
+
+						// Show the user a not-so-sweet error message
+					swal("Oops...", "Looks like something went wrong on our end.", "error");
+				}
+			});
+		}).done();
+
+		return false;
+	});
+
+		// Setup click event for rejecting a change
+	$('a.reject-change').click( function(){
+
+		var current_object = $(this);
+
+		var verb = ((typeof current_object.attr('type') !== 'undefined') ? current_object.attr('type') : 'Reject')
+			// Show the user a sweet confirmation dialog
+		swal({
+			title: "Are you sure?",
+			//text: "",
+			type: "warning",
+			showCancelButton: true,
+			confirmButtonClass: "btn-success",
+			confirmButtonText: "Yes, "+ verb +" it!",
+			showLoaderOnConfirm: true,
+		}).then(function(){
+			$.ajax({
+				url : current_object.attr('href'),
+				cache : false,
+				method : 'POST',
+				success : function(value) {
+
+						// Check return status
+					if (value.status) {
+
+						if (verb === 'Reopen' || verb === 'Delete' && window.location.href !== value.url) {
+							window.location = value.url;
+						}
+
+							// Redirect to the given url
+						//window.location = value.url;
+						current_object.parents('.panel').hide('slide', {direction:'right'}, 500);
+
+					} else {
+
+							// Show the user a not-so-sweet error message
+						swal("Oops...", "Looks like something went wrong on our end.", "error");
+					}
+				},
+				error : function() {
+
+						// Show the user a not-so-sweet error message
+					swal("Oops...", "Looks like something went wrong on our end.", "error");
+				}
+			});
+		}).done();
+
+		return false;
+	});
+
+		// Setup click event for propagate change to a parent
+	$('a.propagate-parent-change').click( function(){
+
+		var current_object = $(this);
+
+			// Show the user a sweet confirmation dialog
+		swal({
+			title: "Are you sure?",
+			text: "Pushing this change to the parent will make a copy and won't effect the current change record.",
+			type: "warning",
+			showCancelButton: true,
+			confirmButtonClass: "btn-success",
+			confirmButtonText: "Yes, push it!",
+			showLoaderOnConfirm: true,
+		}).then(function(){
+			$.ajax({
+				url : current_object.attr('href'),
+				cache : false,
+				method : 'POST',
+				success : function(value) {
+
+						// Check return status
+					if (value.status) {
+
+						swal({
+							title: "Success!",
+							text: 'The change was successfully pushed to the parent object.',
+							type: "success"
+						});
+
+						current_object.hide();
+					} else {
+
+							// Show the user a not-so-sweet error message
+						swal("Oops...", "Looks like something went wrong on our end.", "error");
+					}
+				},
+				error : function() {
+
+						// Show the user a not-so-sweet error message
+					swal("Oops...", "Looks like something went wrong on our end.", "error");
+				}
+			});
+		}).done();
+
+		return false;
+	});
+
+});
+
+
+	$(document).ready(function(){
+					$(document).ready(function(){
+
+	var sidebar_right_top = $('#discussions div.content-top');
+	var sidebar_right_bottom = $('#discussions div.content-bottom');
+
+	var showDiscussionLink = function(){
+
+		var current_object = $(this);
+
+		sidebar_right_top.addClass("short");
+		current_object.parents("tbody").find("tr").removeClass("info");
+		current_object.parents("tr").addClass("info");
+
+		sidebar_right_bottom.fadeOut(300, function(){
+
+			$(this).html('<span class="fa fa-refresh fa-spin"></span> Loading</div>');
+
+			$.get( current_object.attr('data-sidebar-href'), function(data, status){
+
+				if ( status == 'success' ) {
+					sidebar_right_bottom.html(data).fadeIn(300);
+
+					load_discussion( current_object.attr('data-sidebar-comments-href'), 'div#discussion-comments' );
+				}
+			});
+		});
+
+		return false;
+	};
+
+
+	var add_objects = $('input#add_object');
+	var remove_objects = $('a.linked-object-remove');
+
+    if (add_objects) {
+        add_objects.val('');
+    }
+
+    var remove_objects_function = function(){
+        var current_object = $(this);
+        current_object.parents('div.linked-object-container').fadeOut(300, function() { $(this).remove(); });
+        return false;
+    };
+
+	remove_objects.click(remove_objects_function);
+
+	var createDiscussionFunction = function() {
+
+        var current_object = $(this);
+
+        $.get(
+           current_object.attr('href')
+        ).done(function(data) {
+
+           $('#discussions div.content-top').html(data);
+           $('#discussions div.content-bottom').html('');
+
+           $('a.form-cancel').click(function() {
+
+               var current_object = $(this);
+
+               showDiscussionIndexPage();
+
+               return false;
+           });
+
+           $('a.linked-object-remove').click(remove_objects_function);
+        });
+
+        return false;
+    };
+
+	$('a.create-discussion').click(createDiscussionFunction);
+
+	$('#sidebar-right-content').on('submit', '#discussion_form', function(event) {
+
+        var discussionForm = $(this);
+
+        $.post(
+            discussionForm.attr('action'),
+            discussionForm.serialize()
+        ).done(function(data) {
+
+            if ( data.status ) {
+
+                var discussionsCount = $('#discussions-tab span.discussions-count');
+
+                discussionsCount.html(parseInt(discussionsCount.html()) + 1);
+
+                showDiscussionIndexPage();
+
+                return false;
+            }
+
+            $('#discussion_form div.form-group').removeClass('has-error');
+
+            $.each(data.errors, function(field, error){
+
+                $('#dicussion_form input[name="'+field+'"]').closest('div.form-group').addClass('has-error');
+            });
+        });
+
+        event.preventDefault();
+        return false;
+    });
+
+    function showDiscussionIndexPage() {
+
+                $.get(
+            'https://workbench.cisecurity.org/community/11/discussions/sidebar/benchmark/18208'
+        ).done(function(data){
+
+            $('#discussions div.content-top').html(data);
+
+            $('a.create-discussion').click(createDiscussionFunction);
+
+            $('a.discussion-show-on-sidebar').click(showDiscussionLink);
+
+            return false;
+        });
+            }
+
+	$('a.discussion-show-on-sidebar').click(showDiscussionLink);
+});
+
+		var now = new Date();
+$(document).ready(function(){
+
+            var selectize_assignees = {
+    highlight: true,
+    maxOptions: 11,
+    maxItems: 1,
+    closeAfterSelect: true,
+    create: false,
+    valueField: 'id',
+    searchField: ['first_name', 'last_name', 'username'],
+    options: [],
+    preload: true,
+    render: {
+        option: function(item, escape) {
+            return '<div class="selectize-cis-users">' +
+                '<div class="title">' +
+                    '<span class="name">' + escape(item.first_name) + ' ' + escape(item.last_name) + '</span> ' +
+                    '<span class="username">(<span class="fa fa-user"></span> ' + escape(item.username) + ')</span>' +
+                '</div>' +
+                '<div class="company">' +
+                    '<span class="name text-muted">' + escape(item.company_name) + '</span>' +
+                '</div>' +
+            '</div>';
+        },
+        item: function(item, escape) {
+            return '<div>'+escape(item.first_name) + ' ' + escape(item.last_name)+'</div>';
+        }
+    },
+    load: function(query, callback) {
+        if (!query || query.length < 3) return callback();
+
+        $.ajax({
+            url: 'https://workbench.cisecurity.org/api/v1/autocomplete/communitymembers/139',
+            type: 'POST',
+            data: {
+                'query': query,
+                'community_ids': []
+            },
+            error: function() {
+                callback();
+            },
+            success: function(res) {
+                callback(res['data']);
+            }
+        });
+    },
+    onInitialize: function() {
+
+        var self = this;
+        self.clearOptions();
+
+        if ( this.$input.attr('data-selectize') ) {
+            var existingOptions = JSON.parse(this.$input.attr('data-selectize'));
+
+            existingOptions.forEach( function (existingOption) {
+                self.addOption(existingOption);
+                self.addItem(existingOption[self.settings.valueField]);
+            });
+        }
+    }
+};
+;
+        var selectize_reporters = {
+    highlight: true,
+    maxOptions: 11,
+    maxItems: 1,
+    closeAfterSelect: true,
+    create: false,
+    valueField: 'id',
+    searchField: ['first_name', 'last_name', 'username'],
+    options: [],
+    preload: true,
+    render: {
+        option: function(item, escape) {
+            return '<div class="selectize-cis-users">' +
+                '<div class="title">' +
+                    '<span class="name">' + escape(item.first_name) + ' ' + escape(item.last_name) + '</span> ' +
+                    '<span class="username">(<span class="fa fa-user"></span> ' + escape(item.username) + ')</span>' +
+                '</div>' +
+                '<div class="company">' +
+                    '<span class="name text-muted">' + escape(item.company_name) + '</span>' +
+                '</div>' +
+            '</div>';
+        },
+        item: function(item, escape) {
+            return '<div>'+escape(item.first_name) + ' ' + escape(item.last_name)+'</div>';
+        }
+    },
+    load: function(query, callback) {
+        if (!query || query.length < 4) return callback();
+
+        $.ajax({
+            url: 'https://workbench.cisecurity.org/api/v1/autocomplete/communitymembers/139',
+            type: 'POST',
+            data: {
+                'query': query,
+                'community_ids': []
+            },
+            error: function() {
+                callback();
+            },
+            success: function(res) {
+                callback(res['data']);
+            }
+        });
+    },
+    onInitialize: function() {
+
+        var self = this;
+        self.clearOptions();
+
+        if ( this.$input.attr('data-selectize') ) {
+            var existingOptions = JSON.parse(this.$input.attr('data-selectize'));
+
+            existingOptions.forEach( function (existingOption) {
+                self.addOption(existingOption);
+                self.addItem(existingOption[self.settings.valueField]);
+            });
+        }
+    }
+};
+;
+
+    var sidebar_right_top = $('#tickets div.content-top');
+    var sidebar_right_bottom = $('#tickets div.content-bottom');
+
+    var showTicketLink = function(){
+
+        var current_object = $(this);
+
+        sidebar_right_top.addClass("short");
+        current_object.parents("tbody").find("tr").removeClass("info");
+        current_object.parents("tr").addClass("info");
+
+        sidebar_right_bottom.fadeOut(300, function(){
+
+            $(this).html('<div><span class="fa fa-refresh fa-spin"></span> Loading</div>');
+
+            $.get( current_object.attr('data-sidebar-href'), function(data, status){
+
+                if ( status == 'success' ) {
+
+                    sidebar_right_bottom.html(data).fadeIn(300);
+
+                    load_discussion( current_object.attr('data-sidebar-comments-href'), 'div#ticket-comments' );
+                }
+            });
+        });
+
+        return false;
+    };
+
+    var add_objects = $('input#add_object');
+    var remove_objects = $('a.linked-object-remove');
+
+    add_objects.val('');
+
+    var remove_objects_function = function(){
+
+        var current_object = $(this);
+
+        current_object.parents('div.linked-object-container').fadeOut(300, function() { $(this).remove(); });
+
+        return false;
+    };
+
+    remove_objects.click(remove_objects_function);
+
+            $('#reporter_id').selectize(selectize_reporters);
+        $('#assignee_id').selectize(selectize_assignees);
+
+    var createTicketFunction = function() {
+
+        var current_object = $(this);
+
+        $.get(
+           current_object.attr('href')
+        ).done(function(data) {
+
+           $('#tickets div.content-top').html(data);
+           $('#tickets div.content-bottom').html('');
+
+           $('a.form-cancel').click(function() {
+
+               var current_object = $(this);
+
+               showTicketIndexPage();
+
+               return false;
+           });
+
+                            $('#reporter_id').selectize(selectize_reporters);
+                $('#assignee_id').selectize(selectize_assignees);
+
+           $('a.linked-object-remove').click(remove_objects_function);
+        });
+
+        return false;
+    };
+
+    $('a.create-ticket').click(createTicketFunction);
+
+    $('#sidebar-right-content').on('submit', '#ticket_form', function(event) {
+
+        var ticketForm = $(this);
+
+        $.post(
+            ticketForm.attr('action'),
+            ticketForm.serialize()
+        ).done(function(data) {
+
+            if ( data.status ) {
+
+                var ticketsCount = $('#tickets-tab span.tickets-count');
+
+                ticketsCount.html(parseInt(ticketsCount.html()) + 1);
+
+                showTicketIndexPage();
+
+                return false;
+            }
+
+            $('#ticket_form div.form-group').removeClass('has-error');
+
+            $.each(data.errors, function(field, error){
+
+                $('#ticket_form input[name="'+field+'"]').closest('div.form-group').addClass('has-error');
+            });
+        });
+
+        event.preventDefault();
+        return false;
+    });
+
+    function showTicketIndexPage() {
+                $.get(
+            'https://workbench.cisecurity.org/tickets/sidebar/benchmark/18208'
+        ).done(function(data){
+
+            $('#tickets div.content-top').html(data);
+
+            $('a.create-ticket').click(createTicketFunction);
+
+            $('a.ticket-show-on-sidebar').click(showTicketLink);
+
+            return false;
+        });
+            }
+
+    $('a.ticket-show-on-sidebar').click(showTicketLink);
+});
+		$('#comment-add').markdown();
+
+
+ /**
+  * show the comments editable textarea
+  * @returns false
+  */
+$(document).on('click','.btn-comments-edit',function(){
+
+    var layerId = $(this).attr('id');
+
+    $('.comment-edit').hide();
+    $('.comment-view').show();
+    $('#comment-edit-' + layerId).show();
+    $('#comment-view-' + layerId).hide();
+    $('#comment-text-' + layerId).markdown();
+
+});
+
+
+/**
+ *  hide the comments editable textarea
+ * @returns false
+ */
+$(document).on('click','.btn-comments-cancel',function(){
+
+    $('.comment-edit').hide();
+    $('.comment-view').show();
+});
+
+
+/**
+ * destroy the comment
+ * @returns false
+ */
+$(document).on('click','.btn-comments-delete', function () {
+
+    var CommentId = $(this).attr('id');
+
+    swal({
+        title: "Are you sure?",
+        text: "Once this comment is deleted, it's gone for good.",
+        type: "warning",
+        showCancelButton: true,
+        confirmButtonClass: "btn-danger",
+        confirmButtonText: "Yes, delete it!"
+
+    }).then(function(){
+
+        $.ajax({
+            type : 'delete',
+            url : '/comments/destroy/' + CommentId,
+            cache : false,
+            success : function(value) {
+
+                // Check return status
+                if (value.status) {
+
+                    // Delete the row from the form
+                    $('#panel-' + CommentId).remove();
+                }
+            },
+            error : function() {
+
+            	// Show the user a not-so-sweet error message
+            	swal("Oops...", "Looks like something went wrong on our end.", "error");
+            }
+        });
+    }).done();
+});
+
+
+/**
+ * save the edited comment
+ * @returns false
+ */
+$(document).on('click','.btn-comments-update',function(){
+
+    var CommentId = $(this).attr('id');
+    var newComment = $('#comment-text-' + CommentId ).val();
+    var commentUpdate = { source: CommentId, body: newComment };
+
+    $.post('/comments/update/' + CommentId, commentUpdate)
+    .done(function(data) {
+        if(data.status) {
+            location.reload(true);
+        }
+    });
+
+});
+
+$(document).on('click','#add-comment-btn',function(event){
+
+    $(this).text('Sending…');
+    $(this).prop("disabled",true);
+
+    event.preventDefault();
+    var url = $(this).parents('form:first').attr('action');
+    var orgUrl = window.location.href;
+
+    $.post(url, { body: $('#comment-add').val() })
+    .done(function(data) {
+        if(data.status) {
+            location.reload(true);
+        }
+    });
+});
+
+
+/**
+ * Load the discussion/commenting module for a given object
+ *
+ * @param {string} discussion_url Location to grab comment module from
+ * @param {string} destination_selector Object to place html in
+ * @returns void
+ */
+function load_discussion ( discussion_url, destination_selector ) {
+
+    var discussion_destination = $(destination_selector);
+
+    $.get( discussion_url, function(data, status){
+
+        if ( status === 'success' ) {
+
+            discussion_destination.html(data);
+
+            if ( window.location.hash != '' && $(window.location.hash).length ) {
+
+                if (preg_match('/^#comment[0-9]+$/', $(window.location.hash))) {
+
+                    $('html, body').animate({
+                    scrollTop: $(window.location.hash).offset().top
+                    }, 1000);
+                }
+            }
+
+        load_discussion_bindings(destination_selector);
+      }
+  });
+}
+
+function load_discussion_bindings ( destination_selector ) {
+
+    var comment_forms_selector = destination_selector+" form.comments";
+
+
+    $(document).on( "submit", comment_forms_selector, function(){
+
+        var discussion_destination = $(destination_selector);
+        var form_object = $(this);
+        var body_object = form_object.find("textarea[name='body']");
+
+            // Validate body has some content
+        if ( body_object.val() === '' ) {
+
+            body_object.parent().addClass('has-error');
+            return false;
+        }
+
+        body_object.parent().removeClass('has-error');
+
+            // Send the result off
+        $.post( form_object.attr('action'), form_object.serialize() )
+            .done( function( data ) {
+
+                if ( data.status === true && data.comment_html ) {
+
+                    var comment_list = discussion_destination.find('ul.comments-listing');
+                    comment_list.find('li.comments-none-found').fadeOut();
+
+                    $(data.comment_html).hide().appendTo(comment_list).slideDown('slow');
+                    body_object.val('');
+                }
+            });
+
+        return false;
+    });
+
+    $(document).on( "click", 'a.comments-load-more', function(e){
+
+        var current_object = $(this);
+        var url = current_object.attr('href');
+        var contents = $(current_object.html());
+        var new_loading_object = '';
+
+        contents.find('.fa.fa-refresh').addClass('fa-spin').siblings('span').html('Loading...');
+        current_object.before(contents);
+        new_loading_object = current_object.parent();
+        current_object.remove();
+
+        $.get( url, function(data, status){
+
+            if ( status === 'success' ) {
+                new_loading_object.before($(data).hide().delay(300).slideDown('slow'));
+                new_loading_object.fadeOut(500, function() { $(this).remove(); });
+            }
+        });
+
+        return false;
+    });
+}
+	});
+    $(document).ready(function() {
+    window.sessionStorage.removeItem('current');
+    $(document).ready(function() {
+
+	   $("#status-modal").on('show.bs.modal', function(event){
+	        var button = $(event.relatedTarget);  // Button that triggered the modal
+	        var titleData = button.data('title'); // Extract value from data-* attributes
+	        $(this).find('.modal-title').text("Update Status for " + titleData);
+	        $(this).find('#change-status-form').attr('action', button.attr('url'));
+	        if (! button.attr('url').includes("recommendations")) {
+	        	$(".propagate-checkbox").removeClass("hidden");
+	        }
+	    });
+
+	});
+    });
+
+            });
+</script>
+
+    <script nonce="v9OXtY99KnyM6KuynrwzhXMWFxfy9UK5" data-navigate-once="true">window.livewireScriptConfig = {"csrf":"osp8eWn8tjLH48ELpVAdFcLeRaWCQyDw6ApNQEP2","uri":"\/livewire\/update","progressBar":"","nonce":"v9OXtY99KnyM6KuynrwzhXMWFxfy9UK5"};</script>
+</body>
+</html>

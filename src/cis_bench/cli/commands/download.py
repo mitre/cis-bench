@@ -8,6 +8,7 @@ import sys
 import click
 from rich.console import Console
 
+from cis_bench.cli.helpers.offline import check_offline_mode
 from cis_bench.config import Config
 from cis_bench.exporters import ExporterFactory
 from cis_bench.fetcher.auth import AuthManager
@@ -42,7 +43,9 @@ logger = logging.getLogger(__name__)
 @click.option("--debug", "-d", is_flag=True, help="Enable debug logging (same as --verbose)")
 @click.option("--quiet", "-q", is_flag=True, help="Quiet mode (warnings and errors only)")
 @click.option("--force", is_flag=True, help="Force re-download even if already cached in database")
+@click.pass_context
 def download(
+    ctx,
     benchmark_ids,
     urls_file,
     output_dir,
@@ -66,6 +69,8 @@ def download(
         cis-bench download 23598 22605 --format json --format xccdf
         cis-bench download --file urls.txt
     """
+    check_offline_mode(ctx, "download")
+
     # Configure logging if flags provided (overrides global)
     if verbose or debug or quiet:
         from cis_bench.utils.logging_config import LoggingConfig
@@ -210,6 +215,15 @@ def download(
                     )
                     logger.debug(f"Saved benchmark {benchmark_id} to catalog database")
                     console.print(f"      [green]✓[/green] Cached in database (ID: {benchmark_id})")
+
+                    # Enrich catalog with metadata (shared service - DRY)
+                    from cis_bench.catalog.enrichment import EnrichmentService
+
+                    if EnrichmentService.enrich_catalog_entry(benchmark_id, benchmark, db.engine):
+                        logger.debug(f"Catalog enriched for {benchmark_id}")
+                    else:
+                        logger.debug(f"Enrichment skipped for {benchmark_id} (not in catalog)")
+
                 except Exception as e:
                     logger.warning(f"Failed to save to catalog database: {e}", exc_info=True)
                     console.print(f"      [yellow]⚠[/yellow] Could not cache in database: {e}")

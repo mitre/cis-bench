@@ -1,0 +1,2629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <!-- JS script for cached pages redirection if the user is not authorized-->
+    <script  nonce="6dOTadYvsb5BU9KX1sFhTSkVymMJtX3I" >
+        window.addEventListener('pageshow', (event) => {
+            if (event.persisted || performance.getEntriesByType("navigation")[0].transferSize === 0) {
+                var domain = 'https://workbench.cisecurity.org/';
+                $.ajax({
+                    url:  "/is-authorized",
+                    type: "GET",
+                    success: function(data) {
+                        if(data.status === false) {
+                            window.history.pushState(null, "", window.location.href);
+                            window.history.back();
+                            window.history.forward();
+                            window.location = domain;
+                        }
+                    }
+                });
+            }
+        });
+    </script>
+    <!-- End of JS script for cached pages redirection -->
+    <title>CIS WorkBench / Benchmarks</title>
+            <meta charset="UTF-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="csrf-token" content="osp8eWn8tjLH48ELpVAdFcLeRaWCQyDw6ApNQEP2">
+        <meta name="inactive_time" content="60">
+        <link rel="shortcut icon" href="/favicon.ico" type="image/x-icon"/>
+    <link rel="icon" href="/images/CIS_Workbench_logo.png">
+
+                <link rel="preload" as="style" href="https://workbench.cisecurity.org/build/assets/app-DmydUVop.css" nonce="6dOTadYvsb5BU9KX1sFhTSkVymMJtX3I" /><link rel="preload" as="style" href="https://workbench.cisecurity.org/build/assets/app-B1x-LIsx.css" nonce="6dOTadYvsb5BU9KX1sFhTSkVymMJtX3I" /><link rel="preload" as="style" href="https://workbench.cisecurity.org/build/assets/tailwind-BOyIHPUB.css" nonce="6dOTadYvsb5BU9KX1sFhTSkVymMJtX3I" /><link rel="modulepreload" as="script" href="https://workbench.cisecurity.org/build/assets/app-B32TnPTT.js" nonce="6dOTadYvsb5BU9KX1sFhTSkVymMJtX3I" /><link rel="stylesheet" href="https://workbench.cisecurity.org/build/assets/app-DmydUVop.css" nonce="6dOTadYvsb5BU9KX1sFhTSkVymMJtX3I" data-navigate-track="reload" /><link rel="stylesheet" href="https://workbench.cisecurity.org/build/assets/app-B1x-LIsx.css" nonce="6dOTadYvsb5BU9KX1sFhTSkVymMJtX3I" data-navigate-track="reload" /><link rel="stylesheet" href="https://workbench.cisecurity.org/build/assets/tailwind-BOyIHPUB.css" nonce="6dOTadYvsb5BU9KX1sFhTSkVymMJtX3I" data-navigate-track="reload" /><script type="module" src="https://workbench.cisecurity.org/build/assets/app-B32TnPTT.js" nonce="6dOTadYvsb5BU9KX1sFhTSkVymMJtX3I" data-navigate-track="reload"></script>        <link rel="preload" as="style" href="https://workbench.cisecurity.org/build/assets/tailwind-BOyIHPUB.css" nonce="6dOTadYvsb5BU9KX1sFhTSkVymMJtX3I" /><link rel="stylesheet" href="https://workbench.cisecurity.org/build/assets/tailwind-BOyIHPUB.css" nonce="6dOTadYvsb5BU9KX1sFhTSkVymMJtX3I" data-navigate-track="reload" />
+    <!-- Google Tag Manager -->
+    <script  nonce="6dOTadYvsb5BU9KX1sFhTSkVymMJtX3I" >(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+                new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+            j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+            'https://www.googletagmanager.com/gtm.js?id='+i+dl;var n=d.querySelector('[nonce]');
+            n&&j.setAttribute('nonce',n.nonce||n.getAttribute('nonce'));f.parentNode.insertBefore(j,f);
+        })(window,document,'script','dataLayer','GTM-PMFL2DG');
+    </script>
+    <!-- End Google Tag Manager -->
+</head>
+<body>
+    <div id="app">
+
+	<wb-user-feedback
+		url="benchmarks/21960"
+		referer-url=""
+		route-name="benchmarks.show"
+	></wb-user-feedback>
+
+			<div id="wrapper" class=" sidebar-right-active   ">
+							<div id="sidebar-wrapper">
+					<div id="sidebar-actions">
+													<a href="#" class="offcanvas-slide pull-right"  aria-label="Hide side bar" rel="hide-sidebar"><span class="fa-regular fa-square-caret-left"></span></a>
+							<a href="#" class="offcanvas-slide pull-right" rel="show-sidebar" style="display: none;"><span class="fa-regular fa-square-caret-right"></span></a>
+												<div class="clearfix"></div>
+					</div>
+					<div id="sidebar-inner">
+						<div id="sidebar-content">
+							    <a href="https://workbench.cisecurity.org/communities/18" class="block flex hover:no-underline">
+        <span class="fa fa-3x fa-globe-americas mr-3"></span> CIS Amazon Web Services Benchmarks
+    </a>
+
+<a href="https://workbench.cisecurity.org/benchmarks/21960" title="CIS Amazon Web Services Foundations Benchmark v6.0.0"
+   class="inline-block mt-4 truncate hover:no-underline" style="width: 280px;">
+    <span class="fa fa-book fa-fw"></span> CIS Amazon Web Services Foundations Benchmark v6.0.0
+</a>
+
+<div class="flex justify-between">
+                        <a class=""
+               href="https://workbench.cisecurity.org/benchmarks/21960/files">
+                <button class="text-gray-700 border-none bg-warm-gray-100 rounded-md px-4 py-2 transition duration-500 ease select-none hover:bg-cis-light-500 hover:text-white focus:outline-none focus:ring whitespace-nowrap disabled:opacity-50 my-2" style="width: 125px;">
+    <i class="fa fa-fw fa-file"></i> Files
+</button>
+            </a>
+
+    <div></div>
+
+            <a class=""
+           href="https://workbench.cisecurity.org/benchmarks/21960/tickets">
+            <button class="text-gray-700 border-none bg-warm-gray-100 rounded-md px-4 py-2 transition duration-500 ease select-none hover:bg-cis-light-500 hover:text-white focus:outline-none focus:ring whitespace-nowrap disabled:opacity-50 my-2" style="width: 125px;">
+    <i class="fa fa-fw fa-ticket"></i> Tickets
+</button>
+        </a>
+        </div>
+
+<div class="min-hide mt-4">
+    <wb-nav-tree
+            benchmark-id="21960"></wb-nav-tree>
+</div>
+						</div>
+					</div>
+				</div>
+						<div id="page-content-wrapper">
+
+			<header class="navbar-fixed-top navbar-prod">
+									<div class="container">
+						<div class="navbar navbar-inverse navbar-fixed-top" role="navigation">
+	<div class="container-fluid">
+		<div class="navbar-logo-header navbar-header">
+			<a class="navbar-brand" href="https://workbench.cisecurity.org">
+				<img class="navbar-logo" src="/images/CIS_Workbench_Spot.png" alt="Security Benchmarks" data-cy="navbar-logo" />
+			</a>
+		</div>
+
+		<div class="navbar-mobile">
+			<button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-collapse">
+				<span class="sr-only">Toggle navigation</span>
+				<span class="icon-bar"></span>
+				<span class="icon-bar"></span>
+				<span class="icon-bar"></span>
+			</button>
+		</div>
+
+		<div class="navbar-collapse">
+			<ul class="nav navbar-nav navbar-main">
+				<li class="dropdown dropdown-hover">
+            <a href="https://workbench.cisecurity.org/communities" class="dropdown-toggle community-nav" data-toggle="dropdown">
+				<span class="fa fa-globe-americas icon-hover">
+					<span class="hover-text hidden-lg">Communities</span>
+				</span>
+                <span class="hidden-sm"> Communities</span>
+                <span class="caret"></span>
+            </a>
+            <ul class="dropdown-menu" role="menu">
+                <li class="dropdown-header">Joined Communities</li>
+                                    <li>
+                        <a href="https://workbench.cisecurity.org/communities/14">
+                            <span class="fa fa-globe-americas fa-fw"></span> CIS Red Hat Enterprise Linux Benchmarks
+                        </a>
+                    </li>
+                                    <li>
+                        <a href="https://workbench.cisecurity.org/communities/64">
+                            <span class="fa fa-globe-americas fa-fw"></span> CIS Oracle MySQL Benchmarks
+                        </a>
+                    </li>
+                                    <li>
+                        <a href="https://workbench.cisecurity.org/communities/23">
+                            <span class="fa fa-globe-americas fa-fw"></span> CIS NGINX Benchmarks
+                        </a>
+                    </li>
+                                    <li>
+                        <a href="https://workbench.cisecurity.org/communities/37">
+                            <span class="fa fa-globe-americas fa-fw"></span> CIS Docker Benchmarks
+                        </a>
+                    </li>
+                                    <li>
+                        <a href="https://workbench.cisecurity.org/communities/12">
+                            <span class="fa fa-globe-americas fa-fw"></span> CIS CentOS Linux Benchmarks
+                        </a>
+                    </li>
+                                    <li>
+                        <a href="https://workbench.cisecurity.org/communities/26">
+                            <span class="fa fa-globe-americas fa-fw"></span> CIS Apache HTTP Server Benchmarks
+                        </a>
+                    </li>
+                                    <li>
+                        <a href="https://workbench.cisecurity.org/communities/44">
+                            <span class="fa fa-globe-americas fa-fw"></span> CIS Apache Hadoop Benchmarks
+                        </a>
+                    </li>
+                                <li>
+                    <a href="https://workbench.cisecurity.org/communities/public">
+                        See All Communities
+                    </a>
+                </li>
+            </ul>
+        </li>
+        <li>
+        <a href="https://workbench.cisecurity.org/benchmarks" class="benchmarks-nav">
+			<span class="fa fa-book icon-hover">
+				<span class="hover-text hidden-lg">Benchmarks</span>
+			</span>
+            <span class="hidden-sm"> Benchmarks</span>
+        </a>
+    </li>
+    <li>
+        <a href="https://workbench.cisecurity.org/tickets" class="tickets-nav">
+            <span class="fa fa-ticket icon-hover"><span class="hover-text hidden-lg">Tickets</span></span><span
+                    class=" hidden-sm"> Tickets</span>
+        </a>
+    </li>
+    <li>
+        <a href="https://workbench.cisecurity.org/files" class="downloads-nav">
+            <span class="fa fa-download icon-hover"><span class="hover-text hidden-lg">Downloads</span></span><span
+                    class="hidden-sm"> Downloads</span>
+        </a>
+    </li>
+
+
+    <li>
+	<a href="https://workbench.cisecurity.org/support-center"><span class="fa fa-question icon-hover"><span class="hover-text hidden-lg">Support Center</span></span><span class="hidden-sm"> Support Center</span></a>
+</li>
+
+			</ul>
+
+			<ul class="nav navbar-nav navbar-right">
+								<li class="dropdown dropdown-hover user-nav">
+    <a href="#" class="dropdown-toggle" data-toggle="dropdown" dusk="user-nav-dropdown">
+        <span class="fa fa-user" style="margin-right: 5px;" aria-hidden="true"></span>alippold
+	                    <span class="badge notification-total">148</span>
+
+        <span class="caret"></span>
+    </a>
+    <ul class="dropdown-menu" role="menu">
+        <li>
+            <a href="https://workbench.cisecurity.org/user/alippold"
+               class="username-nav tour-step-backdrop">
+                <span class="fa fa-fw fa-user"></span> alippold
+            </a>
+        </li>
+                <li>
+            <a href="https://workbench.cisecurity.org/notifications">
+                <i class="fa fa-fw fa-bell"></i>
+                Notifications
+
+            </a>
+        </li>
+        <li>
+            <a href="https://workbench.cisecurity.org/notifications?#community_default_settings">
+                <i class="fa fa-fw fa-toggle-on"></i>
+                Notification Settings
+            </a>
+        </li>
+
+        <li class="divider"></li>
+        <li>
+            <form role="form"
+             method="POST"
+             action="https://workbench.cisecurity.org/logout"
+             accept-charset="UTF-8"
+             class=""
+             style="margin-bottom: 0;"
+             id=""
+             autocomplete="off"><input type="hidden" name="_token" value="osp8eWn8tjLH48ELpVAdFcLeRaWCQyDw6ApNQEP2" />
+            <button class="btn btn-link" style="padding: 3px 20px; width: 100%; text-align: left; color: #333f48;"
+                    type="submit" data-cy="logout">
+                <span class="fa fa-fw fa-sign-out"></span> Log Out
+            </button>
+            </form>
+        </li>
+    </ul>
+</li>
+
+			</ul>
+		</div>
+	</div>
+</div>
+					</div>
+							</header>
+
+			<div id="content" >
+				<div class="container-fluid">
+																					                <div class="sticky flex justify-between bg-white z-10 py-5 shadow-md"
+     style="margin: 0 -20px 0 -20px; padding-left: 20px; padding-right: 20px; width: calc(100% - 180px); position: fixed;">
+    <div class="flex -ml-2 sticky-flex-pos">
+        <button class="text-gray-700 border-none bg-warm-gray-100 rounded-md px-4 py-2 transition duration-500 ease select-none hover:bg-cis-light-500 hover:text-white focus:outline-none focus:ring whitespace-nowrap disabled:opacity-50 m-2" style="max-height: 30px;" aria-label="Previous" disabled="disabled">
+    <i class="fa fa-caret-left"></i>
+</button>
+
+<button class="text-gray-700 border-none bg-warm-gray-100 rounded-md px-4 py-2 transition duration-500 ease select-none hover:bg-cis-light-500 hover:text-white focus:outline-none focus:ring whitespace-nowrap disabled:opacity-50 m-2" style="max-height: 30px;" aria-label="Next" disabled="disabled">
+    <i class="fa fa-caret-right"></i>
+</button>
+
+			<button class="text-gray-700 border-none bg-warm-gray-100 rounded-md px-4 py-2 transition duration-500 ease select-none hover:bg-cis-light-500 hover:text-white focus:outline-none focus:ring whitespace-nowrap disabled:opacity-50 m-2" style="max-height: 30px;" disabled="disabled">
+    Edit
+</button>
+
+	<button class="text-gray-700 border-none bg-warm-gray-100 rounded-md px-4 py-2 transition duration-500 ease select-none hover:bg-cis-light-500 hover:text-white focus:outline-none focus:ring whitespace-nowrap disabled:opacity-50 m-2" style="max-height: 30px;" disabled="disabled">
+    Propose Change
+</button>
+
+	<button class="text-gray-700 border-none bg-warm-gray-100 rounded-md px-4 py-2 transition duration-500 ease select-none hover:bg-cis-light-500 hover:text-white focus:outline-none focus:ring whitespace-nowrap disabled:opacity-50 m-2" style="max-height: 30px;" disabled="disabled">
+    Fork
+</button>
+
+	<button class="text-gray-700 border-none bg-warm-gray-100 rounded-md px-4 py-2 transition duration-500 ease select-none hover:bg-cis-light-500 hover:text-white focus:outline-none focus:ring whitespace-nowrap disabled:opacity-50 m-2" style="max-height: 30px;" disabled="disabled">
+    Duplicate
+</button>
+
+
+                            <button class="text-gray-700 border-none bg-warm-gray-100 rounded-md px-4 py-2 transition duration-500 ease select-none hover:bg-cis-light-500 hover:text-white focus:outline-none focus:ring whitespace-nowrap disabled:opacity-50 m-2" style="max-height: 30px;" disabled="disabled">
+    Export
+</button>
+
+                                    <button class="text-gray-700 border-none bg-warm-gray-100 rounded-md px-4 py-2 transition duration-500 ease select-none hover:bg-cis-light-500 hover:text-white focus:outline-none focus:ring whitespace-nowrap disabled:opacity-50 m-2" style="max-height: 30px;" disabled="disabled">
+    Profiles
+</button>
+
+                    <div class="ml-3 mt-2" style="height: auto;">
+                <wb-drop-down drop-down-class="benchmark-nav-drop-down "
+                              trigger-class="block hover:bg-warm-gray-100 rounded-md px-4 py-2"
+                >
+                    <div class="py-2 px-8 rounded-md bg-white shadow hover:no-underline hidden"
+                         style="width: 17rem;"
+                         id="dropDownMenu">
+                        <a class="block w-full no-underline whitespace-nowrap py-3 focus:outline-none hover:no-underline" href="https://workbench.cisecurity.org/benchmarks/21960/controls">
+    Controls Mappings
+</a>
+
+
+                                            </div>
+                </wb-drop-down>
+            </div>
+
+                    <div class="watch-button">
+                <wb-watch-object subscription="{&quot;community&quot;:{&quot;title&quot;:&quot;CIS Amazon Web Services Benchmarks&quot;,&quot;url&quot;:&quot;https:\/\/workbench.cisecurity.org\/communities\/18&quot;,&quot;isSubscribed&quot;:true,&quot;notifications&quot;:{&quot;notifications_benchmark&quot;:false,&quot;notifications_ticket&quot;:true,&quot;notifications_discussion&quot;:true,&quot;notifications_method&quot;:&quot;immediate_email&quot;}},&quot;eventId&quot;:56264,&quot;isSubscribed&quot;:false,&quot;objectType&quot;:&quot;Benchmark&quot;,&quot;method&quot;:&quot;immediate_email&quot;,&quot;userId&quot;:6326,&quot;generalSettingsUrl&quot;:&quot;https:\/\/workbench.cisecurity.org\/notifications?#community_default_settings&quot;}"></wb-watch-object>
+            </div>
+            </div>
+</div>
+
+
+<div style="padding-top: 8rem;"></div>
+
+
+
+
+    <div class="row">
+        <div class="col-lg-12 col-md-12 col-sm-12">
+            <div class="page-header relative">
+                <h1 class="page-title title-height" style="min-height: 35px;">
+                    <wb-benchmark-title
+                            title="CIS Amazon Web Services Foundations Benchmark v6.0.0"
+                            diff-date=""
+                    ></wb-benchmark-title>
+
+                                    </h1>
+                <p>
+                                            <a href="https://workbench.cisecurity.org/communities/18"><span
+                                    class="fa fa-globe-americas"></span> CIS Amazon Web Services Benchmarks</a>
+                                                                -
+                        <a href="https://workbench.cisecurity.org/community/18/milestones/1305"><span
+                                    class="fa fa-flag"></span> CIS Amazon Web Services Foundations Benchmark V6.0.0</a>
+                                    </p>
+            </div>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-lg-12 col-md-12 center-container">
+
+
+
+            <div class="row">
+                <div class="col-sm-6">
+                                            <p class="label label-published">Published</p>
+                                                    4 months ago on Sep 23rd 2025
+                                                            </div>
+                <div class="col-sm-6">
+                                            <p class="text-right">
+                            <strong>Release Type:</strong> Planned Update
+                        </p>
+
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-sm-12">
+                                    </div>
+            </div>
+
+            <wb-recommendation-data
+                    attribute="overview"
+                    can-see-warning="false"
+                    text="&lt;p&gt;This document provides prescriptive guidance for configuring security options for a subset of Amazon Web Services with an emphasis on foundational, testable, and architecture agnostic settings. Some of the specific Amazon Web Services in scope for this document include:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;AWS Identity and Access Management (IAM)&lt;/li&gt;
+&lt;li&gt;IAM Access Analyzer&lt;/li&gt;
+&lt;li&gt;AWS Config&lt;/li&gt;
+&lt;li&gt;AWS CloudTrail&lt;/li&gt;
+&lt;li&gt;AWS CloudWatch&lt;/li&gt;
+&lt;li&gt;AWS Simple Notification Service (SNS)&lt;/li&gt;
+&lt;li&gt;AWS Simple Storage Service (S3)&lt;/li&gt;
+&lt;li&gt;Elastic Compute Cloud (EC2)&lt;/li&gt;
+&lt;li&gt;Relational Database Service (RDS)&lt;/li&gt;
+&lt;li&gt;AWS VPC&lt;/li&gt;
+&lt;li&gt;Security Hub&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;To obtain the latest version of this guide, please visit &lt;a href=&quot;https://benchmarks.cisecurity.org&quot;&gt;https://benchmarks.cisecurity.org&lt;/a&gt;. If you have questions, comments, or have identified ways to improve this guide, please write us at &lt;a href=&quot;mailto:BenchmarkInfo@cisecurity.org&quot;&gt;BenchmarkInfo@cisecurity.org&lt;/a&gt;.&lt;/p&gt;
+"
+            ></wb-recommendation-data>
+
+            <wb-recommendation-data
+                    attribute="intended_audience"
+                    can-see-warning="false"
+                    text="&lt;p&gt;This document is intended for system and application administrators, security specialists, auditors, help desk, platform deployment, and/or DevOps personnel who plan to develop, deploy, assess, or secure solutions in Amazon Web Services.&lt;/p&gt;
+"
+            ></wb-recommendation-data>
+
+            <wb-recommendation-data
+                    attribute="acknowledgements"
+                    can-see-warning="false"
+                    text="&lt;p&gt;Michael Wicks, Chantel Duckworth&lt;/p&gt;
+"
+            ></wb-recommendation-data>
+
+                            <h3>Contributors
+                                    </h3>
+                <p>Iben Rodriguez, Amol Pathak, Rob Witoff, John Martinez, Darwin Sanoy, Ionut Dragoi, John Robel, Mike Wicks, Aditi Sahasrabudhe, Parag Patil, Pradeep R B, Jeremy Phillips, Gregory Carpenter, Maril Vernon, Paul Campbell, Ankit Rao, Steve Laino, Lawrence Sica, Nick Gibbon, Lewis Hardy, Logan McMillan, Darren Joyce, Bhushan Bhat, Zan Liffick, Sagar Chhatrala, Nirbhay Kumar, Ian McRee, Jason Kao, Cody Bruno, Lawrence Grim, SnowWolf Wagner, Gareth Boyes, Chantel Duckworth, Chantel Duckworth, Austin Songer, Rachel Rice, Zan Liffick, Raphael Durner, Vidush Kandpal, Wei-Chun Hsiao, Tim Smith, Michael Smith</p>
+
+                            <a href="https://workbench.cisecurity.org/benchmarks/21960/change/log"
+                   class='btn btn-xs btn-primary'>View Change Log</a>
+
+
+                <wb-benchmark-assets
+                        assets-json="[{&quot;title&quot;:&quot;AWS Generic&quot;,&quot;cpe_id&quot;:&quot;cpe:2.3:a:amazon:aws:*:*:*:*:*:*:*:*&quot;}]"
+                ></wb-benchmark-assets>
+
+                <wb-benchmark-profiles
+                        profiles-json="[{&quot;title&quot;:&quot;Level 1&quot;,&quot;description&quot;:&quot;&lt;p&gt;Items in this profile intend to:&lt;\/p&gt;\n&lt;ul&gt;\n&lt;li&gt;be practical and prudent;&lt;\/li&gt;\n&lt;li&gt;provide security focused best practice hardening of a technology; and&lt;\/li&gt;\n&lt;li&gt;limit impact to the utility of the technology beyond acceptable means.&lt;\/li&gt;\n&lt;\/ul&gt;\n&quot;,&quot;parent_title&quot;:null},{&quot;title&quot;:&quot;Level 2&quot;,&quot;description&quot;:&quot;&lt;p&gt;This profile extends the \&quot;Level 1\&quot; profile. Items in this profile exhibit one or more of the following characteristics:&lt;\/p&gt;\n&lt;ul&gt;\n&lt;li&gt;are intended for environments or use cases where security is more critical than manageability and usability&lt;\/li&gt;\n&lt;li&gt;acts as defense in depth measure&lt;\/li&gt;\n&lt;li&gt;may impact the utility or performance of the technology&lt;\/li&gt;\n&lt;li&gt;may include additional licensing, cost, or addition of third party software&lt;\/li&gt;\n&lt;\/ul&gt;\n&quot;,&quot;parent_title&quot;:&quot;Level 1&quot;}]"
+                ></wb-benchmark-profiles>
+
+                    <section>
+
+				<h3>Sections</h3>
+
+
+
+		<wb-table-listing
+			benchmark-id="21960"
+			benchmark-status="published"
+			permissions=""
+			type="section"
+            base-show-url="/benchmarks/21960/sections/"
+			statuses="{&quot;draft&quot;:&quot;Draft&quot;,&quot;accepted&quot;:&quot;Accepted&quot;,&quot;published&quot;:&quot;Published&quot;,&quot;rejected&quot;:&quot;Rejected&quot;,&quot;proposed&quot;:&quot;Proposed&quot;,&quot;proposed-new&quot;:&quot;Proposed: New&quot;,&quot;proposed-modify&quot;:&quot;Proposed: Modify&quot;,&quot;proposed-delete&quot;:&quot;Proposed: Delete&quot;}"
+            sections="[{&quot;id&quot;:3392369,&quot;benchmark_id&quot;:21960,&quot;parent_section_id&quot;:0,&quot;parent_id&quot;:19694,&quot;title&quot;:&quot;Identity and Access Management&quot;,&quot;overview&quot;:&quot;This section contains recommendations for configuring identity and access management related options.&quot;,&quot;status&quot;:&quot;published&quot;,&quot;order&quot;:2,&quot;view_level&quot;:&quot;2&quot;,&quot;bmdt_unique_id&quot;:{&quot;LDI&quot;:&quot;666ebc07:b0d0cd7b&quot;,&quot;LSI&quot;:&quot;666ebc07&quot;},&quot;created_by_id&quot;:null,&quot;updated_by_id&quot;:null,&quot;created_at&quot;:&quot;2025-04-17T15:28:33.000000Z&quot;,&quot;updated_at&quot;:&quot;2025-09-23T18:54:42.000000Z&quot;,&quot;deleted_at&quot;:null},{&quot;id&quot;:3392370,&quot;benchmark_id&quot;:21960,&quot;parent_section_id&quot;:0,&quot;parent_id&quot;:19695,&quot;title&quot;:&quot;Logging&quot;,&quot;overview&quot;:&quot;This section contains recommendations for configuring AWS logging features.&quot;,&quot;status&quot;:&quot;published&quot;,&quot;order&quot;:4,&quot;view_level&quot;:&quot;4&quot;,&quot;bmdt_unique_id&quot;:{&quot;LDI&quot;:&quot;87cdde2a:7d239c71&quot;,&quot;LSI&quot;:&quot;87cdde2a&quot;},&quot;created_by_id&quot;:null,&quot;updated_by_id&quot;:null,&quot;created_at&quot;:&quot;2025-04-17T15:28:34.000000Z&quot;,&quot;updated_at&quot;:&quot;2025-09-23T18:54:42.000000Z&quot;,&quot;deleted_at&quot;:null},{&quot;id&quot;:3392371,&quot;benchmark_id&quot;:21960,&quot;parent_section_id&quot;:0,&quot;parent_id&quot;:19696,&quot;title&quot;:&quot;Monitoring&quot;,&quot;overview&quot;:&quot;This section contains recommendations for configuring AWS to assist with monitoring and responding to account activities. \r\n\r\nMetric filter-related recommendations in this section are dependent on the `Ensure CloudTrail is enabled in all regions` and `Ensure CloudTrail trails are integrated with CloudWatch Logs` recommendations in the \&quot;Logging\&quot; section.&quot;,&quot;status&quot;:&quot;published&quot;,&quot;order&quot;:5,&quot;view_level&quot;:&quot;5&quot;,&quot;bmdt_unique_id&quot;:{&quot;LDI&quot;:&quot;d4fe8632:fea128d9&quot;,&quot;LSI&quot;:&quot;d4fe8632&quot;},&quot;created_by_id&quot;:null,&quot;updated_by_id&quot;:null,&quot;created_at&quot;:&quot;2025-04-17T15:28:34.000000Z&quot;,&quot;updated_at&quot;:&quot;2025-09-23T18:54:42.000000Z&quot;,&quot;deleted_at&quot;:null},{&quot;id&quot;:3392372,&quot;benchmark_id&quot;:21960,&quot;parent_section_id&quot;:0,&quot;parent_id&quot;:19697,&quot;title&quot;:&quot;Networking&quot;,&quot;overview&quot;:&quot;This section contains recommendations for AWS networking configuration.&quot;,&quot;status&quot;:&quot;published&quot;,&quot;order&quot;:6,&quot;view_level&quot;:&quot;6&quot;,&quot;bmdt_unique_id&quot;:{&quot;LDI&quot;:&quot;f309ba7f:dfec980b&quot;,&quot;LSI&quot;:&quot;f309ba7f&quot;},&quot;created_by_id&quot;:null,&quot;updated_by_id&quot;:null,&quot;created_at&quot;:&quot;2025-04-17T15:28:34.000000Z&quot;,&quot;updated_at&quot;:&quot;2025-09-23T18:54:42.000000Z&quot;,&quot;deleted_at&quot;:null},{&quot;id&quot;:3392374,&quot;benchmark_id&quot;:21960,&quot;parent_section_id&quot;:0,&quot;parent_id&quot;:0,&quot;title&quot;:&quot;Storage&quot;,&quot;overview&quot;:&quot;This section contains recommendations for configuring AWS Storage.&quot;,&quot;status&quot;:&quot;published&quot;,&quot;order&quot;:3,&quot;view_level&quot;:&quot;3&quot;,&quot;bmdt_unique_id&quot;:{&quot;LDI&quot;:&quot;0d420312:0fbc6478&quot;,&quot;LSI&quot;:&quot;0d420312&quot;},&quot;created_by_id&quot;:null,&quot;updated_by_id&quot;:null,&quot;created_at&quot;:&quot;2025-04-17T15:28:35.000000Z&quot;,&quot;updated_at&quot;:&quot;2025-09-23T18:54:42.000000Z&quot;,&quot;deleted_at&quot;:null},{&quot;id&quot;:3543956,&quot;benchmark_id&quot;:21960,&quot;parent_section_id&quot;:0,&quot;parent_id&quot;:0,&quot;title&quot;:&quot;Introduction&quot;,&quot;overview&quot;:&quot;This introduction section and the subsections herein provide informative articles which instruct on the use of the CIS Foundations and Service Category Benchmarks. No recommendations will be found in this section, just articles of relevant information. \r\n\r\nPlease carefully review the articles in this introductory section and orient yourself with our structured approach to Benchmarking for Cloud Service Providers (CSPs). This approach differs from other CIS Benchmarks because: \r\n- there are too many different products\/services in CSP product directories to practically cover in any one Benchmark, \r\n- architectural and design decisions will affect the scope and relevance of recommendations, and \r\n- there are a variety of methods for interfacing with CSP products and services.\r\n\r\n\r\n**Cloud Benchmarks - A Two-Step Approach to Securing Your Cloud Environments:**\r\n\r\n- **Step 1:** Start with Foundations Benchmarks. Apply as many recommendations as **practical** for your environment; \&quot;100%\&quot; &#039;compliance&#039; is not always possible. Not all Foundations Benchmark recommendations can be applied at the same time, and not all recommendations will be relevant to your environment. Use the recommendation Profile Levels and your understanding of your unique environment architecture to determine which recommendations are in scope.\r\n\r\n- **Step 2:** Use the Service Category Benchmarks for service-specific defense-in-depth recommendations. Apply recommendations only for the services **IN USE** in your environment. Use the recommendation Profile Levels, and your understanding of your unique environment architecture to determine which recommendations are in scope.&quot;,&quot;status&quot;:&quot;published&quot;,&quot;order&quot;:1,&quot;view_level&quot;:&quot;1&quot;,&quot;bmdt_unique_id&quot;:{&quot;LDI&quot;:&quot;06812993:794fcb5b&quot;,&quot;LSI&quot;:&quot;06812993&quot;},&quot;created_by_id&quot;:26854,&quot;updated_by_id&quot;:null,&quot;created_at&quot;:&quot;2025-06-13T14:46:55.000000Z&quot;,&quot;updated_at&quot;:&quot;2025-09-23T18:54:42.000000Z&quot;,&quot;deleted_at&quot;:null}]"
+					></wb-table-listing>
+
+</section>
+
+                <section class="revision_history">
+
+            <h3>Revision History</h3>
+        <table class="table table-hover">
+            <thead>
+                            <tr class="info">
+                                <td colspan="4">
+                        <a href="https://workbench.cisecurity.org/benchmarks/21960">Current Version</a>
+                    </td>
+                </tr>
+            </thead>
+            <tbody>
+
+
+                                    <tr>
+                                                <td>
+                            <a data-target=".history_collapsed_1" class="toggler collapsed"
+                               data-toggle="collapse" title="Sep 23, 2025 2:54pm">
+                                4 months ago
+                            </a>
+                        </td>
+                        <td>
+                                                            Chantel
+                                                    </td>
+                        <td>
+                                                            1 modification
+                                                    </td>
+                        <td style="text-align: right;">
+                            <a data-target=".history_collapsed_1" class="toggler collapsed"
+                               data-toggle="collapse" title="Sep 23, 2025 2:54pm">
+                                View Diff
+                            </a>
+                        </td>
+                    </tr>
+                    <tr class="history_collapsed">
+                        <td colspan="4">
+                                                                    <div class="collapse history_collapsed_1">
+                                                                                        <ul>
+                                                                                                    <li>
+                                                        <h4>
+                                                            Benchmark
+                                                            -
+                                                            Status
+                                                        </h4>
+                                                        <strong>changed from</strong>
+                                                                                                                    <p class="label label-accepted">Accepted</p>
+                                                            to
+                                                            <p class="label label-published">Published</p>
+                                                                                                            </li>
+                                                                                            </ul>
+                                        </div>
+                        </td>
+                    </tr>
+
+                                    <tr>
+                                                <td>
+                            <a data-target=".history_collapsed_2" class="toggler collapsed"
+                               data-toggle="collapse" title="Sep 23, 2025 2:53pm">
+                                4 months ago
+                            </a>
+                        </td>
+                        <td>
+                                                            Chantel
+                                                    </td>
+                        <td>
+                                                            2 modifications
+                                                    </td>
+                        <td style="text-align: right;">
+                            <a data-target=".history_collapsed_2" class="toggler collapsed"
+                               data-toggle="collapse" title="Sep 23, 2025 2:53pm">
+                                View Diff
+                            </a>
+                        </td>
+                    </tr>
+                    <tr class="history_collapsed">
+                        <td colspan="4">
+                                                                    <div class="collapse history_collapsed_2">
+                                                                                        <ul>
+                                                                                                    <li>
+                                                        <h4>
+                                                            Benchmark
+                                                            -
+                                                            Status
+                                                        </h4>
+                                                        <strong>changed from</strong>
+                                                                                                                    <p class="label label-draft">Draft</p>
+                                                            to
+                                                            <p class="label label-accepted">Accepted</p>
+                                                                                                            </li>
+                                                                                                    <li>
+                                                        <h4>
+                                                            Benchmark
+                                                            -
+                                                            company
+                                                        </h4>
+                                                        <strong>changed from</strong>
+                                                                                                                                                                                    nothing
+                                                                                                                        <strong>to</strong>
+                                                                                                                            1
+                                                                                                                                                                        </li>
+                                                                                            </ul>
+                                        </div>
+                        </td>
+                    </tr>
+
+                                    <tr>
+                                                <td>
+                            <a data-target=".history_collapsed_3" class="toggler collapsed"
+                               data-toggle="collapse" title="Sep 23, 2025 2:44pm">
+                                4 months ago
+                            </a>
+                        </td>
+                        <td>
+                                                            Chantel
+                                                    </td>
+                        <td>
+                                                            1 modification
+                                                    </td>
+                        <td style="text-align: right;">
+                            <a data-target=".history_collapsed_3" class="toggler collapsed"
+                               data-toggle="collapse" title="Sep 23, 2025 2:44pm">
+                                View Diff
+                            </a>
+                        </td>
+                    </tr>
+                    <tr class="history_collapsed">
+                        <td colspan="4">
+                                                                    <div class="collapse history_collapsed_3">
+                                                                                        <ul>
+                                                                                                    <li>
+                                                        <h4>
+                                                            Benchmark
+                                                            -
+                                                            Version
+                                                        </h4>
+                                                        <strong>changed from</strong>
+                                                                                                                                                                                    6.0.0 (vNext)
+                                                                                                                        <strong>to</strong>
+                                                                                                                            6.0.0
+                                                                                                                                                                        </li>
+                                                                                            </ul>
+                                        </div>
+                        </td>
+                    </tr>
+
+                                    <tr>
+                                                <td>
+                            <a data-target=".history_collapsed_4" class="toggler collapsed"
+                               data-toggle="collapse" title="Sep 23, 2025 2:43pm">
+                                4 months ago
+                            </a>
+                        </td>
+                        <td>
+                                                            Chantel
+                                                    </td>
+                        <td>
+                                                            1 modification
+                                                    </td>
+                        <td style="text-align: right;">
+                            <a data-target=".history_collapsed_4" class="toggler collapsed"
+                               data-toggle="collapse" title="Sep 23, 2025 2:43pm">
+                                View Diff
+                            </a>
+                        </td>
+                    </tr>
+                    <tr class="history_collapsed">
+                        <td colspan="4">
+                                                                    <div class="collapse history_collapsed_4">
+                                                                                        <ul>
+                                                                                                    <li>
+                                                        <h4>
+                                                            Benchmark
+                                                            -
+                                                            Overview
+                                                        </h4>
+                                                        <strong>changed from</strong>
+                                                                                                                                                                                    This document provides prescriptive guidance for configuring security options for a subset of Amazon Web Services with an emphasis on foundational, testable, and architecture agnostic settings. Some of the specific Amazon Web Services in scope for this document include:
+
+- AWS Identity and Access Management (IAM)
+- IAM Access Analyzer
+- AWS Config
+- AWS CloudTrail
+- AWS CloudWatch
+- AWS Simple Notification Service (SNS)
+- AWS Simple Storage Service (S3)
+- Elastic Compute Cloud (EC2)
+- Relational Database Service (RDS)
+- AWS VPC
+
+To obtain the latest version of this guide, please visit [https://benchmarks.cisecurity.org](https://benchmarks.cisecurity.org). If you have questions, comments, or have identified ways to improve this guide, please write us at <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="2062454e43484d41524b694e464f60434953454355524954590e4f5247">[email&#160;protected]</a>.
+                                                                                                                        <strong>to</strong>
+                                                                                                                            This document provides prescriptive guidance for configuring security options for a subset of Amazon Web Services with an emphasis on foundational, testable, and architecture agnostic settings. Some of the specific Amazon Web Services in scope for this document include:
+
+- AWS Identity and Access Management (IAM)
+- IAM Access Analyzer
+- AWS Config
+- AWS CloudTrail
+- AWS CloudWatch
+- AWS Simple Notification Service (SNS)
+- AWS Simple Storage Service (S3)
+- Elastic Compute Cloud (EC2)
+- Relational Database Service (RDS)
+- AWS VPC
+- Security Hub
+
+To obtain the latest version of this guide, please visit [https://benchmarks.cisecurity.org](https://benchmarks.cisecurity.org). If you have questions, comments, or have identified ways to improve this guide, please write us at <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="2d6f48434e45404c5f4664434b426d4e445e484e585f44595403425f4a">[email&#160;protected]</a>.
+                                                                                                                                                                        </li>
+                                                                                            </ul>
+                                        </div>
+                        </td>
+                    </tr>
+
+                                    <tr>
+                                                <td>
+                            <a data-target=".history_collapsed_5" class="toggler collapsed"
+                               data-toggle="collapse" title="Sep 04, 2025 2:47pm">
+                                4 months ago
+                            </a>
+                        </td>
+                        <td>
+                                                            Mike
+                                                    </td>
+                        <td>
+                                                            2 modifications
+                                                    </td>
+                        <td style="text-align: right;">
+                            <a data-target=".history_collapsed_5" class="toggler collapsed"
+                               data-toggle="collapse" title="Sep 04, 2025 2:47pm">
+                                View Diff
+                            </a>
+                        </td>
+                    </tr>
+                    <tr class="history_collapsed">
+                        <td colspan="4">
+                                                                    <div class="collapse history_collapsed_5">
+                                                                                        <ul>
+                                                                                                    <li>
+                                                        <h4>
+                                                            Benchmark
+                                                            -
+                                                            previous_version
+                                                        </h4>
+                                                        <strong>changed from</strong>
+                                                                                                                                                                                    nothing
+                                                                                                                        <strong>to</strong>
+                                                                                                                            CIS Amazon Web Services Foundations Benchmark
+                                                                                                                                                                        </li>
+                                                                                                    <li>
+                                                        <h4>
+                                                            Benchmark
+                                                            -
+                                                            technology_version
+                                                        </h4>
+                                                        <strong>changed from</strong>
+                                                                                                                                                                                    [blank]
+                                                                                                                        <strong>to</strong>
+                                                                                                                            1Foundations
+                                                                                                                                                                        </li>
+                                                                                            </ul>
+                                        </div>
+                        </td>
+                    </tr>
+
+                                    <tr>
+                                                <td>
+                            <a data-target=".history_collapsed_6" class="toggler collapsed"
+                               data-toggle="collapse" title="Jun 13, 2025 10:47am">
+                                7 months ago
+                            </a>
+                        </td>
+                        <td>
+                                                            Mike
+                                                    </td>
+                        <td>
+                                                            1 modification
+                                                    </td>
+                        <td style="text-align: right;">
+                            <a data-target=".history_collapsed_6" class="toggler collapsed"
+                               data-toggle="collapse" title="Jun 13, 2025 10:47am">
+                                View Diff
+                            </a>
+                        </td>
+                    </tr>
+                    <tr class="history_collapsed">
+                        <td colspan="4">
+                                                                    <div class="collapse history_collapsed_6">
+                                                                                        <ul>
+                                                                                                    <li>
+                                                        <h4>
+                                                            Benchmark
+                                                            -
+                                                            deleted_section
+                                                        </h4>
+                                                        <strong>changed from</strong>
+                                                                                                                                                                                    Introduction
+                                                                                                                        <strong>to</strong>
+                                                                                                                            [blank]
+                                                                                                                                                                        </li>
+                                                                                            </ul>
+                                        </div>
+                        </td>
+                    </tr>
+
+                                    <tr>
+                                                <td>
+                            <a data-target=".history_collapsed_7" class="toggler collapsed"
+                               data-toggle="collapse" title="Jun 13, 2025 10:44am">
+                                7 months ago
+                            </a>
+                        </td>
+                        <td>
+                                                            Mike
+                                                    </td>
+                        <td>
+                                                            1 modification
+                                                    </td>
+                        <td style="text-align: right;">
+                            <a data-target=".history_collapsed_7" class="toggler collapsed"
+                               data-toggle="collapse" title="Jun 13, 2025 10:44am">
+                                View Diff
+                            </a>
+                        </td>
+                    </tr>
+                    <tr class="history_collapsed">
+                        <td colspan="4">
+                                                                    <div class="collapse history_collapsed_7">
+                                                                                        <ul>
+                                                                                                    <li>
+                                                        <h4>
+                                                            Benchmark
+                                                            -
+                                                            created_section
+                                                        </h4>
+                                                        <strong>changed from</strong>
+                                                                                                                                                                                    [blank]
+                                                                                                                        <strong>to</strong>
+                                                                                                                            Introduction
+                                                                                                                                                                        </li>
+                                                                                            </ul>
+                                        </div>
+                        </td>
+                    </tr>
+
+                                    <tr>
+                                                <td>
+                            <a data-target=".history_collapsed_8" class="toggler collapsed"
+                               data-toggle="collapse" title="Apr 17, 2025 11:45am">
+                                9 months ago
+                            </a>
+                        </td>
+                        <td>
+                                                            Mike
+                                                    </td>
+                        <td>
+                                                            1 modification
+                                                    </td>
+                        <td style="text-align: right;">
+                            <a data-target=".history_collapsed_8" class="toggler collapsed"
+                               data-toggle="collapse" title="Apr 17, 2025 11:45am">
+                                View Diff
+                            </a>
+                        </td>
+                    </tr>
+                    <tr class="history_collapsed">
+                        <td colspan="4">
+                                                                    <div class="collapse history_collapsed_8">
+                                                                                        <ul>
+                                                                                                    <li>
+                                                        <h4>
+                                                            Benchmark
+                                                            -
+                                                            Version
+                                                        </h4>
+                                                        <strong>changed from</strong>
+                                                                                                                                                                                    6.0.0 Next
+                                                                                                                        <strong>to</strong>
+                                                                                                                            6.0.0 (vNext)
+                                                                                                                                                                        </li>
+                                                                                            </ul>
+                                        </div>
+                        </td>
+                    </tr>
+
+                                    <tr>
+                                                <td>
+                            <a data-target=".history_collapsed_9" class="toggler collapsed"
+                               data-toggle="collapse" title="Apr 17, 2025 11:31am">
+                                9 months ago
+                            </a>
+                        </td>
+                        <td>
+                                                            Chantel
+                                                    </td>
+                        <td>
+                                                            1 modification
+                                                    </td>
+                        <td style="text-align: right;">
+                            <a data-target=".history_collapsed_9" class="toggler collapsed"
+                               data-toggle="collapse" title="Apr 17, 2025 11:31am">
+                                View Diff
+                            </a>
+                        </td>
+                    </tr>
+                    <tr class="history_collapsed">
+                        <td colspan="4">
+                                                                    <div class="collapse history_collapsed_9">
+                                                                                        <ul>
+                                                                                                    <li>
+                                                        <h4>
+                                                            Benchmark
+                                                            -
+                                                            Version
+                                                        </h4>
+                                                        <strong>changed from</strong>
+                                                                                                                                                                                    Next
+                                                                                                                        <strong>to</strong>
+                                                                                                                            6.0.0 Next
+                                                                                                                                                                        </li>
+                                                                                            </ul>
+                                        </div>
+                        </td>
+                    </tr>
+
+                                    <tr>
+                                                <td>
+                            <a data-target=".history_collapsed_10" class="toggler collapsed"
+                               data-toggle="collapse" title="Apr 17, 2025 11:30am">
+                                9 months ago
+                            </a>
+                        </td>
+                        <td>
+                                                            Chantel
+                                                    </td>
+                        <td>
+                                                            1 modification
+                                                    </td>
+                        <td style="text-align: right;">
+                            <a data-target=".history_collapsed_10" class="toggler collapsed"
+                               data-toggle="collapse" title="Apr 17, 2025 11:30am">
+                                View Diff
+                            </a>
+                        </td>
+                    </tr>
+                    <tr class="history_collapsed">
+                        <td colspan="4">
+                                                                    <div class="collapse history_collapsed_10">
+                                                                                        <ul>
+                                                                                                    <li>
+                                                        <h4>
+                                                            Benchmark
+                                                            -
+                                                            Version
+                                                        </h4>
+                                                        <strong>changed from</strong>
+                                                                                                                                                                                    vNext
+                                                                                                                        <strong>to</strong>
+                                                                                                                            Next
+                                                                                                                                                                        </li>
+                                                                                            </ul>
+                                        </div>
+                        </td>
+                    </tr>
+
+                                    <tr>
+                                                <td>
+                            <a data-target=".history_collapsed_11" class="toggler collapsed"
+                               data-toggle="collapse" title="Apr 17, 2025 11:28am">
+                                9 months ago
+                            </a>
+                        </td>
+                        <td>
+                                                            Chantel
+                                                    </td>
+                        <td>
+                                                            1 modification
+                                                    </td>
+                        <td style="text-align: right;">
+                            <a data-target=".history_collapsed_11" class="toggler collapsed"
+                               data-toggle="collapse" title="Apr 17, 2025 11:28am">
+                                View Diff
+                            </a>
+                        </td>
+                    </tr>
+                    <tr class="history_collapsed">
+                        <td colspan="4">
+                                                                    <div class="collapse history_collapsed_11">
+                                                                                        <ul>
+                                                                                                    <li>
+                                                        <h4>
+                                                            Profile
+                                                            -
+                                                            Inherent Parent
+                                                        </h4>
+                                                        <strong>changed from</strong>
+                                                                                                                                                                                    Level 1
+                                                                                                                        <strong>to</strong>
+                                                                                                                            Level 1
+                                                                                                                                                                        </li>
+                                                                                            </ul>
+                                        </div>
+                        </td>
+                    </tr>
+                                </tbody>
+        </table>
+    </section>
+                    </div>
+    </div>
+				</div>
+			</div>
+
+			<footer>
+									<div class="footer-bottom">
+	<div class="container-fluid inner">
+		<hr>
+		<div class="row">
+			<div class="col-lg-4 col-lg-offset-4">
+				<p>&copy; 2026 <a href="http://cisecurity.org" target="_blank" rel="noopener noreferrer"><img src="/images/Logo_Text_Stacked_TMR.png" alt="CIS LOGO" height="50"></a></p></div>
+			<div class="col-lg-4"></div>
+		</div>
+	</div>
+</div>
+							</footer>
+		</div>
+
+		<div id="sidebar-right-wrapper">
+        <div id="sidebar-right-actions">
+                            <a href="#" class="offcanvas-right-slide pull-left" rel="hide-sidebar-right"
+                   aria-label="Hide Sidebar"><span class="fa-regular fa-square-caret-right"></span></a>
+                <a href="#" class="offcanvas-right-slide pull-left" style="display: none;" rel="show-sidebar-right"
+                   aria-label="Show Sidebar"><span class="fa-regular fa-square-caret-left"></span></a>
+                                        <a href="#tickets" id="tickets-tab"
+                   class="pull-left min-hide  active ">
+                    <span class="fa fa-ticket"></span> <span class="hidden-md hidden-sm hidden-xs">Tickets                             <span class="badge tickets-count">33</span>
+                        </span>
+                </a>
+                <a href="#discussions" id="discussions-tab"
+                   class="pull-left min-hide ">
+                    <span class="fa fa-comments"></span> <span class="hidden-md hidden-sm hidden-xs">Discussions                             <span class="badge">5</span>
+                        </span>
+                </a>
+                <a href="#changes" id="changes-tab"
+                   class="pull-left min-hide ">
+                    <span class="fa fa-pen-to-square"></span> <span class="hidden-md hidden-sm hidden-xs">Changes </span>
+                </a>
+                    </div>
+        <div id="sidebar-right-inner">
+            <div id="sidebar-right-content"
+                 >
+                    <div class="tab-content sidebar-right-tabs" style="height: 100%; overflow: auto;">
+	<div id="tickets" class="tab-pane fade in  in active ">
+
+		<div class="content-top">
+
+				<h4>Tickets for Amazon Web Services Foundations Benchmark</h4>
+
+
+	<table class="table table-striped table-hover table-condensed">
+		<thead>
+			<tr>
+				<th>Title</th>
+				<th>Status</th>
+				<th>Priority</th>
+				<th>Due</th>
+				<th>
+																		<a href="https://workbench.cisecurity.org/tickets/create/benchmark/21960" class="btn btn-default btn-xs header-button pull-right create-ticket">New Ticket</a>
+															</th>
+			</tr>
+		</thead>
+		<tbody>
+							<tr>
+					<td>
+						<a href="https://workbench.cisecurity.org/benchmarks/21960/tickets/24749"
+							data-sidebar-href="https://workbench.cisecurity.org/tickets/24749/sidebar"
+							data-sidebar-comments-href="https://workbench.cisecurity.org/comments/ticket/24749"
+							class="ticket-show-on-sidebar">&quot;1.1 Maintain current contact details&quot; Edit contact details from command lines</a>
+
+						<a href="https://workbench.cisecurity.org/benchmarks/21960/tickets/24749">
+							<span class="fa fa-external-link"></span>
+						</a>
+					</td>
+					<td>
+						<span class="label label-ticket-closed">closed</span>
+					</td>
+					<td>
+						<span class="ticket-medium">Medium</span>
+					</td>
+					<td><span data-toggle="tooltip" data-placement="bottom" title="" data-original-title="Mon, May 4, 2026 6:10 PM">3 months from now</span></td>
+					<td class="actions">
+																	</td>
+				</tr>
+							<tr>
+					<td>
+						<a href="https://workbench.cisecurity.org/benchmarks/20495/tickets/25318"
+							data-sidebar-href="https://workbench.cisecurity.org/tickets/25318/sidebar"
+							data-sidebar-comments-href="https://workbench.cisecurity.org/comments/ticket/25318"
+							class="ticket-show-on-sidebar">Conflict Between MFA Control Requirements for Root User: Hardware vs. Virtual MFA in AWS</a>
+
+						<a href="https://workbench.cisecurity.org/benchmarks/20495/tickets/25318">
+							<span class="fa fa-external-link"></span>
+						</a>
+					</td>
+					<td>
+						<span class="label label-ticket-closed">closed</span>
+					</td>
+					<td>
+						<span class="ticket-medium">Medium</span>
+					</td>
+					<td><span data-toggle="tooltip" data-placement="bottom" title="" data-original-title=""></span></td>
+					<td class="actions">
+																	</td>
+				</tr>
+							<tr>
+					<td>
+						<a href="https://workbench.cisecurity.org/benchmarks/21960/tickets/24714"
+							data-sidebar-href="https://workbench.cisecurity.org/tickets/24714/sidebar"
+							data-sidebar-comments-href="https://workbench.cisecurity.org/comments/ticket/24714"
+							class="ticket-show-on-sidebar">In CIS Amazon Web Services Foundations Benchmark CIS Amazon Web Services Foundations Benchmark V5.0.0 &amp; V6.0.0 &quot;1.5 Ensure hardware MFA is enabled for the &#039;root&#039; user account&quot;, the process for enabling root account MFA needs to be updated.</a>
+
+						<a href="https://workbench.cisecurity.org/benchmarks/21960/tickets/24714">
+							<span class="fa fa-external-link"></span>
+						</a>
+					</td>
+					<td>
+						<span class="label label-ticket-closed">closed</span>
+					</td>
+					<td>
+						<span class="ticket-medium">Medium</span>
+					</td>
+					<td><span data-toggle="tooltip" data-placement="bottom" title="" data-original-title="Thu, Apr 30, 2026 9:41 AM">2 months from now</span></td>
+					<td class="actions">
+																	</td>
+				</tr>
+							<tr>
+					<td>
+						<a href="https://workbench.cisecurity.org/benchmarks/21960/tickets/25898"
+							data-sidebar-href="https://workbench.cisecurity.org/tickets/25898/sidebar"
+							data-sidebar-comments-href="https://workbench.cisecurity.org/comments/ticket/25898"
+							class="ticket-show-on-sidebar">Update to make risk statement explicit</a>
+
+						<a href="https://workbench.cisecurity.org/benchmarks/21960/tickets/25898">
+							<span class="fa fa-external-link"></span>
+						</a>
+					</td>
+					<td>
+						<span class="label label-ticket-closed">closed</span>
+					</td>
+					<td>
+						<span class="ticket-medium">Medium</span>
+					</td>
+					<td><span data-toggle="tooltip" data-placement="bottom" title="" data-original-title=""></span></td>
+					<td class="actions">
+																	</td>
+				</tr>
+							<tr>
+					<td>
+						<a href="https://workbench.cisecurity.org/benchmarks/21960/tickets/25899"
+							data-sidebar-href="https://workbench.cisecurity.org/tickets/25899/sidebar"
+							data-sidebar-comments-href="https://workbench.cisecurity.org/comments/ticket/25899"
+							class="ticket-show-on-sidebar">Update to make risk statement explicit</a>
+
+						<a href="https://workbench.cisecurity.org/benchmarks/21960/tickets/25899">
+							<span class="fa fa-external-link"></span>
+						</a>
+					</td>
+					<td>
+						<span class="label label-ticket-closed">closed</span>
+					</td>
+					<td>
+						<span class="ticket-medium">Medium</span>
+					</td>
+					<td><span data-toggle="tooltip" data-placement="bottom" title="" data-original-title=""></span></td>
+					<td class="actions">
+																	</td>
+				</tr>
+							<tr>
+					<td>
+						<a href="https://workbench.cisecurity.org/benchmarks/21960/tickets/24754"
+							data-sidebar-href="https://workbench.cisecurity.org/tickets/24754/sidebar"
+							data-sidebar-comments-href="https://workbench.cisecurity.org/comments/ticket/24754"
+							class="ticket-show-on-sidebar">&quot;1.13 Ensure access keys are rotated every 90 days or less&quot; add more complete details in key rotation operation</a>
+
+						<a href="https://workbench.cisecurity.org/benchmarks/21960/tickets/24754">
+							<span class="fa fa-external-link"></span>
+						</a>
+					</td>
+					<td>
+						<span class="label label-ticket-closed">closed</span>
+					</td>
+					<td>
+						<span class="ticket-medium">Medium</span>
+					</td>
+					<td><span data-toggle="tooltip" data-placement="bottom" title="" data-original-title="Sun, May 4, 2025 9:34 PM">8 months ago</span></td>
+					<td class="actions">
+																	</td>
+				</tr>
+							<tr>
+					<td>
+						<a href="https://workbench.cisecurity.org/benchmarks/21960/tickets/24751"
+							data-sidebar-href="https://workbench.cisecurity.org/tickets/24751/sidebar"
+							data-sidebar-comments-href="https://workbench.cisecurity.org/comments/ticket/24751"
+							class="ticket-show-on-sidebar">&quot;1.14 Ensure IAM users receive permissions only through groups&quot; remediation from command line</a>
+
+						<a href="https://workbench.cisecurity.org/benchmarks/21960/tickets/24751">
+							<span class="fa fa-external-link"></span>
+						</a>
+					</td>
+					<td>
+						<span class="label label-ticket-closed">closed</span>
+					</td>
+					<td>
+						<span class="ticket-medium">Medium</span>
+					</td>
+					<td><span data-toggle="tooltip" data-placement="bottom" title="" data-original-title="Mon, May 4, 2026 6:53 PM">3 months from now</span></td>
+					<td class="actions">
+																	</td>
+				</tr>
+							<tr>
+					<td>
+						<a href="https://workbench.cisecurity.org/benchmarks/20495/tickets/24598"
+							data-sidebar-href="https://workbench.cisecurity.org/tickets/24598/sidebar"
+							data-sidebar-comments-href="https://workbench.cisecurity.org/comments/ticket/24598"
+							class="ticket-show-on-sidebar">Audit CLI Command doesn&#039;t work with type</a>
+
+						<a href="https://workbench.cisecurity.org/benchmarks/20495/tickets/24598">
+							<span class="fa fa-external-link"></span>
+						</a>
+					</td>
+					<td>
+						<span class="label label-ticket-closed">closed</span>
+					</td>
+					<td>
+						<span class="ticket-medium">Medium</span>
+					</td>
+					<td><span data-toggle="tooltip" data-placement="bottom" title="" data-original-title=""></span></td>
+					<td class="actions">
+																	</td>
+				</tr>
+							<tr>
+					<td>
+						<a href="https://workbench.cisecurity.org/benchmarks/21960/tickets/24710"
+							data-sidebar-href="https://workbench.cisecurity.org/tickets/24710/sidebar"
+							data-sidebar-comments-href="https://workbench.cisecurity.org/comments/ticket/24710"
+							class="ticket-show-on-sidebar">CIS Amazon Web Services Foundations Benchmark V5.0.0 &amp; V6.0.0   &quot;2.2.1  Ensure that encryption-at-rest is enabled for RDS instances (Automated)&quot; Remediate RDS Encryption for Custom VPC Environments</a>
+
+						<a href="https://workbench.cisecurity.org/benchmarks/21960/tickets/24710">
+							<span class="fa fa-external-link"></span>
+						</a>
+					</td>
+					<td>
+						<span class="label label-ticket-closed">closed</span>
+					</td>
+					<td>
+						<span class="ticket-medium">Medium</span>
+					</td>
+					<td><span data-toggle="tooltip" data-placement="bottom" title="" data-original-title="Thu, Apr 30, 2026 10:07 PM">2 months from now</span></td>
+					<td class="actions">
+																	</td>
+				</tr>
+							<tr>
+					<td>
+						<a href="https://workbench.cisecurity.org/benchmarks/19631/tickets/24208"
+							data-sidebar-href="https://workbench.cisecurity.org/tickets/24208/sidebar"
+							data-sidebar-comments-href="https://workbench.cisecurity.org/comments/ticket/24208"
+							class="ticket-show-on-sidebar">2.2.3 Audit step #5 should be looking for a value of &quot;No&quot;</a>
+
+						<a href="https://workbench.cisecurity.org/benchmarks/19631/tickets/24208">
+							<span class="fa fa-external-link"></span>
+						</a>
+					</td>
+					<td>
+						<span class="label label-ticket-resolved">resolved</span>
+					</td>
+					<td>
+						<span class="ticket-low">Low</span>
+					</td>
+					<td><span data-toggle="tooltip" data-placement="bottom" title="" data-original-title=""></span></td>
+					<td class="actions">
+																	</td>
+				</tr>
+							<tr>
+					<td>
+						<a href="https://workbench.cisecurity.org/benchmarks/19631/tickets/24214"
+							data-sidebar-href="https://workbench.cisecurity.org/tickets/24214/sidebar"
+							data-sidebar-comments-href="https://workbench.cisecurity.org/comments/ticket/24214"
+							class="ticket-show-on-sidebar">2.2.4 console audit step #4 needs update</a>
+
+						<a href="https://workbench.cisecurity.org/benchmarks/19631/tickets/24214">
+							<span class="fa fa-external-link"></span>
+						</a>
+					</td>
+					<td>
+						<span class="label label-ticket-resolved">resolved</span>
+					</td>
+					<td>
+						<span class="ticket-medium">Medium</span>
+					</td>
+					<td><span data-toggle="tooltip" data-placement="bottom" title="" data-original-title=""></span></td>
+					<td class="actions">
+																	</td>
+				</tr>
+							<tr>
+					<td>
+						<a href="https://workbench.cisecurity.org/benchmarks/21960/tickets/24716"
+							data-sidebar-href="https://workbench.cisecurity.org/tickets/24716/sidebar"
+							data-sidebar-comments-href="https://workbench.cisecurity.org/comments/ticket/24716"
+							class="ticket-show-on-sidebar">In CIS Amazon Web Services Foundations Benchmark V5.0.0 &amp; V6.0.0, recommendation &quot;3.5 Ensure CloudTrail logs are encrypted at rest using KMS CMKs&quot; command line issue</a>
+
+						<a href="https://workbench.cisecurity.org/benchmarks/21960/tickets/24716">
+							<span class="fa fa-external-link"></span>
+						</a>
+					</td>
+					<td>
+						<span class="label label-ticket-closed">closed</span>
+					</td>
+					<td>
+						<span class="ticket-medium">Medium</span>
+					</td>
+					<td><span data-toggle="tooltip" data-placement="bottom" title="" data-original-title="Thu, Apr 30, 2026 10:30 AM">2 months from now</span></td>
+					<td class="actions">
+																	</td>
+				</tr>
+							<tr>
+					<td>
+						<a href="https://workbench.cisecurity.org/benchmarks/20495/tickets/24776"
+							data-sidebar-href="https://workbench.cisecurity.org/tickets/24776/sidebar"
+							data-sidebar-comments-href="https://workbench.cisecurity.org/comments/ticket/24776"
+							class="ticket-show-on-sidebar">UPDATE - Ensure VPC flow logging is enabled in all VPCs - Command fails (wrong role policy) misconfiguration will cause flow logging failure</a>
+
+						<a href="https://workbench.cisecurity.org/benchmarks/20495/tickets/24776">
+							<span class="fa fa-external-link"></span>
+						</a>
+					</td>
+					<td>
+						<span class="label label-ticket-closed">closed</span>
+					</td>
+					<td>
+						<span class="ticket-high">High</span>
+					</td>
+					<td><span data-toggle="tooltip" data-placement="bottom" title="" data-original-title=""></span></td>
+					<td class="actions">
+																	</td>
+				</tr>
+							<tr>
+					<td>
+						<a href="https://workbench.cisecurity.org/benchmarks/16498/tickets/22697"
+							data-sidebar-href="https://workbench.cisecurity.org/tickets/22697/sidebar"
+							data-sidebar-comments-href="https://workbench.cisecurity.org/comments/ticket/22697"
+							class="ticket-show-on-sidebar">Why was this changed to automated?</a>
+
+						<a href="https://workbench.cisecurity.org/benchmarks/16498/tickets/22697">
+							<span class="fa fa-external-link"></span>
+						</a>
+					</td>
+					<td>
+						<span class="label label-ticket-resolved">resolved</span>
+					</td>
+					<td>
+						<span class="ticket-medium">Medium</span>
+					</td>
+					<td><span data-toggle="tooltip" data-placement="bottom" title="" data-original-title=""></span></td>
+					<td class="actions">
+																	</td>
+				</tr>
+							<tr>
+					<td>
+						<a href="https://workbench.cisecurity.org/benchmarks/20495/tickets/24777"
+							data-sidebar-href="https://workbench.cisecurity.org/tickets/24777/sidebar"
+							data-sidebar-comments-href="https://workbench.cisecurity.org/comments/ticket/24777"
+							class="ticket-show-on-sidebar">UPDATE - Ensure CIFS access is restricted to trusted networks to prevent unauthorized access - Security Groups describe-security-groups command fails (IPv6 support)</a>
+
+						<a href="https://workbench.cisecurity.org/benchmarks/20495/tickets/24777">
+							<span class="fa fa-external-link"></span>
+						</a>
+					</td>
+					<td>
+						<span class="label label-ticket-closed">closed</span>
+					</td>
+					<td>
+						<span class="ticket-medium">Medium</span>
+					</td>
+					<td><span data-toggle="tooltip" data-placement="bottom" title="" data-original-title=""></span></td>
+					<td class="actions">
+																	</td>
+				</tr>
+							<tr>
+					<td>
+						<a href="https://workbench.cisecurity.org/benchmarks/21960/tickets/25897"
+							data-sidebar-href="https://workbench.cisecurity.org/tickets/25897/sidebar"
+							data-sidebar-comments-href="https://workbench.cisecurity.org/comments/ticket/25897"
+							class="ticket-show-on-sidebar">Update to make risk statement explicit</a>
+
+						<a href="https://workbench.cisecurity.org/benchmarks/21960/tickets/25897">
+							<span class="fa fa-external-link"></span>
+						</a>
+					</td>
+					<td>
+						<span class="label label-ticket-closed">closed</span>
+					</td>
+					<td>
+						<span class="ticket-medium">Medium</span>
+					</td>
+					<td><span data-toggle="tooltip" data-placement="bottom" title="" data-original-title=""></span></td>
+					<td class="actions">
+																	</td>
+				</tr>
+							<tr>
+					<td>
+						<a href="https://workbench.cisecurity.org/benchmarks/21960/tickets/25928"
+							data-sidebar-href="https://workbench.cisecurity.org/tickets/25928/sidebar"
+							data-sidebar-comments-href="https://workbench.cisecurity.org/comments/ticket/25928"
+							class="ticket-show-on-sidebar">Fix audit procedure command line</a>
+
+						<a href="https://workbench.cisecurity.org/benchmarks/21960/tickets/25928">
+							<span class="fa fa-external-link"></span>
+						</a>
+					</td>
+					<td>
+						<span class="label label-ticket-closed">closed</span>
+					</td>
+					<td>
+						<span class="ticket-medium">Medium</span>
+					</td>
+					<td><span data-toggle="tooltip" data-placement="bottom" title="" data-original-title=""></span></td>
+					<td class="actions">
+																	</td>
+				</tr>
+							<tr>
+					<td>
+						<a href="https://workbench.cisecurity.org/benchmarks/20495/tickets/25484"
+							data-sidebar-href="https://workbench.cisecurity.org/tickets/25484/sidebar"
+							data-sidebar-comments-href="https://workbench.cisecurity.org/comments/ticket/25484"
+							class="ticket-show-on-sidebar">From Console instruction no longer correct</a>
+
+						<a href="https://workbench.cisecurity.org/benchmarks/20495/tickets/25484">
+							<span class="fa fa-external-link"></span>
+						</a>
+					</td>
+					<td>
+						<span class="label label-ticket-resolved">resolved</span>
+					</td>
+					<td>
+						<span class="ticket-high">High</span>
+					</td>
+					<td><span data-toggle="tooltip" data-placement="bottom" title="" data-original-title=""></span></td>
+					<td class="actions">
+																	</td>
+				</tr>
+							<tr>
+					<td>
+						<a href="https://workbench.cisecurity.org/benchmarks/19631/tickets/24215"
+							data-sidebar-href="https://workbench.cisecurity.org/tickets/24215/sidebar"
+							data-sidebar-comments-href="https://workbench.cisecurity.org/comments/ticket/24215"
+							class="ticket-show-on-sidebar">3.4 Update console audit step 7-8</a>
+
+						<a href="https://workbench.cisecurity.org/benchmarks/19631/tickets/24215">
+							<span class="fa fa-external-link"></span>
+						</a>
+					</td>
+					<td>
+						<span class="label label-ticket-resolved">resolved</span>
+					</td>
+					<td>
+						<span class="ticket-medium">Medium</span>
+					</td>
+					<td><span data-toggle="tooltip" data-placement="bottom" title="" data-original-title=""></span></td>
+					<td class="actions">
+																	</td>
+				</tr>
+							<tr>
+					<td>
+						<a href="https://workbench.cisecurity.org/benchmarks/20495/tickets/25483"
+							data-sidebar-href="https://workbench.cisecurity.org/tickets/25483/sidebar"
+							data-sidebar-comments-href="https://workbench.cisecurity.org/comments/ticket/25483"
+							class="ticket-show-on-sidebar">“logging” it is no longer referred to as that in the AWS GUI</a>
+
+						<a href="https://workbench.cisecurity.org/benchmarks/20495/tickets/25483">
+							<span class="fa fa-external-link"></span>
+						</a>
+					</td>
+					<td>
+						<span class="label label-ticket-resolved">resolved</span>
+					</td>
+					<td>
+						<span class="ticket-high">High</span>
+					</td>
+					<td><span data-toggle="tooltip" data-placement="bottom" title="" data-original-title=""></span></td>
+					<td class="actions">
+																	</td>
+				</tr>
+							<tr>
+					<td>
+						<a href="https://workbench.cisecurity.org/benchmarks/16498/tickets/22986"
+							data-sidebar-href="https://workbench.cisecurity.org/tickets/22986/sidebar"
+							data-sidebar-comments-href="https://workbench.cisecurity.org/comments/ticket/22986"
+							class="ticket-show-on-sidebar">Difference between Audit Procedure From Console and From Command Line</a>
+
+						<a href="https://workbench.cisecurity.org/benchmarks/16498/tickets/22986">
+							<span class="fa fa-external-link"></span>
+						</a>
+					</td>
+					<td>
+						<span class="label label-ticket-resolved">resolved</span>
+					</td>
+					<td>
+						<span class="ticket-medium">Medium</span>
+					</td>
+					<td><span data-toggle="tooltip" data-placement="bottom" title="" data-original-title=""></span></td>
+					<td class="actions">
+																	</td>
+				</tr>
+							<tr>
+					<td>
+						<a href="https://workbench.cisecurity.org/benchmarks/19631/tickets/24212"
+							data-sidebar-href="https://workbench.cisecurity.org/tickets/24212/sidebar"
+							data-sidebar-comments-href="https://workbench.cisecurity.org/comments/ticket/24212"
+							class="ticket-show-on-sidebar">5.1.1 missing an audit step</a>
+
+						<a href="https://workbench.cisecurity.org/benchmarks/19631/tickets/24212">
+							<span class="fa fa-external-link"></span>
+						</a>
+					</td>
+					<td>
+						<span class="label label-ticket-resolved">resolved</span>
+					</td>
+					<td>
+						<span class="ticket-medium">Medium</span>
+					</td>
+					<td><span data-toggle="tooltip" data-placement="bottom" title="" data-original-title=""></span></td>
+					<td class="actions">
+																	</td>
+				</tr>
+							<tr>
+					<td>
+						<a href="https://workbench.cisecurity.org/benchmarks/21960/tickets/25903"
+							data-sidebar-href="https://workbench.cisecurity.org/tickets/25903/sidebar"
+							data-sidebar-comments-href="https://workbench.cisecurity.org/comments/ticket/25903"
+							class="ticket-show-on-sidebar">add in console commands for checking 6.2</a>
+
+						<a href="https://workbench.cisecurity.org/benchmarks/21960/tickets/25903">
+							<span class="fa fa-external-link"></span>
+						</a>
+					</td>
+					<td>
+						<span class="label label-ticket-closed">closed</span>
+					</td>
+					<td>
+						<span class="ticket-low">Low</span>
+					</td>
+					<td><span data-toggle="tooltip" data-placement="bottom" title="" data-original-title=""></span></td>
+					<td class="actions">
+																	</td>
+				</tr>
+							<tr>
+					<td>
+						<a href="https://workbench.cisecurity.org/benchmarks/21960/tickets/24729"
+							data-sidebar-href="https://workbench.cisecurity.org/tickets/24729/sidebar"
+							data-sidebar-comments-href="https://workbench.cisecurity.org/comments/ticket/24729"
+							class="ticket-show-on-sidebar">CIS Amazon Web Services Foundations Benchmark V6.0.0 &quot;5.5 Ensure the default security group of every VPC restricts all traffic&quot; Add AWS Command Line section</a>
+
+						<a href="https://workbench.cisecurity.org/benchmarks/21960/tickets/24729">
+							<span class="fa fa-external-link"></span>
+						</a>
+					</td>
+					<td>
+						<span class="label label-ticket-closed">closed</span>
+					</td>
+					<td>
+						<span class="ticket-medium">Medium</span>
+					</td>
+					<td><span data-toggle="tooltip" data-placement="bottom" title="" data-original-title="Fri, May 1, 2026 9:48 AM">3 months from now</span></td>
+					<td class="actions">
+																	</td>
+				</tr>
+							<tr>
+					<td>
+						<a href="https://workbench.cisecurity.org/benchmarks/21960/tickets/26033"
+							data-sidebar-href="https://workbench.cisecurity.org/tickets/26033/sidebar"
+							data-sidebar-comments-href="https://workbench.cisecurity.org/comments/ticket/26033"
+							class="ticket-show-on-sidebar">Update the Audit command to be more compact and clarify if AWS managed policies count</a>
+
+						<a href="https://workbench.cisecurity.org/benchmarks/21960/tickets/26033">
+							<span class="fa fa-external-link"></span>
+						</a>
+					</td>
+					<td>
+						<span class="label label-ticket-closed">closed</span>
+					</td>
+					<td>
+						<span class="ticket-medium">Medium</span>
+					</td>
+					<td><span data-toggle="tooltip" data-placement="bottom" title="" data-original-title=""></span></td>
+					<td class="actions">
+																	</td>
+				</tr>
+							<tr>
+					<td>
+						<a href="https://workbench.cisecurity.org/benchmarks/20495/tickets/25382"
+							data-sidebar-href="https://workbench.cisecurity.org/tickets/25382/sidebar"
+							data-sidebar-comments-href="https://workbench.cisecurity.org/comments/ticket/25382"
+							class="ticket-show-on-sidebar">Ensure CloudTrail is enabled in all regions - Audit Procedure</a>
+
+						<a href="https://workbench.cisecurity.org/benchmarks/20495/tickets/25382">
+							<span class="fa fa-external-link"></span>
+						</a>
+					</td>
+					<td>
+						<span class="label label-ticket-closed">closed</span>
+					</td>
+					<td>
+						<span class="ticket-medium">Medium</span>
+					</td>
+					<td><span data-toggle="tooltip" data-placement="bottom" title="" data-original-title=""></span></td>
+					<td class="actions">
+																	</td>
+				</tr>
+							<tr>
+					<td>
+						<a href="https://workbench.cisecurity.org/benchmarks/21960/tickets/26066"
+							data-sidebar-href="https://workbench.cisecurity.org/tickets/26066/sidebar"
+							data-sidebar-comments-href="https://workbench.cisecurity.org/comments/ticket/26066"
+							class="ticket-show-on-sidebar">Command line block format issue in CIS Amazon Web Services Foundations Benchmark v6.0.0 download page PDF</a>
+
+						<a href="https://workbench.cisecurity.org/benchmarks/21960/tickets/26066">
+							<span class="fa fa-external-link"></span>
+						</a>
+					</td>
+					<td>
+						<span class="label label-ticket-new">new</span>
+					</td>
+					<td>
+						<span class="ticket-low">Low</span>
+					</td>
+					<td><span data-toggle="tooltip" data-placement="bottom" title="" data-original-title=""></span></td>
+					<td class="actions">
+																	</td>
+				</tr>
+							<tr>
+					<td>
+						<a href="https://workbench.cisecurity.org/benchmarks/21960/tickets/26138"
+							data-sidebar-href="https://workbench.cisecurity.org/tickets/26138/sidebar"
+							data-sidebar-comments-href="https://workbench.cisecurity.org/comments/ticket/26138"
+							class="ticket-show-on-sidebar">2.2 Command line require more parameters for add security contact.</a>
+
+						<a href="https://workbench.cisecurity.org/benchmarks/21960/tickets/26138">
+							<span class="fa fa-external-link"></span>
+						</a>
+					</td>
+					<td>
+						<span class="label label-ticket-new">new</span>
+					</td>
+					<td>
+						<span class="ticket-medium">Medium</span>
+					</td>
+					<td><span data-toggle="tooltip" data-placement="bottom" title="" data-original-title=""></span></td>
+					<td class="actions">
+																	</td>
+				</tr>
+							<tr>
+					<td>
+						<a href="https://workbench.cisecurity.org/benchmarks/21960/tickets/24753"
+							data-sidebar-href="https://workbench.cisecurity.org/tickets/24753/sidebar"
+							data-sidebar-comments-href="https://workbench.cisecurity.org/comments/ticket/24753"
+							class="ticket-show-on-sidebar">5.3 Ensure no security groups allow ingress from 0.0.0.0/0 to remote server administration ports&quot; remediation from command</a>
+
+						<a href="https://workbench.cisecurity.org/benchmarks/21960/tickets/24753">
+							<span class="fa fa-external-link"></span>
+						</a>
+					</td>
+					<td>
+						<span class="label label-ticket-new">new</span>
+					</td>
+					<td>
+						<span class="ticket-medium">Medium</span>
+					</td>
+					<td><span data-toggle="tooltip" data-placement="bottom" title="" data-original-title="Mon, May 4, 2026 9:28 PM">3 months from now</span></td>
+					<td class="actions">
+																	</td>
+				</tr>
+							<tr>
+					<td>
+						<a href="https://workbench.cisecurity.org/benchmarks/21960/tickets/24755"
+							data-sidebar-href="https://workbench.cisecurity.org/tickets/24755/sidebar"
+							data-sidebar-comments-href="https://workbench.cisecurity.org/comments/ticket/24755"
+							class="ticket-show-on-sidebar">5.4 Ensure no security groups allow ingress from ::/0 to remote server administration ports&quot; remediation from command line.</a>
+
+						<a href="https://workbench.cisecurity.org/benchmarks/21960/tickets/24755">
+							<span class="fa fa-external-link"></span>
+						</a>
+					</td>
+					<td>
+						<span class="label label-ticket-new">new</span>
+					</td>
+					<td>
+						<span class="ticket-medium">Medium</span>
+					</td>
+					<td><span data-toggle="tooltip" data-placement="bottom" title="" data-original-title="Mon, May 4, 2026 9:46 PM">3 months from now</span></td>
+					<td class="actions">
+																	</td>
+				</tr>
+							<tr>
+					<td>
+						<a href="https://workbench.cisecurity.org/benchmarks/21960/tickets/26444"
+							data-sidebar-href="https://workbench.cisecurity.org/tickets/26444/sidebar"
+							data-sidebar-comments-href="https://workbench.cisecurity.org/comments/ticket/26444"
+							class="ticket-show-on-sidebar">Why was ACCOUNT type removed?</a>
+
+						<a href="https://workbench.cisecurity.org/benchmarks/21960/tickets/26444">
+							<span class="fa fa-external-link"></span>
+						</a>
+					</td>
+					<td>
+						<span class="label label-ticket-new">new</span>
+					</td>
+					<td>
+						<span class="ticket-medium">Medium</span>
+					</td>
+					<td><span data-toggle="tooltip" data-placement="bottom" title="" data-original-title=""></span></td>
+					<td class="actions">
+																	</td>
+				</tr>
+							<tr>
+					<td>
+						<a href="https://workbench.cisecurity.org/benchmarks/21960/tickets/26541"
+							data-sidebar-href="https://workbench.cisecurity.org/tickets/26541/sidebar"
+							data-sidebar-comments-href="https://workbench.cisecurity.org/comments/ticket/26541"
+							class="ticket-show-on-sidebar">Update and Fix issues</a>
+
+						<a href="https://workbench.cisecurity.org/benchmarks/21960/tickets/26541">
+							<span class="fa fa-external-link"></span>
+						</a>
+					</td>
+					<td>
+						<span class="label label-ticket-new">new</span>
+					</td>
+					<td>
+						<span class="ticket-medium">Medium</span>
+					</td>
+					<td><span data-toggle="tooltip" data-placement="bottom" title="" data-original-title=""></span></td>
+					<td class="actions">
+																	</td>
+				</tr>
+							<tr>
+					<td>
+						<a href="https://workbench.cisecurity.org/benchmarks/21960/tickets/26666"
+							data-sidebar-href="https://workbench.cisecurity.org/tickets/26666/sidebar"
+							data-sidebar-comments-href="https://workbench.cisecurity.org/comments/ticket/26666"
+							class="ticket-show-on-sidebar">Audit doesn&#039;t account for Aurora Multi-AZ setup</a>
+
+						<a href="https://workbench.cisecurity.org/benchmarks/21960/tickets/26666">
+							<span class="fa fa-external-link"></span>
+						</a>
+					</td>
+					<td>
+						<span class="label label-ticket-new">new</span>
+					</td>
+					<td>
+						<span class="ticket-medium">Medium</span>
+					</td>
+					<td><span data-toggle="tooltip" data-placement="bottom" title="" data-original-title=""></span></td>
+					<td class="actions">
+																	</td>
+				</tr>
+					</tbody>
+	</table>
+	<br>
+					</div>
+		<div class="content-bottom"></div>
+	</div>
+	<div id="discussions" class="tab-pane fade ">
+
+		<div class="content-top">
+
+				<h4>Discussions for Amazon Web Services Foundations Benchmark</h4>
+
+
+    <table class="table table-striped table-hover table-condensed">
+        <thead>
+        <tr>
+            <th>Title</th>
+            <th></th>
+            <th>
+                                                                                        <a href="https://workbench.cisecurity.org/community/18/discussions/create/benchmark/21960"
+                               class="btn btn-default btn-xs header-button pull-right create-discussion">New Discussion</a>
+                                                                        </th>
+        </tr>
+        </thead>
+        <tbody>
+                                    <tr>
+                    <td>
+
+                        <a href="https://workbench.cisecurity.org/community/18/discussions/12115"
+
+                           data-sidebar-href="https://workbench.cisecurity.org/community/18/discussions/12115/sidebar"
+                           data-sidebar-comments-href="https://workbench.cisecurity.org/comments/discussion/12115"
+
+                           class="discussion-show-on-sidebar">Impact of Central Root Access control</a>
+                        <a href="https://workbench.cisecurity.org/community/18/discussions/12115">
+                            <span class="fa fa-external-link"></span>
+                        </a>
+                    </td>
+
+                    <td>
+                        <p class="pull-right" data-toggle="tooltip" data-placement="top"
+                           title="Mon, Jul 7, 2025 2:09 PM"
+                           data-original-title="Mon, Jul 7, 2025 2:09 PM">
+                            <span class="fa fa-clock-o"></span> 6 months ago
+                        </p>
+
+                    </td>
+                    <td class="actions">
+                                            </td>
+                </tr>
+                            <tr>
+                    <td>
+
+                        <a href="https://workbench.cisecurity.org/community/18/discussions/12150"
+
+                           data-sidebar-href="https://workbench.cisecurity.org/community/18/discussions/12150/sidebar"
+                           data-sidebar-comments-href="https://workbench.cisecurity.org/comments/discussion/12150"
+
+                           class="discussion-show-on-sidebar">Logical inconsistency between 6.5 and 4.7</a>
+                        <a href="https://workbench.cisecurity.org/community/18/discussions/12150">
+                            <span class="fa fa-external-link"></span>
+                        </a>
+                    </td>
+
+                    <td>
+                        <p class="pull-right" data-toggle="tooltip" data-placement="top"
+                           title="Wed, Jul 16, 2025 7:28 AM"
+                           data-original-title="Wed, Jul 16, 2025 7:28 AM">
+                            <span class="fa fa-clock-o"></span> 6 months ago
+                        </p>
+
+                    </td>
+                    <td class="actions">
+                                            </td>
+                </tr>
+                            <tr>
+                    <td>
+
+                        <a href="https://workbench.cisecurity.org/community/18/discussions/12191"
+
+                           data-sidebar-href="https://workbench.cisecurity.org/community/18/discussions/12191/sidebar"
+                           data-sidebar-comments-href="https://workbench.cisecurity.org/comments/discussion/12191"
+
+                           class="discussion-show-on-sidebar">Command line audit steps need to be changed</a>
+                        <a href="https://workbench.cisecurity.org/community/18/discussions/12191">
+                            <span class="fa fa-external-link"></span>
+                        </a>
+                    </td>
+
+                    <td>
+                        <p class="pull-right" data-toggle="tooltip" data-placement="top"
+                           title="Tue, Aug 5, 2025 3:06 PM"
+                           data-original-title="Tue, Aug 5, 2025 3:06 PM">
+                            <span class="fa fa-clock-o"></span> 5 months ago
+                        </p>
+
+                    </td>
+                    <td class="actions">
+                                            </td>
+                </tr>
+                            <tr>
+                    <td>
+
+                        <a href="https://workbench.cisecurity.org/community/18/discussions/12229"
+
+                           data-sidebar-href="https://workbench.cisecurity.org/community/18/discussions/12229/sidebar"
+                           data-sidebar-comments-href="https://workbench.cisecurity.org/comments/discussion/12229"
+
+                           class="discussion-show-on-sidebar">Audit commands won&#039;t find all violating SGs</a>
+                        <a href="https://workbench.cisecurity.org/community/18/discussions/12229">
+                            <span class="fa fa-external-link"></span>
+                        </a>
+                    </td>
+
+                    <td>
+                        <p class="pull-right" data-toggle="tooltip" data-placement="top"
+                           title="Thu, Aug 14, 2025 7:25 PM"
+                           data-original-title="Thu, Aug 14, 2025 7:25 PM">
+                            <span class="fa fa-clock-o"></span> 5 months ago
+                        </p>
+
+                    </td>
+                    <td class="actions">
+                                            </td>
+                </tr>
+                            <tr>
+                    <td>
+
+                        <a href="https://workbench.cisecurity.org/community/18/discussions/12381"
+
+                           data-sidebar-href="https://workbench.cisecurity.org/community/18/discussions/12381/sidebar"
+                           data-sidebar-comments-href="https://workbench.cisecurity.org/comments/discussion/12381"
+
+                           class="discussion-show-on-sidebar">Command line block format issue in CIS AWS Foundations Benchmark v6.0.0 download page PDF</a>
+                        <a href="https://workbench.cisecurity.org/community/18/discussions/12381">
+                            <span class="fa fa-external-link"></span>
+                        </a>
+                    </td>
+
+                    <td>
+                        <p class="pull-right" data-toggle="tooltip" data-placement="top"
+                           title="Thu, Sep 25, 2025 2:42 AM"
+                           data-original-title="Thu, Sep 25, 2025 2:42 AM">
+                            <span class="fa fa-clock-o"></span> 4 months ago
+                        </p>
+
+                    </td>
+                    <td class="actions">
+                                            </td>
+                </tr>
+                            </tbody>
+    </table>
+    <br>
+					</div>
+		<div class="content-bottom"></div>
+	</div>
+	<div id="changes" class="tab-pane fade ">
+
+			<h4>Changes for Amazon Web Services Foundations Benchmark</h4>
+
+
+		<div class="text-center">
+			<br>
+
+			<h3>No changes currently Open.</h3>
+
+			<br>
+		</div>
+
+
+
+
+	</div>
+</div>
+
+            </div>
+        </div>
+    </div>
+	</div>
+    </div>
+            <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script   nonce="6dOTadYvsb5BU9KX1sFhTSkVymMJtX3I" >
+	var isUserLoggedIn = true;
+    window.addEventListener("load", (event) => {
+
+	$(document).ready(function(){
+
+		// Setup click event for accepting a change
+	$('a.accept-change').click( function(){
+
+		var current_object = $(this);
+			// Show the user a sweet confirmation dialog
+		swal({
+			title: "Are you sure?",
+			text: "Accepting this change will automatically apply it's content to the original.",
+			type: "warning",
+			showCancelButton: true,
+			confirmButtonClass: "btn-success",
+			confirmButtonText: "Yes, accept it!",
+			showLoaderOnConfirm: true,
+		}).then(function(){
+			$.ajax({
+				url : current_object.attr('href'),
+				cache : false,
+				method : 'POST',
+				success : function(value) {
+
+						// Check return status
+					if (value.status) {
+
+							// Check return action
+						if (typeof value.url != 'undefined') {
+
+								// Redirect to the given url
+							window.location = value.url;
+						}
+					} else {
+
+							// Show the user a not-so-sweet error message
+						swal("Oops...", "Looks like something went wrong on our end.", "error");
+					}
+				},
+				error : function() {
+
+						// Show the user a not-so-sweet error message
+					swal("Oops...", "Looks like something went wrong on our end.", "error");
+				}
+			});
+		}).done();
+
+		return false;
+	});
+
+		// Setup click event for rejecting a change
+	$('a.reject-change').click( function(){
+
+		var current_object = $(this);
+
+		var verb = ((typeof current_object.attr('type') !== 'undefined') ? current_object.attr('type') : 'Reject')
+			// Show the user a sweet confirmation dialog
+		swal({
+			title: "Are you sure?",
+			//text: "",
+			type: "warning",
+			showCancelButton: true,
+			confirmButtonClass: "btn-success",
+			confirmButtonText: "Yes, "+ verb +" it!",
+			showLoaderOnConfirm: true,
+		}).then(function(){
+			$.ajax({
+				url : current_object.attr('href'),
+				cache : false,
+				method : 'POST',
+				success : function(value) {
+
+						// Check return status
+					if (value.status) {
+
+						if (verb === 'Reopen' || verb === 'Delete' && window.location.href !== value.url) {
+							window.location = value.url;
+						}
+
+							// Redirect to the given url
+						//window.location = value.url;
+						current_object.parents('.panel').hide('slide', {direction:'right'}, 500);
+
+					} else {
+
+							// Show the user a not-so-sweet error message
+						swal("Oops...", "Looks like something went wrong on our end.", "error");
+					}
+				},
+				error : function() {
+
+						// Show the user a not-so-sweet error message
+					swal("Oops...", "Looks like something went wrong on our end.", "error");
+				}
+			});
+		}).done();
+
+		return false;
+	});
+
+		// Setup click event for propagate change to a parent
+	$('a.propagate-parent-change').click( function(){
+
+		var current_object = $(this);
+
+			// Show the user a sweet confirmation dialog
+		swal({
+			title: "Are you sure?",
+			text: "Pushing this change to the parent will make a copy and won't effect the current change record.",
+			type: "warning",
+			showCancelButton: true,
+			confirmButtonClass: "btn-success",
+			confirmButtonText: "Yes, push it!",
+			showLoaderOnConfirm: true,
+		}).then(function(){
+			$.ajax({
+				url : current_object.attr('href'),
+				cache : false,
+				method : 'POST',
+				success : function(value) {
+
+						// Check return status
+					if (value.status) {
+
+						swal({
+							title: "Success!",
+							text: 'The change was successfully pushed to the parent object.',
+							type: "success"
+						});
+
+						current_object.hide();
+					} else {
+
+							// Show the user a not-so-sweet error message
+						swal("Oops...", "Looks like something went wrong on our end.", "error");
+					}
+				},
+				error : function() {
+
+						// Show the user a not-so-sweet error message
+					swal("Oops...", "Looks like something went wrong on our end.", "error");
+				}
+			});
+		}).done();
+
+		return false;
+	});
+
+});
+
+
+	$(document).ready(function(){
+					$(document).ready(function(){
+
+	var sidebar_right_top = $('#discussions div.content-top');
+	var sidebar_right_bottom = $('#discussions div.content-bottom');
+
+	var showDiscussionLink = function(){
+
+		var current_object = $(this);
+
+		sidebar_right_top.addClass("short");
+		current_object.parents("tbody").find("tr").removeClass("info");
+		current_object.parents("tr").addClass("info");
+
+		sidebar_right_bottom.fadeOut(300, function(){
+
+			$(this).html('<span class="fa fa-refresh fa-spin"></span> Loading</div>');
+
+			$.get( current_object.attr('data-sidebar-href'), function(data, status){
+
+				if ( status == 'success' ) {
+					sidebar_right_bottom.html(data).fadeIn(300);
+
+					load_discussion( current_object.attr('data-sidebar-comments-href'), 'div#discussion-comments' );
+				}
+			});
+		});
+
+		return false;
+	};
+
+
+	var add_objects = $('input#add_object');
+	var remove_objects = $('a.linked-object-remove');
+
+    if (add_objects) {
+        add_objects.val('');
+    }
+
+    var remove_objects_function = function(){
+        var current_object = $(this);
+        current_object.parents('div.linked-object-container').fadeOut(300, function() { $(this).remove(); });
+        return false;
+    };
+
+	remove_objects.click(remove_objects_function);
+
+	var createDiscussionFunction = function() {
+
+        var current_object = $(this);
+
+        $.get(
+           current_object.attr('href')
+        ).done(function(data) {
+
+           $('#discussions div.content-top').html(data);
+           $('#discussions div.content-bottom').html('');
+
+           $('a.form-cancel').click(function() {
+
+               var current_object = $(this);
+
+               showDiscussionIndexPage();
+
+               return false;
+           });
+
+           $('a.linked-object-remove').click(remove_objects_function);
+        });
+
+        return false;
+    };
+
+	$('a.create-discussion').click(createDiscussionFunction);
+
+	$('#sidebar-right-content').on('submit', '#discussion_form', function(event) {
+
+        var discussionForm = $(this);
+
+        $.post(
+            discussionForm.attr('action'),
+            discussionForm.serialize()
+        ).done(function(data) {
+
+            if ( data.status ) {
+
+                var discussionsCount = $('#discussions-tab span.discussions-count');
+
+                discussionsCount.html(parseInt(discussionsCount.html()) + 1);
+
+                showDiscussionIndexPage();
+
+                return false;
+            }
+
+            $('#discussion_form div.form-group').removeClass('has-error');
+
+            $.each(data.errors, function(field, error){
+
+                $('#dicussion_form input[name="'+field+'"]').closest('div.form-group').addClass('has-error');
+            });
+        });
+
+        event.preventDefault();
+        return false;
+    });
+
+    function showDiscussionIndexPage() {
+
+                $.get(
+            'https://workbench.cisecurity.org/community/11/discussions/sidebar/benchmark/21960'
+        ).done(function(data){
+
+            $('#discussions div.content-top').html(data);
+
+            $('a.create-discussion').click(createDiscussionFunction);
+
+            $('a.discussion-show-on-sidebar').click(showDiscussionLink);
+
+            return false;
+        });
+            }
+
+	$('a.discussion-show-on-sidebar').click(showDiscussionLink);
+});
+
+		var now = new Date();
+$(document).ready(function(){
+
+            var selectize_assignees = {
+    highlight: true,
+    maxOptions: 11,
+    maxItems: 1,
+    closeAfterSelect: true,
+    create: false,
+    valueField: 'id',
+    searchField: ['first_name', 'last_name', 'username'],
+    options: [],
+    preload: true,
+    render: {
+        option: function(item, escape) {
+            return '<div class="selectize-cis-users">' +
+                '<div class="title">' +
+                    '<span class="name">' + escape(item.first_name) + ' ' + escape(item.last_name) + '</span> ' +
+                    '<span class="username">(<span class="fa fa-user"></span> ' + escape(item.username) + ')</span>' +
+                '</div>' +
+                '<div class="company">' +
+                    '<span class="name text-muted">' + escape(item.company_name) + '</span>' +
+                '</div>' +
+            '</div>';
+        },
+        item: function(item, escape) {
+            return '<div>'+escape(item.first_name) + ' ' + escape(item.last_name)+'</div>';
+        }
+    },
+    load: function(query, callback) {
+        if (!query || query.length < 3) return callback();
+
+        $.ajax({
+            url: 'https://workbench.cisecurity.org/api/v1/autocomplete/communitymembers/18',
+            type: 'POST',
+            data: {
+                'query': query,
+                'community_ids': []
+            },
+            error: function() {
+                callback();
+            },
+            success: function(res) {
+                callback(res['data']);
+            }
+        });
+    },
+    onInitialize: function() {
+
+        var self = this;
+        self.clearOptions();
+
+        if ( this.$input.attr('data-selectize') ) {
+            var existingOptions = JSON.parse(this.$input.attr('data-selectize'));
+
+            existingOptions.forEach( function (existingOption) {
+                self.addOption(existingOption);
+                self.addItem(existingOption[self.settings.valueField]);
+            });
+        }
+    }
+};
+;
+        var selectize_reporters = {
+    highlight: true,
+    maxOptions: 11,
+    maxItems: 1,
+    closeAfterSelect: true,
+    create: false,
+    valueField: 'id',
+    searchField: ['first_name', 'last_name', 'username'],
+    options: [],
+    preload: true,
+    render: {
+        option: function(item, escape) {
+            return '<div class="selectize-cis-users">' +
+                '<div class="title">' +
+                    '<span class="name">' + escape(item.first_name) + ' ' + escape(item.last_name) + '</span> ' +
+                    '<span class="username">(<span class="fa fa-user"></span> ' + escape(item.username) + ')</span>' +
+                '</div>' +
+                '<div class="company">' +
+                    '<span class="name text-muted">' + escape(item.company_name) + '</span>' +
+                '</div>' +
+            '</div>';
+        },
+        item: function(item, escape) {
+            return '<div>'+escape(item.first_name) + ' ' + escape(item.last_name)+'</div>';
+        }
+    },
+    load: function(query, callback) {
+        if (!query || query.length < 4) return callback();
+
+        $.ajax({
+            url: 'https://workbench.cisecurity.org/api/v1/autocomplete/communitymembers/18',
+            type: 'POST',
+            data: {
+                'query': query,
+                'community_ids': []
+            },
+            error: function() {
+                callback();
+            },
+            success: function(res) {
+                callback(res['data']);
+            }
+        });
+    },
+    onInitialize: function() {
+
+        var self = this;
+        self.clearOptions();
+
+        if ( this.$input.attr('data-selectize') ) {
+            var existingOptions = JSON.parse(this.$input.attr('data-selectize'));
+
+            existingOptions.forEach( function (existingOption) {
+                self.addOption(existingOption);
+                self.addItem(existingOption[self.settings.valueField]);
+            });
+        }
+    }
+};
+;
+
+    var sidebar_right_top = $('#tickets div.content-top');
+    var sidebar_right_bottom = $('#tickets div.content-bottom');
+
+    var showTicketLink = function(){
+
+        var current_object = $(this);
+
+        sidebar_right_top.addClass("short");
+        current_object.parents("tbody").find("tr").removeClass("info");
+        current_object.parents("tr").addClass("info");
+
+        sidebar_right_bottom.fadeOut(300, function(){
+
+            $(this).html('<div><span class="fa fa-refresh fa-spin"></span> Loading</div>');
+
+            $.get( current_object.attr('data-sidebar-href'), function(data, status){
+
+                if ( status == 'success' ) {
+
+                    sidebar_right_bottom.html(data).fadeIn(300);
+
+                    load_discussion( current_object.attr('data-sidebar-comments-href'), 'div#ticket-comments' );
+                }
+            });
+        });
+
+        return false;
+    };
+
+    var add_objects = $('input#add_object');
+    var remove_objects = $('a.linked-object-remove');
+
+    add_objects.val('');
+
+    var remove_objects_function = function(){
+
+        var current_object = $(this);
+
+        current_object.parents('div.linked-object-container').fadeOut(300, function() { $(this).remove(); });
+
+        return false;
+    };
+
+    remove_objects.click(remove_objects_function);
+
+            $('#reporter_id').selectize(selectize_reporters);
+        $('#assignee_id').selectize(selectize_assignees);
+
+    var createTicketFunction = function() {
+
+        var current_object = $(this);
+
+        $.get(
+           current_object.attr('href')
+        ).done(function(data) {
+
+           $('#tickets div.content-top').html(data);
+           $('#tickets div.content-bottom').html('');
+
+           $('a.form-cancel').click(function() {
+
+               var current_object = $(this);
+
+               showTicketIndexPage();
+
+               return false;
+           });
+
+                            $('#reporter_id').selectize(selectize_reporters);
+                $('#assignee_id').selectize(selectize_assignees);
+
+           $('a.linked-object-remove').click(remove_objects_function);
+        });
+
+        return false;
+    };
+
+    $('a.create-ticket').click(createTicketFunction);
+
+    $('#sidebar-right-content').on('submit', '#ticket_form', function(event) {
+
+        var ticketForm = $(this);
+
+        $.post(
+            ticketForm.attr('action'),
+            ticketForm.serialize()
+        ).done(function(data) {
+
+            if ( data.status ) {
+
+                var ticketsCount = $('#tickets-tab span.tickets-count');
+
+                ticketsCount.html(parseInt(ticketsCount.html()) + 1);
+
+                showTicketIndexPage();
+
+                return false;
+            }
+
+            $('#ticket_form div.form-group').removeClass('has-error');
+
+            $.each(data.errors, function(field, error){
+
+                $('#ticket_form input[name="'+field+'"]').closest('div.form-group').addClass('has-error');
+            });
+        });
+
+        event.preventDefault();
+        return false;
+    });
+
+    function showTicketIndexPage() {
+                $.get(
+            'https://workbench.cisecurity.org/tickets/sidebar/benchmark/21960'
+        ).done(function(data){
+
+            $('#tickets div.content-top').html(data);
+
+            $('a.create-ticket').click(createTicketFunction);
+
+            $('a.ticket-show-on-sidebar').click(showTicketLink);
+
+            return false;
+        });
+            }
+
+    $('a.ticket-show-on-sidebar').click(showTicketLink);
+});
+		$('#comment-add').markdown();
+
+
+ /**
+  * show the comments editable textarea
+  * @returns false
+  */
+$(document).on('click','.btn-comments-edit',function(){
+
+    var layerId = $(this).attr('id');
+
+    $('.comment-edit').hide();
+    $('.comment-view').show();
+    $('#comment-edit-' + layerId).show();
+    $('#comment-view-' + layerId).hide();
+    $('#comment-text-' + layerId).markdown();
+
+});
+
+
+/**
+ *  hide the comments editable textarea
+ * @returns false
+ */
+$(document).on('click','.btn-comments-cancel',function(){
+
+    $('.comment-edit').hide();
+    $('.comment-view').show();
+});
+
+
+/**
+ * destroy the comment
+ * @returns false
+ */
+$(document).on('click','.btn-comments-delete', function () {
+
+    var CommentId = $(this).attr('id');
+
+    swal({
+        title: "Are you sure?",
+        text: "Once this comment is deleted, it's gone for good.",
+        type: "warning",
+        showCancelButton: true,
+        confirmButtonClass: "btn-danger",
+        confirmButtonText: "Yes, delete it!"
+
+    }).then(function(){
+
+        $.ajax({
+            type : 'delete',
+            url : '/comments/destroy/' + CommentId,
+            cache : false,
+            success : function(value) {
+
+                // Check return status
+                if (value.status) {
+
+                    // Delete the row from the form
+                    $('#panel-' + CommentId).remove();
+                }
+            },
+            error : function() {
+
+            	// Show the user a not-so-sweet error message
+            	swal("Oops...", "Looks like something went wrong on our end.", "error");
+            }
+        });
+    }).done();
+});
+
+
+/**
+ * save the edited comment
+ * @returns false
+ */
+$(document).on('click','.btn-comments-update',function(){
+
+    var CommentId = $(this).attr('id');
+    var newComment = $('#comment-text-' + CommentId ).val();
+    var commentUpdate = { source: CommentId, body: newComment };
+
+    $.post('/comments/update/' + CommentId, commentUpdate)
+    .done(function(data) {
+        if(data.status) {
+            location.reload(true);
+        }
+    });
+
+});
+
+$(document).on('click','#add-comment-btn',function(event){
+
+    $(this).text('Sending…');
+    $(this).prop("disabled",true);
+
+    event.preventDefault();
+    var url = $(this).parents('form:first').attr('action');
+    var orgUrl = window.location.href;
+
+    $.post(url, { body: $('#comment-add').val() })
+    .done(function(data) {
+        if(data.status) {
+            location.reload(true);
+        }
+    });
+});
+
+
+/**
+ * Load the discussion/commenting module for a given object
+ *
+ * @param {string} discussion_url Location to grab comment module from
+ * @param {string} destination_selector Object to place html in
+ * @returns void
+ */
+function load_discussion ( discussion_url, destination_selector ) {
+
+    var discussion_destination = $(destination_selector);
+
+    $.get( discussion_url, function(data, status){
+
+        if ( status === 'success' ) {
+
+            discussion_destination.html(data);
+
+            if ( window.location.hash != '' && $(window.location.hash).length ) {
+
+                if (preg_match('/^#comment[0-9]+$/', $(window.location.hash))) {
+
+                    $('html, body').animate({
+                    scrollTop: $(window.location.hash).offset().top
+                    }, 1000);
+                }
+            }
+
+        load_discussion_bindings(destination_selector);
+      }
+  });
+}
+
+function load_discussion_bindings ( destination_selector ) {
+
+    var comment_forms_selector = destination_selector+" form.comments";
+
+
+    $(document).on( "submit", comment_forms_selector, function(){
+
+        var discussion_destination = $(destination_selector);
+        var form_object = $(this);
+        var body_object = form_object.find("textarea[name='body']");
+
+            // Validate body has some content
+        if ( body_object.val() === '' ) {
+
+            body_object.parent().addClass('has-error');
+            return false;
+        }
+
+        body_object.parent().removeClass('has-error');
+
+            // Send the result off
+        $.post( form_object.attr('action'), form_object.serialize() )
+            .done( function( data ) {
+
+                if ( data.status === true && data.comment_html ) {
+
+                    var comment_list = discussion_destination.find('ul.comments-listing');
+                    comment_list.find('li.comments-none-found').fadeOut();
+
+                    $(data.comment_html).hide().appendTo(comment_list).slideDown('slow');
+                    body_object.val('');
+                }
+            });
+
+        return false;
+    });
+
+    $(document).on( "click", 'a.comments-load-more', function(e){
+
+        var current_object = $(this);
+        var url = current_object.attr('href');
+        var contents = $(current_object.html());
+        var new_loading_object = '';
+
+        contents.find('.fa.fa-refresh').addClass('fa-spin').siblings('span').html('Loading...');
+        current_object.before(contents);
+        new_loading_object = current_object.parent();
+        current_object.remove();
+
+        $.get( url, function(data, status){
+
+            if ( status === 'success' ) {
+                new_loading_object.before($(data).hide().delay(300).slideDown('slow'));
+                new_loading_object.fadeOut(500, function() { $(this).remove(); });
+            }
+        });
+
+        return false;
+    });
+}
+	});
+    $(document).ready(function() {
+    window.sessionStorage.removeItem('current');
+    $(document).ready(function() {
+
+	   $("#status-modal").on('show.bs.modal', function(event){
+	        var button = $(event.relatedTarget);  // Button that triggered the modal
+	        var titleData = button.data('title'); // Extract value from data-* attributes
+	        $(this).find('.modal-title').text("Update Status for " + titleData);
+	        $(this).find('#change-status-form').attr('action', button.attr('url'));
+	        if (! button.attr('url').includes("recommendations")) {
+	        	$(".propagate-checkbox").removeClass("hidden");
+	        }
+	    });
+
+	});
+    });
+
+            });
+</script>
+
+    <script nonce="6dOTadYvsb5BU9KX1sFhTSkVymMJtX3I" data-navigate-once="true">window.livewireScriptConfig = {"csrf":"osp8eWn8tjLH48ELpVAdFcLeRaWCQyDw6ApNQEP2","uri":"\/livewire\/update","progressBar":"","nonce":"6dOTadYvsb5BU9KX1sFhTSkVymMJtX3I"};</script>
+</body>
+</html>

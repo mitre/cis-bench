@@ -3,6 +3,8 @@
 import http.cookiejar
 import logging
 import platform
+import threading
+import time
 from pathlib import Path
 
 import browser_cookie3
@@ -457,3 +459,145 @@ Workarounds:
         AuthManager.save_session(session)
 
         return session
+
+
+class SessionKeepAlive:
+    """Background service to keep CIS WorkBench session alive.
+
+    Runs periodic pings to prevent session timeout during long TUI sessions.
+
+    Usage:
+        session = AuthManager.get_or_create_session()
+        keep_alive = SessionKeepAlive(session, interval_minutes=5)
+        keep_alive.start()
+        try:
+            # ... long-running TUI session ...
+        finally:
+            keep_alive.stop()
+
+    Or as context manager:
+        with SessionKeepAlive(session) as ka:
+            # ... TUI session ...
+    """
+
+    # Default interval between pings (5 minutes)
+    DEFAULT_INTERVAL_MINUTES = 5
+
+    def __init__(
+        self,
+        session: requests.Session,
+        interval_minutes: float = DEFAULT_INTERVAL_MINUTES,
+        verify_ssl: bool = True,
+        on_session_expired: callable = None,
+    ):
+        """Initialize session keep-alive service.
+
+        Args:
+            session: Authenticated requests.Session to keep alive
+            interval_minutes: Minutes between keep-alive pings (default: 5)
+            verify_ssl: Whether to verify SSL certificates
+            on_session_expired: Optional callback when session expires
+        """
+        self.session = session
+        self.interval_seconds = interval_minutes * 60
+        self.verify_ssl = verify_ssl
+        self.on_session_expired = on_session_expired
+
+        self._stop_event = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._last_ping: float = 0
+        self._ping_count: int = 0
+        self._is_healthy: bool = True
+
+    def start(self) -> None:
+        """Start the keep-alive background thread."""
+        if self._thread is not None and self._thread.is_alive():
+            logger.debug("SessionKeepAlive already running")
+            return
+
+        self._stop_event.clear()
+        self._thread = threading.Thread(
+            target=self._run_loop,
+            name="session-keep-alive",
+            daemon=True,  # Don't prevent app exit
+        )
+        self._thread.start()
+        logger.debug(f"SessionKeepAlive started (interval: {self.interval_seconds}s)")
+
+    def stop(self) -> None:
+        """Stop the keep-alive background thread."""
+        if self._thread is None:
+            return
+
+        self._stop_event.set()
+        self._thread.join(timeout=2)
+        self._thread = None
+        logger.debug(f"SessionKeepAlive stopped (total pings: {self._ping_count})")
+
+    def _run_loop(self) -> None:
+        """Main loop - runs in background thread."""
+        while not self._stop_event.is_set():
+            # Wait for interval (or stop signal)
+            if self._stop_event.wait(timeout=self.interval_seconds):
+                break  # Stop was requested
+
+            # Perform ping
+            self._ping()
+
+    def _ping(self) -> bool:
+        """Ping CIS WorkBench to keep session alive.
+
+        Returns:
+            True if session is still valid, False if expired
+        """
+        try:
+            is_valid = AuthManager.validate_session(
+                self.session,
+                verify_ssl=self.verify_ssl,
+            )
+
+            self._last_ping = time.time()
+            self._ping_count += 1
+
+            if is_valid:
+                self._is_healthy = True
+                logger.debug(f"Session keep-alive ping #{self._ping_count} successful")
+            else:
+                self._is_healthy = False
+                logger.warning("Session expired during keep-alive ping")
+                if self.on_session_expired:
+                    try:
+                        self.on_session_expired()
+                    except Exception as e:
+                        logger.error(f"Error in on_session_expired callback: {e}")
+
+            return is_valid
+
+        except Exception as e:
+            logger.warning(f"Session keep-alive ping failed: {e}")
+            self._is_healthy = False
+            return False
+
+    @property
+    def is_running(self) -> bool:
+        """Check if keep-alive thread is running."""
+        return self._thread is not None and self._thread.is_alive()
+
+    @property
+    def is_healthy(self) -> bool:
+        """Check if last ping was successful."""
+        return self._is_healthy
+
+    @property
+    def ping_count(self) -> int:
+        """Get total number of pings performed."""
+        return self._ping_count
+
+    def __enter__(self) -> "SessionKeepAlive":
+        """Context manager entry - starts keep-alive."""
+        self.start()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Context manager exit - stops keep-alive."""
+        self.stop()

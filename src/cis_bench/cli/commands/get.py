@@ -7,6 +7,7 @@ import click
 import questionary
 from rich.console import Console
 
+from cis_bench.cli.helpers.offline import check_offline_mode
 from cis_bench.config import Config
 from cis_bench.exporters import ExporterFactory
 from cis_bench.exporters.xccdf_unified_exporter import XCCDFExporter
@@ -56,7 +57,8 @@ class DynamicStyleChoice(click.Choice):
 @click.option(
     "--non-interactive", is_flag=True, help="Disable interactive prompts (show table instead)"
 )
-def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_interactive):
+@click.pass_context
+def get_cmd(ctx, query, export_format, style, output, verbose, debug, quiet, non_interactive):
     """Search, download, and export benchmark in one command.
 
     This is the easiest way to get a CIS benchmark. It combines search,
@@ -73,6 +75,8 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
         1. Authenticate: cis-bench auth login --browser chrome
         2. Build catalog: cis-bench catalog refresh
     """
+    check_offline_mode(ctx, "get")
+
     # Configure logging if flags provided
     if verbose or debug or quiet:
         from cis_bench.utils.logging_config import LoggingConfig

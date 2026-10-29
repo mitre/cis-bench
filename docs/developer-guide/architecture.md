@@ -67,6 +67,46 @@ F --> F4[update]
 - `list` - Show downloaded benchmarks
 - `info` - Display benchmark details
 - `catalog` - Manage catalog (8 subcommands)
+- `view` - Browse benchmark recommendations (interactive TUI)
+- `diff` - Compare benchmark versions (interactive TUI)
+
+---
+
+### TUI Layer
+
+**Framework:** Textual
+**Entry Point:** `src/cis_bench/cli/commands/tui_base.py`
+
+```mermaid
+graph TD
+A[BaseBrowserApp] --> B[DiffTUI]
+A --> C[ViewTUI]
+
+A --> D[HelpScreen]
+A --> E[SaveDialog]
+A --> F[SearchInput]
+A --> G[DetailView]
+
+B --> H[DiffDetailView]
+C --> I[ViewDetailView]
+```
+
+**Shared Components (tui_base.py):**
+
+- `BaseBrowserApp` - Base class with common keyboard handling
+- `HelpScreen` - Modal screen showing keyboard shortcuts (? key)
+- `SaveDialog` - Modal for saving reports (s key)
+- `SearchInput` - Real-time filtering input (/ key)
+- `DetailView` - Markdown rendering for recommendations
+- `COMMON_BINDINGS` - Shared keyboard shortcuts
+
+**Key Features:**
+
+- Keyboard navigation (vim-style j/k, arrows)
+- Real-time search filtering
+- Fullscreen detail view toggle (f key)
+- Offline mode indicator
+- Report saving to Markdown
 
 ---
 
@@ -396,6 +436,7 @@ requires_post_processing: true
 **CLI/UX:**
 
 - Rich (formatting, progress bars)
+- Textual (interactive TUI for view/diff commands)
 - questionary (interactive prompts)
 
 **Development:**
@@ -415,6 +456,9 @@ src/cis_bench/
 ├── cli/ # Click commands
 │ ├── app.py # Main CLI
 │ └── commands/ # Command modules
+│     ├── tui_base.py # Shared TUI components
+│     ├── view_tui.py # View command TUI
+│     └── diff_tui.py # Diff command TUI
 ├── fetcher/ # WorkBench scraper
 │ ├── workbench.py # Main scraper
 │ ├── auth.py # Authentication

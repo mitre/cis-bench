@@ -53,6 +53,22 @@ class ParentReference(BaseModel):
     title: str
 
 
+class BenchmarkAsset(BaseModel):
+    """Asset/CPE mapping for a benchmark."""
+
+    title: str = Field(..., description="Asset title (e.g., 'AlmaLinux OS 9')")
+    cpe_id: str = Field(..., description="CPE 2.3 identifier")
+
+
+class RevisionHistoryEntry(BaseModel):
+    """Revision history entry for a benchmark."""
+
+    revision_date: str | None = Field(None, description="Revision date (relative or absolute)")
+    author: str | None = Field(None, description="Author username")
+    modification_count: int | None = Field(None, description="Number of modifications")
+    diff_url: str | None = Field(None, description="URL to view diff")
+
+
 class Recommendation(BaseModel):
     """A single CIS recommendation within a benchmark.
 
@@ -134,6 +150,38 @@ class Benchmark(BaseModel):
     url: HttpUrl = Field(..., description="Source URL")
     version: str = Field(..., description="Benchmark version")
 
+    # Optional metadata from benchmark detail page
+    published_date: str | None = Field(None, description="Publication date (e.g., 'Aug 1st 2025')")
+    published_relative: str | None = Field(
+        None, description="Relative publish date (e.g., '1 year ago on Jun 24th 2024')"
+    )
+    description: str | None = Field(None, description="Benchmark description/overview")
+    release_type: str | None = Field(
+        None, description="Release type (e.g., 'Planned Update', 'Bug Fix')"
+    )
+
+    # Attribution
+    contributors: list[str] = Field(default_factory=list, description="List of contributor names")
+
+    # Lineage
+    parent_benchmark_url: HttpUrl | None = Field(None, description="Parent benchmark URL if forked")
+    parent_benchmark_title: str | None = Field(None, description="Parent benchmark title")
+
+    # Organizational
+    community_url: HttpUrl | None = Field(None, description="CIS community URL")
+    milestone_name: str | None = Field(None, description="Milestone/release name")
+    milestone_url: HttpUrl | None = Field(None, description="Milestone URL")
+
+    # Documentation sections
+    intended_audience: str | None = Field(None, description="Intended audience description")
+    acknowledgements: str | None = Field(None, description="Acknowledgements text")
+
+    # Structured metadata
+    assets: list[BenchmarkAsset] = Field(default_factory=list, description="Assets with CPE-IDs")
+    revision_history: list[RevisionHistoryEntry] = Field(
+        default_factory=list, description="Revision history entries"
+    )
+
     downloaded_at: datetime = Field(default_factory=datetime.now, description="Download timestamp")
 
     scraper_version: str = Field(..., description="Scraper strategy version used")
@@ -158,6 +206,13 @@ class Benchmark(BaseModel):
                     f"recommendations list has {actual_count} items"
                 )
         return v
+
+    @property
+    def contributors_str(self) -> str | None:
+        """Get contributors as comma-separated string for XCCDF export."""
+        if self.contributors:
+            return ", ".join(self.contributors)
+        return None
 
     def to_json_file(self, filepath: str):
         """Save benchmark to JSON file."""

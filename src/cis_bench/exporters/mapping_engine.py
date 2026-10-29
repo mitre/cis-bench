@@ -548,9 +548,16 @@ class MappingEngine:
         for dc_elem_config in ref_config.get("dc_elements", []):
             elem_name = dc_elem_config["element"]  # 'dc:publisher', 'dc:source'
             content = dc_elem_config["content"]
+            is_optional = dc_elem_config.get("optional", False)
 
             # Substitute variables
             content = VariableSubstituter.substitute(content, {"benchmark": benchmark.__dict__})
+
+            # Skip optional elements if content is None or empty
+            if is_optional and (
+                not content or content == "None" or content == "{benchmark.published_date}"
+            ):
+                continue
 
             dc_elements[elem_name] = content
 
@@ -585,6 +592,42 @@ class MappingEngine:
             plain_texts.append(PlainTextType(id=pt_id, value=content))
 
         return plain_texts
+
+    def create_platforms(self, benchmark: Benchmark):
+        """Create platform elements from benchmark assets (CPE-IDs).
+
+        Each asset becomes a <platform idref="cpe:..."/> element.
+        Critical for SCAP compliance tools.
+
+        Args:
+            benchmark: Benchmark with assets
+
+        Returns:
+            List of platform elements (version-specific type)
+        """
+        if not benchmark.assets:
+            return []
+
+        # XCCDF 1.2 uses Cpe2IdrefType, XCCDF 1.1.4 uses UriidrefType
+        # Try to get the version-specific type
+        try:
+            # Try XCCDF 1.2 first (Cpe2IdrefType)
+            PlatformType = self.get_xccdf_class("Cpe2IdrefType")
+        except AttributeError:
+            # Fallback to XCCDF 1.1.4 (UriidrefType)
+            PlatformType = self.get_xccdf_class("UriidrefType")
+
+        platforms = []
+
+        for asset in benchmark.assets:
+            # Create platform element with CPE idref
+            platform = PlatformType(idref=asset.cpe_id)
+            platforms.append(platform)
+
+        logger.debug(
+            f"Created {len(platforms)} platform elements from {len(benchmark.assets)} assets"
+        )
+        return platforms
 
     # OLD hard-coded methods removed - replaced with loop-driven methods:
     #   - create_rule() → map_rule()
@@ -1162,6 +1205,9 @@ class MappingEngine:
         benchmark_fields["front_matter"] = [self.create_front_matter(benchmark)]
         benchmark_fields["rear_matter"] = [self.create_rear_matter(benchmark)]
         benchmark_fields["plain_text"] = self.create_plain_texts(benchmark)
+        benchmark_fields["platform"] = self.create_platforms(
+            benchmark
+        )  # CPE platform-specification
 
         # Reference (returns tuple for post-processing)
         ref_href, dc_elements = self.create_reference(benchmark)
