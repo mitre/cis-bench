@@ -69,13 +69,31 @@ class TestCatalogPageParsing:
             assert "[imported]" not in bench["title"]
 
     def test_status_values(self, sample_catalog_html):
-        """Test status values are valid."""
+        """Test all five WorkBench status values are exercised by the catalog fixture."""
         benchmarks = WorkBenchCatalogParser.parse_catalog_page(sample_catalog_html)
 
         valid_statuses = {"Published", "Draft", "Archived", "Rejected", "Accepted"}
 
-        for bench in benchmarks:
-            assert bench["status"] in valid_statuses
+        assert {bench["status"] for bench in benchmarks} == valid_statuses
+
+    def test_sample_catalog_fixture_is_compact_synthetic_html(self, sample_catalog_html):
+        """Catalog HTML fixture must be clean synthetic markup covering parser edge cases."""
+        lowered = sample_catalog_html.lower()
+        assert "<script" not in lowered
+        assert "googletagmanager" not in lowered
+        assert "csrf-token" not in lowered
+        assert "livewirescriptconfig" not in lowered
+
+        benchmarks = WorkBenchCatalogParser.parse_catalog_page(sample_catalog_html)
+        assert len(benchmarks) == 6
+        assert any(len(b["collections"]) >= 2 for b in benchmarks)
+        assert any(b["collections"] == [] for b in benchmarks)
+        assert any(b["community"] is not None for b in benchmarks)
+        assert any(b["owner"] is not None for b in benchmarks)
+
+        pagination = WorkBenchCatalogParser.extract_pagination_info(sample_catalog_html)
+        assert pagination["current_page"] == 1
+        assert pagination["total_pages"] == 66
 
     def test_collections_is_list(self, sample_catalog_html):
         """Test collections field is always a list."""
@@ -589,7 +607,13 @@ class TestAuthenticationDetection:
     """Test detection of unauthenticated responses (login page)."""
 
     def test_is_login_page_with_login_html(self, login_page_html):
-        """Test that login page HTML is correctly identified."""
+        """Test that compact synthetic login page HTML is correctly identified."""
+        lowered = login_page_html.lower()
+        assert "<script" not in lowered
+        assert "googletagmanager" not in lowered
+        assert "csrf-token" not in lowered
+        assert 'name="_token"' not in lowered
+
         is_login = WorkBenchCatalogParser.is_login_page(login_page_html)
         assert is_login is True
 

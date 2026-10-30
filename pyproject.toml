@@ -209,7 +209,7 @@ warn_unused_configs = true
 disallow_untyped_defs = false  # Gradually enable
 
 [[tool.mypy.overrides]]
-module = ["browser_cookie3"]
+module = ["browser_cookie3", "lxml", "lxml.*"]
 ignore_missing_imports = true
 
 [tool.bandit]

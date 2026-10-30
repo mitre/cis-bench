@@ -115,7 +115,7 @@ class TestArchitectureCompliance:
                 f"Use config attributes (structure, multiple) instead!"
             )
 
-    def test_config_driven_field_addition(self, disa_config_path, almalinux_complete_file):
+    def test_config_driven_field_addition(self, disa_config_path, synthetic_complete_file):
         """Config changes control output - can modify existing element behavior.
 
         Tests that we can CHANGE which source field maps to an element
@@ -151,7 +151,7 @@ class TestArchitectureCompliance:
             engine = MappingEngine(Path(temp_config))
 
             # Load test data
-            benchmark = Benchmark.from_json_file(str(almalinux_complete_file))
+            benchmark = Benchmark.from_json_file(str(synthetic_complete_file))
             rec = benchmark.recommendations[0]
             context = {"platform": "test", "benchmark": benchmark}
 
@@ -197,7 +197,7 @@ class TestArchitectureCompliance:
 
         assert hasattr(engine, "_build_field_value"), "Missing DRY helper: _build_field_value"
 
-    def test_new_methods_exist_and_work(self, disa_config_path, almalinux_complete_benchmark):
+    def test_new_methods_exist_and_work(self, disa_config_path, synthetic_complete_benchmark):
         """Verify new loop-driven methods exist and are functional."""
         from cis_bench.exporters.mapping_engine import MappingEngine
 
@@ -209,7 +209,7 @@ class TestArchitectureCompliance:
         assert hasattr(engine, "map_benchmark"), "Missing map_benchmark() method"
 
         # Check they work
-        benchmark = almalinux_complete_benchmark
+        benchmark = synthetic_complete_benchmark
         rec = benchmark.recommendations[0]
         context = {"platform": "test", "benchmark": benchmark}
 

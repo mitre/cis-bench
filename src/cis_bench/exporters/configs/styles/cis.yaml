@@ -14,23 +14,6 @@ metadata:
     - "Research and analysis tools"
   conventions: "Clean CIS-centric format with separate elements (no embedded XML tags)"
 
-# Benchmark element specifications (xsdata types)
-benchmark_elements:
-  title:
-    xccdf_type: "TextType"  # XCCDF 1.2: Benchmark.title is TextType
-  description:
-    xccdf_type: "HtmlTextType"  # XCCDF 1.2: Benchmark.description is HtmlTextType
-  version:
-    xccdf_type: "VersionType"
-  status:
-    xccdf_type: "StatusType"
-  notice:
-    xccdf_type: "NoticeType"
-  front_matter:
-    xccdf_type: "HtmlTextWithSubType"  # XCCDF 1.2 requires WithSubType
-  rear_matter:
-    xccdf_type: "HtmlTextWithSubType"  # XCCDF 1.2 requires WithSubType
-
 # Group element specifications (xsdata types)
 group_elements:
   title:
@@ -40,46 +23,49 @@ group_elements:
 
 # Benchmark-level mappings
 benchmark:
-  id_template: "xccdf_org.cisecurity.benchmarks_{platform}"
+  id_template: "xccdf_org.cisecurity.benchmarks_benchmark_{platform}"
 
-  # Profile generation - same as DISA
+  # Profile generation - XCCDF 1.2 profileIdType pattern (xccdf_[^_]+_profile_.+)
   profiles:
     generate_from_rules: true
     profile_mappings:
       - match: "Level 1 - Server"
-        id: "level-1-server"
+        id: "xccdf_org.cisecurity.benchmarks_profile_level_1_server"
         title: "Level 1 - Server"
         description: "CIS Level 1 recommendations for server environments"
       - match: "Level 1 - Workstation"
-        id: "level-1-workstation"
+        id: "xccdf_org.cisecurity.benchmarks_profile_level_1_workstation"
         title: "Level 1 - Workstation"
         description: "CIS Level 1 recommendations for workstation environments"
       - match: "Level 2 - Server"
-        id: "level-2-server"
+        id: "xccdf_org.cisecurity.benchmarks_profile_level_2_server"
         title: "Level 2 - Server"
         description: "CIS Level 2 recommendations for server environments"
       - match: "Level 2 - Workstation"
-        id: "level-2-workstation"
+        id: "xccdf_org.cisecurity.benchmarks_profile_level_2_workstation"
         title: "Level 2 - Workstation"
         description: "CIS Level 2 recommendations for workstation environments"
       - match: "Level 3 - Server"
-        id: "level-3-server"
+        id: "xccdf_org.cisecurity.benchmarks_profile_level_3_server"
         title: "Level 3 - Server"
         description: "CIS Level 3 recommendations for server environments"
       - match: "Level 3 - Workstation"
-        id: "level-3-workstation"
+        id: "xccdf_org.cisecurity.benchmarks_profile_level_3_workstation"
         title: "Level 3 - Workstation"
         description: "CIS Level 3 recommendations for workstation environments"
 
   title:
     source: "title"
     transform: "none"
+    xccdf_type: "TextType"
   description:
     source: "title"  # Use title as description
     transform: "none"
+    xccdf_type: "HtmlTextWithSubType"
   version:
     source: "version"
     transform: "none"
+    xccdf_type: "VersionType"
   notice:
     id: "terms-of-use"
     xccdf_type: "NoticeType"

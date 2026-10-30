@@ -1146,14 +1146,14 @@ class TestIDFormatValidation:
 
     # --- Profile Select Element ID Tests ---
 
-    def test_disa_profile_selects_use_sv_rule_ids(self, disa_engine, almalinux_complete_benchmark):
+    def test_disa_profile_selects_use_sv_rule_ids(self, disa_engine, synthetic_complete_benchmark):
         """Profile select elements should reference SV- rule IDs in DISA style."""
         # Get profile config from engine config (not context)
         profile_config = disa_engine.config.benchmark.get("profiles", {})
 
         # Generate profiles
         profiles = disa_engine.generate_profiles_from_rules(
-            almalinux_complete_benchmark.recommendations, profile_config
+            synthetic_complete_benchmark.recommendations, profile_config
         )
 
         # Check at least one profile has selects
@@ -1167,7 +1167,7 @@ class TestIDFormatValidation:
                 )
 
     def test_cis_profile_selects_use_benchmarks_rule_ids(
-        self, cis_engine, almalinux_complete_benchmark
+        self, cis_engine, synthetic_complete_benchmark
     ):
         """Profile select elements should reference cisecurity.benchmarks rule IDs in CIS style."""
         # Get profile config from engine config (not context)
@@ -1175,7 +1175,7 @@ class TestIDFormatValidation:
 
         # Generate profiles
         profiles = cis_engine.generate_profiles_from_rules(
-            almalinux_complete_benchmark.recommendations, profile_config
+            synthetic_complete_benchmark.recommendations, profile_config
         )
 
         # Check at least one profile has selects
@@ -1270,17 +1270,17 @@ class TestDISAVulcanCompatibility:
         assert source is not None, "DISA group description should have a source field"
         assert source == "title", "DISA group description source should be 'title'"
 
-    def test_disa_map_group_uses_ref_as_title(self, disa_config_path, almalinux_complete_benchmark):
+    def test_disa_map_group_uses_ref_as_title(self, disa_config_path, synthetic_complete_benchmark):
         """map_group should use CIS ref as group title."""
         engine = MappingEngine(disa_config_path)
-        benchmark = almalinux_complete_benchmark
+        benchmark = synthetic_complete_benchmark
         rec = benchmark.recommendations[0]
         context = {"platform": "test", "benchmark": benchmark}
 
         rule = engine.map_rule(rec, context)
         group = engine.map_group(rec, rule, context)
 
-        # Group title should contain the ref (e.g., "6.1.1")
+        # Group title should contain the ref (e.g., "1.1.1")
         assert group.title, "Group should have title"
         title_content = (
             group.title[0].content[0]
@@ -1296,11 +1296,11 @@ class TestDISAVulcanCompatibility:
         )
 
     def test_disa_map_group_uses_rule_title_as_description(
-        self, disa_config_path, almalinux_complete_benchmark
+        self, disa_config_path, synthetic_complete_benchmark
     ):
         """map_group should use rule title as group description."""
         engine = MappingEngine(disa_config_path)
-        benchmark = almalinux_complete_benchmark
+        benchmark = synthetic_complete_benchmark
         rec = benchmark.recommendations[0]
         context = {"platform": "test", "benchmark": benchmark}
 

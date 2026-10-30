@@ -210,11 +210,13 @@ class TestValidateSession:
         session = requests.Session()
         session.cookies.set("test", "value")
 
-        # Load actual login page HTML
+        # Load synthetic login page HTML
         login_html_path = (
             Path(__file__).parent.parent / "fixtures" / "html" / "workbench_login_page.html"
         )
         login_html = login_html_path.read_text()
+        assert "<script" not in login_html.lower()
+        assert "csrf-token" not in login_html.lower()
 
         with patch.object(session, "get") as mock_get:
             mock_response = Mock()

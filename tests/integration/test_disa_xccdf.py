@@ -11,9 +11,9 @@ from cis_bench.validators.disa_conventions import DISAConventionsValidator
 
 
 @pytest.fixture
-def test_benchmark(almalinux_complete_file):
-    """Load test benchmark (use conftest fixture)."""
-    return Benchmark.from_json_file(str(almalinux_complete_file))
+def test_benchmark(synthetic_complete_file):
+    """Load synthetic test benchmark (use conftest fixture)."""
+    return Benchmark.from_json_file(str(synthetic_complete_file))
 
 
 @pytest.fixture
@@ -58,6 +58,8 @@ def test_disa_export_passes_conventions(disa_export_file):
 
 def test_disa_export_has_ccis(disa_export_file):
     """Test DISA export contains CCI ident elements."""
+    import re
+
     from lxml import etree
 
     tree = etree.parse(str(disa_export_file))
@@ -66,14 +68,10 @@ def test_disa_export_has_ccis(disa_export_file):
     # Use namespace-agnostic XPath (works with any namespace prefix)
     idents = root.xpath('.//*[local-name()="ident"][@system="http://cyber.mil/cci"]')
 
-    assert len(idents) > 0, "No CCI ident elements found"
-    assert len(idents) > 100, f"Expected many CCIs, found only {len(idents)}"
+    assert len(idents) == 38, f"Expected 38 deterministic CCIs, found {len(idents)}"
 
-    # Check CCI format
-    import re
-
-    for ident in idents[:10]:  # Check first 10
-        assert re.match(r"CCI-\d{6}", ident.text), f"Invalid CCI format: {ident.text}"
+    for ident in idents:
+        assert re.fullmatch(r"CCI-\d{6}", ident.text or ""), f"Invalid CCI format: {ident.text}"
 
 
 def test_disa_export_has_vuln_discussion(disa_export_file):

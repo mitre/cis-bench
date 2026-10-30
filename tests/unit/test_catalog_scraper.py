@@ -195,14 +195,26 @@ class TestFullCatalogScrape:
         assert stats["pages_scraped"] <= 3
 
     def test_scrape_saves_to_database(self, temp_db, mock_session):
-        """Test scraped benchmarks are saved to database."""
+        """Test scraped benchmarks are saved to database across all status types."""
         scraper = CatalogScraper(temp_db, mock_session)
 
-        scraper.scrape_full_catalog(max_pages=1, rate_limit_seconds=0)
+        stats = scraper.scrape_full_catalog(max_pages=1, rate_limit_seconds=0)
 
-        # Check database has benchmarks
+        assert stats["total_benchmarks"] == 6
         db_stats = temp_db.get_catalog_stats()
-        assert db_stats["total_benchmarks"] > 0
+        assert db_stats["total_benchmarks"] == 6
+        assert db_stats["published_benchmarks"] == 2
+        stored_statuses = {
+            temp_db.get_benchmark(bid)["status"]
+            for bid in ("90101", "90102", "90103", "90104", "90105", "90106")
+        }
+        assert stored_statuses == {
+            "Published",
+            "Draft",
+            "Archived",
+            "Rejected",
+            "Accepted",
+        }
 
     def test_scrape_marks_latest_versions(self, temp_db, mock_session):
         """Test scraper marks latest versions."""

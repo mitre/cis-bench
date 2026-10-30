@@ -161,15 +161,15 @@ def unified_xccdf_exporter_file(exporters_dir):
 
 
 @pytest.fixture(scope="session")
-def almalinux_complete_file(benchmark_fixtures):
-    """Path to complete AlmaLinux benchmark JSON (322 recommendations)."""
-    return benchmark_fixtures / "almalinux_complete.json"
+def synthetic_complete_file(benchmark_fixtures):
+    """Path to complete synthetic benchmark JSON (20 recommendations)."""
+    return benchmark_fixtures / "synthetic_complete.json"
 
 
 @pytest.fixture(scope="session")
-def almalinux_complete_benchmark(almalinux_complete_file):
-    """Load complete AlmaLinux benchmark (cached for session)."""
-    return Benchmark.from_json_file(str(almalinux_complete_file))
+def synthetic_complete_benchmark(synthetic_complete_file):
+    """Load complete synthetic benchmark (cached for session)."""
+    return Benchmark.from_json_file(str(synthetic_complete_file))
 
 
 @pytest.fixture(scope="session")
@@ -194,14 +194,14 @@ def sample_recommendation_complete():
     """Complete recommendation with all fields for integration testing."""
     return Recommendation(
         ref="6.1.1",
-        title="Ensure AIDE is installed",
+        title="Ensure filesystem integrity verification agent is active",
         url="https://workbench.cisecurity.org/sections/1/recommendations/1",
         assessment_status="Automated",
-        description="<p>AIDE is an intrusion detection tool.</p>",
-        rationale="<p>Monitoring filesystem state.</p>",
-        impact="<p>None expected</p>",
-        audit="<p>Run: rpm -q aide</p>",
-        remediation="<p>Run: dnf install aide</p>",
+        description="<p>Periodic cryptographic checksum verification detects unauthorized file changes.</p>",
+        rationale="<p>Continuous integrity checks surface tampering across critical system paths.</p>",
+        impact="<p>Scheduled verification scans increase transient disk I/O.</p>",
+        audit="<p>Run: <code>integrity-agent --status</code></p>",
+        remediation="<p>Run: <code>service-ctl enable --now integrity-agent</code></p>",
         profiles=["Level 1 - Server", "Level 1 - Workstation"],
         cis_controls=[
             {
