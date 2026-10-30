@@ -8,6 +8,7 @@ import json
 import logging
 
 from cis_bench.catalog.database import CatalogDatabase
+from cis_bench.catalog.parser import WorkBenchCatalogParser
 from cis_bench.catalog.search import CatalogSearch
 from cis_bench.fetcher.workbench import WorkbenchScraper
 from cis_bench.models.benchmark import Benchmark
@@ -74,10 +75,16 @@ class CatalogDownloader:
                     "message": "Already up-to-date. Use --force to re-download.",
                 }
 
-        # Download from WorkBench
-        logger.info(f"Fetching from WorkBench: {catalog_entry['url']}")
+        # Validate and canonicalize benchmark URL against configured WorkBench origin
+        _, benchmark_url = WorkBenchCatalogParser.normalize_benchmark_url(
+            catalog_entry["url"],
+            expected_benchmark_id=str(benchmark_id),
+        )
 
-        benchmark = self.scraper.download_benchmark(catalog_entry["url"])
+        # Download from WorkBench
+        logger.info(f"Fetching from WorkBench: {benchmark_url}")
+
+        benchmark = self.scraper.download_benchmark(benchmark_url)
 
         # Serialize to JSON
         content_json = benchmark.model_dump_json(indent=2)

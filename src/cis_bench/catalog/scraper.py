@@ -15,6 +15,7 @@ from cis_bench import __version__
 from cis_bench.catalog.database import CatalogDatabase
 from cis_bench.catalog.parser import WorkBenchCatalogParser
 from cis_bench.config import Config
+from cis_bench.exceptions import AuthenticationError
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,6 @@ class CatalogScraper:
         """
         self.db = database
         self.session = session
-        self.session.verify = False  # TODO: Add config for SSL verification
 
     def scrape_full_catalog(
         self, max_pages: int | None = None, rate_limit_seconds: float = 2.0
@@ -69,6 +69,10 @@ class CatalogScraper:
         # Detect total pages by scraping page 1 first
         first_page_html = self._fetch_page(1)
         first_page_benchmarks = WorkBenchCatalogParser.parse_catalog_page(first_page_html)
+        if not first_page_benchmarks:
+            raise ValueError(
+                "No benchmarks found on catalog page 1; HTML structure may have changed."
+            )
 
         pagination = WorkBenchCatalogParser.extract_pagination_info(first_page_html)
         total_pages = pagination.get("total_pages")
@@ -137,18 +141,19 @@ class CatalogScraper:
                                 description=f"Scraping catalog | {total_benchmarks} benchmarks found",
                             )
 
-                        except OperationalError:
+                        except (OperationalError, AuthenticationError):
                             raise
                         except Exception as e:
                             logger.error(f"Failed to scrape page {page_num}: {e}")
                             failed_pages.append(page_num)
                             progress.update(task, advance=1)
 
-                # Check failure threshold (stop if >10% of pages have failed)
-                failure_rate = len(failed_pages) / (batch_start + len(batch_pages))
+                # Check failure threshold (stop if >10% of pages have failed, including page 1)
+                pages_processed = 1 + batch_start + len(batch_pages)
+                failure_rate = len(failed_pages) / pages_processed
                 if failure_rate > 0.10:
                     logger.error(
-                        f"Failure rate too high: {len(failed_pages)}/{batch_start + len(batch_pages)} pages failed ({failure_rate:.1%})"
+                        f"Failure rate too high: {len(failed_pages)}/{pages_processed} pages failed ({failure_rate:.1%})"
                     )
                     progress.stop()
                     raise Exception(
@@ -339,6 +344,8 @@ class CatalogScraper:
 
                 return benchmarks
 
+            except AuthenticationError:
+                raise
             except Exception as e:
                 attempt += 1
                 if attempt >= max_retries:
@@ -357,22 +364,23 @@ class CatalogScraper:
             True if connection successful and authenticated
 
         Raises:
-            Exception with helpful message if connection fails
+            AuthenticationError: If response is a login page or redirect
+            ValueError: If page 1 parses zero benchmarks
+            Exception: If HTTP connection fails
         """
         try:
             html = self._fetch_page(1)
+            benchmarks = WorkBenchCatalogParser.parse_catalog_page(html)
 
-            # Check if we got a real page (not login redirect)
-            if "login" in html.lower() and len(html) < 5000:
-                raise Exception(
+            # Catch minimal login redirect pages without full WorkBench form markup
+            if not benchmarks and "login" in html.lower() and len(html) < 5000:
+                raise AuthenticationError(
                     "Not authenticated. Page redirected to login.\n"
                     f"Please log into {Config.get_workbench_base_url()} in your browser first."
                 )
 
-            benchmarks = WorkBenchCatalogParser.parse_catalog_page(html)
-
             if len(benchmarks) == 0:
-                raise Exception(
+                raise ValueError(
                     "Connected but no benchmarks found. HTML structure may have changed."
                 )
 

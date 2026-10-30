@@ -7,6 +7,7 @@ import pytest
 
 from cis_bench.catalog.database import CatalogDatabase
 from cis_bench.catalog.scraper import CatalogScraper
+from cis_bench.exceptions import AuthenticationError
 
 
 @pytest.fixture
@@ -49,6 +50,21 @@ class TestScraperInitialization:
         assert scraper.db == temp_db
         assert scraper.session == mock_session
 
+    @pytest.mark.parametrize(
+        "verify_setting",
+        [True, False, "/etc/ssl/certs/custom-ca.pem"],
+    )
+    def test_scraper_preserves_session_verify_setting(self, temp_db, verify_setting):
+        """CatalogScraper.__init__ must preserve the caller-configured session.verify value."""
+        import requests
+
+        session = requests.Session()
+        session.verify = verify_setting
+
+        scraper = CatalogScraper(temp_db, session)
+
+        assert scraper.session.verify == verify_setting
+
     def test_base_url(self):
         """Test base URL is set correctly."""
         assert CatalogScraper.BASE_URL == "https://workbench.cisecurity.org/benchmarks"
@@ -67,16 +83,31 @@ class TestConnectionTesting:
         mock_session.get.assert_called_once()
 
     def test_connection_detects_login_redirect(self, temp_db):
-        """Test detection of login redirect."""
+        """Test detection of login redirect raises AuthenticationError."""
         session = Mock()
         response = Mock()
         response.text = "<html><body>Login required</body></html>"
         response.status_code = 200
+        response.raise_for_status = Mock()
         session.get = Mock(return_value=response)
 
         scraper = CatalogScraper(temp_db, session)
 
-        with pytest.raises(Exception, match="Not authenticated"):
+        with pytest.raises(AuthenticationError, match="Not authenticated"):
+            scraper.test_connection()
+
+    def test_connection_raises_value_error_when_page_one_has_zero_rows(self, temp_db):
+        """test_connection raises ValueError when Page 1 parses 0 benchmarks."""
+        session = Mock()
+        response = Mock()
+        response.text = "<html><body><table><tr><th>Title</th></tr></table></body></html>"
+        response.status_code = 200
+        response.raise_for_status = Mock()
+        session.get = Mock(return_value=response)
+
+        scraper = CatalogScraper(temp_db, session)
+
+        with pytest.raises(ValueError, match="no benchmarks found"):
             scraper.test_connection()
 
     def test_connection_handles_network_error(self, temp_db):
@@ -499,3 +530,98 @@ class TestErrorHandling:
         ]
         with pytest.raises(ValueError, match="failed validation"):
             scraper.scrape_page_one_update(rate_limit_seconds=0)
+
+    def test_fetch_and_parse_page_propagates_authentication_error_without_retries(
+        self, temp_db, mock_session, monkeypatch
+    ):
+        """_fetch_and_parse_page raises AuthenticationError on first attempt without sleeping."""
+        import cis_bench.catalog.scraper as scraper_module
+        from cis_bench.catalog.parser import WorkBenchCatalogParser
+
+        sleep_calls: list[float] = []
+        fetch_calls: list[int] = []
+
+        scraper = CatalogScraper(temp_db, mock_session)
+        monkeypatch.setattr(scraper_module.time, "sleep", lambda secs: sleep_calls.append(secs))
+
+        def fake_fetch(page_num: int) -> str:
+            fetch_calls.append(page_num)
+            return "login-html"
+
+        def raise_auth(_html: str) -> list[dict]:
+            raise AuthenticationError("Not authenticated")
+
+        monkeypatch.setattr(scraper, "_fetch_page", fake_fetch)
+        monkeypatch.setattr(WorkBenchCatalogParser, "parse_catalog_page", staticmethod(raise_auth))
+
+        with pytest.raises(AuthenticationError, match="Not authenticated"):
+            scraper._fetch_and_parse_page(2, max_retries=3)
+
+        assert fetch_calls == [2]
+        assert sleep_calls == []
+
+    def test_scrape_full_catalog_propagates_authentication_error_from_worker_page(
+        self, temp_db, mock_session, monkeypatch
+    ):
+        """scrape_full_catalog aborts immediately with AuthenticationError when session expires mid-scrape."""
+
+        def fake_parse(html: str) -> list[dict]:
+            page_num = int(html.split("-")[1])
+            if page_num == 2:
+                raise AuthenticationError("Session expired on page 2")
+            return [
+                {
+                    "benchmark_id": "101",
+                    "title": "CIS Ubuntu Linux 24.04 LTS Benchmark",
+                    "url": "https://workbench.cisecurity.org/benchmarks/101",
+                    "status": "Published",
+                }
+            ]
+
+        scraper = _stub_scraper_pages(temp_db, mock_session, monkeypatch, fake_parse, total_pages=3)
+
+        with pytest.raises(AuthenticationError, match="Session expired on page 2"):
+            scraper.scrape_full_catalog(max_pages=3, rate_limit_seconds=0)
+
+    def test_scrape_full_catalog_includes_page_one_in_failure_rate_denominator(
+        self, temp_db, mock_session, monkeypatch
+    ):
+        """1 failed page out of 10 total pages (10.0%) succeeds when Page 1 is counted in denominator."""
+        import cis_bench.catalog.scraper as scraper_module
+
+        monkeypatch.setattr(scraper_module.time, "sleep", lambda _secs: None)
+
+        def fake_parse(html: str) -> list[dict]:
+            page_num = int(html.split("-")[1])
+            if page_num == 2:
+                raise RuntimeError("Transient 502 on page 2")
+            return [
+                {
+                    "benchmark_id": str(1000 + page_num),
+                    "title": f"CIS Benchmark {page_num}",
+                    "url": f"https://workbench.cisecurity.org/benchmarks/{1000 + page_num}",
+                    "status": "Published",
+                }
+            ]
+
+        scraper = _stub_scraper_pages(
+            temp_db, mock_session, monkeypatch, fake_parse, total_pages=10
+        )
+
+        stats = scraper.scrape_full_catalog(max_pages=10, rate_limit_seconds=0)
+
+        assert stats["failed_pages"] == [2]
+        assert stats["pages_scraped"] == 10
+        assert stats["total_benchmarks"] == 9
+        assert stats["success_rate"] == pytest.approx(0.9)
+
+    def test_scrape_full_catalog_raises_value_error_when_page_one_returns_zero_rows(
+        self, temp_db, mock_session, monkeypatch
+    ):
+        """scrape_full_catalog raises ValueError immediately when Page 1 returns 0 parsed rows."""
+        scraper = _stub_scraper_pages(
+            temp_db, mock_session, monkeypatch, lambda _html: [], total_pages=5
+        )
+
+        with pytest.raises(ValueError, match="No benchmarks found on catalog page 1"):
+            scraper.scrape_full_catalog(max_pages=5, rate_limit_seconds=0)

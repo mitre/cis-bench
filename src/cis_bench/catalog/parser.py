@@ -5,6 +5,7 @@ Extracts benchmark metadata from HTML catalog listing pages.
 
 import logging
 import re
+from urllib.parse import urljoin, urlsplit
 
 from bs4 import BeautifulSoup, Tag
 
@@ -99,6 +100,69 @@ class WorkBenchCatalogParser:
         logger.info(f"Parsed {len(benchmarks)} benchmarks from catalog page")
         return benchmarks
 
+    _BENCHMARK_PATH_RE = re.compile(r"^/benchmarks/([0-9]+)(?:/.*)?$")
+
+    @staticmethod
+    def normalize_benchmark_url(
+        raw_url: str, *, expected_benchmark_id: str | None = None
+    ) -> tuple[str, str]:
+        """Resolve, validate, and canonicalize a CIS WorkBench benchmark URL.
+
+        Args:
+            raw_url: Relative or absolute benchmark href/URL
+            expected_benchmark_id: Optional catalog benchmark ID that the URL must match
+
+        Returns:
+            Tuple of (benchmark_id, canonical_url) where canonical_url is
+            ``<workbench_base_url>/benchmarks/<digits>``
+
+        Raises:
+            ValueError: If raw_url is off-origin, contains userinfo/path traversal,
+                lacks a numeric ``/benchmarks/<digits>`` path, or mismatches expected_benchmark_id
+        """
+        if not isinstance(raw_url, str):
+            raise ValueError("Invalid benchmark URL: expected string")
+
+        cleaned = raw_url.strip()
+        if not cleaned or cleaned.startswith(("@", "//")) or "\\" in cleaned:
+            raise ValueError(f"Invalid benchmark URL '{raw_url}'")
+
+        base_url = Config.get_workbench_base_url()
+        base_parsed = urlsplit(base_url)
+
+        raw_parsed = urlsplit(cleaned)
+        if raw_parsed.scheme == "" and raw_parsed.netloc == "":
+            resolved = urljoin(f"{base_url}/", cleaned)
+        else:
+            resolved = cleaned
+
+        parsed = urlsplit(resolved)
+        if (
+            parsed.scheme.lower() != base_parsed.scheme.lower()
+            or parsed.username is not None
+            or parsed.password is not None
+            or "@" in parsed.netloc
+            or parsed.netloc.lower() != base_parsed.netloc.lower()
+            or ".." in parsed.path.split("/")
+        ):
+            raise ValueError(
+                f"Invalid benchmark URL '{raw_url}': must match configured WorkBench origin {base_url}"
+            )
+
+        path_match = WorkBenchCatalogParser._BENCHMARK_PATH_RE.match(parsed.path)
+        if not path_match:
+            raise ValueError(
+                f"Invalid benchmark URL '{raw_url}': path must match /benchmarks/<digits>"
+            )
+
+        benchmark_id = path_match.group(1)
+        if expected_benchmark_id is not None and benchmark_id != expected_benchmark_id:
+            raise ValueError(
+                f"Invalid benchmark URL '{raw_url}': benchmark ID '{benchmark_id}' does not match '{expected_benchmark_id}'"
+            )
+
+        return benchmark_id, f"{base_url}/benchmarks/{benchmark_id}"
+
     @staticmethod
     def _parse_table_row(row) -> dict | None:
         """Parse single table row.
@@ -127,19 +191,9 @@ class WorkBenchCatalogParser:
         href = link.get("href", "")
         title = link.get_text(strip=True)
 
-        # Extract benchmark ID from URL
-        # Format: https://workbench.cisecurity.org/benchmarks/23598
-        benchmark_id = None
-        if "/benchmarks/" in href:
-            try:
-                # Extract ID from URL
-                id_part = href.split("/benchmarks/")[1]
-                benchmark_id = id_part.split("/")[0].split("?")[0]
-            except (IndexError, AttributeError):
-                logger.warning(f"Could not extract ID from URL: {href}")
-                return None
-
-        if not benchmark_id:
+        try:
+            benchmark_id, url = WorkBenchCatalogParser.normalize_benchmark_url(href)
+        except ValueError:
             return None
 
         # Clean title (remove leading pipe and org name)
@@ -167,12 +221,6 @@ class WorkBenchCatalogParser:
             else []
         )
 
-        # Build full URL
-        if href.startswith("http"):
-            url = href
-        else:
-            url = f"{Config.get_workbench_base_url()}{href}"
-
         return {
             "benchmark_id": benchmark_id,
             "title": title,
@@ -188,6 +236,8 @@ class WorkBenchCatalogParser:
 
     # Platform mapping: (keywords, platform_type, platform_name)
     PLATFORM_PATTERNS = [
+        # Managed Kubernetes services that include cloud vendor names in title (check before cloud)
+        (["aks"], "container", "azure-aks"),
         # Cloud Platforms (check before OS to catch "Oracle Cloud" before "Oracle")
         (["oracle cloud", "oci"], "cloud", "oracle-cloud"),
         (["amazon web services", "aws"], "cloud", "aws"),
@@ -213,7 +263,6 @@ class WorkBenchCatalogParser:
         (["macos", "mac os"], "os", "macos"),
         # Containers & Kubernetes (specific services)
         (["eks"], "container", "aws-eks"),
-        (["aks"], "container", "azure-aks"),
         (["gke"], "container", "google-gke"),
         (["oke", "oracle.*container engine"], "container", "oracle-oke"),
         (["kubernetes", "k8s"], "container", "kubernetes"),
@@ -245,8 +294,6 @@ class WorkBenchCatalogParser:
         for keywords, platform_type, platform_name in WorkBenchCatalogParser.PLATFORM_PATTERNS:
             for keyword in keywords:
                 # Use regex for patterns like "oracle.*container"
-                import re
-
                 if re.search(keyword, title_lower):
                     return (platform_type, platform_name)
 

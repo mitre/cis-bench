@@ -401,12 +401,12 @@ class TestEdgeCases:
         assert benchmarks[0]["benchmark_id"] == "456"
 
     def test_url_with_query_params(self):
-        """Test URL parsing handles query parameters correctly."""
+        """Test URL parsing handles query parameters and fragments by stripping them cleanly."""
         html = """
         <table>
             <tr><th>Header</th></tr>
             <tr>
-                <td><a href="/benchmarks/789?version=1&sort=asc">With Query Params</a></td>
+                <td><a href="/benchmarks/789?version=1&sort=asc#overview">With Query Params</a></td>
                 <td>v1.0.0</td>
                 <td>Published</td>
                 <td>Community</td>
@@ -419,6 +419,42 @@ class TestEdgeCases:
 
         assert len(benchmarks) == 1
         assert benchmarks[0]["benchmark_id"] == "789"
+        assert benchmarks[0]["url"] == "https://workbench.cisecurity.org/benchmarks/789"
+
+    @pytest.mark.parametrize(
+        "malicious_href",
+        [
+            "@attacker.example/benchmarks/23598",
+            "https://workbench.cisecurity.org@attacker.example/benchmarks/23598",
+            "//attacker.example/benchmarks/23598",
+            "https://attacker.example/benchmarks/23598",
+            "https://portal.cisecurity.org/benchmarks/23598",
+            "http://workbench.cisecurity.org/benchmarks/23598",
+            "/\\attacker.example/benchmarks/23598",
+            "/benchmarks/23598/../../admin",
+            "https://workbench.cisecurity.org/benchmarks/23598/../../admin",
+            "/benchmarks/not-numeric",
+            "/benchmarks/٢٣٥٩٨",
+        ],
+    )
+    def test_rejects_off_origin_userinfo_and_non_numeric_benchmark_urls(self, malicious_href):
+        """Catalog parser rejects @attacker userinfo tricks, off-origin hosts, HTTP, traversal, and non-ASCII IDs."""
+        html = f"""
+        <table>
+            <tr><th>Title</th><th>Version</th><th>Status</th><th>Community</th><th>Collections</th><th>Owner</th></tr>
+            <tr>
+                <td><a href="{malicious_href}">Malicious Benchmark</a></td>
+                <td>v1.0.0</td>
+                <td>Published</td>
+                <td>Community</td>
+                <td>Collection</td>
+                <td>Owner</td>
+            </tr>
+        </table>
+        """
+        benchmarks = WorkBenchCatalogParser.parse_catalog_page(html)
+
+        assert benchmarks == []
 
     def test_url_with_trailing_path(self):
         """Test URL parsing handles trailing path segments correctly."""
@@ -643,8 +679,8 @@ class TestPlatformInference:
             ("CIS Microsoft SQL Server 2022 Benchmark", "database", "mssql"),
             # Containers & Kubernetes
             ("CIS Amazon Elastic Kubernetes Service (EKS) Benchmark", "container", "aws-eks"),
-            # Note: AKS matches "azure" before "aks" due to pattern order, so it returns cloud/azure
-            ("CIS Azure Kubernetes Service (AKS) Benchmark", "cloud", "azure"),
+            ("CIS Azure Kubernetes Service (AKS) Benchmark", "container", "azure-aks"),
+            ("CIS AKS Optimized Azure Linux Benchmark", "container", "azure-aks"),
             ("CIS Google Kubernetes Engine (GKE) Benchmark", "container", "google-gke"),
             ("CIS Kubernetes V1.27 Benchmark", "container", "kubernetes"),
             ("CIS Docker Benchmark", "container", "docker"),

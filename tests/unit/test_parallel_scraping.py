@@ -23,6 +23,14 @@ def get_sample_html(max_page=100):
     return f"""
     <table>
         <tr>
+            <th>Title</th>
+            <th>Version</th>
+            <th>Status</th>
+            <th>Community</th>
+            <th>Collections</th>
+            <th>Owner</th>
+        </tr>
+        <tr>
             <td><a href="/benchmarks/12345">CIS Test Benchmark</a></td>
             <td>v1.0.0</td>
             <td>Published</td>
@@ -150,19 +158,20 @@ class TestMultiPageScraping:
 class TestFailureThreshold:
     """Test failure threshold abort logic."""
 
-    def test_scraping_aborts_when_failure_rate_exceeds_10_percent(self, temp_db, sample_html):
+    def test_scraping_aborts_when_failure_rate_exceeds_10_percent(
+        self, temp_db, sample_html, monkeypatch
+    ):
         """Scraping aborts when >10% of pages fail."""
+        import cis_bench.catalog.scraper as scraper_module
+
+        monkeypatch.setattr(scraper_module.time, "sleep", lambda _secs: None)
         session = Mock()
 
-        call_count = 0
-
-        def side_effect(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
-
-            # Fail 50% of pages (way over 10% threshold)
-            if call_count % 2 == 0:
-                raise Exception("Network error")
+        def side_effect(url, *args, **kwargs):
+            page_num = int(url.split("?page=")[1])
+            # Fail 50% of pages deterministically across retries (pages 2, 4, 6, 8, 10 -> 5/11 > 10%)
+            if page_num % 2 == 0:
+                raise RuntimeError(f"Network error on page {page_num}")
 
             response = Mock()
             response.text = sample_html

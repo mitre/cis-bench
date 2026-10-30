@@ -125,6 +125,56 @@ class TestDownloadByID:
         # Status should indicate unchanged or updated (both valid)
         assert result2["status"] in ("unchanged", "updated")
 
+    def test_download_by_id_strips_query_and_fragment_before_scraping(self, temp_db, mock_scraper):
+        """download_by_id canonicalizes stored benchmark URLs before calling WorkbenchScraper."""
+        temp_db.insert_benchmark(
+            {
+                "benchmark_id": "23598",
+                "title": "CIS Ubuntu Linux 20.04 LTS Benchmark",
+                "version": "v2.0.1",
+                "url": "https://workbench.cisecurity.org/benchmarks/23598?ref=catalog#top",
+                "status": "Published",
+            }
+        )
+        downloader = CatalogDownloader(temp_db, mock_scraper)
+
+        result = downloader.download_by_id("23598")
+
+        assert result["benchmark_id"] == "23598"
+        mock_scraper.download_benchmark.assert_called_once_with(
+            "https://workbench.cisecurity.org/benchmarks/23598"
+        )
+
+    @pytest.mark.parametrize(
+        "tampered_url",
+        [
+            "https://workbench.cisecurity.org@attacker.example/benchmarks/23598",
+            "https://attacker.example/benchmarks/23598",
+            "http://workbench.cisecurity.org/benchmarks/23598",
+            "https://portal.cisecurity.org/benchmarks/23598",
+            "https://workbench.cisecurity.org/benchmarks/99999",
+        ],
+    )
+    def test_download_by_id_rejects_off_origin_or_mismatched_catalog_url(
+        self, temp_db, mock_scraper, tampered_url
+    ):
+        """download_by_id validates stored URL against Config.get_workbench_base_url() and benchmark_id."""
+        temp_db.insert_benchmark(
+            {
+                "benchmark_id": "23598",
+                "title": "CIS Ubuntu Linux 20.04 LTS Benchmark",
+                "version": "v2.0.1",
+                "url": tampered_url,
+                "status": "Published",
+            }
+        )
+        downloader = CatalogDownloader(temp_db, mock_scraper)
+
+        with pytest.raises(ValueError, match="Invalid benchmark URL"):
+            downloader.download_by_id("23598")
+
+        mock_scraper.download_benchmark.assert_not_called()
+
 
 class TestDownloadByName:
     """Test downloading by name with fuzzy matching."""
