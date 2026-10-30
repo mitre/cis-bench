@@ -5,6 +5,7 @@ import sys
 
 import click
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 from cis_bench.cli.helpers.output import output_data
@@ -107,7 +108,7 @@ def search_cmd(query, platform, platform_type, status, latest, limit, output_for
         if query:
             logger.info(f"Searching for: {query}")
             if output_format == "table":
-                console.print(f"[cyan]Searching for:[/cyan] {query}\n")
+                console.print(f"[cyan]Searching for:[/cyan] {escape(str(query))}\n")
             results = search.search(query, limit=limit, **filters)
         else:
             logger.info("Listing all benchmarks")
@@ -173,5 +174,5 @@ def search_cmd(query, platform, platform_type, status, latest, limit, output_for
 
     except Exception as e:
         logger.error(f"Search failed: {e}", exc_info=True)
-        console.print(f"[red]✗ Search failed: {e}[/red]")
+        console.print(f"[red]✗ Search failed: {escape(str(e))}[/red]")
         sys.exit(1)

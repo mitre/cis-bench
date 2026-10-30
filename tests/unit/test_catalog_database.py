@@ -88,28 +88,33 @@ class TestDatabaseInitialization:
         assert len(tables) == 1
         conn.close()
 
-    def test_default_statuses_inserted(self, temp_db):
-        """Test default benchmark statuses are inserted with expected active flags and order."""
+    _EXPECTED_DEFAULT_STATUSES = [
+        ("Published", True, 1),
+        ("Accepted", True, 2),
+        ("Draft", False, 3),
+        ("Archived", False, 4),
+        ("Rejected", False, 5),
+        ("Final Update", False, 6),
+    ]
+
+    @staticmethod
+    def _fetch_ordered_statuses(db: CatalogDatabase) -> list[tuple[str, bool, int]]:
         from sqlmodel import Session, select
 
-        from cis_bench.catalog.models import BenchmarkStatus, BenchmarkStatusModel
+        from cis_bench.catalog.models import BenchmarkStatusModel
 
-        assert BenchmarkStatus.FINAL_UPDATE.value == "Final Update"
-
-        with Session(temp_db.engine) as session:
+        with Session(db.engine) as session:
             rows = session.exec(
                 select(BenchmarkStatusModel).order_by(BenchmarkStatusModel.sort_order)
             ).all()
+        return [(row.name, row.is_active, row.sort_order) for row in rows]
 
-        actual = [(row.name, row.is_active, row.sort_order) for row in rows]
-        assert actual == [
-            ("Published", True, 1),
-            ("Accepted", True, 2),
-            ("Draft", False, 3),
-            ("Archived", False, 4),
-            ("Rejected", False, 5),
-            ("Final Update", False, 6),
-        ]
+    def test_default_statuses_inserted(self, temp_db):
+        """Test default benchmark statuses are inserted with expected active flags and order."""
+        from cis_bench.catalog.models import BenchmarkStatus
+
+        assert BenchmarkStatus.FINAL_UPDATE.value == "Final Update"
+        assert self._fetch_ordered_statuses(temp_db) == self._EXPECTED_DEFAULT_STATUSES
 
     def test_initialize_schema_backfills_missing_default_statuses(self, tmp_path):
         """Test initialize_schema backfills new default statuses into an existing 5-status DB."""
@@ -121,37 +126,28 @@ class TestDatabaseInitialization:
         db = CatalogDatabase(tmp_path / "legacy_catalog.db")
         db.initialize_schema()
 
-        # Simulate a pre-existing database created before Final Update existed
         with Session(db.engine) as session:
-            published = session.exec(
-                select(BenchmarkStatusModel).where(BenchmarkStatusModel.name == "Published")
-            ).one()
-            original_published_id = published.status_id
+            original_published_id = (
+                session.exec(
+                    select(BenchmarkStatusModel).where(BenchmarkStatusModel.name == "Published")
+                )
+                .one()
+                .status_id
+            )
             session.execute(
                 text("DELETE FROM benchmark_statuses WHERE name = :name"),
                 {"name": "Final Update"},
             )
             session.commit()
 
-        # Re-running initialize_schema must backfill Final Update without duplicating existing rows
         db.initialize_schema()
 
+        assert self._fetch_ordered_statuses(db) == self._EXPECTED_DEFAULT_STATUSES
         with Session(db.engine) as session:
-            rows = session.exec(
-                select(BenchmarkStatusModel).order_by(BenchmarkStatusModel.sort_order)
-            ).all()
-
-        actual = [(row.name, row.is_active, row.sort_order) for row in rows]
-        assert actual == [
-            ("Published", True, 1),
-            ("Accepted", True, 2),
-            ("Draft", False, 3),
-            ("Archived", False, 4),
-            ("Rejected", False, 5),
-            ("Final Update", False, 6),
-        ]
-        published_after = next(row for row in rows if row.name == "Published")
-        assert published_after.status_id == original_published_id
+            published_after = session.exec(
+                select(BenchmarkStatusModel).where(BenchmarkStatusModel.name == "Published")
+            ).one()
+            assert published_after.status_id == original_published_id
 
 
 class TestBenchmarkOperations:
@@ -219,6 +215,73 @@ class TestBenchmarkOperations:
         assert bench is not None
         assert bench["platform"] is None
         assert bench["community"] is None
+
+    def test_insert_benchmark_persists_platform_type_and_rejects_blank_required_fields(
+        self, temp_db
+    ):
+        """insert_benchmark persists platform_type/is_vnext, deduplicates collections, and rejects invalid inputs."""
+        import sqlite3
+
+        temp_db.insert_benchmark(
+            {
+                "benchmark_id": "  7001  ",
+                "title": "  CIS Amazon Web Services Foundations Benchmark  ",
+                "url": "  https://workbench.cisecurity.org/benchmarks/7001  ",
+                "status": "Published",
+                "platform": "aws",
+                "platform_type": "cloud",
+                "is_vnext": True,
+                "collections": ["Cloud", " ", "Cloud", "", "CIS Controls"],
+            }
+        )
+
+        bench = temp_db.get_benchmark("7001")
+        assert bench is not None
+        assert bench["title"] == "CIS Amazon Web Services Foundations Benchmark"
+        assert bench["url"] == "https://workbench.cisecurity.org/benchmarks/7001"
+        assert bench["platform_type"] == "cloud"
+        assert bench["is_vnext"] is True
+        assert [r["benchmark_id"] for r in temp_db.search("amazon", platform_type="cloud")] == [
+            "7001"
+        ]
+        assert [r["benchmark_id"] for r in temp_db.search("", platform_type="cloud")] == ["7001"]
+
+        with sqlite3.connect(temp_db.db_path) as conn:
+            linked = [
+                row[0]
+                for row in conn.execute(
+                    """
+                    SELECT c.name
+                    FROM benchmark_collections bc
+                    JOIN collections c ON bc.collection_id = c.collection_id
+                    WHERE bc.benchmark_id = '7001'
+                    ORDER BY c.collection_id
+                    """
+                ).fetchall()
+            ]
+        assert linked == ["Cloud", "CIS Controls"]
+
+        with pytest.raises(TypeError, match="dictionary"):
+            temp_db.insert_benchmark(["not", "a", "dict"])
+
+        for bad_field, bad_value in [
+            ("benchmark_id", ""),
+            ("benchmark_id", "   "),
+            ("benchmark_id", None),
+            ("title", ""),
+            ("title", "   "),
+            ("url", ""),
+            ("url", "   "),
+        ]:
+            invalid = {
+                "benchmark_id": "7002",
+                "title": "Valid Title",
+                "url": "https://workbench.cisecurity.org/benchmarks/7002",
+                "status": "Published",
+                bad_field: bad_value,
+            }
+            with pytest.raises(ValueError, match=bad_field):
+                temp_db.insert_benchmark(invalid)
 
 
 class TestFTS5Search:

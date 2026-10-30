@@ -6,7 +6,7 @@ Extracts benchmark metadata from HTML catalog listing pages.
 import logging
 import re
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 
 from cis_bench.config import Config
 from cis_bench.exceptions import AuthenticationError
@@ -160,14 +160,12 @@ class WorkBenchCatalogParser:
         collections_text = cells[4].get_text(strip=True)
         owner = cells[5].get_text(strip=True) or None
 
-        # Parse collections (might be comma-separated or single)
-        collections = []
-        if collections_text:
-            # Split by comma or use as single
-            if "," in collections_text:
-                collections = [c.strip() for c in collections_text.split(",")]
-            else:
-                collections = [collections_text]
+        # Parse collections (comma-separated or single, stripped and deduplicated)
+        collections = (
+            list(dict.fromkeys(c.strip() for c in collections_text.split(",") if c.strip()))
+            if collections_text
+            else []
+        )
 
         # Build full URL
         if href.startswith("http"):
@@ -328,15 +326,12 @@ class WorkBenchCatalogParser:
                 metadata["published_relative"] = published_text.strip()
 
         # Extract description from Overview section
-        overview = next(
-            (
-                heading
-                for heading in soup.find_all("h2")
-                if re.search(r"Overview", heading.get_text(), re.I)
-            ),
-            None,
+        overview = soup.find(
+            lambda tag: isinstance(tag, Tag)
+            and tag.name == "h2"
+            and "overview" in tag.get_text().lower()
         )
-        if overview:
+        if isinstance(overview, Tag):
             # Get text after Overview heading
             desc_parts = []
             for sibling in overview.find_next_siblings():

@@ -86,27 +86,10 @@ class CatalogDownloader:
         content_hash = hashlib.sha256(content_json.encode()).hexdigest()
 
         # Check if content actually changed
-        if existing and existing.get("content_hash") == content_hash and not force:
+        is_unchanged = bool(existing and existing.get("content_hash") == content_hash and not force)
+        if is_unchanged:
             logger.info("Content unchanged (same hash), updating timestamp only")
 
-            # Just update access time
-            self.db.save_downloaded(
-                benchmark_id=benchmark_id,
-                content_json=content_json,
-                content_hash=content_hash,
-                recommendation_count=len(benchmark.recommendations),
-                workbench_last_modified=catalog_entry.get("last_revision_date"),
-            )
-
-            return {
-                "benchmark_id": benchmark_id,
-                "status": "unchanged",
-                "content_hash": content_hash,
-                "recommendation_count": len(benchmark.recommendations),
-                "message": "Content unchanged (verified by hash).",
-            }
-
-        # Save to database
         self.db.save_downloaded(
             benchmark_id=benchmark_id,
             content_json=content_json,
@@ -114,6 +97,15 @@ class CatalogDownloader:
             recommendation_count=len(benchmark.recommendations),
             workbench_last_modified=catalog_entry.get("last_revision_date"),
         )
+
+        if is_unchanged:
+            return {
+                "benchmark_id": benchmark_id,
+                "status": "unchanged",
+                "content_hash": content_hash,
+                "recommendation_count": len(benchmark.recommendations),
+                "message": "Content unchanged (verified by hash).",
+            }
 
         status = "updated" if existing else "downloaded"
 
@@ -131,7 +123,11 @@ class CatalogDownloader:
         }
 
     def download_by_name(
-        self, name_query: str, latest: bool = True, interactive: bool = False
+        self,
+        name_query: str,
+        latest: bool = True,
+        interactive: bool = False,
+        force: bool = False,
     ) -> dict:
         """Download benchmark by name (fuzzy search).
 
@@ -139,6 +135,7 @@ class CatalogDownloader:
             name_query: Search query (fuzzy matched)
             latest: Only search latest versions
             interactive: If multiple matches, prompt user to select
+            force: Force re-download even if up-to-date
 
         Returns:
             Download result dict
@@ -157,7 +154,7 @@ class CatalogDownloader:
             # Single match - download it
             benchmark_id = results[0]["benchmark_id"]
             logger.info(f"Found single match: {results[0]['title']}")
-            return self.download_by_id(benchmark_id)
+            return self.download_by_id(benchmark_id, force=force)
 
         # Multiple matches
         if not interactive:
@@ -172,7 +169,7 @@ class CatalogDownloader:
         logger.info(f"Found {len(results)} matches, prompting for selection")
         benchmark_id = self._interactive_select(results)
 
-        return self.download_by_id(benchmark_id)
+        return self.download_by_id(benchmark_id, force=force)
 
     def _interactive_select(self, results: list[dict]) -> str:
         """Interactive selection from multiple results.
@@ -185,16 +182,22 @@ class CatalogDownloader:
         """
         import questionary
 
-        choices = [f"[{r['benchmark_id']}] {r['title']} {r.get('version', '')}" for r in results]
+        choices = []
+        for r in results:
+            version = r.get("version")
+            version_suffix = f" {version}" if version else ""
+            choices.append(
+                questionary.Choice(
+                    title=f"[{r['benchmark_id']}] {r['title']}{version_suffix}",
+                    value=str(r["benchmark_id"]),
+                )
+            )
 
         selection = questionary.select("Select benchmark:", choices=choices).ask()
         if not isinstance(selection, str) or not selection:
             raise ValueError("Benchmark selection cancelled")
 
-        # Extract ID from selection
-        benchmark_id = selection.split("]")[0].lstrip("[")
-
-        return benchmark_id
+        return selection
 
     def get_downloaded_benchmark(self, benchmark_id: str) -> Benchmark | None:
         """Get downloaded benchmark from database.

@@ -359,6 +359,26 @@ class TestEdgeCases:
         assert len(benchmarks) == 1
         assert benchmarks[0]["collections"] == ["Collection A", "Collection B", "Collection C"]
 
+    def test_collections_deduplicates_and_strips_empty_entries(self):
+        """Comma-separated collections strip empty items and preserve unique order."""
+        html = """
+        <table>
+            <tr><th>Header</th></tr>
+            <tr>
+                <td><a href="/benchmarks/123">Test Benchmark</a></td>
+                <td>v1.0.0</td>
+                <td>Published</td>
+                <td>Community</td>
+                <td>Collection A, , Collection B, Collection A,   </td>
+                <td>Owner</td>
+            </tr>
+        </table>
+        """
+        benchmarks = WorkBenchCatalogParser.parse_catalog_page(html)
+
+        assert len(benchmarks) == 1
+        assert benchmarks[0]["collections"] == ["Collection A", "Collection B"]
+
     def test_absolute_url_in_href(self):
         """Test handling of absolute URLs in href (coverage: line 172-173)."""
         html = """

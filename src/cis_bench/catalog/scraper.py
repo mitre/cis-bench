@@ -23,6 +23,16 @@ class CatalogScraper:
     """Scrape CIS WorkBench catalog and populate database."""
 
     BASE_URL = "https://workbench.cisecurity.org/benchmarks"
+    _CATALOG_COMPARISON_FIELDS = (
+        "title",
+        "version",
+        "status",
+        "url",
+        "platform",
+        "platform_type",
+        "community",
+        "owner",
+    )
 
     def __init__(self, database: CatalogDatabase, session: requests.Session):
         """Initialize scraper.
@@ -209,8 +219,7 @@ class CatalogScraper:
                     new_count += 1
                     logger.debug(f"New: {benchmark_id} - {bench.get('title', '')}")
 
-            elif existing.get("last_revision_date") != bench.get("last_revision_date"):
-                # Updated (if we had revision dates - for now just update)
+            elif self._has_catalog_changes(existing, bench):
                 if self._try_insert_benchmark(bench, page_num=1):
                     updated_count += 1
                     logger.debug(f"Updated: {benchmark_id}")
@@ -230,6 +239,19 @@ class CatalogScraper:
         logger.info(f"Update complete: {new_count} new, {updated_count} updated")
 
         return stats
+
+    @classmethod
+    def _has_catalog_changes(cls, existing: dict, incoming: dict) -> bool:
+        """Return True when any scraped catalog field or provided revision date changed."""
+        for field in cls._CATALOG_COMPARISON_FIELDS:
+            inc_val = incoming.get(field)
+            if isinstance(inc_val, str):
+                inc_val = inc_val.strip() or None
+            if existing.get(field) != inc_val:
+                return True
+
+        inc_rev = incoming.get("last_revision_date")
+        return inc_rev is not None and existing.get("last_revision_date") != inc_rev
 
     def _try_insert_benchmark(self, bench: dict, page_num: int) -> bool:
         """Insert a single parsed benchmark row, isolating row-level data errors."""
@@ -303,9 +325,11 @@ class CatalogScraper:
         Raises:
             Exception: If fetch or parse fails after all retries
         """
-        last_error: Exception | None = None
+        if max_retries < 1:
+            raise ValueError("max_retries must be at least 1")
 
-        for attempt in range(max_retries):
+        attempt = 0
+        while True:
             try:
                 html = self._fetch_page(page_num)
                 benchmarks = WorkBenchCatalogParser.parse_catalog_page(html)
@@ -316,19 +340,15 @@ class CatalogScraper:
                 return benchmarks
 
             except Exception as e:
-                last_error = e
-                if attempt < max_retries - 1:
-                    wait_time = (attempt + 1) * 2  # Exponential backoff: 2s, 4s, 6s
-                    logger.warning(
-                        f"Page {page_num} failed (attempt {attempt + 1}/{max_retries}), retrying in {wait_time}s: {e}"
-                    )
-                    time.sleep(wait_time)
-                else:
+                attempt += 1
+                if attempt >= max_retries:
                     logger.error(f"Page {page_num} failed after {max_retries} attempts: {e}")
-
-        if last_error is not None:
-            raise last_error
-        raise RuntimeError(f"Page {page_num} failed without capturing an exception")
+                    raise
+                wait_time = attempt * 2  # Exponential backoff: 2s, 4s, 6s
+                logger.warning(
+                    f"Page {page_num} failed (attempt {attempt}/{max_retries}), retrying in {wait_time}s: {e}"
+                )
+                time.sleep(wait_time)
 
     def test_connection(self) -> bool:
         """Test if we can connect and are authenticated.

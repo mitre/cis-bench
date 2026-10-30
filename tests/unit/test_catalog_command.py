@@ -246,6 +246,7 @@ class TestCatalogUpdateCommand:
         assert result.exit_code == 0
         assert "Catalog updated" in result.output
         assert "New benchmarks" in result.output
+        mock_db.initialize_schema.assert_called_once_with()
         mock_auth.get_or_create_session.assert_called_once_with(browser="chrome", verify_ssl=False)
         mock_auth.load_cookies_from_browser.assert_not_called()
 
@@ -437,6 +438,24 @@ class TestCatalogSearchCommand:
 
         assert result.exit_code == 1
         assert "Search failed" in result.output
+
+    @patch("cis_bench.cli.commands.catalog.get_catalog_db")
+    @patch("cis_bench.cli.commands.catalog.CatalogSearch")
+    @patch("cis_bench.cli.commands.catalog.Config")
+    def test_search_escapes_rich_markup_in_query(
+        self, mock_config, mock_search_class, mock_get_db, runner, mock_db
+    ):
+        """Bracketed queries in catalog search do not raise MarkupError."""
+        mock_get_db.return_value = mock_db
+        mock_search = MagicMock()
+        mock_search.search.return_value = []
+        mock_search_class.return_value = mock_search
+        mock_config.get_search_default_limit.return_value = 1000
+
+        result = runner.invoke(cli, ["catalog", "search", "[/opt]"])
+
+        assert result.exit_code == 0
+        assert "No benchmarks found matching: [/opt]" in result.output
 
 
 class TestCatalogListCommand:
@@ -861,14 +880,29 @@ class TestCatalogDownloadCommand:
         mock_scraper_class.assert_called_once_with(mock_session)
         mock_downloader.download_by_id.assert_called_once_with("23598", force=False)
 
+    @pytest.mark.parametrize(
+        ("extra_args", "expected_force"),
+        [
+            (["--interactive"], False),
+            (["--interactive", "--force"], True),
+        ],
+    )
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     @patch("cis_bench.cli.commands.catalog.AuthManager")
     @patch("cis_bench.cli.commands.catalog.WorkbenchScraper")
     @patch("cis_bench.cli.commands.catalog.CatalogDownloader")
     def test_download_by_name(
-        self, mock_downloader_class, mock_scraper_class, mock_auth, mock_get_db, runner, mock_db
+        self,
+        mock_downloader_class,
+        mock_scraper_class,
+        mock_auth,
+        mock_get_db,
+        extra_args,
+        expected_force,
+        runner,
+        mock_db,
     ):
-        """Test download by name (lines 482-487)."""
+        """Test download by name forwards interactive and force flags."""
         mock_get_db.return_value = mock_db
 
         mock_session = Mock()
@@ -883,11 +917,11 @@ class TestCatalogDownloadCommand:
         }
         mock_downloader_class.return_value = mock_downloader
 
-        result = runner.invoke(cli, ["catalog", "download", "ubuntu 20.04", "--interactive"])
+        result = runner.invoke(cli, ["catalog", "download", "ubuntu 20.04", *extra_args])
 
         assert result.exit_code == 0
         mock_downloader.download_by_name.assert_called_once_with(
-            "ubuntu 20.04", latest=True, interactive=True
+            "ubuntu 20.04", latest=True, interactive=True, force=expected_force
         )
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
@@ -1012,6 +1046,29 @@ class TestCatalogDownloadCommand:
 
         assert result.exit_code == 1
         assert "Download failed" in result.output
+
+    @patch("cis_bench.cli.commands.catalog.get_catalog_db")
+    @patch("cis_bench.cli.commands.catalog.AuthManager")
+    @patch("cis_bench.cli.commands.catalog.WorkbenchScraper")
+    @patch("cis_bench.cli.commands.catalog.CatalogDownloader")
+    def test_download_escapes_rich_markup_in_query_and_error(
+        self, mock_downloader_class, mock_scraper_class, mock_auth, mock_get_db, runner, mock_db
+    ):
+        """Bracketed queries in catalog download render literally without MarkupError."""
+        mock_get_db.return_value = mock_db
+        mock_auth.get_or_create_session.return_value = Mock()
+        mock_downloader = Mock()
+        mock_downloader.download_by_name.side_effect = ValueError(
+            "No benchmarks found matching: [/opt]"
+        )
+        mock_downloader_class.return_value = mock_downloader
+
+        result = runner.invoke(cli, ["catalog", "download", "[/opt]"])
+
+        assert result.exit_code == 1
+        assert isinstance(result.exception, SystemExit)
+        assert "Searching for: [/opt]" in result.output
+        assert "No benchmarks found matching: [/opt]" in result.output
 
 
 class TestCatalogCheckUpdatesCommand:

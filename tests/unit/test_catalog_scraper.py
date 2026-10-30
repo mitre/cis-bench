@@ -220,6 +220,66 @@ class TestQuickUpdate:
         stats2 = scraper.scrape_page_one_update(rate_limit_seconds=0)
         assert stats2["new_count"] == 0
 
+    def test_update_detects_field_and_status_changes_without_revision_date(
+        self, temp_db, mock_session, monkeypatch
+    ):
+        """scrape_page_one_update detects status/version/title updates even when last_revision_date is None."""
+        row = {
+            "benchmark_id": "501",
+            "title": "CIS CentOS Linux 7 Benchmark",
+            "version": "v4.0.0",
+            "status": "Published",
+            "url": "https://workbench.cisecurity.org/benchmarks/501",
+            "platform": "centos",
+            "platform_type": "os",
+            "community": "CIS CentOS Linux Benchmarks",
+            "owner": "cis.author",
+        }
+        current_rows = [dict(row)]
+        scraper = _stub_scraper_pages(
+            temp_db, mock_session, monkeypatch, lambda _html: [dict(item) for item in current_rows]
+        )
+
+        assert scraper.scrape_page_one_update(rate_limit_seconds=0) == {
+            "new_count": 1,
+            "updated_count": 0,
+        }
+        assert scraper.scrape_page_one_update(rate_limit_seconds=0) == {
+            "new_count": 0,
+            "updated_count": 0,
+        }
+
+        current_rows[:] = [{**row, "status": "Final Update", "version": "v4.0.1"}]
+        assert scraper.scrape_page_one_update(rate_limit_seconds=0) == {
+            "new_count": 0,
+            "updated_count": 1,
+        }
+        saved = temp_db.get_benchmark("501")
+        assert saved is not None
+        assert saved["status"] == "Final Update"
+        assert saved["version"] == "v4.0.1"
+
+
+def _stub_scraper_pages(
+    temp_db: CatalogDatabase,
+    mock_session: Mock,
+    monkeypatch: pytest.MonkeyPatch,
+    parse_page,
+    total_pages: int = 1,
+) -> CatalogScraper:
+    """Create a CatalogScraper with stubbed HTML fetching and parsed catalog rows."""
+    from cis_bench.catalog.parser import WorkBenchCatalogParser
+
+    scraper = CatalogScraper(temp_db, mock_session)
+    monkeypatch.setattr(scraper, "_fetch_page", lambda page_num: f"page-{page_num}")
+    monkeypatch.setattr(
+        WorkBenchCatalogParser,
+        "extract_pagination_info",
+        staticmethod(lambda _html: {"total_pages": total_pages}),
+    )
+    monkeypatch.setattr(WorkBenchCatalogParser, "parse_catalog_page", staticmethod(parse_page))
+    return scraper
+
 
 class TestErrorHandling:
     """Test error handling and resilience."""
@@ -263,8 +323,6 @@ class TestErrorHandling:
         """Test malformed benchmark rows are logged and skipped without failing the page."""
         import logging
 
-        from cis_bench.catalog.parser import WorkBenchCatalogParser
-
         pages = {
             1: [
                 {
@@ -300,18 +358,12 @@ class TestErrorHandling:
                 },
             ],
         }
-
-        scraper = CatalogScraper(temp_db, mock_session)
-        monkeypatch.setattr(scraper, "_fetch_page", lambda page_num: f"page-{page_num}")
-        monkeypatch.setattr(
-            WorkBenchCatalogParser,
-            "extract_pagination_info",
-            staticmethod(lambda html: {"total_pages": 2}),
-        )
-        monkeypatch.setattr(
-            WorkBenchCatalogParser,
-            "parse_catalog_page",
-            staticmethod(lambda html: pages[int(html.split("-")[1])]),
+        scraper = _stub_scraper_pages(
+            temp_db,
+            mock_session,
+            monkeypatch,
+            lambda html: pages[int(html.split("-")[1])],
+            total_pages=2,
         )
 
         with caplog.at_level(logging.WARNING):
@@ -332,8 +384,6 @@ class TestErrorHandling:
     ):
         """Test a non-empty page where every row fails validation tries all rows then fails page."""
         import logging
-
-        from cis_bench.catalog.parser import WorkBenchCatalogParser
 
         def fake_parse(html: str) -> list[dict]:
             page_num = int(html.split("-")[1])
@@ -361,14 +411,9 @@ class TestErrorHandling:
                 }
             ]
 
-        scraper = CatalogScraper(temp_db, mock_session)
-        monkeypatch.setattr(scraper, "_fetch_page", lambda page_num: f"page-{page_num}")
-        monkeypatch.setattr(
-            WorkBenchCatalogParser,
-            "extract_pagination_info",
-            staticmethod(lambda html: {"total_pages": 20}),
+        scraper = _stub_scraper_pages(
+            temp_db, mock_session, monkeypatch, fake_parse, total_pages=20
         )
-        monkeypatch.setattr(WorkBenchCatalogParser, "parse_catalog_page", staticmethod(fake_parse))
 
         with caplog.at_level(logging.WARNING):
             stats = scraper.scrape_full_catalog(max_pages=20, rate_limit_seconds=0)
@@ -385,28 +430,19 @@ class TestErrorHandling:
         """Test SQLite OperationalError is re-raised immediately rather than swallowed."""
         from sqlalchemy.exc import OperationalError
 
-        from cis_bench.catalog.parser import WorkBenchCatalogParser
-
-        scraper = CatalogScraper(temp_db, mock_session)
-        monkeypatch.setattr(scraper, "_fetch_page", lambda page_num: f"page-{page_num}")
-        monkeypatch.setattr(
-            WorkBenchCatalogParser,
-            "extract_pagination_info",
-            staticmethod(lambda html: {"total_pages": 2}),
-        )
-        monkeypatch.setattr(
-            WorkBenchCatalogParser,
-            "parse_catalog_page",
-            staticmethod(
-                lambda html: [
-                    {
-                        "benchmark_id": f"id-{html}",
-                        "title": f"Benchmark {html}",
-                        "url": f"https://workbench.cisecurity.org/benchmarks/{html}",
-                        "status": "Published",
-                    }
-                ]
-            ),
+        scraper = _stub_scraper_pages(
+            temp_db,
+            mock_session,
+            monkeypatch,
+            lambda html: [
+                {
+                    "benchmark_id": f"id-{html}",
+                    "title": f"Benchmark {html}",
+                    "url": f"https://workbench.cisecurity.org/benchmarks/{html}",
+                    "status": "Published",
+                }
+            ],
+            total_pages=2,
         )
 
         original_insert = temp_db.insert_benchmark
@@ -425,12 +461,7 @@ class TestErrorHandling:
         self, temp_db, mock_session, monkeypatch
     ):
         """Test quick page-1 update skips single bad rows but raises when every row fails."""
-        from cis_bench.catalog.parser import WorkBenchCatalogParser
-
-        scraper = CatalogScraper(temp_db, mock_session)
-        monkeypatch.setattr(scraper, "_fetch_page", lambda page_num: "page-1")
-
-        mixed_rows = [
+        current_rows: list[dict] = [
             {
                 "benchmark_id": "301",
                 "title": "CIS Debian Linux 12 Benchmark",
@@ -449,8 +480,8 @@ class TestErrorHandling:
                 "status": "Published",
             },
         ]
-        monkeypatch.setattr(
-            WorkBenchCatalogParser, "parse_catalog_page", staticmethod(lambda html: mixed_rows)
+        scraper = _stub_scraper_pages(
+            temp_db, mock_session, monkeypatch, lambda _html: current_rows
         )
 
         stats = scraper.scrape_page_one_update(rate_limit_seconds=0)
@@ -458,7 +489,7 @@ class TestErrorHandling:
         assert temp_db.get_benchmark("301")["status"] == "Final Update"
         assert temp_db.get_benchmark("302") is None
 
-        all_bad_rows = [
+        current_rows[:] = [
             {
                 "benchmark_id": "303",
                 "title": "All Bad",
@@ -466,9 +497,5 @@ class TestErrorHandling:
                 "status": "",
             }
         ]
-        monkeypatch.setattr(
-            WorkBenchCatalogParser, "parse_catalog_page", staticmethod(lambda html: all_bad_rows)
-        )
-
         with pytest.raises(ValueError, match="failed validation"):
             scraper.scrape_page_one_update(rate_limit_seconds=0)

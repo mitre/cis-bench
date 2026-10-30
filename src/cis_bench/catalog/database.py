@@ -60,7 +60,7 @@ class CatalogDatabase:
         # Create all tables from SQLModel models
         SQLModel.metadata.create_all(self.engine)
 
-        # Insert or backfill default statuses idempotently
+        # Insert or backfill default statuses idempotently and create FTS5 virtual table
         with Session(self.engine) as session:
             existing_names = set(session.exec(select(BenchmarkStatusModel.name)).all())
             missing_statuses = [
@@ -70,13 +70,9 @@ class CatalogDatabase:
             ]
 
             if missing_statuses:
-                for status in missing_statuses:
-                    session.add(status)
-                session.commit()
+                session.add_all(missing_statuses)
                 logger.info("Inserted default benchmark statuses")
 
-        # Create FTS5 virtual table (raw SQL)
-        with Session(self.engine) as session:
             session.execute(
                 text(
                     """
@@ -142,10 +138,10 @@ class CatalogDatabase:
 
     def get_or_create_status(self, status_name: str, session: Session) -> BenchmarkStatusModel:
         """Get existing benchmark status or register an unseen non-empty status."""
-        if not isinstance(status_name, str) or not status_name.strip():
+        normalized = status_name.strip() if isinstance(status_name, str) else ""
+        if not normalized:
             raise ValueError("Status name cannot be empty")
 
-        normalized = status_name.strip()
         status = session.exec(
             select(BenchmarkStatusModel).where(BenchmarkStatusModel.name == normalized)
         ).first()
@@ -179,6 +175,20 @@ class CatalogDatabase:
                            platform, community, owner, collections as strings
                            (will be normalized to FK references)
         """
+        if not isinstance(benchmark_data, dict):
+            raise TypeError("benchmark_data must be a dictionary")
+
+        required: dict[str, str] = {}
+        for field_name in ("benchmark_id", "title", "url"):
+            raw_value = benchmark_data.get(field_name)
+            if not isinstance(raw_value, str) or not raw_value.strip():
+                raise ValueError(f"{field_name} must be a non-empty string")
+            required[field_name] = raw_value.strip()
+
+        benchmark_id = required["benchmark_id"]
+        title = required["title"]
+        url = required["url"]
+
         with Session(self.engine) as session:
             # Get or create FK references
             platform = None
@@ -196,12 +206,23 @@ class CatalogDatabase:
             status_id = self.get_status_id(benchmark_data.get("status", "Published"), session)
 
             # Check if benchmark exists
-            existing = session.get(CatalogBenchmark, benchmark_data["benchmark_id"])
+            existing = session.get(CatalogBenchmark, benchmark_id)
 
             if existing:
                 # Update existing
+                existing.title = title
+                existing.url = url
                 for key, value in benchmark_data.items():
-                    if key not in ["platform", "community", "owner", "status", "collections"]:
+                    if key not in {
+                        "benchmark_id",
+                        "title",
+                        "url",
+                        "platform",
+                        "community",
+                        "owner",
+                        "status",
+                        "collections",
+                    }:
                         setattr(existing, key, value)
 
                 existing.platform_id = platform.platform_id if platform else None
@@ -213,18 +234,20 @@ class CatalogDatabase:
             else:
                 # Create new
                 benchmark = CatalogBenchmark(
-                    benchmark_id=benchmark_data["benchmark_id"],
-                    title=benchmark_data["title"],
+                    benchmark_id=benchmark_id,
+                    title=title,
                     version=benchmark_data.get("version"),
-                    url=benchmark_data["url"],
+                    url=url,
                     status_id=status_id,
                     platform_id=platform.platform_id if platform else None,
+                    platform_type=benchmark_data.get("platform_type"),
                     community_id=community.community_id if community else None,
                     owner_id=owner.owner_id if owner else None,
                     published_date=benchmark_data.get("published_date"),
                     last_revision_date=benchmark_data.get("last_revision_date"),
                     description=benchmark_data.get("description"),
-                    is_latest=benchmark_data.get("is_latest", False),
+                    is_latest=bool(benchmark_data.get("is_latest", False)),
+                    is_vnext=bool(benchmark_data.get("is_vnext", False)),
                     metadata_json=benchmark_data.get("metadata_json"),
                 )
                 session.add(benchmark)
@@ -234,24 +257,33 @@ class CatalogDatabase:
                 # Clear existing
                 session.execute(
                     text("DELETE FROM benchmark_collections WHERE benchmark_id = :bid"),
-                    {"bid": benchmark_data["benchmark_id"]},
+                    {"bid": benchmark_id},
                 )
 
-                # Add new
-                for coll_name in benchmark_data["collections"]:
-                    collection = self.get_or_create_collection(coll_name, session)
-                    link = BenchmarkCollection(
-                        benchmark_id=benchmark_data["benchmark_id"],
-                        collection_id=collection.collection_id,
+                unique_collections = list(
+                    dict.fromkeys(
+                        c.strip()
+                        for c in (benchmark_data["collections"] or [])
+                        if isinstance(c, str) and c.strip()
                     )
-                    session.add(link)
+                )
+                for coll_name in unique_collections:
+                    collection = self.get_or_create_collection(coll_name, session)
+                    if collection.collection_id is None:
+                        raise RuntimeError(f"Failed to assign collection_id for {coll_name}")
+                    session.add(
+                        BenchmarkCollection(
+                            benchmark_id=benchmark_id,
+                            collection_id=collection.collection_id,
+                        )
+                    )
 
             # Update FTS5 (before commit so it's in same transaction)
-            self._update_fts(benchmark_data["benchmark_id"], session)
+            self._update_fts(benchmark_id, session)
 
             session.commit()
 
-            logger.debug(f"Inserted/updated benchmark: {benchmark_data['benchmark_id']}")
+            logger.debug(f"Inserted/updated benchmark: {benchmark_id}")
 
     def _update_fts(self, benchmark_id: str, session: Session):
         """Update FTS5 index for benchmark."""
@@ -289,16 +321,14 @@ class CatalogDatabase:
 
     def _list_all(
         self,
+        session: Session,
         platform: str | None = None,
         platform_type: str | None = None,
         status: str | None = "Published",
         latest_only: bool = False,
         limit: int = 50,
-        session: Session | None = None,
     ) -> list[dict]:
         """List all benchmarks (no FTS5 search)."""
-        if session is None:
-            raise ValueError("session is required")
         sql = """
             SELECT
                 b.benchmark_id,
@@ -370,7 +400,7 @@ class CatalogDatabase:
             # Build FTS5 query
             if not query or query.strip() == "":
                 # Empty query - return all (don't use FTS5)
-                return self._list_all(platform, platform_type, status, latest_only, limit, session)
+                return self._list_all(session, platform, platform_type, status, latest_only, limit)
 
             # FTS5 query formatting
             fts_query = build_fts_query(query)
@@ -443,12 +473,14 @@ class CatalogDatabase:
                 "url": benchmark.url,
                 "status": benchmark.status.name,
                 "platform": benchmark.platform.name if benchmark.platform else None,
+                "platform_type": benchmark.platform_type,
                 "community": benchmark.community.name if benchmark.community else None,
                 "owner": benchmark.owner.username if benchmark.owner else None,
                 "published_date": benchmark.published_date,
                 "last_revision_date": benchmark.last_revision_date,
                 "description": benchmark.description,
                 "is_latest": benchmark.is_latest,
+                "is_vnext": benchmark.is_vnext,
                 "metadata_json": benchmark.metadata_json,
             }
 

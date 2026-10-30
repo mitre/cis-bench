@@ -4,6 +4,7 @@ import logging
 
 import click
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 from cis_bench.catalog.database import CatalogDatabase
@@ -109,10 +110,10 @@ def refresh(browser, max_pages, rate_limit):
 
     except AuthenticationError as e:
         console.print("[red]✗ Authentication required[/red]")
-        console.print(f"[yellow]{e}[/yellow]")
+        console.print(f"[yellow]{escape(str(e))}[/yellow]")
         raise click.Abort() from e
     except Exception as e:
-        console.print(f"[red]✗ Catalog refresh failed: {e}[/red]")
+        console.print(f"[red]✗ Catalog refresh failed: {escape(str(e))}[/red]")
         raise click.Abort() from e
 
 
@@ -137,6 +138,8 @@ def update(browser):
             )
             raise click.Abort()
 
+        db.initialize_schema()
+
         session = AuthManager.get_or_create_session(
             browser=browser, verify_ssl=Config.get_verify_ssl()
         )
@@ -151,7 +154,7 @@ def update(browser):
         console.print(f"  Updated: [yellow]{stats['updated_count']}[/yellow]")
 
     except Exception as e:
-        console.print(f"[red]✗ Update failed: {e}[/red]")
+        console.print(f"[red]✗ Update failed: {escape(str(e))}[/red]")
         raise click.Abort() from e
 
 
@@ -200,7 +203,9 @@ def search(query, platform, status, latest, limit, output_format):
             if output_format != "table":
                 output_data([], output_format)
             else:
-                console.print(f"[yellow]No benchmarks found matching: {query}[/yellow]")
+                console.print(
+                    f"[yellow]No benchmarks found matching: {escape(str(query))}[/yellow]"
+                )
             return
 
         # Output in requested format
@@ -225,7 +230,7 @@ def search(query, platform, status, latest, limit, output_format):
             console.print()  # Blank line
 
     except Exception as e:
-        console.print(f"[red]✗ Search failed: {e}[/red]")
+        console.print(f"[red]✗ Search failed: {escape(str(e))}[/red]")
         raise click.Abort() from e
 
 
@@ -269,7 +274,7 @@ def list_cmd(platform, latest, limit):
             console.print()
 
     except Exception as e:
-        console.print(f"[red]✗ List failed: {e}[/red]")
+        console.print(f"[red]✗ List failed: {escape(str(e))}[/red]")
         raise click.Abort() from e
 
 
@@ -301,7 +306,7 @@ def info(benchmark_id, output_format):
         bench = db.get_benchmark(benchmark_id)
 
         if not bench:
-            console.print(f"[red]Benchmark {benchmark_id} not found in catalog.[/red]")
+            console.print(f"[red]Benchmark {escape(str(benchmark_id))} not found in catalog.[/red]")
             raise click.Abort()
 
         # Output in requested format
@@ -334,10 +339,12 @@ def info(benchmark_id, output_format):
         if bench.get("description"):
             console.print(f"\n[dim]{bench['description'][:200]}...[/dim]")
 
-        console.print(f"\n[cyan]Download:[/cyan] cis-bench catalog download {benchmark_id}")
+        console.print(
+            f"\n[cyan]Download:[/cyan] cis-bench catalog download {escape(str(benchmark_id))}"
+        )
 
     except Exception as e:
-        console.print(f"[red]✗ Info failed: {e}[/red]")
+        console.print(f"[red]✗ Info failed: {escape(str(e))}[/red]")
         raise click.Abort() from e
 
 
@@ -481,30 +488,34 @@ def download(benchmark_id_or_name, browser, force, interactive):
         # Determine if ID or name
         if benchmark_id_or_name.isdigit():
             # Download by ID
-            console.print(f"[cyan]Downloading benchmark {benchmark_id_or_name}...[/cyan]")
+            console.print(
+                f"[cyan]Downloading benchmark {escape(str(benchmark_id_or_name))}...[/cyan]"
+            )
             result = downloader.download_by_id(benchmark_id_or_name, force=force)
         else:
             # Download by name
-            console.print(f"[cyan]Searching for: {benchmark_id_or_name}[/cyan]")
+            console.print(f"[cyan]Searching for: {escape(str(benchmark_id_or_name))}[/cyan]")
             result = downloader.download_by_name(
-                benchmark_id_or_name, latest=True, interactive=interactive
+                benchmark_id_or_name, latest=True, interactive=interactive, force=force
             )
 
         # Show result
         if result["status"] == "already_current":
-            console.print(f"[green]✓[/green] {result['message']}")
+            console.print(f"[green]✓[/green] {escape(str(result['message']))}")
         elif result["status"] == "unchanged":
-            console.print(f"[green]✓[/green] {result['message']}")
+            console.print(f"[green]✓[/green] {escape(str(result['message']))}")
         else:
-            console.print(f"[green]✓[/green] Downloaded benchmark {result['benchmark_id']}")
+            console.print(
+                f"[green]✓[/green] Downloaded benchmark {escape(str(result['benchmark_id']))}"
+            )
             console.print(f"  Recommendations: {result['recommendation_count']}")
             console.print(f"  Size: {result['file_size'] / 1024:.1f} KB")
 
     except ValueError as e:
-        console.print(f"[red]✗ {e}[/red]")
+        console.print(f"[red]✗ {escape(str(e))}[/red]")
         raise click.Abort() from e
     except Exception as e:
-        console.print(f"[red]✗ Download failed: {e}[/red]")
+        console.print(f"[red]✗ Download failed: {escape(str(e))}[/red]")
         logger.error(f"Download error: {e}", exc_info=True)
         raise click.Abort() from e
 

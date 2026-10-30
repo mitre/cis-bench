@@ -129,6 +129,21 @@ class TestDownloadByID:
 class TestDownloadByName:
     """Test downloading by name with fuzzy matching."""
 
+    @pytest.fixture
+    def multi_ubuntu_db(self, temp_db):
+        """Database with a second Ubuntu benchmark whose version is None."""
+        temp_db.insert_benchmark(
+            {
+                "benchmark_id": "12345",
+                "title": "CIS Ubuntu Linux 22.04 LTS Benchmark",
+                "version": None,
+                "url": "https://workbench.cisecurity.org/benchmarks/12345",
+                "status": "Published",
+                "is_latest": True,
+            }
+        )
+        return temp_db
+
     def test_download_by_name_single_match(self, downloader, mock_scraper):
         """Test download by name with single match."""
         result = downloader.download_by_name("ubuntu")
@@ -138,72 +153,61 @@ class TestDownloadByName:
             "https://workbench.cisecurity.org/benchmarks/23598"
         )
 
+    def test_download_by_name_forwards_force_flag(self, downloader, mock_scraper):
+        """Test force flag is forwarded from download_by_name to download_by_id."""
+        downloader.download_by_id("23598")
+        assert mock_scraper.download_benchmark.call_count == 1
+
+        cached = downloader.download_by_name("ubuntu", force=False)
+        assert cached["status"] == "already_current"
+        assert mock_scraper.download_benchmark.call_count == 1
+
+        forced = downloader.download_by_name("ubuntu", force=True)
+        assert forced["benchmark_id"] == "23598"
+        assert mock_scraper.download_benchmark.call_count == 2
+
     def test_download_by_name_no_matches(self, downloader):
         """Test download by name with no matches raises error."""
         with pytest.raises(ValueError, match="No benchmarks found"):
             downloader.download_by_name("nonexistent")
 
-    def test_download_by_name_multiple_matches_raises(self, temp_db, mock_scraper):
+    def test_download_by_name_multiple_matches_raises(self, multi_ubuntu_db, mock_scraper):
         """Test multiple matches without interactive raises error."""
-        # Add another Ubuntu benchmark
-        temp_db.insert_benchmark(
-            {
-                "benchmark_id": "12345",
-                "title": "CIS Ubuntu Linux 22.04 LTS Benchmark",
-                "version": "v1.0.0",
-                "url": "https://workbench.cisecurity.org/benchmarks/12345",
-                "status": "Published",
-                "is_latest": True,
-            }
-        )
-
-        downloader = CatalogDownloader(temp_db, mock_scraper)
+        downloader = CatalogDownloader(multi_ubuntu_db, mock_scraper)
 
         with pytest.raises(ValueError, match="Multiple benchmarks match"):
             downloader.download_by_name("ubuntu", interactive=False)
 
     @patch("questionary.select")
-    def test_download_by_name_interactive(self, mock_select, downloader, temp_db, mock_scraper):
-        """Test interactive selection with multiple matches."""
-        # Add another Ubuntu benchmark
-        temp_db.insert_benchmark(
-            {
-                "benchmark_id": "12345",
-                "title": "CIS Ubuntu Linux 22.04 LTS Benchmark",
-                "version": "v1.0.0",
-                "url": "https://workbench.cisecurity.org/benchmarks/12345",
-                "status": "Published",
-                "is_latest": True,
-            }
-        )
+    def test_download_by_name_interactive(
+        self, mock_select, downloader, multi_ubuntu_db, mock_scraper
+    ):
+        """Test interactive selection passes questionary.Choice objects and omits None versions."""
+        import questionary
 
-        # Mock user selection
-        mock_select.return_value.ask = Mock(
-            return_value="[23598] CIS Ubuntu Linux 20.04 LTS Benchmark v2.0.1"
-        )
+        downloader.download_by_id("23598")
+        mock_select.return_value.ask = Mock(return_value="23598")
 
-        result = downloader.download_by_name("ubuntu", interactive=True)
+        result = downloader.download_by_name("ubuntu", interactive=True, force=True)
 
         assert result["benchmark_id"] == "23598"
+        assert mock_scraper.download_benchmark.call_count == 2
         mock_select.assert_called_once()
+        choices = mock_select.call_args.kwargs["choices"]
+        assert len(choices) == 2
+        assert all(isinstance(choice, questionary.Choice) for choice in choices)
+        by_value = {choice.value: choice.title for choice in choices}
+        assert by_value == {
+            "23598": "[23598] CIS Ubuntu Linux 20.04 LTS Benchmark v2.0.1",
+            "12345": "[12345] CIS Ubuntu Linux 22.04 LTS Benchmark",
+        }
 
     @pytest.mark.parametrize("cancelled_value", [None, ""])
     @patch("questionary.select")
     def test_download_by_name_interactive_cancelled_raises(
-        self, mock_select, cancelled_value, downloader, temp_db, mock_scraper
+        self, mock_select, cancelled_value, downloader, multi_ubuntu_db, mock_scraper
     ):
         """Test cancelled interactive selection raises ValueError without downloading."""
-        temp_db.insert_benchmark(
-            {
-                "benchmark_id": "12345",
-                "title": "CIS Ubuntu Linux 22.04 LTS Benchmark",
-                "version": "v1.0.0",
-                "url": "https://workbench.cisecurity.org/benchmarks/12345",
-                "status": "Published",
-                "is_latest": True,
-            }
-        )
-
         mock_select.return_value.ask = Mock(return_value=cancelled_value)
 
         with pytest.raises(ValueError, match="Benchmark selection cancelled"):

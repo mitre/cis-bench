@@ -270,3 +270,27 @@ class TestSearchCommand:
 
                     assert result.exit_code == 1
                     assert "Search failed" in result.output
+
+    def test_search_escapes_rich_markup_in_query(self, runner, tmp_path):
+        """Bracketed queries such as [/opt] render literally without raising MarkupError."""
+        with runner.isolated_filesystem():
+            catalog_path = tmp_path / "catalog.db"
+            catalog_path.touch()
+
+            with (
+                patch("cis_bench.cli.commands.search.Config") as mock_config,
+                patch("cis_bench.catalog.database.CatalogDatabase"),
+                patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class,
+            ):
+                mock_config.get_catalog_db_path.return_value = catalog_path
+                mock_config.get_search_default_limit.return_value = 1000
+                mock_config.get_table_title_width.return_value = 90
+                mock_search = Mock()
+                mock_search.search.return_value = []
+                mock_search_class.return_value = mock_search
+
+                result = runner.invoke(cli, ["search", "[/opt]"])
+
+                assert result.exit_code == 0
+                assert "Searching for: [/opt]" in result.output
+                assert "No results found" in result.output
