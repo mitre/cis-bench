@@ -8,84 +8,88 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 import requests
+from requests.cookies import RequestsCookieJar, create_cookie
 
 from cis_bench.fetcher.auth import AuthManager
+
+
+def _jar_with(*cookies: http.cookiejar.Cookie) -> http.cookiejar.CookieJar:
+    jar = http.cookiejar.CookieJar()
+    for cookie in cookies:
+        jar.set_cookie(cookie)
+    return jar
 
 
 class TestAuthManagerBrowserCookies:
     """Test browser cookie extraction."""
 
     @patch("cis_bench.fetcher.auth.browser_cookie3.chrome")
-    def test_chrome_cookie_extraction(self, mock_chrome):
-        """Test successful Chrome cookie extraction."""
-        # Setup mock cookie jar
-        mock_cj = MagicMock(spec=http.cookiejar.CookieJar)
-        mock_cookie = Mock()
-        mock_cookie.domain = "workbench.cisecurity.org"
-        mock_cookie.name = "session_token"
-        mock_cj.__iter__ = Mock(return_value=iter([mock_cookie]))
-        mock_chrome.return_value = mock_cj
+    def test_chrome_cookie_extraction_includes_cis_sso_and_filters_untrusted_domains(
+        self, mock_chrome
+    ):
+        """Chrome extraction loads workbench and CIS Portal Auth0 cookies while rejecting lookalike domains."""
+        mock_chrome.return_value = _jar_with(
+            create_cookie("workbench_session", "wb-1", domain="workbench.cisecurity.org"),
+            create_cookie("auth0", "sso-1", domain="auth.portal.cisecurity.org"),
+            create_cookie("org_pref", "cis-1", domain=".cisecurity.org"),
+            create_cookie("phish", "leak", domain="evil-cisecurity.org"),
+            create_cookie("suffix_phish", "leak2", domain="cisecurity.org.attacker.example"),
+        )
 
-        # Execute
         session = AuthManager.load_cookies_from_browser("chrome")
 
-        # Verify
-        mock_chrome.assert_called_once_with(domain_name="workbench.cisecurity.org")
+        mock_chrome.assert_called_once_with(domain_name="cisecurity.org")
         assert isinstance(session, requests.Session)
-        assert session.cookies == mock_cj
+        assert isinstance(session.cookies, RequestsCookieJar)
+        extracted = {(c.domain, c.name): c.value for c in session.cookies}
+        assert extracted == {
+            ("workbench.cisecurity.org", "workbench_session"): "wb-1",
+            ("auth.portal.cisecurity.org", "auth0"): "sso-1",
+            (".cisecurity.org", "org_pref"): "cis-1",
+        }
 
     @patch("cis_bench.fetcher.auth.browser_cookie3.firefox")
     def test_firefox_cookie_extraction(self, mock_firefox):
         """Test successful Firefox cookie extraction."""
-        # Setup mock cookie jar
-        mock_cj = MagicMock(spec=http.cookiejar.CookieJar)
-        mock_cookie = Mock()
-        mock_cookie.domain = "workbench.cisecurity.org"
-        mock_cookie.name = "XSRF-TOKEN"
-        mock_cj.__iter__ = Mock(return_value=iter([mock_cookie]))
-        mock_firefox.return_value = mock_cj
+        mock_firefox.return_value = _jar_with(
+            create_cookie("XSRF-TOKEN", "xsrf-1", domain="workbench.cisecurity.org")
+        )
 
-        # Execute
         session = AuthManager.load_cookies_from_browser("firefox")
 
-        # Verify
-        mock_firefox.assert_called_once_with(domain_name="workbench.cisecurity.org")
+        mock_firefox.assert_called_once_with(domain_name="cisecurity.org")
         assert isinstance(session, requests.Session)
-        assert session.cookies == mock_cj
+        assert [(c.domain, c.name) for c in session.cookies] == [
+            ("workbench.cisecurity.org", "XSRF-TOKEN")
+        ]
 
     @patch("cis_bench.fetcher.auth.browser_cookie3.edge")
     def test_edge_cookie_extraction(self, mock_edge):
         """Test successful Edge cookie extraction."""
-        # Setup mock cookie jar
-        mock_cj = MagicMock(spec=http.cookiejar.CookieJar)
-        mock_cookie = Mock()
-        mock_cookie.domain = "workbench.cisecurity.org"
-        mock_cj.__iter__ = Mock(return_value=iter([mock_cookie]))
-        mock_edge.return_value = mock_cj
+        mock_edge.return_value = _jar_with(
+            create_cookie("auth0", "sso-edge", domain="auth.portal.cisecurity.org")
+        )
 
-        # Execute
         session = AuthManager.load_cookies_from_browser("edge")
 
-        # Verify
-        mock_edge.assert_called_once_with(domain_name="workbench.cisecurity.org")
-        assert isinstance(session, requests.Session)
+        mock_edge.assert_called_once_with(domain_name="cisecurity.org")
+        assert [(c.domain, c.name) for c in session.cookies] == [
+            ("auth.portal.cisecurity.org", "auth0")
+        ]
 
     @patch("cis_bench.fetcher.auth.browser_cookie3.safari")
     def test_safari_cookie_extraction(self, mock_safari):
         """Test successful Safari cookie extraction."""
-        # Setup mock cookie jar
-        mock_cj = MagicMock(spec=http.cookiejar.CookieJar)
-        mock_cookie = Mock()
-        mock_cookie.domain = "workbench.cisecurity.org"
-        mock_cj.__iter__ = Mock(return_value=iter([mock_cookie]))
-        mock_safari.return_value = mock_cj
+        mock_safari.return_value = _jar_with(
+            create_cookie("auth0", "sso-safari", domain="auth.portal.cisecurity.org")
+        )
 
-        # Execute
         session = AuthManager.load_cookies_from_browser("safari")
 
-        # Verify
-        mock_safari.assert_called_once_with(domain_name="workbench.cisecurity.org")
-        assert isinstance(session, requests.Session)
+        mock_safari.assert_called_once_with(domain_name="cisecurity.org")
+        assert [(c.domain, c.name) for c in session.cookies] == [
+            ("auth.portal.cisecurity.org", "auth0")
+        ]
 
     def test_unsupported_browser(self):
         """Test error handling for unsupported browser."""
@@ -105,48 +109,34 @@ class TestAuthManagerBrowserCookies:
     @patch("cis_bench.fetcher.auth.browser_cookie3.chrome")
     def test_cookie_count_logging(self, mock_chrome):
         """Test that cookie count is correctly calculated and logged."""
-        # Setup multiple cookies
-        cookies = []
-        for i in range(5):
-            cookie = Mock()
-            cookie.domain = "workbench.cisecurity.org"
-            cookie.name = f"cookie_{i}"
-            cookies.append(cookie)
+        cookies = [
+            create_cookie(f"cookie_{i}", f"val_{i}", domain="workbench.cisecurity.org")
+            for i in range(5)
+        ]
+        mock_chrome.return_value = _jar_with(*cookies)
 
-        mock_cj = MagicMock(spec=http.cookiejar.CookieJar)
-        mock_cj.__iter__ = Mock(return_value=iter(cookies))
-        mock_chrome.return_value = mock_cj
-
-        # Execute
         session = AuthManager.load_cookies_from_browser("chrome")
 
-        # Verify session created
         assert isinstance(session, requests.Session)
-        assert session.cookies == mock_cj
+        assert isinstance(session.cookies, RequestsCookieJar)
+        assert len(list(session.cookies)) == 5
 
     @patch("cis_bench.fetcher.auth.browser_cookie3.chrome")
     def test_empty_cookie_jar(self, mock_chrome):
         """Test handling of empty cookie jar (no CIS WorkBench cookies)."""
-        # Setup empty cookie jar
-        mock_cj = MagicMock(spec=http.cookiejar.CookieJar)
-        mock_cj.__iter__ = Mock(return_value=iter([]))
-        mock_chrome.return_value = mock_cj
+        mock_chrome.return_value = _jar_with()
 
-        # Execute
         session = AuthManager.load_cookies_from_browser("chrome")
 
-        # Verify session created (even with no cookies)
         assert isinstance(session, requests.Session)
-        assert session.cookies == mock_cj
+        assert isinstance(session.cookies, RequestsCookieJar)
+        assert len(list(session.cookies)) == 0
 
     @patch("cis_bench.fetcher.auth.browser_cookie3.chrome")
     def test_case_insensitive_browser_name(self, mock_chrome):
         """Test that browser name matching is case-insensitive."""
-        mock_cj = MagicMock(spec=http.cookiejar.CookieJar)
-        mock_cj.__iter__ = Mock(return_value=iter([]))
-        mock_chrome.return_value = mock_cj
+        mock_chrome.return_value = _jar_with()
 
-        # Test various cases
         for browser_name in ["chrome", "CHROME", "Chrome", "ChRoMe"]:
             session = AuthManager.load_cookies_from_browser(browser_name)
             assert isinstance(session, requests.Session)
@@ -157,60 +147,55 @@ class TestAuthManagerFileBasedCookies:
 
     @patch("cis_bench.fetcher.auth.http.cookiejar.MozillaCookieJar")
     def test_load_cookies_from_file_success(self, mock_mozilla_jar):
-        """Test successful loading of cookies from file."""
-        # Setup mock
+        """Test successful loading of cookies from file into RequestsCookieJar."""
+        cookie = create_cookie("workbench_session", "file-val", domain="workbench.cisecurity.org")
         mock_jar_instance = MagicMock()
-        mock_jar_instance.__iter__ = Mock(return_value=iter([Mock()]))
+        mock_jar_instance.__iter__ = Mock(return_value=iter([cookie]))
         mock_mozilla_jar.return_value = mock_jar_instance
 
-        # Execute
         session = AuthManager.load_cookies_from_file("/path/to/cookies.txt")
 
-        # Verify
         mock_mozilla_jar.assert_called_once_with("/path/to/cookies.txt")
         mock_jar_instance.load.assert_called_once_with(ignore_discard=True, ignore_expires=True)
         assert isinstance(session, requests.Session)
-        assert session.cookies == mock_jar_instance
+        assert isinstance(session.cookies, RequestsCookieJar)
+        assert session.cookies.get("workbench_session") == "file-val"
 
     @patch("cis_bench.fetcher.auth.http.cookiejar.MozillaCookieJar")
     def test_load_cookies_file_not_found(self, mock_mozilla_jar):
         """Test error handling when cookie file doesn't exist."""
-        # Setup mock to raise FileNotFoundError
         mock_jar_instance = MagicMock()
         mock_jar_instance.load.side_effect = FileNotFoundError()
         mock_mozilla_jar.return_value = mock_jar_instance
 
-        # Execute and verify
         with pytest.raises(FileNotFoundError, match="Cookies file not found"):
             AuthManager.load_cookies_from_file("/nonexistent/cookies.txt")
 
     @patch("cis_bench.fetcher.auth.http.cookiejar.MozillaCookieJar")
     def test_load_cookies_invalid_format(self, mock_mozilla_jar):
         """Test error handling for invalid cookie file format."""
-        # Setup mock to raise exception on load
         mock_jar_instance = MagicMock()
         mock_jar_instance.load.side_effect = Exception("Invalid cookie file format")
         mock_mozilla_jar.return_value = mock_jar_instance
 
-        # Execute and verify
         with pytest.raises(Exception, match="Failed to load cookies from file"):
             AuthManager.load_cookies_from_file("/path/to/bad_cookies.txt")
 
     @patch("cis_bench.fetcher.auth.http.cookiejar.MozillaCookieJar")
     def test_load_cookies_multiple_cookies(self, mock_mozilla_jar):
         """Test loading file with multiple cookies."""
-        # Setup multiple cookies
-        cookies = [Mock() for _ in range(10)]
+        cookies = [
+            create_cookie(f"c_{i}", f"v_{i}", domain="workbench.cisecurity.org") for i in range(10)
+        ]
         mock_jar_instance = MagicMock()
         mock_jar_instance.__iter__ = Mock(return_value=iter(cookies))
         mock_mozilla_jar.return_value = mock_jar_instance
 
-        # Execute
         session = AuthManager.load_cookies_from_file("/path/to/cookies.txt")
 
-        # Verify
         assert isinstance(session, requests.Session)
-        assert session.cookies == mock_jar_instance
+        assert isinstance(session.cookies, RequestsCookieJar)
+        assert len(list(session.cookies)) == 10
 
 
 class TestAuthManagerCookieDictionary:

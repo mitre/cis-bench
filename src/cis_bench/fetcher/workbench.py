@@ -12,8 +12,10 @@ from typing import Any
 
 import requests
 import urllib3
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
+from pydantic import HttpUrl
 
+from cis_bench.config import Config
 from cis_bench.fetcher.strategies.base import ScraperStrategy
 from cis_bench.fetcher.strategies.detector import StrategyDetector
 from cis_bench.models.benchmark import Benchmark, Recommendation
@@ -40,7 +42,7 @@ class WorkbenchScraper:
         """
         self.session = session
         self.strategy = strategy
-        self._detected_strategy = None
+        self._detected_strategy: ScraperStrategy | None = None
 
     def _get_strategy(self, html: str) -> ScraperStrategy:
         """Get strategy to use (override or auto-detect).
@@ -55,7 +57,7 @@ class WorkbenchScraper:
             logger.debug(f"Using manual strategy: {self.strategy.version}")
             return self.strategy
 
-        if not self._detected_strategy:
+        if self._detected_strategy is None:
             self._detected_strategy = StrategyDetector.detect_strategy(html)
 
         return self._detected_strategy
@@ -90,7 +92,10 @@ class WorkbenchScraper:
         """
         response = self.session.get(url)
         response.raise_for_status()
-        return response.json()
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise ValueError(f"Expected JSON object from {url}, got {type(payload).__name__}")
+        return payload
 
     @staticmethod
     def get_benchmark_id(url: str) -> str:
@@ -122,7 +127,13 @@ class WorkbenchScraper:
         html = self.fetch_html(benchmark_url)
         soup = BeautifulSoup(html, "html.parser")
         title_elem = soup.find(name="wb-benchmark-title")
-        return title_elem.get("title") if title_elem else "Unknown Benchmark"
+        if isinstance(title_elem, Tag):
+            raw_title = title_elem.get("title")
+            if isinstance(raw_title, str):
+                return raw_title
+            if isinstance(raw_title, list):
+                return " ".join(raw_title)
+        return "Unknown Benchmark"
 
     def fetch_navtree(self, benchmark_id: str) -> dict[str, Any]:
         """Fetch navigation tree for benchmark.
@@ -133,7 +144,8 @@ class WorkbenchScraper:
         Returns:
             Navigation tree JSON data
         """
-        url = f"https://workbench.cisecurity.org/api/v1/benchmarks/{benchmark_id}/navtree"
+        base_url = Config.get_workbench_base_url()
+        url = f"{base_url}/api/v1/benchmarks/{benchmark_id}/navtree"
         return self.fetch_json(url)
 
     def parse_navtree(self, navtree_data: dict[str, Any]) -> list[dict[str, str]]:
@@ -145,17 +157,22 @@ class WorkbenchScraper:
         Returns:
             List of dicts with url, title, ref
         """
+        base_url = Config.get_workbench_base_url()
 
-        def generate_urls(recommendations: list[dict]) -> list[dict]:
-            output = []
+        def generate_urls(recommendations: list[dict[str, Any]]) -> list[dict[str, str]]:
+            output: list[dict[str, str]] = []
             for rec in recommendations:
                 rec_id = rec["id"]
                 section_id = rec["section_id"]
-                url = f"https://workbench.cisecurity.org/sections/{section_id}/recommendations/{rec_id}"
-                output.append({"url": url, "title": rec["title"], "ref": rec["view_level"]})
+                url = f"{base_url}/sections/{section_id}/recommendations/{rec_id}"
+                output.append(
+                    {"url": url, "title": str(rec["title"]), "ref": str(rec["view_level"])}
+                )
             return output
 
-        def parse_subsections(subsections: list[dict], result: list[dict]):
+        def parse_subsections(
+            subsections: list[dict[str, Any]], result: list[dict[str, str]]
+        ) -> None:
             for section in subsections:
                 # Process recommendations at this level
                 recommendations = section.get("recommendations_for_nav_tree", [])
@@ -166,7 +183,7 @@ class WorkbenchScraper:
                 if sub_subsections:
                     parse_subsections(sub_subsections, result)
 
-        parsed_data = []
+        parsed_data: list[dict[str, str]] = []
         navtree = navtree_data["navtree"]
         parse_subsections(navtree, parsed_data)
         return parsed_data
@@ -245,7 +262,7 @@ class WorkbenchScraper:
                 recommendation = Recommendation(
                     ref=rec_meta["ref"],
                     title=rec_meta["title"],
-                    url=rec_meta["url"],
+                    url=HttpUrl(rec_meta["url"]),
                     **rec_data,  # Spread extracted fields
                 )
 
@@ -260,7 +277,7 @@ class WorkbenchScraper:
         benchmark = Benchmark(
             title=title,
             benchmark_id=benchmark_id,
-            url=benchmark_url,
+            url=HttpUrl(benchmark_url),
             version=version,
             scraper_version=(
                 self._detected_strategy.version if self._detected_strategy else "manual"

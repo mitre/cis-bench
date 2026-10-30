@@ -415,6 +415,26 @@ class TestAuthLoginOpenFlag:
         # Should continue after browser open failure
         assert "Could not open browser" in result.output
 
+    @patch("cis_bench.cli.commands.auth.AuthManager")
+    @patch("platform.system", return_value="Windows")
+    @patch("webbrowser.open")
+    def test_login_open_uses_configured_workbench_base_url(
+        self, mock_webbrowser, mock_platform, mock_auth, runner, tmp_path, monkeypatch
+    ):
+        """auth login --open opens CIS_BENCH_WORKBENCH_URL when configured."""
+        monkeypatch.setenv("CIS_BENCH_WORKBENCH_URL", "https://workbench-staging.cisecurity.org")
+        mock_session = MagicMock()
+        mock_session.cookies = [MagicMock()]
+        mock_auth.load_cookies_from_browser.return_value = mock_session
+        mock_auth.validate_session.return_value = True
+        mock_auth.get_session_file_path.return_value = tmp_path / "session.cookies"
+        mock_auth._is_windows_permission_error.return_value = False
+
+        result = runner.invoke(cli, ["auth", "login", "--browser", "chrome", "--open"], input="\n")
+
+        assert result.exit_code == 0
+        mock_webbrowser.assert_called_once_with("https://workbench-staging.cisecurity.org/")
+
 
 class TestAuthLoginCookieFileErrors:
     """Tests for cookie file loading error handling (lines 160-162)."""

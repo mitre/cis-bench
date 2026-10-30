@@ -226,6 +226,175 @@ class TestValidateSession:
 
             assert result is False  # Should detect login page and return False
 
+    def test_validate_session_completes_cis_portal_auth0_sso_handshake(self):
+        """validate_session follows trusted Auth0 OIDC redirects hop-by-hop to mint WorkBench session."""
+        session = requests.Session()
+        session.cookies.set("auth0", "sso-cookie", domain="auth.portal.cisecurity.org")
+
+        def _redirect(location: str) -> Mock:
+            resp = Mock()
+            resp.status_code = 302
+            resp.headers = {"Location": location}
+            return resp
+
+        final_ok = Mock()
+        final_ok.status_code = 200
+        final_ok.headers = {}
+        final_ok.text = "<html><body><h1>Benchmarks</h1><table></table></body></html>"
+
+        with patch.object(session, "get") as mock_get:
+            mock_get.side_effect = [
+                _redirect("https://workbench.cisecurity.org"),
+                _redirect("https://workbench.cisecurity.org/auth0/login"),
+                _redirect("https://auth.portal.cisecurity.org/authorize?client_id=wb&state=s1"),
+                _redirect("https://workbench.cisecurity.org/auth0/callback?code=c1&state=s1"),
+                _redirect("/benchmarks"),
+                final_ok,
+            ]
+
+            result = AuthManager.validate_session(session, verify_ssl=True)
+
+        assert result is True
+        requested_urls = [call.args[0] for call in mock_get.call_args_list]
+        assert requested_urls == [
+            "https://workbench.cisecurity.org/benchmarks",
+            "https://workbench.cisecurity.org",
+            "https://workbench.cisecurity.org/auth0/login",
+            "https://auth.portal.cisecurity.org/authorize?client_id=wb&state=s1",
+            "https://workbench.cisecurity.org/auth0/callback?code=c1&state=s1",
+            "https://workbench.cisecurity.org/benchmarks",
+        ]
+        assert all(call.kwargs["allow_redirects"] is False for call in mock_get.call_args_list)
+        assert all(call.kwargs["verify"] is True for call in mock_get.call_args_list)
+
+    def test_validate_session_verifies_benchmarks_when_sso_lands_on_dashboard(self):
+        """validate_session confirms /benchmarks access when OIDC callback lands on /dashboard."""
+        session = requests.Session()
+        session.cookies.set("auth0", "sso-cookie", domain="auth.portal.cisecurity.org")
+
+        redirect_to_dashboard = Mock(
+            status_code=302, headers={"Location": "https://workbench.cisecurity.org/dashboard"}
+        )
+        dashboard_ok = Mock(
+            status_code=200, headers={}, text="<html><body><h1>Dashboard</h1></body></html>"
+        )
+        benchmarks_ok = Mock(
+            status_code=200,
+            headers={},
+            text="<html><body><h1>Benchmarks</h1><table></table></body></html>",
+        )
+
+        with patch.object(
+            session, "get", side_effect=[redirect_to_dashboard, dashboard_ok, benchmarks_ok]
+        ) as mock_get:
+            assert AuthManager.validate_session(session, verify_ssl=False) is True
+
+        assert [c.args[0] for c in mock_get.call_args_list] == [
+            "https://workbench.cisecurity.org/benchmarks",
+            "https://workbench.cisecurity.org/dashboard",
+            "https://workbench.cisecurity.org/benchmarks",
+        ]
+
+    @pytest.mark.parametrize(
+        "bad_location",
+        [
+            "https://auth.portal.cisecurity.org/u/login?state=unauthenticated",
+            "https://evil.example.com/callback",
+            "https://workbench-staging.cisecurity.org/dashboard",
+            "http://workbench.cisecurity.org/benchmarks",
+            "",
+        ],
+    )
+    def test_validate_session_rejects_login_untrusted_or_insecure_redirects(
+        self, bad_location: str
+    ):
+        """validate_session stops immediately on Auth0 login, untrusted hosts, HTTP, or empty Location."""
+        session = requests.Session()
+        session.cookies.set("auth0", "sso-cookie", domain="auth.portal.cisecurity.org")
+
+        first = Mock(status_code=302, headers={"Location": "https://workbench.cisecurity.org"})
+        second = Mock(status_code=302, headers={"Location": bad_location})
+
+        with patch.object(session, "get", side_effect=[first, second]) as mock_get:
+            assert AuthManager.validate_session(session, verify_ssl=True) is False
+
+        assert mock_get.call_count == 2
+
+    def test_validate_session_rejects_200_on_auth_portal_host_or_excessive_redirects(self):
+        """validate_session rejects 200 OK served on auth.portal.cisecurity.org and bounded redirect loops."""
+        session = requests.Session()
+        session.cookies.set("auth0", "sso-cookie", domain="auth.portal.cisecurity.org")
+
+        to_auth = Mock(
+            status_code=302,
+            headers={"Location": "https://auth.portal.cisecurity.org/authorize?state=1"},
+        )
+        auth_html = Mock(status_code=200, headers={}, text="<html><body>Consent</body></html>")
+
+        with patch.object(session, "get", side_effect=[to_auth, auth_html]) as auth_get:
+            assert AuthManager.validate_session(session, verify_ssl=True) is False
+        assert auth_get.call_count == 2
+
+        alternating = [
+            Mock(
+                status_code=302,
+                headers={
+                    "Location": (
+                        "https://auth.portal.cisecurity.org/authorize"
+                        if i % 2 == 0
+                        else "https://workbench.cisecurity.org/callback"
+                    )
+                },
+            )
+            for i in range(12)
+        ]
+        with patch.object(session, "get", side_effect=alternating) as loop_get:
+            assert AuthManager.validate_session(session, verify_ssl=True) is False
+        assert 2 <= loop_get.call_count <= 9
+
+    def test_validate_session_honors_configured_workbench_base_url(self, monkeypatch):
+        """validate_session targets CIS_BENCH_WORKBENCH_URL and allows QA Auth0 SSO onto that host."""
+        monkeypatch.setenv("CIS_BENCH_WORKBENCH_URL", "https://workbench-staging.cisecurity.org/")
+        session = requests.Session()
+        session.cookies.set("auth0", "qa-sso", domain="auth.portal.qa.cisecurity.org")
+
+        to_qa_auth = Mock(
+            status_code=302,
+            headers={"Location": "https://auth.portal.qa.cisecurity.org/authorize?state=s1"},
+        )
+        to_staging_cb = Mock(
+            status_code=302,
+            headers={
+                "Location": "https://workbench-staging.cisecurity.org/auth0/callback?code=c1&state=s1"
+            },
+        )
+        to_benchmarks = Mock(status_code=302, headers={"Location": "/benchmarks"})
+        staging_ok = Mock(
+            status_code=200,
+            headers={},
+            text="<html><body><h1>Benchmarks</h1><table></table></body></html>",
+        )
+
+        with patch.object(
+            session,
+            "get",
+            side_effect=[to_qa_auth, to_staging_cb, to_benchmarks, staging_ok],
+        ) as mock_get:
+            assert AuthManager.validate_session(session, verify_ssl=False) is True
+
+        assert [c.args[0] for c in mock_get.call_args_list] == [
+            "https://workbench-staging.cisecurity.org/benchmarks",
+            "https://auth.portal.qa.cisecurity.org/authorize?state=s1",
+            "https://workbench-staging.cisecurity.org/auth0/callback?code=c1&state=s1",
+            "https://workbench-staging.cisecurity.org/benchmarks",
+        ]
+
+        redirect_to_prod = Mock(
+            status_code=302, headers={"Location": "https://workbench.cisecurity.org/benchmarks"}
+        )
+        with patch.object(session, "get", return_value=redirect_to_prod):
+            assert AuthManager.validate_session(session, verify_ssl=False) is False
+
 
 # ============================================================================
 # Tests: Get or Create Session

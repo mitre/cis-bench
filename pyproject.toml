@@ -208,6 +208,10 @@ warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false  # Gradually enable
 
+[[tool.mypy.overrides]]
+module = ["browser_cookie3"]
+ignore_missing_imports = true
+
 [tool.bandit]
 # Bandit security scanner configuration
 exclude_dirs = ["/tests", "/venv", "/.venv", "/build", "/dist"]

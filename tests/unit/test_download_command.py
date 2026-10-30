@@ -307,3 +307,31 @@ class TestDownloadAndExportIntegration:
                                 assert export_result.exit_code == 0
                                 assert "Loaded from cache" in export_result.output
                                 assert Path("benchmark_23598.yaml").exists()
+
+    def test_download_uses_configured_workbench_base_url(
+        self, runner, sample_benchmark, tmp_path, monkeypatch
+    ):
+        """download constructs benchmark URLs from CIS_BENCH_WORKBENCH_URL."""
+        monkeypatch.setenv("CIS_BENCH_WORKBENCH_URL", "https://workbench-staging.cisecurity.org")
+        with runner.isolated_filesystem():
+            nonexistent_path = tmp_path / "nonexistent" / "catalog.db"
+            with (
+                patch("cis_bench.cli.commands.download.Config") as mock_config,
+                patch(
+                    "cis_bench.cli.commands.download.AuthManager.get_or_create_session",
+                    return_value=Mock(),
+                ),
+                patch("cis_bench.cli.commands.download.WorkbenchScraper") as mock_scraper_class,
+            ):
+                mock_config.get_catalog_db_path.return_value = nonexistent_path
+                mock_scraper = Mock()
+                mock_scraper.download_benchmark.return_value = sample_benchmark
+                mock_scraper_class.return_value = mock_scraper
+
+                result = runner.invoke(cli, ["download", "23598"])
+
+                assert result.exit_code == 0, result.output
+                assert (
+                    mock_scraper.download_benchmark.call_args[0][0]
+                    == "https://workbench-staging.cisecurity.org/benchmarks/23598"
+                )

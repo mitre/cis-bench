@@ -220,15 +220,19 @@ class TestCatalogRefreshCommand:
 class TestCatalogUpdateCommand:
     """Tests for catalog update command."""
 
+    @patch("cis_bench.cli.commands.catalog.Config")
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     @patch("cis_bench.cli.commands.catalog.AuthManager")
     @patch("cis_bench.cli.commands.catalog.CatalogScraper")
-    def test_update_success(self, mock_scraper_class, mock_auth, mock_get_db, runner, mock_db):
-        """Test successful catalog update (lines 131-153)."""
+    def test_update_success(
+        self, mock_scraper_class, mock_auth, mock_get_db, mock_config, runner, mock_db
+    ):
+        """Test successful catalog update uses saved or SSO-validated session."""
         mock_get_db.return_value = mock_db
+        mock_config.get_verify_ssl.return_value = False
 
         mock_session = Mock()
-        mock_auth.load_cookies_from_browser.return_value = mock_session
+        mock_auth.get_or_create_session.return_value = mock_session
 
         mock_scraper = Mock()
         mock_scraper.scrape_page_one_update.return_value = {
@@ -242,6 +246,8 @@ class TestCatalogUpdateCommand:
         assert result.exit_code == 0
         assert "Catalog updated" in result.output
         assert "New benchmarks" in result.output
+        mock_auth.get_or_create_session.assert_called_once_with(browser="chrome", verify_ssl=False)
+        mock_auth.load_cookies_from_browser.assert_not_called()
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     def test_update_catalog_not_initialized(self, mock_get_db, runner):
@@ -257,15 +263,19 @@ class TestCatalogUpdateCommand:
         assert "Catalog not initialized" in result.output
         assert "cis-bench catalog refresh" in result.output
 
+    @patch("cis_bench.cli.commands.catalog.Config")
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     @patch("cis_bench.cli.commands.catalog.AuthManager")
     @patch("cis_bench.cli.commands.catalog.CatalogScraper")
-    def test_update_failure(self, mock_scraper_class, mock_auth, mock_get_db, runner, mock_db):
+    def test_update_failure(
+        self, mock_scraper_class, mock_auth, mock_get_db, mock_config, runner, mock_db
+    ):
         """Test update failure (lines 151-153)."""
         mock_get_db.return_value = mock_db
+        mock_config.get_verify_ssl.return_value = True
 
         mock_session = Mock()
-        mock_auth.load_cookies_from_browser.return_value = mock_session
+        mock_auth.get_or_create_session.return_value = mock_session
 
         mock_scraper = Mock()
         mock_scraper.scrape_page_one_update.side_effect = RuntimeError("Network error")
@@ -275,6 +285,7 @@ class TestCatalogUpdateCommand:
 
         assert result.exit_code == 1
         assert "Update failed" in result.output
+        mock_auth.get_or_create_session.assert_called_once_with(browser="chrome", verify_ssl=True)
 
 
 class TestCatalogSearchCommand:
@@ -809,18 +820,27 @@ class TestCatalogDownloadCommand:
         assert result.exit_code == 1
         assert "Catalog not found" in result.output
 
+    @patch("cis_bench.cli.commands.catalog.Config")
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     @patch("cis_bench.cli.commands.catalog.AuthManager")
     @patch("cis_bench.cli.commands.catalog.WorkbenchScraper")
     @patch("cis_bench.cli.commands.catalog.CatalogDownloader")
     def test_download_by_id_success(
-        self, mock_downloader_class, mock_scraper_class, mock_auth, mock_get_db, runner, mock_db
+        self,
+        mock_downloader_class,
+        mock_scraper_class,
+        mock_auth,
+        mock_get_db,
+        mock_config,
+        runner,
+        mock_db,
     ):
-        """Test download by numeric ID (lines 478-481)."""
+        """Test download by numeric ID uses get_or_create_session."""
         mock_get_db.return_value = mock_db
+        mock_config.get_verify_ssl.return_value = True
 
         mock_session = Mock()
-        mock_auth.load_cookies_from_browser.return_value = mock_session
+        mock_auth.get_or_create_session.return_value = mock_session
 
         mock_downloader = Mock()
         mock_downloader.download_by_id.return_value = {
@@ -836,6 +856,9 @@ class TestCatalogDownloadCommand:
         assert result.exit_code == 0
         assert "Downloaded benchmark 23598" in result.output
         assert "Recommendations: 150" in result.output
+        mock_auth.get_or_create_session.assert_called_once_with(browser="chrome", verify_ssl=True)
+        mock_auth.load_cookies_from_browser.assert_not_called()
+        mock_scraper_class.assert_called_once_with(mock_session)
         mock_downloader.download_by_id.assert_called_once_with("23598", force=False)
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
@@ -849,7 +872,7 @@ class TestCatalogDownloadCommand:
         mock_get_db.return_value = mock_db
 
         mock_session = Mock()
-        mock_auth.load_cookies_from_browser.return_value = mock_session
+        mock_auth.get_or_create_session.return_value = mock_session
 
         mock_downloader = Mock()
         mock_downloader.download_by_name.return_value = {
@@ -878,7 +901,7 @@ class TestCatalogDownloadCommand:
         mock_get_db.return_value = mock_db
 
         mock_session = Mock()
-        mock_auth.load_cookies_from_browser.return_value = mock_session
+        mock_auth.get_or_create_session.return_value = mock_session
 
         mock_downloader = Mock()
         mock_downloader.download_by_id.return_value = {
@@ -903,7 +926,7 @@ class TestCatalogDownloadCommand:
         mock_get_db.return_value = mock_db
 
         mock_session = Mock()
-        mock_auth.load_cookies_from_browser.return_value = mock_session
+        mock_auth.get_or_create_session.return_value = mock_session
 
         mock_downloader = Mock()
         mock_downloader.download_by_id.return_value = {
@@ -928,7 +951,7 @@ class TestCatalogDownloadCommand:
         mock_get_db.return_value = mock_db
 
         mock_session = Mock()
-        mock_auth.load_cookies_from_browser.return_value = mock_session
+        mock_auth.get_or_create_session.return_value = mock_session
 
         mock_downloader = Mock()
         mock_downloader.download_by_id.return_value = {
@@ -955,7 +978,7 @@ class TestCatalogDownloadCommand:
         mock_get_db.return_value = mock_db
 
         mock_session = Mock()
-        mock_auth.load_cookies_from_browser.return_value = mock_session
+        mock_auth.get_or_create_session.return_value = mock_session
 
         mock_downloader = Mock()
         mock_downloader.download_by_name.side_effect = ValueError(
@@ -979,7 +1002,7 @@ class TestCatalogDownloadCommand:
         mock_get_db.return_value = mock_db
 
         mock_session = Mock()
-        mock_auth.load_cookies_from_browser.return_value = mock_session
+        mock_auth.get_or_create_session.return_value = mock_session
 
         mock_downloader = Mock()
         mock_downloader.download_by_id.side_effect = RuntimeError("Network error")

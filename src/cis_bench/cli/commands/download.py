@@ -8,7 +8,7 @@ import sys
 import click
 from rich.console import Console
 
-from cis_bench.config import Config
+from cis_bench.config import Config, get_workbench_base_url
 from cis_bench.exporters import ExporterFactory
 from cis_bench.fetcher.auth import AuthManager
 from cis_bench.fetcher.workbench import WorkbenchScraper
@@ -106,6 +106,7 @@ def download(
 
     # Collect URLs to download
     urls = []
+    workbench_base_url = get_workbench_base_url()
 
     if urls_file:
         # Read from file
@@ -116,7 +117,7 @@ def download(
                     if line.startswith("http"):
                         urls.append(line)
                     else:
-                        urls.append(f"https://workbench.cisecurity.org/benchmarks/{line}")
+                        urls.append(f"{workbench_base_url}/benchmarks/{line}")
 
     elif benchmark_ids:
         # Convert IDs or URLs to full URLs
@@ -124,7 +125,7 @@ def download(
             if item.startswith("http"):
                 urls.append(item)
             else:
-                urls.append(f"https://workbench.cisecurity.org/benchmarks/{item}")
+                urls.append(f"{workbench_base_url}/benchmarks/{item}")
     else:
         console.print("[red]Error: Must specify benchmark IDs or --file[/red]")
         sys.exit(1)

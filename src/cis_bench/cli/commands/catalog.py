@@ -137,7 +137,9 @@ def update(browser):
             )
             raise click.Abort()
 
-        session = AuthManager.load_cookies_from_browser(browser)
+        session = AuthManager.get_or_create_session(
+            browser=browser, verify_ssl=Config.get_verify_ssl()
+        )
         scraper = CatalogScraper(db, session)
 
         console.print("[cyan]Updating catalog (page 1)...[/cyan]")
@@ -467,8 +469,10 @@ def download(benchmark_id_or_name, browser, force, interactive):
             )
             raise click.Abort()
 
-        # Get authenticated session
-        session = AuthManager.load_cookies_from_browser(browser)
+        # Get authenticated session (reuses saved session or authenticates via browser)
+        session = AuthManager.get_or_create_session(
+            browser=browser, verify_ssl=Config.get_verify_ssl()
+        )
 
         # Create downloader
         scraper = WorkbenchScraper(session)

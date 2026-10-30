@@ -8,6 +8,7 @@ import re
 
 from bs4 import BeautifulSoup
 
+from cis_bench.config import Config
 from cis_bench.exceptions import AuthenticationError
 
 logger = logging.getLogger(__name__)
@@ -172,7 +173,7 @@ class WorkBenchCatalogParser:
         if href.startswith("http"):
             url = href
         else:
-            url = f"https://workbench.cisecurity.org{href}"
+            url = f"{Config.get_workbench_base_url()}{href}"
 
         return {
             "benchmark_id": benchmark_id,

@@ -888,3 +888,24 @@ class TestBenchmarkDetailPageParsing:
             "published_relative": "Published 3 months ago on Aug 1st 2025",
             "description": "Hardening guidance for servers.",
         }
+
+    def test_relative_href_uses_configured_workbench_base_url(self, monkeypatch):
+        """Relative catalog row hrefs resolve against CIS_BENCH_WORKBENCH_URL."""
+        monkeypatch.setenv("CIS_BENCH_WORKBENCH_URL", "https://workbench-staging.cisecurity.org")
+        html = """
+        <table>
+            <tr><th>Title</th><th>Version</th><th>Status</th><th>Community</th><th>Collections</th><th>Owner</th></tr>
+            <tr>
+                <td><a href="/benchmarks/61">CIS Ubuntu Benchmark</a></td>
+                <td>v1.0.0</td>
+                <td>Published</td>
+                <td>Ubuntu</td>
+                <td>OS</td>
+                <td>cis</td>
+            </tr>
+        </table>
+        """
+        rows = WorkBenchCatalogParser.parse_catalog_page(html)
+
+        assert len(rows) == 1
+        assert rows[0]["url"] == "https://workbench-staging.cisecurity.org/benchmarks/61"

@@ -115,6 +115,20 @@ class TestPageFetching:
         url = call_args[0][0]
         assert "?page=5" in url
 
+    def test_fetch_page_honors_configured_workbench_base_url(
+        self, temp_db, mock_session, monkeypatch
+    ):
+        """_fetch_page uses CIS_BENCH_WORKBENCH_URL when configured."""
+        monkeypatch.setenv("CIS_BENCH_WORKBENCH_URL", "https://workbench-staging.cisecurity.org")
+        scraper = CatalogScraper(temp_db, mock_session)
+
+        scraper._fetch_page(2)
+
+        assert (
+            mock_session.get.call_args[0][0]
+            == "https://workbench-staging.cisecurity.org/benchmarks?page=2"
+        )
+
     def test_fetch_page_user_agent(self, temp_db, mock_session):
         """Test User-Agent header is set."""
         scraper = CatalogScraper(temp_db, mock_session)

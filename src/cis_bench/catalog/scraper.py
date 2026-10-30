@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 from cis_bench import __version__
 from cis_bench.catalog.database import CatalogDatabase
 from cis_bench.catalog.parser import WorkBenchCatalogParser
+from cis_bench.config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -260,6 +261,10 @@ class CatalogScraper:
             )
         return inserted_count
 
+    def _benchmarks_url(self) -> str:
+        """Resolve configured CIS WorkBench catalog listing URL."""
+        return f"{Config.get_workbench_base_url()}/benchmarks"
+
     def _fetch_page(self, page_num: int) -> str:
         """Fetch single catalog page.
 
@@ -272,7 +277,7 @@ class CatalogScraper:
         Raises:
             requests.RequestException: If request fails
         """
-        url = f"{self.BASE_URL}?page={page_num}"
+        url = f"{self._benchmarks_url()}?page={page_num}"
 
         logger.debug(f"Fetching page {page_num}: {url}")
 
@@ -341,7 +346,7 @@ class CatalogScraper:
             if "login" in html.lower() and len(html) < 5000:
                 raise Exception(
                     "Not authenticated. Page redirected to login.\n"
-                    "Please log into https://workbench.cisecurity.org in your browser first."
+                    f"Please log into {Config.get_workbench_base_url()} in your browser first."
                 )
 
             benchmarks = WorkBenchCatalogParser.parse_catalog_page(html)

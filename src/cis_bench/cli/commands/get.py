@@ -7,7 +7,7 @@ import click
 import questionary
 from rich.console import Console
 
-from cis_bench.config import Config
+from cis_bench.config import Config, get_workbench_base_url
 from cis_bench.exporters import ExporterFactory
 from cis_bench.exporters.xccdf_unified_exporter import XCCDFExporter
 from cis_bench.fetcher.auth import AuthManager
@@ -216,7 +216,7 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
             from cis_bench.models.benchmark import Benchmark
 
             scraper = WorkbenchScraper(session)
-            benchmark_url = f"https://workbench.cisecurity.org/benchmarks/{benchmark_id}"
+            benchmark_url = f"{get_workbench_base_url()}/benchmarks/{benchmark_id}"
 
             benchmark = download_with_progress(scraper, benchmark_url, prefix="  ")
 
