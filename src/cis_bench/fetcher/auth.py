@@ -3,11 +3,13 @@
 import http.cookiejar
 import logging
 import platform
+import re
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
 import browser_cookie3
 import requests
+from bs4 import BeautifulSoup
 
 # Enable system certificate store usage (macOS Keychain, Windows cert store, Linux /etc/ssl)
 try:
@@ -18,10 +20,25 @@ except ImportError:
     # truststore not installed, will use certifi bundle
     pass
 
-from cis_bench.catalog.parser import WorkBenchCatalogParser
 from cis_bench.config import Config
 
 logger = logging.getLogger(__name__)
+
+
+def is_workbench_login_page(html: str) -> bool:
+    """Return True if HTML represents a CIS WorkBench login page."""
+    if not html:
+        return False
+
+    soup = BeautifulSoup(html, "html.parser")
+    login_indicators = [
+        soup.find("form", action=re.compile(r"/login")),
+        soup.find("input", {"name": "login"}),
+        soup.find("input", {"name": "password"}),
+        soup.find("div", class_="index-signin-wrapper"),
+        soup.find(string=re.compile(r"E-Mail or Username", re.I)),
+    ]
+    return any(indicator is not None for indicator in login_indicators)
 
 
 class AuthManager:
@@ -440,7 +457,7 @@ Workarounds:
                         )
                         return False
 
-                    if WorkBenchCatalogParser.is_login_page(response.text):
+                    if is_workbench_login_page(response.text):
                         logger.debug("Session invalid - received login page")
                         return False
 
@@ -456,7 +473,7 @@ Workarounds:
                                 "Session invalid - /benchmarks inaccessible after SSO handshake"
                             )
                             return False
-                        if WorkBenchCatalogParser.is_login_page(bench_response.text):
+                        if is_workbench_login_page(bench_response.text):
                             logger.debug("Session invalid - /benchmarks returned login page")
                             return False
 

@@ -193,13 +193,13 @@ def download(
             catalog_db_path = Config.get_catalog_db_path()
             if catalog_db_path.exists():
                 try:
-                    import hashlib
-
-                    from cis_bench.catalog.database import CatalogDatabase
+                    from cis_bench.catalog.database import (
+                        CatalogDatabase,
+                        serialize_benchmark_json,
+                    )
 
                     # Prepare data for database
-                    content_json = benchmark.model_dump_json()
-                    content_hash = hashlib.sha256(content_json.encode()).hexdigest()
+                    content_json, content_hash = serialize_benchmark_json(benchmark)
                     recommendation_count = len(benchmark.recommendations)
 
                     db = CatalogDatabase(catalog_db_path)

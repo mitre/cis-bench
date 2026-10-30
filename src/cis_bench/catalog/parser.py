@@ -11,6 +11,7 @@ from bs4 import BeautifulSoup, Tag
 
 from cis_bench.config import Config
 from cis_bench.exceptions import AuthenticationError
+from cis_bench.fetcher.auth import is_workbench_login_page
 
 logger = logging.getLogger(__name__)
 
@@ -32,22 +33,7 @@ class WorkBenchCatalogParser:
             if WorkBenchCatalogParser.is_login_page(html):
                 raise AuthenticationError("Not authenticated")
         """
-        if not html:
-            return False
-
-        soup = BeautifulSoup(html, "html.parser")
-
-        # Check for login form indicators
-        login_indicators = [
-            soup.find("form", action=re.compile(r"/login")),  # Login form
-            soup.find("input", {"name": "login"}),  # E-Mail/Username field
-            soup.find("input", {"name": "password"}),  # Password field
-            soup.find("div", class_="index-signin-wrapper"),  # Login wrapper
-            soup.find(string=re.compile(r"E-Mail or Username", re.I)),  # Label text
-        ]
-
-        # If any login indicator is found, it's the login page
-        return any(indicator is not None for indicator in login_indicators)
+        return is_workbench_login_page(html)
 
     @staticmethod
     def parse_catalog_page(html: str) -> list[dict]:

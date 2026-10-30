@@ -16,8 +16,16 @@ from cis_bench.models.benchmark import Benchmark, Recommendation
 
 @pytest.fixture
 def runner():
-    """Create Click CLI test runner."""
-    return CliRunner()
+    """Create Click CLI test runner and prune closed stderr handlers on teardown."""
+    import logging
+
+    cli_runner = CliRunner()
+    yield cli_runner
+    root_logger = logging.getLogger()
+    for handler in list(root_logger.handlers):
+        stream = getattr(handler, "stream", None)
+        if stream is not None and getattr(stream, "closed", False):
+            root_logger.removeHandler(handler)
 
 
 @pytest.fixture
@@ -372,3 +380,55 @@ class TestIdentifierDetection:
             # Should load from file (not try database)
             assert result.exit_code == 0
             assert "Loaded: CIS AlmaLinux" in result.output
+
+
+class TestRealDatabaseCanonicalDeserialize:
+    """Verify export loads cached benchmarks via canonical serialization and Benchmark.model_validate_json."""
+
+    def test_export_from_real_db_uses_model_validate_json_with_canonical_serialized_payload(
+        self, runner, sample_benchmark, tmp_path
+    ):
+        """export <id> reads stored content_json through Benchmark.model_validate_json against a real database."""
+        from cis_bench.catalog.database import CatalogDatabase, serialize_benchmark_json
+
+        db = CatalogDatabase(tmp_path / "catalog.db")
+        db.initialize_schema()
+        db.insert_benchmark(
+            {
+                "benchmark_id": "23598",
+                "title": sample_benchmark.title,
+                "version": sample_benchmark.version,
+                "url": str(sample_benchmark.url),
+                "status": "Published",
+                "is_latest": True,
+            }
+        )
+        content_json, content_hash = serialize_benchmark_json(sample_benchmark)
+        db.save_downloaded(
+            benchmark_id="23598",
+            content_json=content_json,
+            content_hash=content_hash,
+            recommendation_count=len(sample_benchmark.recommendations),
+        )
+
+        try:
+            with runner.isolated_filesystem():
+                with (
+                    patch("cis_bench.cli.commands.export.Config") as mock_cfg,
+                    patch.object(
+                        Benchmark,
+                        "model_validate_json",
+                        wraps=Benchmark.model_validate_json,
+                    ) as validate_spy,
+                ):
+                    mock_cfg.get_catalog_db_path.return_value = db.db_path
+                    res = runner.invoke(cli, ["export", "23598", "--format", "yaml"])
+
+                assert res.exit_code == 0, res.output
+                validate_spy.assert_called_once_with(content_json)
+                exported = Path("benchmark_23598.yaml").read_text(encoding="utf-8")
+                assert "CIS AlmaLinux OS 8 Benchmark" in exported
+                assert "1.1.1" in exported
+                assert "1.1.2" in exported
+        finally:
+            db.engine.dispose()

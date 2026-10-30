@@ -3,6 +3,7 @@
 Provides CRUD operations, search, and management for the CIS benchmark catalog.
 """
 
+import hashlib
 import logging
 import re
 import sqlite3
@@ -40,7 +41,9 @@ from cis_bench.catalog.models import (
     Owner,
     Platform,
     ScrapeMetadata,
+    utcnow,
 )
+from cis_bench.models.benchmark import Benchmark
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +75,24 @@ def normalize_status_filter(status: str | None) -> str | None:
     if not stripped or stripped.lower() == "all":
         return None
     return stripped
+
+
+def serialize_benchmark_json(benchmark: Benchmark) -> tuple[str, str]:
+    """Serialize a Benchmark to canonical JSON and return ``(content_json, sha256_hex)``.
+
+    ``content_json`` stores the complete Benchmark payload, while ``content_hash``
+    hashes the canonical payload excluding the transient ``downloaded_at`` scrape
+    timestamp so identical benchmark content hashes deterministically across scrapes.
+    """
+    content_json = benchmark.model_dump_json(indent=2)
+    hashable_json = benchmark.model_dump_json(indent=2, exclude={"downloaded_at"})
+    content_hash = hashlib.sha256(hashable_json.encode("utf-8")).hexdigest()
+    return content_json, content_hash
+
+
+def deserialize_benchmark_json(content_json: str) -> Benchmark:
+    """Validate and deserialize stored Benchmark JSON."""
+    return Benchmark.model_validate_json(content_json)
 
 
 class CatalogDatabase:
@@ -618,6 +639,7 @@ class CatalogDatabase:
         workbench_last_modified: str | None = None,
     ):
         """Save downloaded benchmark content."""
+        now = utcnow()
         with Session(self.engine) as session:
             existing = session.get(DownloadedBenchmark, benchmark_id)
 
@@ -627,6 +649,8 @@ class CatalogDatabase:
                 existing.recommendation_count = recommendation_count
                 existing.file_size = len(content_json)
                 existing.workbench_last_modified = workbench_last_modified
+                existing.downloaded_at = now
+                existing.last_accessed = now
             else:
                 downloaded = DownloadedBenchmark(
                     benchmark_id=benchmark_id,
@@ -634,6 +658,8 @@ class CatalogDatabase:
                     content_hash=content_hash,
                     file_size=len(content_json),
                     recommendation_count=recommendation_count,
+                    downloaded_at=now,
+                    last_accessed=now,
                     workbench_last_modified=workbench_last_modified,
                 )
                 session.add(downloaded)
@@ -654,6 +680,7 @@ class CatalogDatabase:
                 "content_json": downloaded.content_json,
                 "content_hash": downloaded.content_hash,
                 "downloaded_at": downloaded.downloaded_at,
+                "last_accessed": downloaded.last_accessed,
                 "recommendation_count": downloaded.recommendation_count,
                 "workbench_last_modified": downloaded.workbench_last_modified,
             }

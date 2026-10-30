@@ -30,7 +30,8 @@ def temp_db(tmp_path):
         }
     )
 
-    return db
+    yield db
+    db.engine.dispose()
 
 
 @pytest.fixture
@@ -306,6 +307,51 @@ class TestChangeDetection:
         # Same hash indicates same content
         assert result1["content_hash"] == result2["content_hash"]
 
+    def test_content_hash_ignores_scrape_timestamp_and_changes_on_content_update(
+        self, temp_db, downloader, mock_scraper
+    ):
+        """Two scrapes of identical benchmark content at different timestamps yield identical content_hash."""
+        from datetime import UTC, datetime, timedelta
+
+        temp_db.insert_benchmark(
+            {
+                "benchmark_id": "23599",
+                "title": "CIS Ubuntu Linux 22.04 LTS Benchmark",
+                "version": "v2.0.1",
+                "url": "https://workbench.cisecurity.org/benchmarks/23599",
+                "status": "Published",
+            }
+        )
+        base_benchmark = mock_scraper.download_benchmark.return_value
+        t1 = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
+        t2 = t1 + timedelta(seconds=30)
+
+        bench_scrape_1 = base_benchmark.model_copy(
+            update={"benchmark_id": "23599", "downloaded_at": t1}
+        )
+        bench_scrape_2 = base_benchmark.model_copy(
+            update={"benchmark_id": "23599", "downloaded_at": t2}
+        )
+        bench_mutated = base_benchmark.model_copy(
+            update={"benchmark_id": "23599", "downloaded_at": t2, "version": "v2.0.2"}
+        )
+
+        mock_scraper.download_benchmark.side_effect = [
+            bench_scrape_1,
+            bench_scrape_2,
+            bench_mutated,
+        ]
+
+        first = downloader.download_by_id("23599")
+        second = downloader.download_by_id("23599")
+        third = downloader.download_by_id("23599")
+
+        assert first["status"] == "downloaded"
+        assert second["status"] == "unchanged"
+        assert second["content_hash"] == first["content_hash"]
+        assert third["status"] == "updated"
+        assert third["content_hash"] != first["content_hash"]
+
 
 class TestIntegration:
     """Integration tests with real components."""
@@ -327,3 +373,141 @@ class TestIntegration:
         # Retrieve
         benchmark = downloader.get_downloaded_benchmark(benchmark_id)
         assert benchmark is not None
+
+    def test_save_downloaded_refreshes_downloaded_at_and_last_accessed_on_redownload(
+        self, downloader, temp_db
+    ):
+        """Re-saving an existing downloaded row refreshes both downloaded_at and last_accessed."""
+        from datetime import UTC, datetime
+
+        from sqlmodel import Session
+
+        from cis_bench.catalog.models import DownloadedBenchmark
+
+        downloader.download_by_id("23598")
+
+        stale_ts = datetime(2024, 1, 1, 0, 0, 0, tzinfo=UTC)
+        with Session(temp_db.engine) as session:
+            row = session.get(DownloadedBenchmark, "23598")
+            assert row is not None
+            row.downloaded_at = stale_ts
+            row.last_accessed = stale_ts
+            session.commit()
+
+        downloader.download_by_id("23598", force=True)
+
+        refreshed = temp_db.get_downloaded("23598")
+        assert refreshed is not None
+        assert "last_accessed" in refreshed
+        downloaded_at = refreshed["downloaded_at"]
+        last_accessed = refreshed["last_accessed"]
+        if downloaded_at.tzinfo is None:
+            downloaded_at = downloaded_at.replace(tzinfo=UTC)
+        if last_accessed.tzinfo is None:
+            last_accessed = last_accessed.replace(tzinfo=UTC)
+        assert downloaded_at > stale_ts
+        assert last_accessed > stale_ts
+
+    def test_get_downloaded_benchmark_uses_model_validate_json(self, downloader, temp_db):
+        """get_downloaded_benchmark validates stored JSON directly via Benchmark.model_validate_json."""
+        downloader.download_by_id("23598")
+        stored = temp_db.get_downloaded("23598")
+        assert stored is not None
+
+        with patch.object(
+            Benchmark, "model_validate_json", wraps=Benchmark.model_validate_json
+        ) as validate_spy:
+            loaded = downloader.get_downloaded_benchmark("23598")
+
+        assert loaded is not None
+        assert loaded.benchmark_id == "23598"
+        validate_spy.assert_called_once_with(stored["content_json"])
+
+
+class TestCatalogPackageExportsAndBoundaries:
+    """Verify cis_bench.catalog public exports and one-way catalog -> fetcher dependency boundary."""
+
+    def test_fetcher_auth_does_not_load_catalog_and_validates_login_html(self):
+        """Importing cis_bench.fetcher.auth in a fresh interpreter does not import cis_bench.catalog."""
+        import subprocess
+        import sys
+
+        import requests
+
+        from cis_bench.fetcher.auth import AuthManager
+
+        probe = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                (
+                    "import sys, cis_bench.fetcher.auth; "
+                    "leaked = sorted(m for m in sys.modules "
+                    "if m == 'cis_bench.catalog' or m.startswith('cis_bench.catalog.')); "
+                    "assert not leaked, f'fetcher.auth imported catalog modules: {leaked}'"
+                ),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert probe.returncode == 0, probe.stderr
+
+        session = create_autospec(requests.Session, instance=True)
+        session.cookies = requests.cookies.cookiejar_from_dict({"cis_session": "token"})
+
+        login_resp = Mock(
+            status_code=200, headers={}, text='<form action="/login"><input name="login"></form>'
+        )
+        session.get.return_value = login_resp
+        assert AuthManager.validate_session(session) is False
+
+        catalog_resp = Mock(
+            status_code=200, headers={}, text="<html><body><table></table></body></html>"
+        )
+        session.get.return_value = catalog_resp
+        assert AuthManager.validate_session(session) is True
+
+    def test_catalog_package_exports_public_api_in_any_import_order(self):
+        """cis_bench.catalog exports public classes and helpers cleanly regardless of import order."""
+        import subprocess
+        import sys
+
+        import cis_bench.catalog as catalog_pkg
+
+        expected_exports = {
+            "BenchmarkCollection",
+            "BenchmarkStatus",
+            "BenchmarkStatusModel",
+            "CatalogBenchmark",
+            "CatalogDatabase",
+            "CatalogDownloader",
+            "CatalogScraper",
+            "CatalogSearch",
+            "Collection",
+            "Community",
+            "DownloadedBenchmark",
+            "Owner",
+            "Platform",
+            "ScrapeMetadata",
+            "WorkBenchCatalogParser",
+            "build_fts_query",
+            "deserialize_benchmark_json",
+            "normalize_status_filter",
+            "serialize_benchmark_json",
+        }
+        assert expected_exports.issubset(set(catalog_pkg.__all__))
+        for symbol in expected_exports:
+            assert getattr(catalog_pkg, symbol) is not None
+
+        for order_stmt in (
+            "import cis_bench.fetcher.auth, cis_bench.catalog",
+            "import cis_bench.catalog, cis_bench.fetcher.auth",
+        ):
+            res = subprocess.run(
+                [sys.executable, "-c", order_stmt],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            assert res.returncode == 0, res.stderr

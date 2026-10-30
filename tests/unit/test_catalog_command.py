@@ -314,6 +314,21 @@ class TestCatalogSearchCommand:
         assert "Catalog not found" in result.output
         assert "cis-bench catalog refresh" in result.output
 
+    def test_search_catalog_not_found_does_not_print_secondary_error(self, runner, tmp_path):
+        """Missing catalog aborts cleanly without emitting a secondary 'Search failed:' banner."""
+        from cis_bench.catalog.database import CatalogDatabase
+
+        missing_db = CatalogDatabase(tmp_path / "uninitialized_catalog.db")
+        assert not missing_db.db_path.exists()
+
+        with patch("cis_bench.cli.commands.catalog.get_catalog_db", return_value=missing_db):
+            result = runner.invoke(cli, ["catalog", "search", "ubuntu"])
+
+        missing_db.engine.dispose()
+        assert result.exit_code == 1
+        assert "Catalog not found. Run 'cis-bench catalog refresh' first." in result.output
+        assert "Search failed" not in result.output
+
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     @patch("cis_bench.cli.commands.catalog.CatalogSearch")
     @patch("cis_bench.cli.commands.catalog.Config")
@@ -1220,3 +1235,112 @@ class TestGetCatalogDb:
         mock_config.ensure_directories.assert_called_once()
         mock_db_class.assert_called_once_with(db_path)
         assert result == mock_db
+
+    def test_require_catalog_db_returns_existing_db_or_aborts(self, tmp_path):
+        """require_catalog_db returns an initialized CatalogDatabase and raises click.Abort when absent."""
+        import click
+
+        from cis_bench.catalog.database import CatalogDatabase
+        from cis_bench.cli.commands.catalog import require_catalog_db
+
+        missing_db = CatalogDatabase(tmp_path / "missing.db")
+        with patch("cis_bench.cli.commands.catalog.get_catalog_db", return_value=missing_db):
+            with pytest.raises(click.Abort):
+                require_catalog_db()
+        missing_db.engine.dispose()
+
+        ready_db = CatalogDatabase(tmp_path / "ready.db")
+        ready_db.initialize_schema()
+        with patch("cis_bench.cli.commands.catalog.get_catalog_db", return_value=ready_db):
+            assert require_catalog_db() is ready_db
+        ready_db.engine.dispose()
+
+    @pytest.mark.parametrize(
+        ("subcommand_args", "expected_message", "forbidden_banner"),
+        [
+            (
+                ["update"],
+                "Catalog not initialized. Run 'cis-bench catalog refresh' first.",
+                "Update failed",
+            ),
+            (
+                ["search", "ubuntu"],
+                "Catalog not found. Run 'cis-bench catalog refresh' first.",
+                "Search failed",
+            ),
+            (["list"], "Catalog not found. Run 'cis-bench catalog refresh' first.", "List failed"),
+            (
+                ["info", "23598"],
+                "Catalog not found. Run 'cis-bench catalog refresh' first.",
+                "Info failed",
+            ),
+            (
+                ["platforms"],
+                "Catalog not found. Run 'cis-bench catalog refresh' first.",
+                "Platforms list failed",
+            ),
+            (
+                ["stats"],
+                "Catalog not found. Run 'cis-bench catalog refresh' first.",
+                "Stats failed",
+            ),
+            (
+                ["download", "23598"],
+                "Catalog not found. Run 'cis-bench catalog refresh' first.",
+                "Download failed",
+            ),
+            (
+                ["check-updates"],
+                "Catalog not found. Run 'cis-bench catalog refresh' first.",
+                "Check updates failed",
+            ),
+        ],
+    )
+    def test_missing_catalog_aborts_cleanly_across_all_subcommands(
+        self, runner, tmp_path, subcommand_args, expected_message, forbidden_banner
+    ):
+        """Every catalog-consuming subcommand aborts cleanly without catching click.Abort as a generic failure."""
+        from cis_bench.catalog.database import CatalogDatabase
+
+        missing_db = CatalogDatabase(tmp_path / "absent.db")
+        with patch("cis_bench.cli.commands.catalog.get_catalog_db", return_value=missing_db):
+            result = runner.invoke(cli, ["catalog", *subcommand_args])
+        missing_db.engine.dispose()
+
+        assert result.exit_code == 1
+        assert expected_message in result.output
+        assert forbidden_banner not in result.output
+
+    def test_refresh_invalid_session_and_info_missing_benchmark_do_not_emit_failed_banner(
+        self, runner, tmp_path
+    ):
+        """click.Abort raised for invalid session or missing benchmark ID is not caught by except Exception."""
+        from cis_bench.catalog.database import CatalogDatabase
+
+        real_db = CatalogDatabase(tmp_path / "catalog.db")
+        real_db.initialize_schema()
+
+        with (
+            patch("cis_bench.cli.commands.catalog.get_catalog_db", return_value=real_db),
+            patch(
+                "cis_bench.cli.commands.catalog.AuthManager.get_or_create_session",
+                return_value=Mock(),
+            ),
+            patch(
+                "cis_bench.cli.commands.catalog.AuthManager.validate_session",
+                return_value=False,
+            ),
+        ):
+            refresh_res = runner.invoke(cli, ["catalog", "refresh"])
+
+        assert refresh_res.exit_code == 1
+        assert "Session invalid or expired" in refresh_res.output
+        assert "Catalog refresh failed" not in refresh_res.output
+
+        with patch("cis_bench.cli.commands.catalog.get_catalog_db", return_value=real_db):
+            info_res = runner.invoke(cli, ["catalog", "info", "99999"])
+
+        real_db.engine.dispose()
+        assert info_res.exit_code == 1
+        assert "Benchmark 99999 not found in catalog." in info_res.output
+        assert "Info failed" not in info_res.output

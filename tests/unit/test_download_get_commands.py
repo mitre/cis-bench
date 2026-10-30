@@ -28,8 +28,16 @@ from cis_bench.models.benchmark import Benchmark, Recommendation
 
 @pytest.fixture
 def runner():
-    """Create Click CLI test runner."""
-    return CliRunner()
+    """Create Click CLI test runner and prune closed stderr handlers on teardown."""
+    import logging
+
+    cli_runner = CliRunner()
+    yield cli_runner
+    root_logger = logging.getLogger()
+    for handler in list(root_logger.handlers):
+        stream = getattr(handler, "stream", None)
+        if stream is not None and getattr(stream, "closed", False):
+            root_logger.removeHandler(handler)
 
 
 @pytest.fixture
@@ -960,3 +968,108 @@ class TestGetNonInteractiveMode:
                     assert "Multiple matches found" in result.output
                     assert "Be more specific" in result.output
                     assert "cis-bench download" in result.output
+
+
+class TestCanonicalContentHashConsistency:
+    """Verify catalog download, cli download, and cli get write identical canonical JSON and hashes."""
+
+    def test_download_get_and_catalog_downloader_share_identical_content_hash_and_validate_json(
+        self, runner, sample_benchmark, tmp_path
+    ):
+        """All three download paths store identical content_json and content_hash, and get reads via model_validate_json."""
+        from unittest.mock import create_autospec
+
+        from cis_bench.catalog.database import CatalogDatabase
+        from cis_bench.catalog.downloader import CatalogDownloader
+        from cis_bench.fetcher.workbench import WorkbenchScraper
+
+        def make_seeded_db(name: str) -> CatalogDatabase:
+            db = CatalogDatabase(tmp_path / name)
+            db.initialize_schema()
+            db.insert_benchmark(
+                {
+                    "benchmark_id": "12345",
+                    "title": "CIS Test Benchmark",
+                    "version": "v1.0.0",
+                    "url": "https://workbench.cisecurity.org/benchmarks/12345",
+                    "status": "Published",
+                    "is_latest": True,
+                }
+            )
+            return db
+
+        db_catalog = make_seeded_db("catalog_path.db")
+        db_download = make_seeded_db("download_path.db")
+        db_get = make_seeded_db("get_path.db")
+
+        try:
+            scraper = create_autospec(WorkbenchScraper, instance=True)
+            scraper.download_benchmark.return_value = sample_benchmark
+            cat_result = CatalogDownloader(db_catalog, scraper).download_by_id("12345")
+            row_catalog = db_catalog.get_downloaded("12345")
+            assert row_catalog is not None
+
+            with runner.isolated_filesystem():
+                with (
+                    patch("cis_bench.cli.commands.download.Config") as mock_dl_cfg,
+                    patch(
+                        "cis_bench.cli.commands.download.AuthManager.get_or_create_session",
+                        return_value=Mock(),
+                    ),
+                    patch(
+                        "cis_bench.cli.commands.download.WorkbenchScraper",
+                        return_value=scraper,
+                    ),
+                ):
+                    mock_dl_cfg.get_catalog_db_path.return_value = db_download.db_path
+                    dl_res = runner.invoke(cli, ["download", "12345", "--force"])
+                assert dl_res.exit_code == 0, dl_res.output
+
+                out_yaml = Path("exported_from_get.yaml")
+                with (
+                    patch("cis_bench.cli.commands.get.Config") as mock_get_cfg,
+                    patch(
+                        "cis_bench.cli.commands.get.AuthManager.get_or_create_session",
+                        return_value=Mock(),
+                    ),
+                    patch(
+                        "cis_bench.cli.commands.get.WorkbenchScraper",
+                        return_value=scraper,
+                    ),
+                    patch.object(
+                        Benchmark,
+                        "model_validate_json",
+                        wraps=Benchmark.model_validate_json,
+                    ) as validate_spy,
+                ):
+                    mock_get_cfg.get_catalog_db_path.return_value = db_get.db_path
+                    get_res = runner.invoke(
+                        cli,
+                        [
+                            "get",
+                            "CIS Test Benchmark",
+                            "--format",
+                            "yaml",
+                            "--output",
+                            str(out_yaml),
+                            "--non-interactive",
+                        ],
+                    )
+                assert get_res.exit_code == 0, get_res.output
+                assert out_yaml.exists()
+
+            row_download = db_download.get_downloaded("12345")
+            row_get = db_get.get_downloaded("12345")
+            assert row_download is not None
+            assert row_get is not None
+
+            assert row_download["content_hash"] == cat_result["content_hash"]
+            assert row_download["content_hash"] == row_catalog["content_hash"]
+            assert row_get["content_hash"] == row_catalog["content_hash"]
+            assert row_download["content_json"] == row_catalog["content_json"]
+            assert row_get["content_json"] == row_catalog["content_json"]
+            validate_spy.assert_called_once_with(row_get["content_json"])
+        finally:
+            db_catalog.engine.dispose()
+            db_download.engine.dispose()
+            db_get.engine.dispose()

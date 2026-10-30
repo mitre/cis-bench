@@ -210,10 +210,8 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
             session = AuthManager.get_or_create_session()
 
             # Download with progress bar
-            import hashlib
-
+            from cis_bench.catalog.database import serialize_benchmark_json
             from cis_bench.cli.helpers.download_helper import download_with_progress
-            from cis_bench.models.benchmark import Benchmark
 
             scraper = WorkbenchScraper(session)
             benchmark_url = f"{get_workbench_base_url()}/benchmarks/{benchmark_id}"
@@ -224,8 +222,7 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
             console.print(f"  Recommendations: {benchmark.total_recommendations}\n")
 
             # Save to database
-            content_json = benchmark.model_dump_json()
-            content_hash = hashlib.sha256(content_json.encode()).hexdigest()
+            content_json, content_hash = serialize_benchmark_json(benchmark)
             recommendation_count = len(benchmark.recommendations)
 
             db.save_downloaded(
@@ -252,16 +249,15 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
 
     # Step 6: Export to requested format
     try:
-        import json
-
-        from cis_bench.models.benchmark import Benchmark
+        from cis_bench.catalog.database import deserialize_benchmark_json
 
         console.print(f"[cyan]Exporting to {export_format}...[/cyan]")
 
         # Load from database
         downloaded = db.get_downloaded(benchmark_id)
-        benchmark_data = json.loads(downloaded["content_json"])
-        benchmark = Benchmark(**benchmark_data)
+        if not downloaded:
+            raise ValueError(f"Benchmark {benchmark_id} not found in catalog cache")
+        benchmark = deserialize_benchmark_json(downloaded["content_json"])
 
         # Create exporter
         exporter_kwargs = {}

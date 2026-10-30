@@ -3,11 +3,13 @@
 Integrates catalog database with WorkbenchScraper for efficient downloads.
 """
 
-import hashlib
-import json
 import logging
 
-from cis_bench.catalog.database import CatalogDatabase
+from cis_bench.catalog.database import (
+    CatalogDatabase,
+    deserialize_benchmark_json,
+    serialize_benchmark_json,
+)
 from cis_bench.catalog.parser import WorkBenchCatalogParser
 from cis_bench.catalog.search import CatalogSearch
 from cis_bench.fetcher.workbench import WorkbenchScraper
@@ -86,11 +88,7 @@ class CatalogDownloader:
 
         benchmark = self.scraper.download_benchmark(benchmark_url)
 
-        # Serialize to JSON
-        content_json = benchmark.model_dump_json(indent=2)
-
-        # Calculate hash
-        content_hash = hashlib.sha256(content_json.encode()).hexdigest()
+        content_json, content_hash = serialize_benchmark_json(benchmark)
 
         # Check if content actually changed
         is_unchanged = bool(existing and existing.get("content_hash") == content_hash and not force)
@@ -220,17 +218,4 @@ class CatalogDownloader:
         if not downloaded:
             return None
 
-        # Parse JSON back to Benchmark object
-        benchmark_dict = json.loads(downloaded["content_json"])
-        return Benchmark(**benchmark_dict)
-
-    def list_downloaded(self) -> list[dict]:
-        """List all downloaded benchmarks.
-
-        Returns:
-            List of downloaded benchmark info
-        """
-        # This needs a database query - add to database.py if needed
-        # For now, return empty list
-        logger.warning("list_downloaded not fully implemented yet")
-        return []
+        return deserialize_benchmark_json(downloaded["content_json"])

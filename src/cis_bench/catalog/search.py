@@ -110,21 +110,6 @@ class CatalogSearch:
         """
         return self.search(query="", platform=platform, latest_only=latest_only, limit=200)
 
-    def list_by_community(self, community: str) -> list[dict]:
-        """List benchmarks in a community.
-
-        Args:
-            community: Community name
-
-        Returns:
-            List of benchmarks
-        """
-        # This requires a different query - search by community in description
-        results = self.search(query=community, limit=100)
-
-        # Filter to exact community match
-        return [r for r in results if r.get("community") == community]
-
     def get_platforms(self) -> list[dict]:
         """Get all platforms with benchmark counts.
 
@@ -151,14 +136,6 @@ class CatalogSearch:
             Latest benchmarks for platform
         """
         return self.search(query="", platform=platform, latest_only=True, limit=100)
-
-    def check_updates(self) -> list[dict]:
-        """Check downloaded benchmarks for available updates.
-
-        Returns:
-            List of benchmarks with updates available
-        """
-        return self.db.check_updates_available()
 
     def format_result_for_display(self, result: dict) -> str:
         """Format search result for CLI display.
