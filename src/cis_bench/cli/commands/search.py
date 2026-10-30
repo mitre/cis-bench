@@ -21,7 +21,11 @@ logger = logging.getLogger(__name__)
 @click.option(
     "--platform-type", help="Filter by platform category (e.g., cloud, os, database, container)"
 )
-@click.option("--status", default="Published", help="Filter by status (Published, Archived, Draft)")
+@click.option(
+    "--status",
+    default="Published",
+    help="Filter by status (Published, Archived, Draft, Final Update, or all)",
+)
 @click.option("--latest", is_flag=True, help="Show only latest version of each benchmark")
 @click.option(
     "--limit", type=int, help="Maximum results to show (default: from config, typically 1000)"
@@ -86,21 +90,21 @@ def search_cmd(query, platform, platform_type, status, latest, limit, output_for
 
     # Load catalog database and search
     try:
-        from cis_bench.catalog.database import CatalogDatabase
+        from cis_bench.catalog.database import CatalogDatabase, normalize_status_filter
         from cis_bench.catalog.search import CatalogSearch
 
         logger.info(f"Loading catalog from {catalog_db_path}")
         db = CatalogDatabase(catalog_db_path)
         search = CatalogSearch(db)
 
+        normalized_status = normalize_status_filter(status)
+
         # Build filters
-        filters = {}
+        filters: dict[str, object] = {"status": normalized_status}
         if platform:
             filters["platform"] = platform
         if platform_type:
             filters["platform_type"] = platform_type
-        if status:
-            filters["status"] = status
         if latest:
             filters["latest_only"] = True
 
@@ -120,7 +124,7 @@ def search_cmd(query, platform, platform_type, status, latest, limit, output_for
         if not results:
             if output_format == "table":
                 console.print("[yellow]No results found[/yellow]")
-                if platform or status or latest:
+                if platform or platform_type or normalized_status or latest:
                     console.print("\n[dim]Try removing some filters to see more results[/dim]")
             else:
                 output_data([], output_format)

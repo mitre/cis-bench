@@ -10,8 +10,15 @@ from cis_bench.cli.app import cli
 
 @pytest.fixture
 def runner():
-    """Create Click CLI test runner."""
-    return CliRunner()
+    """Create Click CLI test runner and prune closed logging handlers after invocation."""
+    import logging
+
+    yield CliRunner()
+    root_logger = logging.getLogger()
+    for handler in list(root_logger.handlers):
+        stream = getattr(handler, "stream", None)
+        if stream is not None and getattr(stream, "closed", False):
+            root_logger.removeHandler(handler)
 
 
 # ============================================================================
@@ -294,3 +301,56 @@ class TestSearchCommand:
                 assert result.exit_code == 0
                 assert "Searching for: [/opt]" in result.output
                 assert "No results found" in result.output
+
+    def test_search_status_all_and_blank_return_all_statuses_against_real_db(
+        self, runner, tmp_path
+    ):
+        """--status all (case-insensitive) and blank --status return all statuses without bogus filter hints."""
+        import json
+
+        from cis_bench.catalog.database import CatalogDatabase
+
+        catalog_path = tmp_path / "catalog.db"
+        db = CatalogDatabase(catalog_path)
+        try:
+            db.initialize_schema()
+            for bid, status in [
+                ("501", "Published"),
+                ("502", "Archived"),
+                ("503", "Draft"),
+                ("504", "Final Update"),
+            ]:
+                db.insert_benchmark(
+                    {
+                        "benchmark_id": bid,
+                        "title": f"CIS Multi Status Benchmark {bid}",
+                        "version": "v1.0.0",
+                        "url": f"https://workbench.cisecurity.org/benchmarks/{bid}",
+                        "status": status,
+                    }
+                )
+        finally:
+            db.engine.dispose()
+
+        with patch("cis_bench.cli.commands.search.Config") as mock_config:
+            mock_config.get_catalog_db_path.return_value = catalog_path
+            mock_config.get_search_default_limit.return_value = 1000
+            mock_config.get_table_title_width.return_value = 90
+
+            for flag_val in ("all", "ALL", ""):
+                res = runner.invoke(
+                    cli, ["search", "--status", flag_val, "--output-format", "json"]
+                )
+                assert res.exit_code == 0
+                payload = json.loads(res.stdout)
+                assert sorted(item["benchmark_id"] for item in payload) == [
+                    "501",
+                    "502",
+                    "503",
+                    "504",
+                ]
+
+            empty_res = runner.invoke(cli, ["search", "nonexistent-xyz", "--status", "all"])
+            assert empty_res.exit_code == 0
+            assert "No results found" in empty_res.output
+            assert "Try removing some filters" not in empty_res.output

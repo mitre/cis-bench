@@ -26,8 +26,15 @@ from cis_bench.exceptions import AuthenticationError
 
 @pytest.fixture
 def runner():
-    """Create Click CLI test runner."""
-    return CliRunner()
+    """Create Click CLI test runner and prune closed logging handlers after invocation."""
+    import logging
+
+    yield CliRunner()
+    root_logger = logging.getLogger()
+    for handler in list(root_logger.handlers):
+        stream = getattr(handler, "stream", None)
+        if stream is not None and getattr(stream, "closed", False):
+            root_logger.removeHandler(handler)
 
 
 @pytest.fixture
@@ -456,6 +463,56 @@ class TestCatalogSearchCommand:
 
         assert result.exit_code == 0
         assert "No benchmarks found matching: [/opt]" in result.output
+
+    def test_search_status_all_normalizes_to_none_and_returns_all_statuses(self, runner, tmp_path):
+        """catalog search --status all normalizes status to None and returns all benchmark statuses."""
+        import json
+
+        from cis_bench.catalog.database import CatalogDatabase
+        from cis_bench.catalog.search import CatalogSearch
+
+        real_db = CatalogDatabase(tmp_path / "catalog.db")
+        real_db.initialize_schema()
+        for bid, status in [
+            ("601", "Published"),
+            ("602", "Archived"),
+            ("603", "Draft"),
+            ("604", "Final Update"),
+        ]:
+            real_db.insert_benchmark(
+                {
+                    "benchmark_id": bid,
+                    "title": f"CIS Multi Status Catalog Benchmark {bid}",
+                    "version": "v1.0.0",
+                    "url": f"https://workbench.cisecurity.org/benchmarks/{bid}",
+                    "status": status,
+                }
+            )
+
+        real_search = CatalogSearch(real_db)
+
+        with (
+            patch("cis_bench.cli.commands.catalog.get_catalog_db", return_value=real_db),
+            patch(
+                "cis_bench.cli.commands.catalog.CatalogSearch",
+                side_effect=lambda _db: real_search,
+            ),
+            patch.object(real_search, "search", wraps=real_search.search) as search_spy,
+        ):
+            for flag_val in ("all", "ALL"):
+                res = runner.invoke(
+                    cli, ["catalog", "search", "multi", "--status", flag_val, "-o", "json"]
+                )
+                assert res.exit_code == 0
+                payload = json.loads(res.stdout)
+                assert sorted(item["benchmark_id"] for item in payload) == [
+                    "601",
+                    "602",
+                    "603",
+                    "604",
+                ]
+                assert search_spy.call_args.kwargs["status"] is None
+        real_db.engine.dispose()
 
 
 class TestCatalogListCommand:

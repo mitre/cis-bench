@@ -5,7 +5,7 @@ Provides high-level search operations with filtering, ranking, and formatting.
 
 import logging
 
-from cis_bench.catalog.database import CatalogDatabase
+from cis_bench.catalog.database import CatalogDatabase, normalize_status_filter
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ class CatalogSearch:
         query: str = "",
         platform: str | None = None,
         platform_type: str | None = None,
-        status: str = "Published",
+        status: str | None = "Published",
         latest_only: bool = False,
         limit: int = 50,
     ) -> list[dict]:
@@ -36,7 +36,7 @@ class CatalogSearch:
             query: Search query (fuzzy matching)
             platform: Filter by platform name
             platform_type: Filter by platform category (cloud, os, database, container, application)
-            status: Filter by status (default: Published)
+            status: Filter by status (default: Published; None or 'all' returns all statuses)
             latest_only: Only latest versions
             limit: Max results
 
@@ -47,15 +47,16 @@ class CatalogSearch:
             search = CatalogSearch(db)
             results = search.search("ubuntu", platform="Operating System", latest_only=True)
         """
+        normalized_status = normalize_status_filter(status)
         logger.debug(
-            f"Search: query='{query}', platform={platform}, platform_type={platform_type}, status={status}, latest={latest_only}"
+            f"Search: query='{query}', platform={platform}, platform_type={platform_type}, status={normalized_status}, latest={latest_only}"
         )
 
         results = self.db.search(
             query=query,
             platform=platform,
             platform_type=platform_type,
-            status=status,
+            status=normalized_status,
             latest_only=latest_only,
             limit=limit,
         )
