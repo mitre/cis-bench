@@ -830,7 +830,7 @@ Error: YAML parsing failed
 ## Related Documents
 
 - [Mapping Engine Design](mapping-engine-design.md) - Complete design
-- [DISA Style Example](https://github.com/aaronlippold/cis-benchmark-cli/blob/main/src/cis_bench/exporters/configs/disa_style.yaml) - Complete YAML example
+- [DISA Style Example](https://github.com/mitre/cis-bench/blob/main/src/cis_bench/exporters/configs/styles/disa.yaml) - Complete YAML example
 
 ---
 

@@ -6,7 +6,7 @@
 [![Python Version](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![CI](https://github.com/mitre/cis-bench/actions/workflows/ci.yml/badge.svg)](https://github.com/mitre/cis-bench/actions/workflows/ci.yml)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/mitre/cis-bench/blob/main/LICENSE.md)
 
 ---
 
@@ -375,7 +375,7 @@ pytest tests/ -v
 
 ## License
 
-Apache License 2.0 - See [LICENSE](LICENSE) for details
+Apache License 2.0 - See [LICENSE.md](https://github.com/mitre/cis-bench/blob/main/LICENSE.md) for details
 
 **Acknowledgments:**
 

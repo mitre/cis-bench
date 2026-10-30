@@ -82,7 +82,7 @@ For questions about CIS Benchmark usage rights, contact CIS directly.
 ## Contact
 
 For issues with this software (not CIS Benchmarks):
-https://github.com/aaronlippold/cis-benchmark-cli/issues
+https://github.com/mitre/cis-bench/issues
 
 For CIS Benchmark licensing questions:
 https://www.cisecurity.org/contact-us/

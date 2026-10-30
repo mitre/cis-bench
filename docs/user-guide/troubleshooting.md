@@ -109,13 +109,17 @@ Firefox doesn't use App-Bound Encryption and works reliably on Windows.
 
 ### SSL Certificate Error
 
-**Cause:** CIS WorkBench certificate chain issues.
+**Cause:** CIS WorkBench certificate chain or proxy inspection issues.
 
-**Current:** Verification disabled by default in catalog scraper.
+**Current:** Verification is disabled by default (`CIS_BENCH_VERIFY_SSL=false`).
 
-**If you see SSL errors:**
+**Solutions:**
 ```bash
-# Not yet configurable, report as issue
+# Authenticate with SSL verification disabled
+cis-bench auth login --browser chrome --no-verify-ssl
+
+# Or configure via environment / ~/.cis-bench/.env
+export CIS_BENCH_VERIFY_SSL=false
 ```
 
 ---
@@ -366,7 +370,7 @@ cis-bench catalog refresh 2> debug.log
 
 ### Report Issues
 
-https://github.com/aaronlippold/cis-benchmark-cli/issues
+https://github.com/mitre/cis-bench/issues
 
 Include:
 
