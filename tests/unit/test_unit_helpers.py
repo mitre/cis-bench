@@ -1377,3 +1377,91 @@ class TestEdgeCases:
         # Should handle duplicates gracefully
         assert isinstance(ccis, list)
         assert isinstance(extra_nist, list)
+
+
+# ============================================================================
+# TEST: Config-Driven XCCDF Notice Creation
+# ============================================================================
+
+
+class TestNoticeCreation:
+    """Unit tests for config-driven XCCDF <notice> construction in MappingEngine."""
+
+    def test_create_notice_populates_content_id_and_lang_from_style_config(
+        self, cis_config_path, synthetic_complete_benchmark
+    ):
+        """create_notice resolves direct id, lang, and variable-substituted content."""
+        engine = MappingEngine(cis_config_path)
+        engine.config.benchmark["notice"] = {
+            "id": "custom-notice",
+            "lang": "en-US",
+            "xccdf_type": "NoticeType",
+            "content": "Exported from {benchmark.title} ({benchmark.url})",
+        }
+
+        notice = engine.create_notice(synthetic_complete_benchmark)
+
+        assert notice.id == "custom-notice"
+        assert notice.lang == "en-US"
+        assert notice.content == [
+            f"Exported from {synthetic_complete_benchmark.title} ({synthetic_complete_benchmark.url})"
+        ]
+
+    def test_create_notice_resolves_attributes_dict_and_default_id(
+        self, disa_config_path, synthetic_complete_benchmark
+    ):
+        """create_notice resolves attributes.id and attributes['xml:lang'] and normalizes HttpUrl."""
+        engine = MappingEngine(disa_config_path)
+        engine.config.benchmark["notice"] = {
+            "element": "notice",
+            "xccdf_type": "NoticeType",
+            "attributes": {
+                "id": "attr-notice-id",
+                "xml:lang": "en",
+            },
+            "content": "{benchmark.url}",
+        }
+
+        notice = engine.create_notice(synthetic_complete_benchmark)
+
+        assert notice.id == "attr-notice-id"
+        assert notice.lang == "en"
+        assert notice.content == [str(synthetic_complete_benchmark.url)]
+        assert isinstance(notice.content[0], str)
+
+        engine.config.benchmark["notice"] = {
+            "xccdf_type": "NoticeType",
+            "content": "Plain notice without explicit id or lang",
+        }
+        fallback_notice = engine.create_notice(synthetic_complete_benchmark)
+        assert fallback_notice.id == "terms-of-use"
+        assert fallback_notice.lang is None
+        assert fallback_notice.content == ["Plain notice without explicit id or lang"]
+
+    def test_create_notice_preserves_empty_content_when_omitted_or_blank(
+        self, cis_config_path, synthetic_complete_benchmark
+    ):
+        """Custom styles with empty or omitted notice content preserve content=[]."""
+        engine = MappingEngine(cis_config_path)
+
+        engine.config.benchmark["notice"] = {
+            "id": "empty-str",
+            "lang": "en",
+            "content": "",
+        }
+        empty_notice = engine.create_notice(synthetic_complete_benchmark)
+        assert empty_notice.id == "empty-str"
+        assert empty_notice.lang == "en"
+        assert empty_notice.content == []
+
+        engine.config.benchmark["notice"] = {"id": "omitted-content"}
+        omitted_notice = engine.create_notice(synthetic_complete_benchmark)
+        assert omitted_notice.id == "omitted-content"
+        assert omitted_notice.lang is None
+        assert omitted_notice.content == []
+
+        engine.config.benchmark.pop("notice", None)
+        missing_section_notice = engine.create_notice(synthetic_complete_benchmark)
+        assert missing_section_notice.id == "terms-of-use"
+        assert missing_section_notice.lang is None
+        assert missing_section_notice.content == []

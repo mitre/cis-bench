@@ -94,7 +94,12 @@ benchmark:
     attributes:
       id: "terms-of-use"
       xml:lang: "en"
-    content: ""
+    content: >-
+      This XCCDF file was exported via cis-bench format conversion from
+      "{benchmark.title}" ({benchmark.url}). Source benchmark content is
+      copyright Center for Internet Security, Inc. (CIS) and subject to the CIS
+      WorkBench Terms of Use (https://workbench.cisecurity.org/terms-of-use) and
+      applicable CIS license terms.
 
   front_matter:
     element: "front-matter"

@@ -367,3 +367,26 @@ class TestCISXCCDFExport:
             assert len(metas[0].xpath(".//controls:framework", namespaces=ns)) == 2
             child_names = [etree.QName(child).localname for child in rule]
             assert child_names.index("metadata") < child_names.index("ident")
+
+    def test_cis_export_populates_benchmark_notice_from_style_config(
+        self, sample_benchmark, tmp_path
+    ):
+        """CIS XCCDF 1.2 export emits configured <notice id='terms-of-use' xml:lang='en'>."""
+        output_file = tmp_path / "test_cis_notice.xml"
+        exporter = ExporterFactory.create("xccdf", style="cis")
+        exporter.export(sample_benchmark, str(output_file))
+
+        tree = etree.parse(str(output_file))
+        ns = {"xccdf": "http://checklists.nist.gov/xccdf/1.2"}
+        notices = tree.xpath("/xccdf:Benchmark/xccdf:notice", namespaces=ns)
+
+        assert len(notices) == 1
+        notice = notices[0]
+        assert notice.get("id") == "terms-of-use"
+        assert notice.get("{http://www.w3.org/XML/1998/namespace}lang") == "en"
+        notice_text = (notice.text or "").strip()
+        assert sample_benchmark.title in notice_text
+        assert str(sample_benchmark.url) in notice_text
+        assert "Center for Internet Security, Inc." in notice_text
+        assert "https://workbench.cisecurity.org/terms-of-use" in notice_text
+        assert "cis-bench" in notice_text

@@ -28,6 +28,7 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 import yaml
@@ -323,6 +324,8 @@ class MappingEngine:
         Args:
             version: XCCDF version ('1.1.4' or '1.2')
         """
+        self.xccdf_models: ModuleType
+        self.dc_models: ModuleType | None
         if version == "1.1.4":
             # Import XCCDF 1.1.4 models
             from cis_bench.models.xccdf_v1_1 import dc, xccdf_1_1_4
@@ -502,14 +505,43 @@ class MappingEngine:
     def create_notice(self, benchmark: Benchmark):
         """Create notice element from config (version-agnostic).
 
-        Per DISA conventions: Required but can be empty.
+        Resolves notice id, xml:lang, and optional variable-substituted text
+        content from the style's benchmark.notice configuration while keeping
+        content empty when omitted or blank.
         """
-        notice_config = self.config.benchmark.get("notice", {})
-        NoticeType = self.get_xccdf_class("NoticeType")
+        raw_notice = self.config.benchmark.get("notice")
+        notice_config = raw_notice if isinstance(raw_notice, dict) else {}
+        raw_attrs = notice_config.get("attributes")
+        attributes = raw_attrs if isinstance(raw_attrs, dict) else {}
+
+        type_name = notice_config.get("xccdf_type", "NoticeType")
+        NoticeType = self.get_xccdf_class(type_name)
+
+        substitution_context = {"benchmark": benchmark}
+
+        raw_id = notice_config.get("id") or attributes.get("id") or "terms-of-use"
+        notice_id = str(VariableSubstituter.substitute(str(raw_id), substitution_context))
+
+        raw_lang = notice_config.get("lang") or attributes.get("xml:lang")
+        notice_lang = (
+            str(VariableSubstituter.substitute(str(raw_lang), substitution_context))
+            if raw_lang
+            else None
+        )
+
+        raw_content = notice_config.get("content")
+        content: list[object] = []
+        if isinstance(raw_content, str) and raw_content.strip():
+            resolved = str(
+                VariableSubstituter.substitute(raw_content, substitution_context)
+            ).strip()
+            if resolved:
+                content = [resolved]
 
         return NoticeType(
-            id=notice_config.get("id", "terms-of-use"),
-            content=[],  # Empty per config
+            id=notice_id,
+            lang=notice_lang,
+            content=content,
         )
 
     def create_front_matter(self, benchmark: Benchmark):

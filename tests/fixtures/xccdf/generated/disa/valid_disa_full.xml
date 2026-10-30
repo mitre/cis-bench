@@ -3,7 +3,7 @@
   <status>draft</status>
   <title>CIS Synthetic Enterprise Platform Benchmark v1.0.0</title>
   <description>CIS Benchmark exported to DISA STIG format. CIS Synthetic Enterprise Platform Benchmark v1.0.0</description>
-  <notice id="terms-of-use"/>
+  <notice id="terms-of-use" xml:lang="en">This XCCDF file was exported via cis-bench format conversion from "CIS Synthetic Enterprise Platform Benchmark v1.0.0" (https://workbench.cisecurity.org/benchmarks/90001). Source benchmark content is copyright Center for Internet Security, Inc. (CIS) and subject to the CIS WorkBench Terms of Use (https://workbench.cisecurity.org/terms-of-use) and applicable CIS license terms.</notice>
   <front-matter/>
   <rear-matter/>
   <reference href="https://workbench.cisecurity.org/benchmarks/90001"><dc:publisher>CIS Security</dc:publisher><dc:source>https://workbench.cisecurity.org</dc:source></reference>
