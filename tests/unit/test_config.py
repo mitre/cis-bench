@@ -313,6 +313,71 @@ class TestConfigVerifySSL:
                 assert Config.get_verify_ssl() is False, f"Failed for value: {value}"
 
 
+class TestConfigWorkbenchBaseUrl:
+    """Tests for configurable CIS WorkBench base URL validation."""
+
+    def test_get_workbench_base_url_defaults_to_production(self):
+        """Should return https://workbench.cisecurity.org when CIS_BENCH_WORKBENCH_URL is unset or blank."""
+        from cis_bench import config
+
+        env = os.environ.copy()
+        env.pop("CIS_BENCH_WORKBENCH_URL", None)
+        with patch.dict(os.environ, env, clear=True):
+            assert config.Config.get_workbench_base_url() == "https://workbench.cisecurity.org"
+            assert config.get_workbench_base_url() == "https://workbench.cisecurity.org"
+
+        with patch.dict(os.environ, {"CIS_BENCH_WORKBENCH_URL": "   "}):
+            assert config.Config.get_workbench_base_url() == "https://workbench.cisecurity.org"
+
+    @pytest.mark.parametrize(
+        "raw_url,expected",
+        [
+            (
+                "https://workbench-staging.cisecurity.org",
+                "https://workbench-staging.cisecurity.org",
+            ),
+            (
+                "https://workbench-staging.cisecurity.org/",
+                "https://workbench-staging.cisecurity.org",
+            ),
+            (
+                "https://WORKBENCH-STAGING.CISECURITY.ORG///",
+                "https://workbench-staging.cisecurity.org",
+            ),
+        ],
+    )
+    def test_get_workbench_base_url_accepts_valid_cisecurity_origins(
+        self, raw_url: str, expected: str
+    ):
+        """Should normalize valid https://*.cisecurity.org origins."""
+        from cis_bench.config import Config
+
+        with patch.dict(os.environ, {"CIS_BENCH_WORKBENCH_URL": raw_url}):
+            assert Config.get_workbench_base_url() == expected
+
+    @pytest.mark.parametrize(
+        "invalid_url",
+        [
+            "http://workbench.cisecurity.org",
+            "https://evil-cisecurity.org",
+            "https://cisecurity.org.attacker.example",
+            "https://user:pass@workbench.cisecurity.org",
+            "https://workbench.cisecurity.org/benchmarks",
+            "https://workbench.cisecurity.org?next=1",
+            "https://workbench.cisecurity.org#frag",
+        ],
+    )
+    def test_get_workbench_base_url_rejects_untrusted_insecure_or_non_origin_urls(
+        self, invalid_url: str
+    ):
+        """Should raise ValueError for non-HTTPS, non-cisecurity.org, credentialed, or path/query URLs."""
+        from cis_bench.config import Config
+
+        with patch.dict(os.environ, {"CIS_BENCH_WORKBENCH_URL": invalid_url}):
+            with pytest.raises(ValueError, match="CIS_BENCH_WORKBENCH_URL"):
+                Config.get_workbench_base_url()
+
+
 class TestConvenienceFunctions:
     """Tests for module-level convenience functions."""
 

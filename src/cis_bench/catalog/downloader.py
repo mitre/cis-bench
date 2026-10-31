@@ -3,11 +3,14 @@
 Integrates catalog database with WorkbenchScraper for efficient downloads.
 """
 
-import hashlib
-import json
 import logging
 
-from cis_bench.catalog.database import CatalogDatabase
+from cis_bench.catalog.database import (
+    CatalogDatabase,
+    deserialize_benchmark_json,
+    serialize_benchmark_json,
+)
+from cis_bench.catalog.parser import WorkBenchCatalogParser
 from cis_bench.catalog.search import CatalogSearch
 from cis_bench.fetcher.workbench import WorkbenchScraper
 from cis_bench.models.benchmark import Benchmark
@@ -74,39 +77,24 @@ class CatalogDownloader:
                     "message": "Already up-to-date. Use --force to re-download.",
                 }
 
+        # Validate and canonicalize benchmark URL against configured WorkBench origin
+        _, benchmark_url = WorkBenchCatalogParser.normalize_benchmark_url(
+            catalog_entry["url"],
+            expected_benchmark_id=str(benchmark_id),
+        )
+
         # Download from WorkBench
-        logger.info(f"Fetching from WorkBench: {catalog_entry['url']}")
+        logger.info(f"Fetching from WorkBench: {benchmark_url}")
 
-        benchmark = self.scraper.fetch_benchmark(catalog_entry["url"])
+        benchmark = self.scraper.download_benchmark(benchmark_url)
 
-        # Serialize to JSON
-        content_json = benchmark.model_dump_json(indent=2)
-
-        # Calculate hash
-        content_hash = hashlib.sha256(content_json.encode()).hexdigest()
+        content_json, content_hash = serialize_benchmark_json(benchmark)
 
         # Check if content actually changed
-        if existing and existing.get("content_hash") == content_hash and not force:
+        is_unchanged = bool(existing and existing.get("content_hash") == content_hash and not force)
+        if is_unchanged:
             logger.info("Content unchanged (same hash), updating timestamp only")
 
-            # Just update access time
-            self.db.save_downloaded(
-                benchmark_id=benchmark_id,
-                content_json=content_json,
-                content_hash=content_hash,
-                recommendation_count=len(benchmark.recommendations),
-                workbench_last_modified=catalog_entry.get("last_revision_date"),
-            )
-
-            return {
-                "benchmark_id": benchmark_id,
-                "status": "unchanged",
-                "content_hash": content_hash,
-                "recommendation_count": len(benchmark.recommendations),
-                "message": "Content unchanged (verified by hash).",
-            }
-
-        # Save to database
         self.db.save_downloaded(
             benchmark_id=benchmark_id,
             content_json=content_json,
@@ -114,6 +102,15 @@ class CatalogDownloader:
             recommendation_count=len(benchmark.recommendations),
             workbench_last_modified=catalog_entry.get("last_revision_date"),
         )
+
+        if is_unchanged:
+            return {
+                "benchmark_id": benchmark_id,
+                "status": "unchanged",
+                "content_hash": content_hash,
+                "recommendation_count": len(benchmark.recommendations),
+                "message": "Content unchanged (verified by hash).",
+            }
 
         status = "updated" if existing else "downloaded"
 
@@ -131,7 +128,11 @@ class CatalogDownloader:
         }
 
     def download_by_name(
-        self, name_query: str, latest: bool = True, interactive: bool = False
+        self,
+        name_query: str,
+        latest: bool = True,
+        interactive: bool = False,
+        force: bool = False,
     ) -> dict:
         """Download benchmark by name (fuzzy search).
 
@@ -139,6 +140,7 @@ class CatalogDownloader:
             name_query: Search query (fuzzy matched)
             latest: Only search latest versions
             interactive: If multiple matches, prompt user to select
+            force: Force re-download even if up-to-date
 
         Returns:
             Download result dict
@@ -157,7 +159,7 @@ class CatalogDownloader:
             # Single match - download it
             benchmark_id = results[0]["benchmark_id"]
             logger.info(f"Found single match: {results[0]['title']}")
-            return self.download_by_id(benchmark_id)
+            return self.download_by_id(benchmark_id, force=force)
 
         # Multiple matches
         if not interactive:
@@ -172,7 +174,7 @@ class CatalogDownloader:
         logger.info(f"Found {len(results)} matches, prompting for selection")
         benchmark_id = self._interactive_select(results)
 
-        return self.download_by_id(benchmark_id)
+        return self.download_by_id(benchmark_id, force=force)
 
     def _interactive_select(self, results: list[dict]) -> str:
         """Interactive selection from multiple results.
@@ -185,14 +187,22 @@ class CatalogDownloader:
         """
         import questionary
 
-        choices = [f"[{r['benchmark_id']}] {r['title']} {r.get('version', '')}" for r in results]
+        choices = []
+        for r in results:
+            version = r.get("version")
+            version_suffix = f" {version}" if version else ""
+            choices.append(
+                questionary.Choice(
+                    title=f"[{r['benchmark_id']}] {r['title']}{version_suffix}",
+                    value=str(r["benchmark_id"]),
+                )
+            )
 
         selection = questionary.select("Select benchmark:", choices=choices).ask()
+        if not isinstance(selection, str) or not selection:
+            raise ValueError("Benchmark selection cancelled")
 
-        # Extract ID from selection
-        benchmark_id = selection.split("]")[0].lstrip("[")
-
-        return benchmark_id
+        return selection
 
     def get_downloaded_benchmark(self, benchmark_id: str) -> Benchmark | None:
         """Get downloaded benchmark from database.
@@ -208,17 +218,4 @@ class CatalogDownloader:
         if not downloaded:
             return None
 
-        # Parse JSON back to Benchmark object
-        benchmark_dict = json.loads(downloaded["content_json"])
-        return Benchmark(**benchmark_dict)
-
-    def list_downloaded(self) -> list[dict]:
-        """List all downloaded benchmarks.
-
-        Returns:
-            List of downloaded benchmark info
-        """
-        # This needs a database query - add to database.py if needed
-        # For now, return empty list
-        logger.warning("list_downloaded not fully implemented yet")
-        return []
+        return deserialize_benchmark_json(downloaded["content_json"])

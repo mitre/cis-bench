@@ -69,13 +69,31 @@ class TestCatalogPageParsing:
             assert "[imported]" not in bench["title"]
 
     def test_status_values(self, sample_catalog_html):
-        """Test status values are valid."""
+        """Test all five WorkBench status values are exercised by the catalog fixture."""
         benchmarks = WorkBenchCatalogParser.parse_catalog_page(sample_catalog_html)
 
         valid_statuses = {"Published", "Draft", "Archived", "Rejected", "Accepted"}
 
-        for bench in benchmarks:
-            assert bench["status"] in valid_statuses
+        assert {bench["status"] for bench in benchmarks} == valid_statuses
+
+    def test_sample_catalog_fixture_is_compact_synthetic_html(self, sample_catalog_html):
+        """Catalog HTML fixture must be clean synthetic markup covering parser edge cases."""
+        lowered = sample_catalog_html.lower()
+        assert "<script" not in lowered
+        assert "googletagmanager" not in lowered
+        assert "csrf-token" not in lowered
+        assert "livewirescriptconfig" not in lowered
+
+        benchmarks = WorkBenchCatalogParser.parse_catalog_page(sample_catalog_html)
+        assert len(benchmarks) == 6
+        assert any(len(b["collections"]) >= 2 for b in benchmarks)
+        assert any(b["collections"] == [] for b in benchmarks)
+        assert any(b["community"] is not None for b in benchmarks)
+        assert any(b["owner"] is not None for b in benchmarks)
+
+        pagination = WorkBenchCatalogParser.extract_pagination_info(sample_catalog_html)
+        assert pagination["current_page"] == 1
+        assert pagination["total_pages"] == 66
 
     def test_collections_is_list(self, sample_catalog_html):
         """Test collections field is always a list."""
@@ -359,6 +377,26 @@ class TestEdgeCases:
         assert len(benchmarks) == 1
         assert benchmarks[0]["collections"] == ["Collection A", "Collection B", "Collection C"]
 
+    def test_collections_deduplicates_and_strips_empty_entries(self):
+        """Comma-separated collections strip empty items and preserve unique order."""
+        html = """
+        <table>
+            <tr><th>Header</th></tr>
+            <tr>
+                <td><a href="/benchmarks/123">Test Benchmark</a></td>
+                <td>v1.0.0</td>
+                <td>Published</td>
+                <td>Community</td>
+                <td>Collection A, , Collection B, Collection A,   </td>
+                <td>Owner</td>
+            </tr>
+        </table>
+        """
+        benchmarks = WorkBenchCatalogParser.parse_catalog_page(html)
+
+        assert len(benchmarks) == 1
+        assert benchmarks[0]["collections"] == ["Collection A", "Collection B"]
+
     def test_absolute_url_in_href(self):
         """Test handling of absolute URLs in href (coverage: line 172-173)."""
         html = """
@@ -381,12 +419,12 @@ class TestEdgeCases:
         assert benchmarks[0]["benchmark_id"] == "456"
 
     def test_url_with_query_params(self):
-        """Test URL parsing handles query parameters correctly."""
+        """Test URL parsing handles query parameters and fragments by stripping them cleanly."""
         html = """
         <table>
             <tr><th>Header</th></tr>
             <tr>
-                <td><a href="/benchmarks/789?version=1&sort=asc">With Query Params</a></td>
+                <td><a href="/benchmarks/789?version=1&sort=asc#overview">With Query Params</a></td>
                 <td>v1.0.0</td>
                 <td>Published</td>
                 <td>Community</td>
@@ -399,6 +437,42 @@ class TestEdgeCases:
 
         assert len(benchmarks) == 1
         assert benchmarks[0]["benchmark_id"] == "789"
+        assert benchmarks[0]["url"] == "https://workbench.cisecurity.org/benchmarks/789"
+
+    @pytest.mark.parametrize(
+        "malicious_href",
+        [
+            "@attacker.example/benchmarks/23598",
+            "https://workbench.cisecurity.org@attacker.example/benchmarks/23598",
+            "//attacker.example/benchmarks/23598",
+            "https://attacker.example/benchmarks/23598",
+            "https://portal.cisecurity.org/benchmarks/23598",
+            "http://workbench.cisecurity.org/benchmarks/23598",
+            "/\\attacker.example/benchmarks/23598",
+            "/benchmarks/23598/../../admin",
+            "https://workbench.cisecurity.org/benchmarks/23598/../../admin",
+            "/benchmarks/not-numeric",
+            "/benchmarks/٢٣٥٩٨",
+        ],
+    )
+    def test_rejects_off_origin_userinfo_and_non_numeric_benchmark_urls(self, malicious_href):
+        """Catalog parser rejects @attacker userinfo tricks, off-origin hosts, HTTP, traversal, and non-ASCII IDs."""
+        html = f"""
+        <table>
+            <tr><th>Title</th><th>Version</th><th>Status</th><th>Community</th><th>Collections</th><th>Owner</th></tr>
+            <tr>
+                <td><a href="{malicious_href}">Malicious Benchmark</a></td>
+                <td>v1.0.0</td>
+                <td>Published</td>
+                <td>Community</td>
+                <td>Collection</td>
+                <td>Owner</td>
+            </tr>
+        </table>
+        """
+        benchmarks = WorkBenchCatalogParser.parse_catalog_page(html)
+
+        assert benchmarks == []
 
     def test_url_with_trailing_path(self):
         """Test URL parsing handles trailing path segments correctly."""
@@ -533,7 +607,13 @@ class TestAuthenticationDetection:
     """Test detection of unauthenticated responses (login page)."""
 
     def test_is_login_page_with_login_html(self, login_page_html):
-        """Test that login page HTML is correctly identified."""
+        """Test that compact synthetic login page HTML is correctly identified."""
+        lowered = login_page_html.lower()
+        assert "<script" not in lowered
+        assert "googletagmanager" not in lowered
+        assert "csrf-token" not in lowered
+        assert 'name="_token"' not in lowered
+
         is_login = WorkBenchCatalogParser.is_login_page(login_page_html)
         assert is_login is True
 
@@ -623,8 +703,8 @@ class TestPlatformInference:
             ("CIS Microsoft SQL Server 2022 Benchmark", "database", "mssql"),
             # Containers & Kubernetes
             ("CIS Amazon Elastic Kubernetes Service (EKS) Benchmark", "container", "aws-eks"),
-            # Note: AKS matches "azure" before "aks" due to pattern order, so it returns cloud/azure
-            ("CIS Azure Kubernetes Service (AKS) Benchmark", "cloud", "azure"),
+            ("CIS Azure Kubernetes Service (AKS) Benchmark", "container", "azure-aks"),
+            ("CIS AKS Optimized Azure Linux Benchmark", "container", "azure-aks"),
             ("CIS Google Kubernetes Engine (GKE) Benchmark", "container", "google-gke"),
             ("CIS Kubernetes V1.27 Benchmark", "container", "kubernetes"),
             ("CIS Docker Benchmark", "container", "docker"),
@@ -865,3 +945,47 @@ class TestBenchmarkDetailPageParsing:
         # Empty paragraphs are stripped/skipped
         assert "Actual content" in metadata["description"]
         assert "More content" in metadata["description"]
+
+    def test_parse_benchmark_detail_emits_no_deprecation_warnings(self):
+        """Test detail page parsing extracts published date and overview without deprecations."""
+        import warnings
+
+        html = """
+        <html>
+        <body>
+            <p>Published 3 months ago on Aug 1st 2025</p>
+            <h2>Overview</h2>
+            <p>Hardening guidance for servers.</p>
+        </body>
+        </html>
+        """
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            metadata = WorkBenchCatalogParser.parse_benchmark_detail_page(html)
+
+        assert metadata == {
+            "published_date": "Aug 1st 2025",
+            "published_relative": "Published 3 months ago on Aug 1st 2025",
+            "description": "Hardening guidance for servers.",
+        }
+
+    def test_relative_href_uses_configured_workbench_base_url(self, monkeypatch):
+        """Relative catalog row hrefs resolve against CIS_BENCH_WORKBENCH_URL."""
+        monkeypatch.setenv("CIS_BENCH_WORKBENCH_URL", "https://workbench-staging.cisecurity.org")
+        html = """
+        <table>
+            <tr><th>Title</th><th>Version</th><th>Status</th><th>Community</th><th>Collections</th><th>Owner</th></tr>
+            <tr>
+                <td><a href="/benchmarks/61">CIS Ubuntu Benchmark</a></td>
+                <td>v1.0.0</td>
+                <td>Published</td>
+                <td>Ubuntu</td>
+                <td>OS</td>
+                <td>cis</td>
+            </tr>
+        </table>
+        """
+        rows = WorkBenchCatalogParser.parse_catalog_page(html)
+
+        assert len(rows) == 1
+        assert rows[0]["url"] == "https://workbench-staging.cisecurity.org/benchmarks/61"

@@ -1,6 +1,5 @@
 """Export command for CIS Benchmark CLI."""
 
-import json
 import logging
 import os
 import sys
@@ -40,7 +39,7 @@ def _load_benchmark_from_db(identifier, catalog_db_path):
     Returns:
         tuple: (Benchmark, benchmark_id) or (None, error_message)
     """
-    from cis_bench.catalog.database import CatalogDatabase
+    from cis_bench.catalog.database import CatalogDatabase, deserialize_benchmark_json
 
     db = CatalogDatabase(catalog_db_path)
     downloaded = db.get_downloaded(identifier)
@@ -48,8 +47,7 @@ def _load_benchmark_from_db(identifier, catalog_db_path):
     if not downloaded:
         return None, f"Benchmark {identifier} not downloaded"
 
-    benchmark_data = json.loads(downloaded["content_json"])
-    benchmark = Benchmark(**benchmark_data)
+    benchmark = deserialize_benchmark_json(downloaded["content_json"])
     return benchmark, identifier
 
 

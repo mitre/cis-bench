@@ -148,6 +148,64 @@ class TestGetCommandSingleResult:
                             assert "Success!" in result.output
                             assert mock_download.called
 
+    def test_get_uses_configured_workbench_base_url(
+        self, runner, sample_benchmark, tmp_path, monkeypatch
+    ):
+        """get constructs uncached benchmark download URLs from CIS_BENCH_WORKBENCH_URL."""
+        monkeypatch.setenv("CIS_BENCH_WORKBENCH_URL", "https://workbench-staging.cisecurity.org")
+        catalog_path = tmp_path / "catalog.db"
+        catalog_path.touch()
+
+        with (
+            patch("cis_bench.cli.commands.get.Config") as mock_config,
+            patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class,
+            patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class,
+            patch("cis_bench.cli.commands.get.AuthManager") as mock_auth,
+            patch("cis_bench.cli.helpers.download_helper.download_with_progress") as mock_download,
+        ):
+            mock_config.get_catalog_db_path.return_value = catalog_path
+            mock_db = Mock()
+            mock_db_class.return_value = mock_db
+            mock_db.get_downloaded.side_effect = [
+                None,
+                {
+                    "benchmark_id": "23456",
+                    "content_json": sample_benchmark.model_dump_json(),
+                    "downloaded_at": datetime.now(),
+                },
+            ]
+            mock_search = Mock()
+            mock_search_class.return_value = mock_search
+            mock_search.search.return_value = [
+                {
+                    "benchmark_id": "23456",
+                    "title": "CIS Ubuntu Linux 22.04 Benchmark",
+                    "version": "v2.0.0",
+                    "status": "Published",
+                }
+            ]
+            mock_auth.get_or_create_session.return_value = Mock()
+            mock_download.return_value = sample_benchmark
+
+            result = runner.invoke(
+                cli,
+                [
+                    "get",
+                    "ubuntu 22",
+                    "--format",
+                    "json",
+                    "--output",
+                    str(tmp_path / "out.json"),
+                    "--non-interactive",
+                ],
+            )
+
+            assert result.exit_code == 0, result.output
+            assert (
+                mock_download.call_args[0][1]
+                == "https://workbench-staging.cisecurity.org/benchmarks/23456"
+            )
+
     def test_get_with_cached_benchmark_skips_download(self, runner, sample_benchmark, tmp_path):
         """Get uses cached benchmark if already downloaded."""
         catalog_path = tmp_path / "catalog.db"

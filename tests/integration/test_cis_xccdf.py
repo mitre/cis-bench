@@ -1,5 +1,6 @@
 """Integration tests for CIS Native XCCDF export."""
 
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -11,12 +12,9 @@ from cis_bench.models.benchmark import Benchmark
 
 
 @pytest.fixture
-def sample_benchmark():
-    """Load test benchmark."""
-    fixture_path = (
-        Path(__file__).parent.parent / "fixtures" / "benchmarks" / "almalinux_complete.json"
-    )
-    return Benchmark.from_json_file(str(fixture_path))
+def sample_benchmark(synthetic_complete_file):
+    """Load synthetic test benchmark."""
+    return Benchmark.from_json_file(str(synthetic_complete_file))
 
 
 class TestCISXCCDFExport:
@@ -270,13 +268,13 @@ class TestCISXCCDFExport:
 
             file_size = Path(output_path).stat().st_size
 
-            # With 322 recommendations and full metadata, should be > 1 MB
-            assert file_size > 1_000_000, (
-                f"File size {file_size} seems too small for 322 recs with metadata"
+            # With 20 synthetic recommendations and full dual metadata, should be > 25 KB
+            assert file_size > 25_000, (
+                f"File size {file_size} seems too small for 20 recs with metadata"
             )
 
-            # But not unreasonably large (< 5 MB)
-            assert file_size < 5_000_000, f"File size {file_size} seems too large"
+            # And compact (< 500 KB)
+            assert file_size < 500_000, f"File size {file_size} seems too large"
 
         finally:
             Path(output_path).unlink()
@@ -304,13 +302,91 @@ class TestCISXCCDFExport:
             groups = tree.findall(".//Group") + tree.findall(
                 ".//{http://checklists.nist.gov/xccdf/1.2}Group"
             )
-            assert len(groups) > 0
+            assert len(groups) == 20
 
             # Should have Rules
             rules = tree.findall(".//Rule") + tree.findall(
                 ".//{http://checklists.nist.gov/xccdf/1.2}Rule"
             )
-            assert len(rules) == 322
+            assert len(rules) == 20
 
         finally:
             Path(output_path).unlink()
+
+    def test_cis_export_validates_nist_xccdf_1_2_schema(self, sample_benchmark, tmp_path):
+        """CIS XCCDF 1.2 export must validate against NIST XCCDF 1.2 XSD schema."""
+        output_file = tmp_path / "test_cis.xml"
+        exporter = ExporterFactory.create("xccdf", style="cis")
+        exporter.export(sample_benchmark, str(output_file))
+
+        schema_file = (
+            Path(__file__).parent.parent.parent / "schemas" / "xccdf" / "1.2" / "xccdf_1.2.xsd"
+        )
+        result = subprocess.run(
+            ["xmllint", "--noout", "--schema", str(schema_file), str(output_file)],
+            capture_output=True,
+            text=True,
+        )
+
+        assert result.returncode == 0, f"XCCDF 1.2 schema validation failed: {result.stderr}"
+
+    def test_cis_metadata_aligned_by_rule_id_and_repeatable(self, sample_benchmark, tmp_path):
+        """Metadata injection aligns 1-to-1 by Rule ID and resets across repeated exports."""
+        exporter = ExporterFactory.create("xccdf", style="cis")
+        first_out = tmp_path / "cis_first.xml"
+        second_out = tmp_path / "cis_second.xml"
+
+        exporter.export(sample_benchmark, str(first_out))
+        exporter.export(sample_benchmark, str(second_out))
+
+        tree = etree.parse(str(second_out))
+        ns = {
+            "xccdf": "http://checklists.nist.gov/xccdf/1.2",
+            "controls": "http://cisecurity.org/controls",
+        }
+
+        # Rule 6.2.1 has no CIS Controls so its allow_empty cis_controls container has zero frameworks
+        unmapped_rule = tree.xpath(
+            "//xccdf:Rule[@id='xccdf_org.cisecurity.benchmarks_rule_6_2_1']",
+            namespaces=ns,
+        )
+        assert len(unmapped_rule) == 1
+        unmapped_metas = unmapped_rule[0].xpath("./xccdf:metadata", namespaces=ns)
+        assert len(unmapped_metas) == 1
+        assert len(unmapped_metas[0].xpath(".//controls:framework", namespaces=ns)) == 0
+
+        # Mapped rules must each have exactly one metadata block with v7+v8 frameworks before ident
+        mapped_rules = tree.xpath(
+            "//xccdf:Rule[@id!='xccdf_org.cisecurity.benchmarks_rule_6_2_1']",
+            namespaces=ns,
+        )
+        assert len(mapped_rules) == 19
+        for rule in mapped_rules:
+            metas = rule.xpath("./xccdf:metadata", namespaces=ns)
+            assert len(metas) == 1
+            assert len(metas[0].xpath(".//controls:framework", namespaces=ns)) == 2
+            child_names = [etree.QName(child).localname for child in rule]
+            assert child_names.index("metadata") < child_names.index("ident")
+
+    def test_cis_export_populates_benchmark_notice_from_style_config(
+        self, sample_benchmark, tmp_path
+    ):
+        """CIS XCCDF 1.2 export emits configured <notice id='terms-of-use' xml:lang='en'>."""
+        output_file = tmp_path / "test_cis_notice.xml"
+        exporter = ExporterFactory.create("xccdf", style="cis")
+        exporter.export(sample_benchmark, str(output_file))
+
+        tree = etree.parse(str(output_file))
+        ns = {"xccdf": "http://checklists.nist.gov/xccdf/1.2"}
+        notices = tree.xpath("/xccdf:Benchmark/xccdf:notice", namespaces=ns)
+
+        assert len(notices) == 1
+        notice = notices[0]
+        assert notice.get("id") == "terms-of-use"
+        assert notice.get("{http://www.w3.org/XML/1998/namespace}lang") == "en"
+        notice_text = (notice.text or "").strip()
+        assert sample_benchmark.title in notice_text
+        assert str(sample_benchmark.url) in notice_text
+        assert "Center for Internet Security, Inc." in notice_text
+        assert "https://workbench.cisecurity.org/terms-of-use" in notice_text
+        assert "cis-bench" in notice_text

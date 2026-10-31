@@ -290,6 +290,18 @@ class TestWorkbenchScraperBasicOperations:
         with pytest.raises(json.JSONDecodeError):
             scraper.fetch_json("https://workbench.cisecurity.org/api/bad")
 
+    def test_fetch_json_non_object_raises_value_error(self, mock_session):
+        """fetch_json rejects non-dict JSON payloads instead of silently returning lists or scalars."""
+        mock_response = Mock()
+        mock_response.json.return_value = ["unexpected", "list"]
+        mock_response.raise_for_status = Mock()
+        mock_session.get.return_value = mock_response
+
+        scraper = WorkbenchScraper(mock_session)
+
+        with pytest.raises(ValueError, match="Expected JSON object"):
+            scraper.fetch_json("https://workbench.cisecurity.org/api/list")
+
 
 class TestWorkbenchScraperBenchmarkID:
     """Test benchmark ID extraction from URLs."""
@@ -550,6 +562,28 @@ class TestWorkbenchScraperNavtree:
 
         # Verify - gets nested first, then top-level
         assert len(parsed) == 2
+
+    def test_navtree_urls_honor_configured_workbench_base_url(
+        self, mock_session, sample_benchmark_navtree, monkeypatch
+    ):
+        """fetch_navtree and parse_navtree build URLs from CIS_BENCH_WORKBENCH_URL."""
+        monkeypatch.setenv("CIS_BENCH_WORKBENCH_URL", "https://workbench-staging.cisecurity.org")
+        mock_response = Mock()
+        mock_response.json.return_value = sample_benchmark_navtree
+        mock_response.raise_for_status = Mock()
+        mock_session.get.return_value = mock_response
+
+        scraper = WorkbenchScraper(mock_session)
+        navtree = scraper.fetch_navtree("61")
+        parsed = scraper.parse_navtree(navtree)
+
+        mock_session.get.assert_called_once_with(
+            "https://workbench-staging.cisecurity.org/api/v1/benchmarks/61/navtree"
+        )
+        assert (
+            parsed[0]["url"]
+            == "https://workbench-staging.cisecurity.org/sections/3511915/recommendations/5772605"
+        )
 
 
 # ============ Test Strategy Integration ============

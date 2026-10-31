@@ -12,9 +12,9 @@ from cis_bench.models.benchmark import Benchmark
 
 
 @pytest.fixture
-def sample_benchmark(almalinux_complete_file):
-    """Load sample benchmark."""
-    return Benchmark.from_json_file(str(almalinux_complete_file))
+def sample_benchmark(synthetic_complete_file):
+    """Load sample synthetic benchmark."""
+    return Benchmark.from_json_file(str(synthetic_complete_file))
 
 
 class TestDISAStructureCompliance:
@@ -55,9 +55,9 @@ class TestDISAStructureCompliance:
             ".//*[local-name()='ident'][contains(@system, 'attack.mitre.org')]"
         )
 
-        assert len(cci_idents) > 500, f"Should have many CCIs, found {len(cci_idents)}"
-        assert len(cis_idents) > 600, f"Should have CIS Controls idents, found {len(cis_idents)}"
-        assert len(mitre_idents) > 1500, f"Should have MITRE idents, found {len(mitre_idents)}"
+        assert len(cci_idents) == 38, f"Should have 38 deterministic CCIs, found {len(cci_idents)}"
+        assert len(cis_idents) == 38, f"Should have 38 CIS Controls idents, found {len(cis_idents)}"
+        assert len(mitre_idents) == 90, f"Should have 90 MITRE idents, found {len(mitre_idents)}"
 
     def test_disa_namespace_declared_once_at_root(self, sample_benchmark, tmp_path):
         """CRITICAL: Only ONE namespace declaration at root (no child redeclarations).
@@ -163,8 +163,10 @@ class TestCISStructureCompliance:
         # CIS Controls in metadata
         cis_metadata = tree.xpath(".//*[local-name()='cis_controls']")
 
-        assert len(cis_idents) > 600, f"Should have CIS idents, found {len(cis_idents)}"
-        assert len(cis_metadata) > 300, f"Should have CIS metadata, found {len(cis_metadata)}"
+        assert len(cis_idents) == 38, f"Should have 38 CIS idents, found {len(cis_idents)}"
+        assert len(cis_metadata) == 20, (
+            f"Should have 20 CIS metadata blocks, found {len(cis_metadata)}"
+        )
 
         # Idents are ~2x metadata (each rule has v7 + v8 idents, but 1 metadata)
         # So idents should be roughly 2x metadata count
@@ -184,7 +186,7 @@ class TestCISStructureCompliance:
             ".//*[local-name()='ident'][contains(@system, 'attack.mitre.org')]"
         )
 
-        assert len(mitre_idents) > 1500, f"Should have MITRE idents, found {len(mitre_idents)}"
+        assert len(mitre_idents) == 90, f"Should have 90 MITRE idents, found {len(mitre_idents)}"
 
         # NO MITRE in enhanced metadata (old pattern removed)
         # Note: We no longer use enhanced:mitre namespace

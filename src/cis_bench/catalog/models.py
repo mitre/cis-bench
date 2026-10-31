@@ -23,6 +23,7 @@ class BenchmarkStatus(str, Enum):
     DRAFT = "Draft"
     ARCHIVED = "Archived"
     REJECTED = "Rejected"
+    FINAL_UPDATE = "Final Update"
 
 
 # ============================================================================

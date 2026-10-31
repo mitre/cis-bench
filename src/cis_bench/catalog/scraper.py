@@ -9,10 +9,13 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeRemainingColumn
+from sqlalchemy.exc import IntegrityError, OperationalError
 
 from cis_bench import __version__
 from cis_bench.catalog.database import CatalogDatabase
 from cis_bench.catalog.parser import WorkBenchCatalogParser
+from cis_bench.config import Config
+from cis_bench.exceptions import AuthenticationError
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +23,16 @@ logger = logging.getLogger(__name__)
 class CatalogScraper:
     """Scrape CIS WorkBench catalog and populate database."""
 
-    BASE_URL = "https://workbench.cisecurity.org/benchmarks"
+    _CATALOG_COMPARISON_FIELDS = (
+        "title",
+        "version",
+        "status",
+        "url",
+        "platform",
+        "platform_type",
+        "community",
+        "owner",
+    )
 
     def __init__(self, database: CatalogDatabase, session: requests.Session):
         """Initialize scraper.
@@ -31,7 +43,6 @@ class CatalogScraper:
         """
         self.db = database
         self.session = session
-        self.session.verify = False  # TODO: Add config for SSL verification
 
     def scrape_full_catalog(
         self, max_pages: int | None = None, rate_limit_seconds: float = 2.0
@@ -57,6 +68,10 @@ class CatalogScraper:
         # Detect total pages by scraping page 1 first
         first_page_html = self._fetch_page(1)
         first_page_benchmarks = WorkBenchCatalogParser.parse_catalog_page(first_page_html)
+        if not first_page_benchmarks:
+            raise ValueError(
+                "No benchmarks found on catalog page 1; HTML structure may have changed."
+            )
 
         pagination = WorkBenchCatalogParser.extract_pagination_info(first_page_html)
         total_pages = pagination.get("total_pages")
@@ -73,10 +88,7 @@ class CatalogScraper:
         logger.info(f"Will scrape {total_pages} pages (detected from pagination)")
 
         # Save first page
-        for bench in first_page_benchmarks:
-            self.db.insert_benchmark(bench)
-
-        total_benchmarks = len(first_page_benchmarks)
+        total_benchmarks = self._insert_page_benchmarks(first_page_benchmarks, page_num=1)
         failed_pages = []
 
         # Progress bar with additional info
@@ -115,11 +127,9 @@ class CatalogScraper:
 
                             if benchmarks:
                                 # Save to database
-                                for bench in benchmarks:
-                                    self.db.insert_benchmark(bench)
-
-                                total_benchmarks += len(benchmarks)
-                                logger.debug(f"Page {page_num}: {len(benchmarks)} benchmarks")
+                                inserted_count = self._insert_page_benchmarks(benchmarks, page_num)
+                                total_benchmarks += inserted_count
+                                logger.debug(f"Page {page_num}: {inserted_count} benchmarks")
                             else:
                                 logger.warning(f"Page {page_num} returned no benchmarks")
 
@@ -130,16 +140,19 @@ class CatalogScraper:
                                 description=f"Scraping catalog | {total_benchmarks} benchmarks found",
                             )
 
+                        except (OperationalError, AuthenticationError):
+                            raise
                         except Exception as e:
                             logger.error(f"Failed to scrape page {page_num}: {e}")
                             failed_pages.append(page_num)
                             progress.update(task, advance=1)
 
-                # Check failure threshold (stop if >10% of pages have failed)
-                failure_rate = len(failed_pages) / (batch_start + len(batch_pages))
+                # Check failure threshold (stop if >10% of pages have failed, including page 1)
+                pages_processed = 1 + batch_start + len(batch_pages)
+                failure_rate = len(failed_pages) / pages_processed
                 if failure_rate > 0.10:
                     logger.error(
-                        f"Failure rate too high: {len(failed_pages)}/{batch_start + len(batch_pages)} pages failed ({failure_rate:.1%})"
+                        f"Failure rate too high: {len(failed_pages)}/{pages_processed} pages failed ({failure_rate:.1%})"
                     )
                     progress.stop()
                     raise Exception(
@@ -194,21 +207,34 @@ class CatalogScraper:
 
         new_count = 0
         updated_count = 0
+        unchanged_count = 0
 
         for bench in benchmarks:
-            existing = self.db.get_benchmark(bench["benchmark_id"])
+            benchmark_id = bench.get("benchmark_id") if isinstance(bench, dict) else None
+            if not benchmark_id:
+                self._try_insert_benchmark(bench, page_num=1)
+                continue
+
+            existing = self.db.get_benchmark(benchmark_id)
 
             if not existing:
                 # New benchmark
-                self.db.insert_benchmark(bench)
-                new_count += 1
-                logger.debug(f"New: {bench['benchmark_id']} - {bench['title']}")
+                if self._try_insert_benchmark(bench, page_num=1):
+                    new_count += 1
+                    logger.debug(f"New: {benchmark_id} - {bench.get('title', '')}")
 
-            elif existing.get("last_revision_date") != bench.get("last_revision_date"):
-                # Updated (if we had revision dates - for now just update)
-                self.db.insert_benchmark(bench)
-                updated_count += 1
-                logger.debug(f"Updated: {bench['benchmark_id']}")
+            elif self._has_catalog_changes(existing, bench):
+                if self._try_insert_benchmark(bench, page_num=1):
+                    updated_count += 1
+                    logger.debug(f"Updated: {benchmark_id}")
+            else:
+                unchanged_count += 1
+
+        if benchmarks and (new_count + updated_count + unchanged_count) == 0:
+            raise ValueError(f"All {len(benchmarks)} benchmarks on page 1 failed validation")
+
+        if new_count > 0 or updated_count > 0:
+            self.db.mark_latest_versions()
 
         # Update metadata
         from datetime import UTC, datetime
@@ -220,6 +246,66 @@ class CatalogScraper:
         logger.info(f"Update complete: {new_count} new, {updated_count} updated")
 
         return stats
+
+    @classmethod
+    def _has_catalog_changes(cls, existing: dict, incoming: dict) -> bool:
+        """Return True when any scraped catalog field, collection set, or revision date changed."""
+        for field in cls._CATALOG_COMPARISON_FIELDS:
+            inc_val = incoming.get(field)
+            if isinstance(inc_val, str):
+                inc_val = inc_val.strip() or None
+            if existing.get(field) != inc_val:
+                return True
+
+        existing_collections = {
+            c.strip()
+            for c in (existing.get("collections") or [])
+            if isinstance(c, str) and c.strip()
+        }
+        incoming_collections = {
+            c.strip()
+            for c in (incoming.get("collections") or [])
+            if isinstance(c, str) and c.strip()
+        }
+        if existing_collections != incoming_collections:
+            return True
+
+        inc_rev = incoming.get("last_revision_date")
+        return inc_rev is not None and existing.get("last_revision_date") != inc_rev
+
+    def _try_insert_benchmark(self, bench: dict, page_num: int) -> bool:
+        """Insert a single parsed benchmark row, isolating row-level data errors."""
+        try:
+            self.db.insert_benchmark(bench)
+            return True
+        except (ValueError, KeyError, TypeError, IntegrityError) as exc:
+            bench_id = (
+                bench.get("benchmark_id", "<unknown>") if isinstance(bench, dict) else "<unknown>"
+            )
+            logger.warning(f"Skipping invalid benchmark {bench_id} on page {page_num}: {exc}")
+            return False
+
+    def _insert_page_benchmarks(self, benchmarks: list[dict], page_num: int) -> int:
+        """Insert all parsed benchmarks for a catalog page.
+
+        Returns the count of successfully inserted rows. Raises ValueError when a
+        non-empty page has zero valid rows so the caller records the page as failed.
+        """
+        if not benchmarks:
+            return 0
+
+        inserted_count = sum(
+            1 for bench in benchmarks if self._try_insert_benchmark(bench, page_num)
+        )
+        if inserted_count == 0:
+            raise ValueError(
+                f"All {len(benchmarks)} benchmarks on page {page_num} failed validation"
+            )
+        return inserted_count
+
+    def _benchmarks_url(self) -> str:
+        """Resolve configured CIS WorkBench catalog listing URL."""
+        return f"{Config.get_workbench_base_url()}/benchmarks"
 
     def _fetch_page(self, page_num: int) -> str:
         """Fetch single catalog page.
@@ -233,7 +319,7 @@ class CatalogScraper:
         Raises:
             requests.RequestException: If request fails
         """
-        url = f"{self.BASE_URL}?page={page_num}"
+        url = f"{self._benchmarks_url()}?page={page_num}"
 
         logger.debug(f"Fetching page {page_num}: {url}")
 
@@ -259,9 +345,11 @@ class CatalogScraper:
         Raises:
             Exception: If fetch or parse fails after all retries
         """
-        last_error = None
+        if max_retries < 1:
+            raise ValueError("max_retries must be at least 1")
 
-        for attempt in range(max_retries):
+        attempt = 0
+        while True:
             try:
                 html = self._fetch_page(page_num)
                 benchmarks = WorkBenchCatalogParser.parse_catalog_page(html)
@@ -271,18 +359,18 @@ class CatalogScraper:
 
                 return benchmarks
 
+            except AuthenticationError:
+                raise
             except Exception as e:
-                last_error = e
-                if attempt < max_retries - 1:
-                    wait_time = (attempt + 1) * 2  # Exponential backoff: 2s, 4s, 6s
-                    logger.warning(
-                        f"Page {page_num} failed (attempt {attempt + 1}/{max_retries}), retrying in {wait_time}s: {e}"
-                    )
-                    time.sleep(wait_time)
-                else:
+                attempt += 1
+                if attempt >= max_retries:
                     logger.error(f"Page {page_num} failed after {max_retries} attempts: {e}")
-
-        raise last_error
+                    raise
+                wait_time = attempt * 2  # Exponential backoff: 2s, 4s, 6s
+                logger.warning(
+                    f"Page {page_num} failed (attempt {attempt}/{max_retries}), retrying in {wait_time}s: {e}"
+                )
+                time.sleep(wait_time)
 
     def test_connection(self) -> bool:
         """Test if we can connect and are authenticated.
@@ -291,22 +379,23 @@ class CatalogScraper:
             True if connection successful and authenticated
 
         Raises:
-            Exception with helpful message if connection fails
+            AuthenticationError: If response is a login page or redirect
+            ValueError: If page 1 parses zero benchmarks
+            Exception: If HTTP connection fails
         """
         try:
             html = self._fetch_page(1)
-
-            # Check if we got a real page (not login redirect)
-            if "login" in html.lower() and len(html) < 5000:
-                raise Exception(
-                    "Not authenticated. Page redirected to login.\n"
-                    "Please log into https://workbench.cisecurity.org in your browser first."
-                )
-
             benchmarks = WorkBenchCatalogParser.parse_catalog_page(html)
 
+            # Catch minimal login redirect pages without full WorkBench form markup
+            if not benchmarks and "login" in html.lower() and len(html) < 5000:
+                raise AuthenticationError(
+                    "Not authenticated. Page redirected to login.\n"
+                    f"Please log into {Config.get_workbench_base_url()} in your browser first."
+                )
+
             if len(benchmarks) == 0:
-                raise Exception(
+                raise ValueError(
                     "Connected but no benchmarks found. HTML structure may have changed."
                 )
 

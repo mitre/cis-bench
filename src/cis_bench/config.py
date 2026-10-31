@@ -8,6 +8,7 @@ Loads configuration from .env file if present.
 
 import os
 from pathlib import Path
+from urllib.parse import urlparse
 
 # Load .env file if it exists (production/dev use)
 # Tests don't need this - they set env vars directly
@@ -25,6 +26,51 @@ except ImportError:
 
 class Config:
     """Application configuration (environment-aware)."""
+
+    CIS_ROOT_DOMAIN = "cisecurity.org"
+    DEFAULT_WORKBENCH_URL = f"https://workbench.{CIS_ROOT_DOMAIN}"
+
+    @staticmethod
+    def is_cis_domain(host: str) -> bool:
+        """Return True when host belongs to cisecurity.org or one of its subdomains."""
+        normalized = host.lstrip(".").lower()
+        return normalized == Config.CIS_ROOT_DOMAIN or normalized.endswith(
+            f".{Config.CIS_ROOT_DOMAIN}"
+        )
+
+    @staticmethod
+    def get_workbench_base_url() -> str:
+        """Get validated CIS WorkBench base URL.
+
+        Reads CIS_BENCH_WORKBENCH_URL when set, defaulting to
+        https://workbench.cisecurity.org. Only https:// origins on
+        cisecurity.org or *.cisecurity.org without path, query, fragment,
+        or embedded credentials are accepted.
+        """
+        raw = os.getenv("CIS_BENCH_WORKBENCH_URL", "").strip()
+        if not raw:
+            return Config.DEFAULT_WORKBENCH_URL
+
+        candidate = raw.rstrip("/")
+        parsed = urlparse(candidate)
+        hostname = parsed.hostname
+
+        if (
+            parsed.scheme.lower() != "https"
+            or not hostname
+            or not Config.is_cis_domain(hostname)
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path != ""
+            or bool(parsed.params)
+            or bool(parsed.query)
+            or bool(parsed.fragment)
+        ):
+            raise ValueError(
+                f"Invalid CIS_BENCH_WORKBENCH_URL '{raw}': must be an https://*.cisecurity.org origin without path, query, fragment, or credentials"
+            )
+
+        return f"https://{parsed.netloc.lower()}"
 
     @staticmethod
     def get_environment() -> str:
@@ -167,3 +213,8 @@ def get_catalog_db_path() -> Path:
 def is_test_mode() -> bool:
     """Check if running in test mode."""
     return Config.is_test_environment()
+
+
+def get_workbench_base_url() -> str:
+    """Get validated CIS WorkBench base URL (environment-aware)."""
+    return Config.get_workbench_base_url()

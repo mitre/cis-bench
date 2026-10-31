@@ -159,7 +159,7 @@ cis-bench search [QUERY] [OPTIONS]
 
 - `--platform` - Filter by specific platform (e.g., ubuntu, aws, oracle-database)
 - `--platform-type` - Filter by category (cloud, os, database, container, application)
-- `--status` - Filter by status (Published, Archived, Draft) - default: Published
+- `--status` - Filter by status (`Published`, `Accepted`, `Draft`, `Archived`, `Rejected`, `Final Update`, or `all`) - default: `Published`
 - `--latest` - Show only latest version of each benchmark
 - `--limit` - Maximum results to show (default: 1000)
 
@@ -180,6 +180,9 @@ cis-bench search --platform-type database --latest
 # Filter by specific platform
 cis-bench search --platform aws
 cis-bench search oracle --platform-type cloud
+
+# Search across all statuses (including Draft, Archived, Final Update)
+cis-bench search "ubuntu" --status all
 
 # Scripting with JSON
 cis-bench search "ubuntu" --latest --output-format json | jq
@@ -635,6 +638,7 @@ xargs -I {} cis-bench download {}
 
 **Session/Auth:**
 
+- `CIS_BENCH_WORKBENCH_URL` - CIS WorkBench base URL (`https://*.cisecurity.org`, default: `https://workbench.cisecurity.org`)
 - `CIS_BENCH_VERIFY_SSL` - SSL verification (true/false, default: false)
 
 **Display:**

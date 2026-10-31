@@ -111,10 +111,19 @@ class XCCDFExporter(BaseExporter):
             "recommendations": benchmark.recommendations,  # Needed for profile generation
         }
 
+        # Reset per-export metadata state so repeated exports and rules without
+        # metadata stay aligned 1-to-1 by Rule ID
+        self.engine._metadata_for_post_processing = []
+        self._rule_metadata_by_id: dict[str, list[object]] = {}
+
         # Build all Groups (each contains one Rule)
         groups = []
         for rec in benchmark.recommendations:
+            before_count = len(self.engine._metadata_for_post_processing)
             rule = self.engine.map_rule(rec, context)
+            new_metadata = self.engine._metadata_for_post_processing[before_count:]
+            if new_metadata and getattr(rule, "id", None):
+                self._rule_metadata_by_id[str(rule.id)] = list(new_metadata)
             group = self.engine.map_group(rec, rule, context)
             groups.append(group)
 
@@ -197,7 +206,7 @@ class XCCDFExporter(BaseExporter):
                 logger.warning(f"Unknown post-processing handler: {handler}")
 
         # Build namespace map for lxml (convert "default" key to None)
-        nsmap_for_lxml = {}
+        nsmap_for_lxml: dict[str | None, str] = {}
         for key, value in namespaces_config.items():
             if key == "default":
                 nsmap_for_lxml[None] = value
@@ -232,9 +241,10 @@ class XCCDFExporter(BaseExporter):
         """
         from lxml import etree
 
+        metadata_by_rule_id = getattr(self, "_rule_metadata_by_id", None)
         metadata_elements = getattr(self.engine, "_metadata_for_post_processing", [])
 
-        if not metadata_elements:
+        if not metadata_elements and not metadata_by_rule_id:
             logger.debug("No metadata for post-processing")
             return xml_output
 
@@ -242,24 +252,47 @@ class XCCDFExporter(BaseExporter):
 
         root = etree.fromstring(xml_output.encode("utf-8"))
         rules = root.xpath(".//*[local-name()='Rule']")
+        xccdf_ns = root.nsmap.get(None) or root.nsmap.get("default")
+        post_metadata_tags = {
+            "rationale",
+            "platform",
+            "requires",
+            "conflicts",
+            "ident",
+            "impact-metric",
+            "profile-note",
+            "fixtext",
+            "fix",
+            "check",
+            "complex-check",
+            "signature",
+        }
 
-        # Inject metadata into corresponding rules
         for i, rule in enumerate(rules):
-            if i >= len(metadata_elements):
+            rule_id = rule.get("id")
+            if metadata_by_rule_id is not None:
+                rule_metas = metadata_by_rule_id.get(rule_id or "", [])
+            elif i < len(metadata_elements):
+                rule_metas = [metadata_elements[i]]
+            else:
                 break
 
-            metadata_elem = metadata_elements[i]
+            if not rule_metas:
+                continue
 
-            # Wrap in xccdf:metadata element
-            xccdf_ns = root.nsmap.get(None) or root.nsmap.get("default")
-            if xccdf_ns:
-                metadata_wrapper = etree.SubElement(rule, f"{{{xccdf_ns}}}metadata")
-            else:
-                metadata_wrapper = etree.SubElement(rule, "metadata")
+            insert_idx = len(rule)
+            for child_idx, child in enumerate(rule):
+                if etree.QName(child).localname in post_metadata_tags:
+                    insert_idx = child_idx
+                    break
 
-            metadata_wrapper.append(metadata_elem)
+            for offset, metadata_elem in enumerate(rule_metas):
+                metadata_tag = f"{{{xccdf_ns}}}metadata" if xccdf_ns else "metadata"
+                metadata_wrapper = etree.Element(metadata_tag)
+                metadata_wrapper.append(metadata_elem)
+                rule.insert(insert_idx + offset, metadata_wrapper)
 
-        return etree.tostring(root, encoding="unicode", pretty_print=True)
+        return str(etree.tostring(root, encoding="unicode", pretty_print=True))
 
     def _add_cis_controls_ident_uris(
         self, xml_str: str, xccdf_ns: str, cc7_ns: str, cc8_ns: str
@@ -293,7 +326,7 @@ class XCCDFExporter(BaseExporter):
             safeguards = cis_controls.xpath(".//controls:safeguard", namespaces=ns_controls)
 
             # Build control URI mapping from safeguard URNs
-            control_uris_by_version = {}
+            control_uris_by_version: dict[str, list[str]] = {}
             for safeguard in safeguards:
                 urn = safeguard.get("urn")
                 if not urn:
@@ -338,7 +371,7 @@ class XCCDFExporter(BaseExporter):
                     added_count += 1
 
         logger.info(f"Added cc7/cc8 controlURI attributes to {added_count} ident elements")
-        return etree.tostring(root, encoding="unicode", pretty_print=True)
+        return str(etree.tostring(root, encoding="unicode", pretty_print=True))
 
     def format_name(self) -> str:
         """Return format name with style."""

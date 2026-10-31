@@ -15,7 +15,10 @@ def temp_db():
         db_path = Path(tmpdir) / "test_catalog.db"
         db = CatalogDatabase(db_path)
         db.initialize_schema()
-        yield db
+        try:
+            yield db
+        finally:
+            db.engine.dispose()
 
 
 @pytest.fixture
@@ -44,6 +47,31 @@ class TestDatabaseInitialization:
     def test_database_creation(self, temp_db):
         """Test database file is created."""
         assert temp_db.db_path.exists()
+
+    def test_database_url_and_strict_permissions(self, tmp_path):
+        """CatalogDatabase handles URL-reserved path characters and enforces 0o700/0o600 modes."""
+        nested_dir = tmp_path / "catalog#dir%20"
+        db_path = nested_dir / "catalog?v1#local.db"
+
+        db = CatalogDatabase(db_path)
+        assert not db.db_path.exists()
+        assert db.engine.url.database == str(db_path)
+        assert nested_dir.stat().st_mode & 0o777 == 0o700
+
+        db.initialize_schema()
+        assert db_path.exists()
+        assert db_path.stat().st_mode & 0o777 == 0o600
+
+        # Tightens pre-existing looser directory and database file modes on open
+        nested_dir.chmod(0o755)
+        db_path.chmod(0o644)
+        reopened = CatalogDatabase(db_path)
+        try:
+            assert reopened.db_path.parent.stat().st_mode & 0o777 == 0o700
+            assert reopened.db_path.stat().st_mode & 0o777 == 0o600
+        finally:
+            reopened.engine.dispose()
+            db.engine.dispose()
 
     def test_schema_tables_created(self, temp_db):
         """Test all tables are created."""
@@ -88,13 +116,66 @@ class TestDatabaseInitialization:
         assert len(tables) == 1
         conn.close()
 
-    def test_default_statuses_inserted(self, temp_db):
-        """Test default benchmark statuses are inserted."""
-        stats = temp_db.get_catalog_stats()
+    _EXPECTED_DEFAULT_STATUSES = [
+        ("Published", True, 1),
+        ("Accepted", True, 2),
+        ("Draft", False, 3),
+        ("Archived", False, 4),
+        ("Rejected", False, 5),
+        ("Final Update", False, 6),
+    ]
 
-        # Should have at least the 5 default statuses
-        # (Published, Accepted, Draft, Archived, Rejected)
-        assert stats is not None
+    @staticmethod
+    def _fetch_ordered_statuses(db: CatalogDatabase) -> list[tuple[str, bool, int]]:
+        from sqlmodel import Session, select
+
+        from cis_bench.catalog.models import BenchmarkStatusModel
+
+        with Session(db.engine) as session:
+            rows = session.exec(
+                select(BenchmarkStatusModel).order_by(BenchmarkStatusModel.sort_order)
+            ).all()
+        return [(row.name, row.is_active, row.sort_order) for row in rows]
+
+    def test_default_statuses_inserted(self, temp_db):
+        """Test default benchmark statuses are inserted with expected active flags and order."""
+        from cis_bench.catalog.models import BenchmarkStatus
+
+        assert BenchmarkStatus.FINAL_UPDATE.value == "Final Update"
+        assert self._fetch_ordered_statuses(temp_db) == self._EXPECTED_DEFAULT_STATUSES
+
+    def test_initialize_schema_backfills_missing_default_statuses(self, tmp_path):
+        """Test initialize_schema backfills new default statuses into an existing 5-status DB."""
+        from sqlalchemy import text
+        from sqlmodel import Session, select
+
+        from cis_bench.catalog.models import BenchmarkStatusModel
+
+        db = CatalogDatabase(tmp_path / "legacy_catalog.db")
+        db.initialize_schema()
+
+        with Session(db.engine) as session:
+            original_published_id = (
+                session.exec(
+                    select(BenchmarkStatusModel).where(BenchmarkStatusModel.name == "Published")
+                )
+                .one()
+                .status_id
+            )
+            session.execute(
+                text("DELETE FROM benchmark_statuses WHERE name = :name"),
+                {"name": "Final Update"},
+            )
+            session.commit()
+
+        db.initialize_schema()
+
+        assert self._fetch_ordered_statuses(db) == self._EXPECTED_DEFAULT_STATUSES
+        with Session(db.engine) as session:
+            published_after = session.exec(
+                select(BenchmarkStatusModel).where(BenchmarkStatusModel.name == "Published")
+            ).one()
+            assert published_after.status_id == original_published_id
 
 
 class TestBenchmarkOperations:
@@ -162,6 +243,73 @@ class TestBenchmarkOperations:
         assert bench is not None
         assert bench["platform"] is None
         assert bench["community"] is None
+
+    def test_insert_benchmark_persists_platform_type_and_rejects_blank_required_fields(
+        self, temp_db
+    ):
+        """insert_benchmark persists platform_type/is_vnext, deduplicates collections, and rejects invalid inputs."""
+        import sqlite3
+
+        temp_db.insert_benchmark(
+            {
+                "benchmark_id": "  7001  ",
+                "title": "  CIS Amazon Web Services Foundations Benchmark  ",
+                "url": "  https://workbench.cisecurity.org/benchmarks/7001  ",
+                "status": "Published",
+                "platform": "aws",
+                "platform_type": "cloud",
+                "is_vnext": True,
+                "collections": ["Cloud", " ", "Cloud", "", "CIS Controls"],
+            }
+        )
+
+        bench = temp_db.get_benchmark("7001")
+        assert bench is not None
+        assert bench["title"] == "CIS Amazon Web Services Foundations Benchmark"
+        assert bench["url"] == "https://workbench.cisecurity.org/benchmarks/7001"
+        assert bench["platform_type"] == "cloud"
+        assert bench["is_vnext"] is True
+        assert [r["benchmark_id"] for r in temp_db.search("amazon", platform_type="cloud")] == [
+            "7001"
+        ]
+        assert [r["benchmark_id"] for r in temp_db.search("", platform_type="cloud")] == ["7001"]
+
+        with sqlite3.connect(temp_db.db_path) as conn:
+            linked = [
+                row[0]
+                for row in conn.execute(
+                    """
+                    SELECT c.name
+                    FROM benchmark_collections bc
+                    JOIN collections c ON bc.collection_id = c.collection_id
+                    WHERE bc.benchmark_id = '7001'
+                    ORDER BY c.collection_id
+                    """
+                ).fetchall()
+            ]
+        assert linked == ["Cloud", "CIS Controls"]
+
+        with pytest.raises(TypeError, match="dictionary"):
+            temp_db.insert_benchmark(["not", "a", "dict"])
+
+        for bad_field, bad_value in [
+            ("benchmark_id", ""),
+            ("benchmark_id", "   "),
+            ("benchmark_id", None),
+            ("title", ""),
+            ("title", "   "),
+            ("url", ""),
+            ("url", "   "),
+        ]:
+            invalid = {
+                "benchmark_id": "7002",
+                "title": "Valid Title",
+                "url": "https://workbench.cisecurity.org/benchmarks/7002",
+                "status": "Published",
+                bad_field: bad_value,
+            }
+            with pytest.raises(ValueError, match=bad_field):
+                temp_db.insert_benchmark(invalid)
 
 
 class TestFTS5Search:
@@ -284,6 +432,97 @@ class TestFTS5Search:
         results = populated_db.search("nonexistent")
         assert len(results) == 0
 
+    def test_search_dotted_version_and_hyphenated_queries(self, populated_db):
+        """Test dotted versions and hyphenated terms match cleanly against SQLite FTS5."""
+        ubuntu_results = populated_db.search("ubuntu 20.04")
+        assert [row["benchmark_id"] for row in ubuntu_results] == ["1"]
+
+        rhel_results = populated_db.search("red-hat")
+        assert [row["benchmark_id"] for row in rhel_results] == ["2"]
+
+    def test_search_fts5_boolean_keywords_treated_as_literal_prefixes(self, populated_db):
+        """Test uppercase FTS5 operators execute as literal prefix searches without syntax errors."""
+        populated_db.insert_benchmark(
+            {
+                "benchmark_id": "6",
+                "title": "CIS Oracle Database 19c Benchmark",
+                "url": "https://workbench.cisecurity.org/benchmarks/6",
+                "status": "Published",
+                "platform": "Database",
+                "description": "Ubuntu and Oracle database hardening",
+            }
+        )
+
+        oracle_results = populated_db.search("OR")
+        assert [row["benchmark_id"] for row in oracle_results] == ["6"]
+
+        combined_results = populated_db.search("ubuntu AND")
+        assert [row["benchmark_id"] for row in combined_results] == ["6"]
+
+        assert populated_db.search("NOT") == []
+        assert populated_db.search("NEAR") == []
+
+    def test_search_punctuation_only_returns_empty_without_listing_all(self, populated_db):
+        """Test punctuation-only queries return empty list while whitespace lists all published."""
+        assert populated_db.search("...") == []
+        assert populated_db.search("!!!") == []
+        assert populated_db.search("***") == []
+        assert populated_db.search("___") == []
+
+        whitespace_results = populated_db.search("   ")
+        assert sorted(row["benchmark_id"] for row in whitespace_results) == ["1", "2", "3"]
+
+    def test_search_status_all_or_none_returns_all_statuses_for_fts_and_empty_query(
+        self, populated_db
+    ):
+        """Empty-query and FTS5 search accept status=None and status='all' across all benchmark statuses."""
+        from cis_bench.catalog.search import CatalogSearch
+
+        populated_db.insert_benchmark(
+            {
+                "benchmark_id": "7",
+                "title": "CIS Debian Linux 12 Benchmark",
+                "url": "https://workbench.cisecurity.org/benchmarks/7",
+                "status": "Draft",
+                "platform": "Operating System",
+                "platform_type": "os",
+                "description": "Debian hardening benchmark",
+            }
+        )
+        populated_db.insert_benchmark(
+            {
+                "benchmark_id": "8",
+                "title": "CIS CentOS Linux 7 Benchmark",
+                "url": "https://workbench.cisecurity.org/benchmarks/8",
+                "status": "Final Update",
+                "platform": "Operating System",
+                "platform_type": "os",
+                "description": "CentOS legacy benchmark",
+            }
+        )
+
+        expected_all_ids = ["1", "2", "3", "4", "7", "8"]
+
+        for status_arg in (None, "all", "ALL", " all "):
+            empty_ids = sorted(
+                row["benchmark_id"] for row in populated_db.search("", status=status_arg)
+            )
+            fts_ids = sorted(
+                row["benchmark_id"] for row in populated_db.search("benchmark", status=status_arg)
+            )
+            assert empty_ids == expected_all_ids
+            assert fts_ids == expected_all_ids
+
+        catalog_search = CatalogSearch(populated_db)
+        assert (
+            sorted(row["benchmark_id"] for row in catalog_search.search("", status="all"))
+            == expected_all_ids
+        )
+        assert sorted(
+            row["benchmark_id"]
+            for row in catalog_search.search("linux", status=None, platform_type="os")
+        ) == ["7", "8"]
+
 
 class TestLookupTables:
     """Test lookup table operations."""
@@ -337,13 +576,231 @@ class TestLookupTables:
             assert isinstance(status_id, int)
             assert status_id > 0
 
-    def test_get_invalid_status_raises(self, temp_db):
-        """Test getting invalid status raises error."""
+    def test_get_or_create_status_registers_unseen_status_idempotently(self, temp_db):
+        """Test unseen non-empty statuses are normalized, created inactive, and not duplicated."""
+        from sqlmodel import Session, select
+
+        from cis_bench.catalog.models import BenchmarkStatusModel
+
+        with Session(temp_db.engine) as session:
+            created = temp_db.get_or_create_status("  Community Review  ", session)
+            assert created.name == "Community Review"
+            assert created.is_active is False
+            assert created.sort_order == 7
+            assert created.status_id is not None
+            created_id = created.status_id
+            session.commit()
+
+        with Session(temp_db.engine) as session:
+            looked_up_id = temp_db.get_status_id("Community Review", session)
+            matching_rows = session.exec(
+                select(BenchmarkStatusModel).where(BenchmarkStatusModel.name == "Community Review")
+            ).all()
+            assert looked_up_id == created_id
+            assert len(matching_rows) == 1
+
+    def test_get_empty_status_raises(self, temp_db):
+        """Test empty or whitespace-only status names raise ValueError."""
         from sqlmodel import Session
 
         with Session(temp_db.engine) as session:
-            with pytest.raises(ValueError, match="Unknown status"):
-                temp_db.get_status_id("InvalidStatus", session)
+            with pytest.raises(ValueError, match="Status name cannot be empty"):
+                temp_db.get_or_create_status("", session)
+            with pytest.raises(ValueError, match="Status name cannot be empty"):
+                temp_db.get_status_id("   ", session)
+
+    def test_insert_and_search_benchmarks_with_final_update_and_unseen_status(self, temp_db):
+        """Test inserting and searching benchmarks with Final Update and unseen WorkBench statuses."""
+        temp_db.insert_benchmark(
+            {
+                "benchmark_id": "9001",
+                "title": "CIS CentOS Linux 7 Benchmark",
+                "url": "https://workbench.cisecurity.org/benchmarks/9001",
+                "status": "Final Update",
+                "platform": "Operating System",
+            }
+        )
+        temp_db.insert_benchmark(
+            {
+                "benchmark_id": "9002",
+                "title": "CIS Legacy Appliance Benchmark",
+                "url": "https://workbench.cisecurity.org/benchmarks/9002",
+                "status": "Sunset",
+                "platform": "Operating System",
+            }
+        )
+
+        final_update_bench = temp_db.get_benchmark("9001")
+        assert final_update_bench is not None
+        assert final_update_bench["status"] == "Final Update"
+
+        sunset_bench = temp_db.get_benchmark("9002")
+        assert sunset_bench is not None
+        assert sunset_bench["status"] == "Sunset"
+
+        final_results = temp_db.search("CentOS", status="Final Update")
+        assert [row["benchmark_id"] for row in final_results] == ["9001"]
+
+        sunset_results = temp_db.search("Appliance", status="Sunset")
+        assert [row["benchmark_id"] for row in sunset_results] == ["9002"]
+
+    def test_get_or_create_lookup_helpers_recover_via_savepoint_preserving_outer_work(
+        self, temp_db
+    ):
+        """All five get_or_create_* methods recover from concurrent IntegrityError via SAVEPOINT."""
+        from sqlalchemy import event
+        from sqlmodel import Session
+
+        from cis_bench.catalog.models import (
+            BenchmarkStatusModel,
+            Collection,
+            Community,
+            Owner,
+            Platform,
+            ScrapeMetadata,
+        )
+
+        race_cases = [
+            (
+                "platform",
+                lambda s: temp_db.get_or_create_platform("Container Runtime", s),
+                lambda: Platform(name="Container Runtime"),
+                lambda row: (row.name, row.platform_id),
+            ),
+            (
+                "community",
+                lambda s: temp_db.get_or_create_community("CIS Kubernetes Community", s),
+                lambda: Community(name="CIS Kubernetes Community"),
+                lambda row: (row.name, row.community_id),
+            ),
+            (
+                "owner",
+                lambda s: temp_db.get_or_create_owner("concurrent.author", s),
+                lambda: Owner(username="concurrent.author"),
+                lambda row: (row.username, row.owner_id),
+            ),
+            (
+                "collection",
+                lambda s: temp_db.get_or_create_collection("Zero Trust", s),
+                lambda: Collection(name="Zero Trust"),
+                lambda row: (row.name, row.collection_id),
+            ),
+            (
+                "status",
+                lambda s: temp_db.get_or_create_status("External Review", s),
+                lambda: BenchmarkStatusModel(
+                    name="External Review", is_active=False, sort_order=99
+                ),
+                lambda row: (row.name, row.status_id),
+            ),
+        ]
+
+        competing_db = CatalogDatabase(temp_db.db_path)
+
+        for label, call_helper, build_competitor, extract_identity in race_cases:
+            with Session(temp_db.engine, autoflush=False) as session:
+                outer_record = ScrapeMetadata(key=f"pending-{label}", value=f"preserved-{label}")
+                session.add(outer_record)
+
+                seen_initial_select: list[bool] = []
+                injected_winner_id: list[int] = []
+
+                def _inject_after_select_before_write(
+                    _conn,
+                    _cursor,
+                    statement,
+                    _parameters,
+                    _context,
+                    _executemany,
+                    _build=build_competitor,
+                    _extract=extract_identity,
+                    _seen=seen_initial_select,
+                    _injected=injected_winner_id,
+                ):
+                    upper_stmt = statement.lstrip().upper()
+                    if upper_stmt.startswith("PRAGMA"):
+                        return
+                    if upper_stmt.startswith("SELECT"):
+                        _seen.append(True)
+                        return
+                    if not _seen or _injected:
+                        return
+                    with Session(competing_db.engine) as other_session:
+                        winner = _build()
+                        other_session.add(winner)
+                        other_session.commit()
+                        other_session.refresh(winner)
+                        _, winner_pk = _extract(winner)
+                        assert winner_pk is not None
+                        _injected.append(winner_pk)
+
+                event.listen(
+                    temp_db.engine, "before_cursor_execute", _inject_after_select_before_write
+                )
+                try:
+                    recovered = call_helper(session)
+                finally:
+                    event.remove(
+                        temp_db.engine,
+                        "before_cursor_execute",
+                        _inject_after_select_before_write,
+                    )
+
+                assert len(injected_winner_id) == 1
+                _, recovered_pk = extract_identity(recovered)
+                assert recovered_pk == injected_winner_id[0]
+
+                session.commit()
+
+            assert temp_db.get_metadata(f"pending-{label}") == f"preserved-{label}"
+        competing_db.engine.dispose()
+
+    def test_savepoint_lookup_creation_rolls_back_with_outer_session(self, temp_db):
+        """SAVEPOINT release inside _get_or_create must not auto-commit lookup rows before outer commit."""
+        from sqlmodel import Session, select
+
+        from cis_bench.catalog.models import Platform
+
+        observer_db = CatalogDatabase(temp_db.db_path)
+        try:
+            with Session(temp_db.engine) as session:
+                created = temp_db.get_or_create_platform("RollbackOnlyPlatform", session)
+                assert created.platform_id is not None
+
+                with Session(observer_db.engine) as observer_session:
+                    visible_before_commit = observer_session.exec(
+                        select(Platform).where(Platform.name == "RollbackOnlyPlatform")
+                    ).first()
+                    assert visible_before_commit is None
+
+                session.rollback()
+
+            with Session(observer_db.engine) as observer_session:
+                persisted_after_rollback = observer_session.exec(
+                    select(Platform).where(Platform.name == "RollbackOnlyPlatform")
+                ).first()
+                assert persisted_after_rollback is None
+        finally:
+            observer_db.engine.dispose()
+
+    def test_catalog_database_init_tolerates_eperm_on_unowned_paths(self, temp_db, monkeypatch):
+        """Opening a readable catalog database owned by another user tolerates chmod PermissionError."""
+        import errno
+
+        original_chmod = Path.chmod
+
+        def _deny_chmod(path_obj: Path, mode: int, *, follow_symlinks: bool = True) -> None:
+            if path_obj in {temp_db.db_path, temp_db.db_path.parent}:
+                raise PermissionError(errno.EPERM, "Operation not permitted", str(path_obj))
+            original_chmod(path_obj, mode, follow_symlinks=follow_symlinks)
+
+        monkeypatch.setattr(Path, "chmod", _deny_chmod)
+
+        shared_db = CatalogDatabase(temp_db.db_path)
+        try:
+            assert shared_db.get_catalog_stats()["total_benchmarks"] == 0
+        finally:
+            shared_db.engine.dispose()
 
 
 class TestDownloadedBenchmarks:
@@ -402,6 +859,37 @@ class TestDownloadedBenchmarks:
         assert len(updates) == 1
         assert updates[0]["benchmark_id"] == "23598"
 
+    def test_check_updates_available_ignores_null_catalog_revision_dates(self, temp_db):
+        """check_updates_available skips benchmarks whose catalog last_revision_date is NULL."""
+        cases = [
+            ("201", None, None),
+            ("202", None, "2024-10-01"),
+            ("203", "2024-11-01", None),
+            ("204", "2024-11-15", "2024-11-01"),
+            ("205", "2024-11-01", "2024-11-01"),
+        ]
+        for bid, last_rev, downloaded_mod in cases:
+            temp_db.insert_benchmark(
+                {
+                    "benchmark_id": bid,
+                    "title": f"Benchmark {bid}",
+                    "url": f"https://workbench.cisecurity.org/benchmarks/{bid}",
+                    "status": "Published",
+                    "last_revision_date": last_rev,
+                }
+            )
+            temp_db.save_downloaded(
+                bid,
+                '{"recommendations": []}',
+                f"hash-{bid}",
+                0,
+                workbench_last_modified=downloaded_mod,
+            )
+
+        updates = temp_db.check_updates_available()
+
+        assert [row["benchmark_id"] for row in updates] == ["204", "203"]
+
 
 class TestStatistics:
     """Test catalog statistics and reporting."""
@@ -416,6 +904,55 @@ class TestStatistics:
         assert stats["published_benchmarks"] == 1
         assert stats["platforms"] >= 1
         assert stats["communities"] >= 1
+
+    def test_get_catalog_stats_counts_in_sql_without_loading_downloaded_blobs(self, temp_db):
+        """get_catalog_stats returns exact aggregate counts via SQL COUNT without projecting content_json."""
+        from sqlalchemy import event
+
+        records = [
+            ("401", "Published", "Operating System", "CIS Linux"),
+            ("402", "Published", "Cloud", "CIS Cloud"),
+            ("403", "Archived", "Operating System", "CIS Linux"),
+        ]
+        for bid, status, platform, community in records:
+            temp_db.insert_benchmark(
+                {
+                    "benchmark_id": bid,
+                    "title": f"Benchmark {bid}",
+                    "url": f"https://workbench.cisecurity.org/benchmarks/{bid}",
+                    "status": status,
+                    "platform": platform,
+                    "community": community,
+                }
+            )
+
+        temp_db.save_downloaded("401", '{"blob": "alpha"}', "hash-401", 10)
+        temp_db.save_downloaded("403", '{"blob": "beta"}', "hash-403", 20)
+
+        statements: list[str] = []
+
+        def _capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+            statements.append(statement)
+
+        event.listen(temp_db.engine, "before_cursor_execute", _capture_sql)
+        try:
+            stats = temp_db.get_catalog_stats()
+        finally:
+            event.remove(temp_db.engine, "before_cursor_execute", _capture_sql)
+
+        assert stats == {
+            "total_benchmarks": 3,
+            "published_benchmarks": 2,
+            "downloaded_benchmarks": 2,
+            "platforms": 2,
+            "communities": 2,
+        }
+        select_statements = [
+            stmt for stmt in statements if stmt.lstrip().upper().startswith("SELECT")
+        ]
+        assert len(select_statements) == 5
+        assert all("COUNT(" in stmt.upper() for stmt in select_statements)
+        assert all("content_json" not in stmt.lower() for stmt in select_statements)
 
     def test_list_platforms(self, temp_db):
         """Test listing platforms with counts."""
@@ -437,6 +974,45 @@ class TestStatistics:
         os_platform = next(p for p in platforms if p["name"] == "Operating System")
         assert os_platform["count"] == 2
 
+    def test_list_platforms_filters_by_active_status_flag(self, temp_db):
+        """list_platforms counts benchmarks across statuses with is_active=1 and excludes inactive statuses."""
+        from sqlmodel import Session
+
+        from cis_bench.catalog.models import BenchmarkStatusModel
+
+        with Session(temp_db.engine) as session:
+            session.add(
+                BenchmarkStatusModel(
+                    name="Community Accepted",
+                    is_active=True,
+                    sort_order=10,
+                )
+            )
+            session.commit()
+
+        records = [
+            ("301", "Operating System", "Published"),
+            ("302", "Operating System", "Accepted"),
+            ("303", "Operating System", "Archived"),
+            ("304", "Container", "Community Accepted"),
+            ("305", "Legacy Appliance", "Final Update"),
+        ]
+        for bid, platform, status in records:
+            temp_db.insert_benchmark(
+                {
+                    "benchmark_id": bid,
+                    "title": f"Benchmark {bid}",
+                    "url": f"https://workbench.cisecurity.org/benchmarks/{bid}",
+                    "status": status,
+                    "platform": platform,
+                }
+            )
+
+        assert temp_db.list_platforms() == [
+            {"name": "Operating System", "count": 2},
+            {"name": "Container", "count": 1},
+        ]
+
     def test_list_communities(self, temp_db):
         """Test listing communities."""
         temp_db.insert_benchmark(
@@ -453,6 +1029,94 @@ class TestStatistics:
 
         assert len(communities) >= 1
         assert any(c["name"] == "CIS Ubuntu Benchmarks" for c in communities)
+
+    def test_mark_latest_versions_does_not_cross_match_versionless_titles(self, temp_db):
+        """mark_latest_versions groups by normalized base title and status without LIKE '%' cross-matching."""
+        fixtures = [
+            {
+                "benchmark_id": "101",
+                "title": "CIS RHEL 9 Benchmark",
+                "version": "v1.0.0",
+                "url": "https://workbench.cisecurity.org/benchmarks/101",
+                "status": "Published",
+                "published_date": "2024-01-01",
+            },
+            {
+                "benchmark_id": "102",
+                "title": "CIS RHEL 9 Benchmark",
+                "version": "v2.0.0",
+                "url": "https://workbench.cisecurity.org/benchmarks/102",
+                "status": "Published",
+                "published_date": "2024-07-01",
+            },
+            {
+                "benchmark_id": "103",
+                "title": "CIS AWS Foundations Benchmark",
+                "version": "v3.0.0",
+                "url": "https://workbench.cisecurity.org/benchmarks/103",
+                "status": "Published",
+                "published_date": "2024-09-01",
+            },
+            {
+                "benchmark_id": "104",
+                "title": "CIS RHEL 9 Benchmark",
+                "version": "v0.9.0",
+                "url": "https://workbench.cisecurity.org/benchmarks/104",
+                "status": "Archived",
+                "published_date": "2024-12-01",
+            },
+            {
+                "benchmark_id": "105",
+                "title": "CIS Ubuntu Linux 20.04 LTS Benchmark v1.0.0",
+                "version": "v1.0.0",
+                "url": "https://workbench.cisecurity.org/benchmarks/105",
+                "status": "Published",
+                "published_date": "2023-01-01",
+            },
+            {
+                "benchmark_id": "106",
+                "title": "CIS Ubuntu Linux 20.04 LTS Benchmark v2.0.1",
+                "version": "v2.0.1",
+                "url": "https://workbench.cisecurity.org/benchmarks/106",
+                "status": "Published",
+                "published_date": "2024-08-01",
+            },
+            {
+                "benchmark_id": "107",
+                "title": "CIS VMware vSphere 7.0 Benchmark v1.0.0",
+                "version": "v1.0.0",
+                "url": "https://workbench.cisecurity.org/benchmarks/107",
+                "status": "Published",
+                "published_date": "2023-05-01",
+            },
+            {
+                "benchmark_id": "108",
+                "title": "CIS VMware vSphere 8.0 Benchmark v1.0.0",
+                "version": "v1.0.0",
+                "url": "https://workbench.cisecurity.org/benchmarks/108",
+                "status": "Published",
+                "published_date": "2024-05-01",
+            },
+        ]
+        for item in fixtures:
+            temp_db.insert_benchmark(item)
+
+        temp_db.mark_latest_versions()
+
+        latest_by_id = {
+            item["benchmark_id"]: temp_db.get_benchmark(item["benchmark_id"])["is_latest"]
+            for item in fixtures
+        }
+        assert latest_by_id == {
+            "101": False,
+            "102": True,
+            "103": True,
+            "104": True,
+            "105": False,
+            "106": True,
+            "107": True,
+            "108": True,
+        }
 
 
 class TestMetadata:
@@ -537,6 +1201,33 @@ class TestCollections:
         assert len(links) == 2
 
         conn.close()
+
+    def test_get_benchmark_includes_sorted_collections(self, temp_db):
+        """get_benchmark returns sorted collection names and an empty list when none exist."""
+        temp_db.insert_benchmark(
+            {
+                "benchmark_id": "10",
+                "title": "Tagged Benchmark",
+                "url": "https://workbench.cisecurity.org/benchmarks/10",
+                "status": "Published",
+                "collections": ["STIG", "Cloud", "Linux"],
+            }
+        )
+        temp_db.insert_benchmark(
+            {
+                "benchmark_id": "11",
+                "title": "Untagged Benchmark",
+                "url": "https://workbench.cisecurity.org/benchmarks/11",
+                "status": "Published",
+            }
+        )
+
+        tagged = temp_db.get_benchmark("10")
+        untagged = temp_db.get_benchmark("11")
+        assert tagged is not None
+        assert untagged is not None
+        assert tagged["collections"] == ["Cloud", "Linux", "STIG"]
+        assert untagged["collections"] == []
 
 
 class TestEdgeCases:

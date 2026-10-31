@@ -32,6 +32,30 @@ cis-bench catalog refresh
 - Dev: `~/.cis-bench-dev/catalog.db`
 - Test: `/tmp/cis-bench-test/catalog.db`
 
+### `CIS_BENCH_WORKBENCH_URL`
+
+Override the CIS WorkBench base URL.
+
+- **Default:** `https://workbench.cisecurity.org`
+- **Accepted values:** `https://` origin on `cisecurity.org` or `*.cisecurity.org` (without path, query, fragment, or embedded credentials)
+
+**Usage:**
+```bash
+export CIS_BENCH_WORKBENCH_URL=https://workbench.cisecurity.org
+```
+
+### `CIS_BENCH_VERIFY_SSL`
+
+Enable or disable SSL certificate verification for CIS WorkBench requests.
+
+- **Default:** `false`
+- **Accepted values:** `true`, `false`, `1`, `0`, `yes`, `no`
+
+**Usage:**
+```bash
+export CIS_BENCH_VERIFY_SSL=true
+```
+
 ---
 
 ## .env File
@@ -43,8 +67,11 @@ Optional configuration file: `~/.cis-bench/.env`
 # Set environment
 CIS_BENCH_ENV=dev
 
+# Optional CIS WorkBench origin override (https://*.cisecurity.org)
+CIS_BENCH_WORKBENCH_URL=https://workbench.cisecurity.org
+
 # Disable SSL verification (if needed)
-CIS_BENCH_SSL_VERIFY=false
+CIS_BENCH_VERIFY_SSL=false
 ```
 
 **Loaded automatically** via python-dotenv if file exists.
@@ -143,7 +170,7 @@ cis-bench --quiet export ... # WARNING level
 
 ### Styles
 
-Defined in: `src/cis_bench/exporters/configs/{style}_style.yaml`
+Defined in: `src/cis_bench/exporters/configs/styles/{style}.yaml`
 
 **Available:**
 
@@ -151,7 +178,7 @@ Defined in: `src/cis_bench/exporters/configs/{style}_style.yaml`
 - `cis` - CIS native format
 
 **Adding new style:**
-1. Create `{name}_style.yaml` in configs/
+1. Create `{name}.yaml` in `src/cis_bench/exporters/configs/styles/`
 2. Use: `--format xccdf --style {name}`
 
 See: [How to Add XCCDF Style](../developer-guide/how-to-add-xccdf-style.md)
@@ -173,12 +200,12 @@ Config._custom_data_dir = Path("/custom/location")
 
 ### SSL Verification
 
-Currently disabled by default for catalog scraper (CIS WorkBench cert issues).
+Disabled by default (`CIS_BENCH_VERIFY_SSL=false`) due to CIS WorkBench certificate chain issues.
 
-To enable (future):
+To enable:
 ```bash
-# In .env
-CIS_BENCH_SSL_VERIFY=true
+# In ~/.cis-bench/.env
+CIS_BENCH_VERIFY_SSL=true
 ```
 
 ---

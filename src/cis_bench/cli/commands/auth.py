@@ -11,7 +11,7 @@ import click
 from rich.console import Console
 
 from cis_bench.cli.helpers.output import output_data
-from cis_bench.config import Config
+from cis_bench.config import Config, get_workbench_base_url
 from cis_bench.fetcher.auth import AuthManager
 
 console = Console()
@@ -92,15 +92,22 @@ def login(browser, cookies, open, no_verify_ssl):
         )
 
     try:
+        workbench_base_url = get_workbench_base_url()
+        workbench_host = urlparse(workbench_base_url).netloc
+
         # Open browser if requested
         if open:
             console.print("[cyan]Opening CIS WorkBench login page...[/cyan]")
-            login_url = "https://workbench.cisecurity.org/"
+            login_url = f"{workbench_base_url}/"
 
-            # Security: Validate URL is CIS WorkBench domain
+            # Security: Validate URL is an HTTPS cisecurity.org domain
             parsed = urlparse(login_url)
-            if parsed.netloc != "workbench.cisecurity.org" or parsed.scheme != "https":
-                raise ValueError("Invalid login URL - must be https://workbench.cisecurity.org/")
+            if (
+                parsed.scheme != "https"
+                or not parsed.hostname
+                or not Config.is_cis_domain(parsed.hostname)
+            ):
+                raise ValueError("Invalid login URL - must be an https://*.cisecurity.org/ URL")
 
             try:
                 import platform
@@ -183,7 +190,7 @@ def login(browser, cookies, open, no_verify_ssl):
             if not session or not session.cookies:
                 console.print(f"[red]✗ No cookies found in {browser}[/red]")
                 console.print(
-                    "\n[yellow]Make sure you are logged into workbench.cisecurity.org in your browser[/yellow]"
+                    f"\n[yellow]Make sure you are logged into {workbench_host} in your browser[/yellow]"
                 )
                 sys.exit(1)
 
@@ -199,7 +206,7 @@ def login(browser, cookies, open, no_verify_ssl):
         if not AuthManager.validate_session(session, verify_ssl=verify_ssl):
             console.print("[red]✗ Session validation failed[/red]")
             console.print(
-                "\n[yellow]Please ensure you are logged into workbench.cisecurity.org in your browser[/yellow]"
+                f"\n[yellow]Please ensure you are logged into {workbench_host} in your browser[/yellow]"
             )
             if verify_ssl:
                 console.print(

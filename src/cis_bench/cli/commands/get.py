@@ -7,7 +7,7 @@ import click
 import questionary
 from rich.console import Console
 
-from cis_bench.config import Config
+from cis_bench.config import Config, get_workbench_base_url
 from cis_bench.exporters import ExporterFactory
 from cis_bench.exporters.xccdf_unified_exporter import XCCDFExporter
 from cis_bench.fetcher.auth import AuthManager
@@ -207,16 +207,14 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
         try:
             # Get authenticated session (uses saved session only)
             logger.debug("Getting authenticated session for download")
-            session = AuthManager.get_or_create_session()
+            session = AuthManager.get_or_create_session(verify_ssl=Config.get_verify_ssl())
 
             # Download with progress bar
-            import hashlib
-
+            from cis_bench.catalog.database import serialize_benchmark_json
             from cis_bench.cli.helpers.download_helper import download_with_progress
-            from cis_bench.models.benchmark import Benchmark
 
             scraper = WorkbenchScraper(session)
-            benchmark_url = f"https://workbench.cisecurity.org/benchmarks/{benchmark_id}"
+            benchmark_url = f"{get_workbench_base_url()}/benchmarks/{benchmark_id}"
 
             benchmark = download_with_progress(scraper, benchmark_url, prefix="  ")
 
@@ -224,8 +222,7 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
             console.print(f"  Recommendations: {benchmark.total_recommendations}\n")
 
             # Save to database
-            content_json = benchmark.model_dump_json()
-            content_hash = hashlib.sha256(content_json.encode()).hexdigest()
+            content_json, content_hash = serialize_benchmark_json(benchmark)
             recommendation_count = len(benchmark.recommendations)
 
             db.save_downloaded(
@@ -237,13 +234,19 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
 
             logger.debug(f"Saved benchmark {benchmark_id} to database")
 
-        except ValueError:
-            console.print("\n[bold red]Authentication Required[/bold red]\n")
-            console.print("[cyan]Please log in first:[/cyan]")
-            console.print("  cis-bench auth login --browser chrome")
-            console.print(
-                "\n[dim]Windows users: If Chrome fails, try Firefox or --cookies option.[/dim]"
-            )
+        except ValueError as e:
+            err_msg = str(e)
+            if "no saved session" in err_msg.lower() or "no session" in err_msg.lower():
+                console.print("\n[bold red]Authentication Required[/bold red]\n")
+                console.print("[cyan]Please log in first:[/cyan]")
+                console.print("  cis-bench auth login --browser chrome")
+                console.print(
+                    "\n[dim]Windows users: If Chrome fails, try Firefox or --cookies option.[/dim]"
+                )
+            elif "CIS_BENCH_WORKBENCH_URL" in err_msg:
+                console.print(f"\n[bold red]Configuration Error[/bold red]\n[yellow]{e}[/yellow]")
+            else:
+                console.print(f"[red]✗ Download failed: {e}[/red]")
             sys.exit(1)
         except Exception as e:
             logger.error(f"Download failed: {e}", exc_info=True)
@@ -252,16 +255,15 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
 
     # Step 6: Export to requested format
     try:
-        import json
-
-        from cis_bench.models.benchmark import Benchmark
+        from cis_bench.catalog.database import deserialize_benchmark_json
 
         console.print(f"[cyan]Exporting to {export_format}...[/cyan]")
 
         # Load from database
         downloaded = db.get_downloaded(benchmark_id)
-        benchmark_data = json.loads(downloaded["content_json"])
-        benchmark = Benchmark(**benchmark_data)
+        if not downloaded:
+            raise ValueError(f"Benchmark {benchmark_id} not found in catalog cache")
+        benchmark = deserialize_benchmark_json(downloaded["content_json"])
 
         # Create exporter
         exporter_kwargs = {}

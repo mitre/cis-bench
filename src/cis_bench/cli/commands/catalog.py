@@ -4,9 +4,10 @@ import logging
 
 import click
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
-from cis_bench.catalog.database import CatalogDatabase
+from cis_bench.catalog.database import CatalogDatabase, normalize_status_filter
 from cis_bench.catalog.downloader import CatalogDownloader
 from cis_bench.catalog.scraper import CatalogScraper
 from cis_bench.catalog.search import CatalogSearch
@@ -24,6 +25,17 @@ def get_catalog_db() -> CatalogDatabase:
     """Get catalog database instance (environment-aware)."""
     Config.ensure_directories()
     return CatalogDatabase(Config.get_catalog_db_path())
+
+
+def require_catalog_db(
+    missing_message: str = "Catalog not found. Run 'cis-bench catalog refresh' first.",
+) -> CatalogDatabase:
+    """Return an existing catalog database or abort with a user-facing prompt."""
+    db = get_catalog_db()
+    if not db.db_path.exists():
+        console.print(f"[yellow]{missing_message}[/yellow]")
+        raise click.Abort()
+    return db
 
 
 @click.group()
@@ -107,12 +119,14 @@ def refresh(browser, max_pages, rate_limit):
         console.print(f"  Platforms: {db_stats['platforms']}")
         console.print(f"  Communities: {db_stats['communities']}")
 
+    except click.Abort:
+        raise
     except AuthenticationError as e:
         console.print("[red]✗ Authentication required[/red]")
-        console.print(f"[yellow]{e}[/yellow]")
+        console.print(f"[yellow]{escape(str(e))}[/yellow]")
         raise click.Abort() from e
     except Exception as e:
-        console.print(f"[red]✗ Catalog refresh failed: {e}[/red]")
+        console.print(f"[red]✗ Catalog refresh failed: {escape(str(e))}[/red]")
         raise click.Abort() from e
 
 
@@ -129,15 +143,15 @@ def update(browser):
         cis-bench catalog update
     """
     try:
-        db = get_catalog_db()
+        db = require_catalog_db(
+            missing_message="Catalog not initialized. Run 'cis-bench catalog refresh' first."
+        )
 
-        if not db.db_path.exists():
-            console.print(
-                "[yellow]Catalog not initialized. Run 'cis-bench catalog refresh' first.[/yellow]"
-            )
-            raise click.Abort()
+        db.initialize_schema()
 
-        session = AuthManager.load_cookies_from_browser(browser)
+        session = AuthManager.get_or_create_session(
+            browser=browser, verify_ssl=Config.get_verify_ssl()
+        )
         scraper = CatalogScraper(db, session)
 
         console.print("[cyan]Updating catalog (page 1)...[/cyan]")
@@ -148,15 +162,21 @@ def update(browser):
         console.print(f"  New benchmarks: [yellow]{stats['new_count']}[/yellow]")
         console.print(f"  Updated: [yellow]{stats['updated_count']}[/yellow]")
 
+    except click.Abort:
+        raise
     except Exception as e:
-        console.print(f"[red]✗ Update failed: {e}[/red]")
+        console.print(f"[red]✗ Update failed: {escape(str(e))}[/red]")
         raise click.Abort() from e
 
 
 @catalog.command()
 @click.argument("query", required=False)
 @click.option("--platform", help="Filter by platform")
-@click.option("--status", default="Published", help="Filter by status")
+@click.option(
+    "--status",
+    default="Published",
+    help="Filter by status (Published, Archived, Draft, Final Update, or all)",
+)
 @click.option("--latest", is_flag=True, help="Latest versions only")
 @click.option("--limit", type=int, help="Max results (default: 1000)")
 @click.option(
@@ -176,13 +196,7 @@ def search(query, platform, status, latest, limit, output_format):
         cis-bench catalog search --latest
     """
     try:
-        db = get_catalog_db()
-
-        if not db.db_path.exists():
-            console.print(
-                "[yellow]Catalog not found. Run 'cis-bench catalog refresh' first.[/yellow]"
-            )
-            raise click.Abort()
+        db = require_catalog_db()
 
         search_obj = CatalogSearch(db)
 
@@ -190,15 +204,23 @@ def search(query, platform, status, latest, limit, output_format):
         if limit is None:
             limit = Config.get_search_default_limit()
 
+        normalized_status = normalize_status_filter(status)
+
         results = search_obj.search(
-            query=query or "", platform=platform, status=status, latest_only=latest, limit=limit
+            query=query or "",
+            platform=platform,
+            status=normalized_status,
+            latest_only=latest,
+            limit=limit,
         )
 
         if not results:
             if output_format != "table":
                 output_data([], output_format)
             else:
-                console.print(f"[yellow]No benchmarks found matching: {query}[/yellow]")
+                console.print(
+                    f"[yellow]No benchmarks found matching: {escape(str(query))}[/yellow]"
+                )
             return
 
         # Output in requested format
@@ -222,8 +244,10 @@ def search(query, platform, status, latest, limit, output_format):
             console.print(formatted)
             console.print()  # Blank line
 
+    except click.Abort:
+        raise
     except Exception as e:
-        console.print(f"[red]✗ Search failed: {e}[/red]")
+        console.print(f"[red]✗ Search failed: {escape(str(e))}[/red]")
         raise click.Abort() from e
 
 
@@ -240,13 +264,7 @@ def list_cmd(platform, latest, limit):
         cis-bench catalog list --platform "Operating System" --latest
     """
     try:
-        db = get_catalog_db()
-
-        if not db.db_path.exists():
-            console.print(
-                "[yellow]Catalog not found. Run 'cis-bench catalog refresh' first.[/yellow]"
-            )
-            raise click.Abort()
+        db = require_catalog_db()
 
         search_obj = CatalogSearch(db)
 
@@ -266,8 +284,10 @@ def list_cmd(platform, latest, limit):
             console.print(formatted)
             console.print()
 
+    except click.Abort:
+        raise
     except Exception as e:
-        console.print(f"[red]✗ List failed: {e}[/red]")
+        console.print(f"[red]✗ List failed: {escape(str(e))}[/red]")
         raise click.Abort() from e
 
 
@@ -288,18 +308,12 @@ def info(benchmark_id, output_format):
         cis-bench catalog info 23598
     """
     try:
-        db = get_catalog_db()
-
-        if not db.db_path.exists():
-            console.print(
-                "[yellow]Catalog not found. Run 'cis-bench catalog refresh' first.[/yellow]"
-            )
-            raise click.Abort()
+        db = require_catalog_db()
 
         bench = db.get_benchmark(benchmark_id)
 
         if not bench:
-            console.print(f"[red]Benchmark {benchmark_id} not found in catalog.[/red]")
+            console.print(f"[red]Benchmark {escape(str(benchmark_id))} not found in catalog.[/red]")
             raise click.Abort()
 
         # Output in requested format
@@ -332,10 +346,14 @@ def info(benchmark_id, output_format):
         if bench.get("description"):
             console.print(f"\n[dim]{bench['description'][:200]}...[/dim]")
 
-        console.print(f"\n[cyan]Download:[/cyan] cis-bench catalog download {benchmark_id}")
+        console.print(
+            f"\n[cyan]Download:[/cyan] cis-bench catalog download {escape(str(benchmark_id))}"
+        )
 
+    except click.Abort:
+        raise
     except Exception as e:
-        console.print(f"[red]✗ Info failed: {e}[/red]")
+        console.print(f"[red]✗ Info failed: {escape(str(e))}[/red]")
         raise click.Abort() from e
 
 
@@ -355,13 +373,7 @@ def platforms(output_format):
         cis-bench catalog platforms
     """
     try:
-        db = get_catalog_db()
-
-        if not db.db_path.exists():
-            console.print(
-                "[yellow]Catalog not found. Run 'cis-bench catalog refresh' first.[/yellow]"
-            )
-            raise click.Abort()
+        db = require_catalog_db()
 
         platforms = db.list_platforms()
 
@@ -388,8 +400,10 @@ def platforms(output_format):
         console.print()
         console.print(table)
 
+    except click.Abort:
+        raise
     except Exception as e:
-        console.print(f"[red]✗ Platforms list failed: {e}[/red]")
+        console.print(f"[red]✗ Platforms list failed: {escape(str(e))}[/red]")
         raise click.Abort() from e
 
 
@@ -409,37 +423,35 @@ def stats(output_format):
         cis-bench catalog stats
     """
     try:
-        db = get_catalog_db()
+        db = require_catalog_db()
 
-        if not db.db_path.exists():
-            console.print(
-                "[yellow]Catalog not found. Run 'cis-bench catalog refresh' first.[/yellow]"
-            )
-            raise click.Abort()
-
-        stats = db.get_catalog_stats()
+        catalog_stats = db.get_catalog_stats()
         last_scrape = db.get_metadata("last_full_scrape")
 
-        # Add last_scrape to stats
-        stats["last_full_scrape"] = last_scrape
+        stats_payload: dict[str, int | str | None] = {
+            **catalog_stats,
+            "last_full_scrape": last_scrape,
+        }
 
         # Output in requested format
         if output_format != "table":
-            output_data(stats, output_format)
+            output_data(stats_payload, output_format)
 
         # Human display
         console.print("\n[bold]Catalog Statistics[/bold]\n")
-        console.print(f"Total benchmarks: [yellow]{stats['total_benchmarks']}[/yellow]")
-        console.print(f"Published: [yellow]{stats['published_benchmarks']}[/yellow]")
-        console.print(f"Downloaded: [yellow]{stats['downloaded_benchmarks']}[/yellow]")
-        console.print(f"Platforms: [yellow]{stats['platforms']}[/yellow]")
-        console.print(f"Communities: [yellow]{stats['communities']}[/yellow]")
+        console.print(f"Total benchmarks: [yellow]{catalog_stats['total_benchmarks']}[/yellow]")
+        console.print(f"Published: [yellow]{catalog_stats['published_benchmarks']}[/yellow]")
+        console.print(f"Downloaded: [yellow]{catalog_stats['downloaded_benchmarks']}[/yellow]")
+        console.print(f"Platforms: [yellow]{catalog_stats['platforms']}[/yellow]")
+        console.print(f"Communities: [yellow]{catalog_stats['communities']}[/yellow]")
 
         if last_scrape:
             console.print(f"\nLast catalog refresh: [dim]{last_scrape}[/dim]")
 
+    except click.Abort:
+        raise
     except Exception as e:
-        console.print(f"[red]✗ Stats failed: {e}[/red]")
+        console.print(f"[red]✗ Stats failed: {escape(str(e))}[/red]")
         raise click.Abort() from e
 
 
@@ -459,16 +471,12 @@ def download(benchmark_id_or_name, browser, force, interactive):
         cis-bench catalog download "ubuntu 20.04" --interactive
     """
     try:
-        db = get_catalog_db()
+        db = require_catalog_db()
 
-        if not db.db_path.exists():
-            console.print(
-                "[yellow]Catalog not found. Run 'cis-bench catalog refresh' first.[/yellow]"
-            )
-            raise click.Abort()
-
-        # Get authenticated session
-        session = AuthManager.load_cookies_from_browser(browser)
+        # Get authenticated session (reuses saved session or authenticates via browser)
+        session = AuthManager.get_or_create_session(
+            browser=browser, verify_ssl=Config.get_verify_ssl()
+        )
 
         # Create downloader
         scraper = WorkbenchScraper(session)
@@ -477,30 +485,36 @@ def download(benchmark_id_or_name, browser, force, interactive):
         # Determine if ID or name
         if benchmark_id_or_name.isdigit():
             # Download by ID
-            console.print(f"[cyan]Downloading benchmark {benchmark_id_or_name}...[/cyan]")
+            console.print(
+                f"[cyan]Downloading benchmark {escape(str(benchmark_id_or_name))}...[/cyan]"
+            )
             result = downloader.download_by_id(benchmark_id_or_name, force=force)
         else:
             # Download by name
-            console.print(f"[cyan]Searching for: {benchmark_id_or_name}[/cyan]")
+            console.print(f"[cyan]Searching for: {escape(str(benchmark_id_or_name))}[/cyan]")
             result = downloader.download_by_name(
-                benchmark_id_or_name, latest=True, interactive=interactive
+                benchmark_id_or_name, latest=True, interactive=interactive, force=force
             )
 
         # Show result
         if result["status"] == "already_current":
-            console.print(f"[green]✓[/green] {result['message']}")
+            console.print(f"[green]✓[/green] {escape(str(result['message']))}")
         elif result["status"] == "unchanged":
-            console.print(f"[green]✓[/green] {result['message']}")
+            console.print(f"[green]✓[/green] {escape(str(result['message']))}")
         else:
-            console.print(f"[green]✓[/green] Downloaded benchmark {result['benchmark_id']}")
+            console.print(
+                f"[green]✓[/green] Downloaded benchmark {escape(str(result['benchmark_id']))}"
+            )
             console.print(f"  Recommendations: {result['recommendation_count']}")
             console.print(f"  Size: {result['file_size'] / 1024:.1f} KB")
 
+    except click.Abort:
+        raise
     except ValueError as e:
-        console.print(f"[red]✗ {e}[/red]")
+        console.print(f"[red]✗ {escape(str(e))}[/red]")
         raise click.Abort() from e
     except Exception as e:
-        console.print(f"[red]✗ Download failed: {e}[/red]")
+        console.print(f"[red]✗ Download failed: {escape(str(e))}[/red]")
         logger.error(f"Download error: {e}", exc_info=True)
         raise click.Abort() from e
 
@@ -514,13 +528,7 @@ def check_updates():
         cis-bench catalog check-updates
     """
     try:
-        db = get_catalog_db()
-
-        if not db.db_path.exists():
-            console.print(
-                "[yellow]Catalog not found. Run 'cis-bench catalog refresh' first.[/yellow]"
-            )
-            raise click.Abort()
+        db = require_catalog_db()
 
         updates = db.check_updates_available()
 
@@ -538,6 +546,8 @@ def check_updates():
 
         console.print("[cyan]Use 'cis-bench catalog download <id> --force' to update.[/cyan]")
 
+    except click.Abort:
+        raise
     except Exception as e:
-        console.print(f"[red]✗ Check updates failed: {e}[/red]")
+        console.print(f"[red]✗ Check updates failed: {escape(str(e))}[/red]")
         raise click.Abort() from e

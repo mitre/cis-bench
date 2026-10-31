@@ -11,9 +11,9 @@ from cis_bench.validators.disa_conventions import DISAConventionsValidator
 
 
 @pytest.fixture
-def test_benchmark(almalinux_complete_file):
-    """Load test benchmark (use conftest fixture)."""
-    return Benchmark.from_json_file(str(almalinux_complete_file))
+def test_benchmark(synthetic_complete_file):
+    """Load synthetic test benchmark (use conftest fixture)."""
+    return Benchmark.from_json_file(str(synthetic_complete_file))
 
 
 @pytest.fixture
@@ -58,6 +58,8 @@ def test_disa_export_passes_conventions(disa_export_file):
 
 def test_disa_export_has_ccis(disa_export_file):
     """Test DISA export contains CCI ident elements."""
+    import re
+
     from lxml import etree
 
     tree = etree.parse(str(disa_export_file))
@@ -66,14 +68,10 @@ def test_disa_export_has_ccis(disa_export_file):
     # Use namespace-agnostic XPath (works with any namespace prefix)
     idents = root.xpath('.//*[local-name()="ident"][@system="http://cyber.mil/cci"]')
 
-    assert len(idents) > 0, "No CCI ident elements found"
-    assert len(idents) > 100, f"Expected many CCIs, found only {len(idents)}"
+    assert len(idents) == 38, f"Expected 38 deterministic CCIs, found {len(idents)}"
 
-    # Check CCI format
-    import re
-
-    for ident in idents[:10]:  # Check first 10
-        assert re.match(r"CCI-\d{6}", ident.text), f"Invalid CCI format: {ident.text}"
+    for ident in idents:
+        assert re.fullmatch(r"CCI-\d{6}", ident.text or ""), f"Invalid CCI format: {ident.text}"
 
 
 def test_disa_export_has_vuln_discussion(disa_export_file):
@@ -123,3 +121,23 @@ def test_disa_export_has_all_required_elements(disa_export_file):
             assert len(elems) >= 3, f"Expected at least 3 plain-text elements, found {len(elems)}"
         else:
             assert len(elems) > 0, f"Missing required element: {name}"
+
+
+def test_disa_export_populates_benchmark_notice_from_style_config(disa_export_file, test_benchmark):
+    """DISA XCCDF 1.1.4 export emits configured <notice id='terms-of-use' xml:lang='en'>."""
+    from lxml import etree
+
+    tree = etree.parse(str(disa_export_file))
+    ns = {"xccdf": "http://checklists.nist.gov/xccdf/1.1"}
+    notices = tree.xpath("/xccdf:Benchmark/xccdf:notice", namespaces=ns)
+
+    assert len(notices) == 1
+    notice = notices[0]
+    assert notice.get("id") == "terms-of-use"
+    assert notice.get("{http://www.w3.org/XML/1998/namespace}lang") == "en"
+    notice_text = (notice.text or "").strip()
+    assert test_benchmark.title in notice_text
+    assert str(test_benchmark.url) in notice_text
+    assert "Center for Internet Security, Inc." in notice_text
+    assert "https://workbench.cisecurity.org/terms-of-use" in notice_text
+    assert "cis-bench" in notice_text

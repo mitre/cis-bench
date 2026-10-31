@@ -5,7 +5,7 @@ Provides high-level search operations with filtering, ranking, and formatting.
 
 import logging
 
-from cis_bench.catalog.database import CatalogDatabase
+from cis_bench.catalog.database import CatalogDatabase, normalize_status_filter
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ class CatalogSearch:
         query: str = "",
         platform: str | None = None,
         platform_type: str | None = None,
-        status: str = "Published",
+        status: str | None = "Published",
         latest_only: bool = False,
         limit: int = 50,
     ) -> list[dict]:
@@ -36,7 +36,7 @@ class CatalogSearch:
             query: Search query (fuzzy matching)
             platform: Filter by platform name
             platform_type: Filter by platform category (cloud, os, database, container, application)
-            status: Filter by status (default: Published)
+            status: Filter by status (default: Published; None or 'all' returns all statuses)
             latest_only: Only latest versions
             limit: Max results
 
@@ -47,15 +47,16 @@ class CatalogSearch:
             search = CatalogSearch(db)
             results = search.search("ubuntu", platform="Operating System", latest_only=True)
         """
+        normalized_status = normalize_status_filter(status)
         logger.debug(
-            f"Search: query='{query}', platform={platform}, platform_type={platform_type}, status={status}, latest={latest_only}"
+            f"Search: query='{query}', platform={platform}, platform_type={platform_type}, status={normalized_status}, latest={latest_only}"
         )
 
         results = self.db.search(
             query=query,
             platform=platform,
             platform_type=platform_type,
-            status=status,
+            status=normalized_status,
             latest_only=latest_only,
             limit=limit,
         )
@@ -109,21 +110,6 @@ class CatalogSearch:
         """
         return self.search(query="", platform=platform, latest_only=latest_only, limit=200)
 
-    def list_by_community(self, community: str) -> list[dict]:
-        """List benchmarks in a community.
-
-        Args:
-            community: Community name
-
-        Returns:
-            List of benchmarks
-        """
-        # This requires a different query - search by community in description
-        results = self.search(query=community, limit=100)
-
-        # Filter to exact community match
-        return [r for r in results if r.get("community") == community]
-
     def get_platforms(self) -> list[dict]:
         """Get all platforms with benchmark counts.
 
@@ -150,14 +136,6 @@ class CatalogSearch:
             Latest benchmarks for platform
         """
         return self.search(query="", platform=platform, latest_only=True, limit=100)
-
-    def check_updates(self) -> list[dict]:
-        """Check downloaded benchmarks for available updates.
-
-        Returns:
-            List of benchmarks with updates available
-        """
-        return self.db.check_updates_available()
 
     def format_result_for_display(self, result: dict) -> str:
         """Format search result for CLI display.

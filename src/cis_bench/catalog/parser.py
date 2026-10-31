@@ -5,10 +5,13 @@ Extracts benchmark metadata from HTML catalog listing pages.
 
 import logging
 import re
+from urllib.parse import urljoin, urlsplit
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 
+from cis_bench.config import Config
 from cis_bench.exceptions import AuthenticationError
+from cis_bench.fetcher.auth import is_workbench_login_page
 
 logger = logging.getLogger(__name__)
 
@@ -30,22 +33,7 @@ class WorkBenchCatalogParser:
             if WorkBenchCatalogParser.is_login_page(html):
                 raise AuthenticationError("Not authenticated")
         """
-        if not html:
-            return False
-
-        soup = BeautifulSoup(html, "html.parser")
-
-        # Check for login form indicators
-        login_indicators = [
-            soup.find("form", action=re.compile(r"/login")),  # Login form
-            soup.find("input", {"name": "login"}),  # E-Mail/Username field
-            soup.find("input", {"name": "password"}),  # Password field
-            soup.find("div", class_="index-signin-wrapper"),  # Login wrapper
-            soup.find(string=re.compile(r"E-Mail or Username", re.I)),  # Label text
-        ]
-
-        # If any login indicator is found, it's the login page
-        return any(indicator is not None for indicator in login_indicators)
+        return is_workbench_login_page(html)
 
     @staticmethod
     def parse_catalog_page(html: str) -> list[dict]:
@@ -98,6 +86,69 @@ class WorkBenchCatalogParser:
         logger.info(f"Parsed {len(benchmarks)} benchmarks from catalog page")
         return benchmarks
 
+    _BENCHMARK_PATH_RE = re.compile(r"^/benchmarks/([0-9]+)(?:/.*)?$")
+
+    @staticmethod
+    def normalize_benchmark_url(
+        raw_url: str, *, expected_benchmark_id: str | None = None
+    ) -> tuple[str, str]:
+        """Resolve, validate, and canonicalize a CIS WorkBench benchmark URL.
+
+        Args:
+            raw_url: Relative or absolute benchmark href/URL
+            expected_benchmark_id: Optional catalog benchmark ID that the URL must match
+
+        Returns:
+            Tuple of (benchmark_id, canonical_url) where canonical_url is
+            ``<workbench_base_url>/benchmarks/<digits>``
+
+        Raises:
+            ValueError: If raw_url is off-origin, contains userinfo/path traversal,
+                lacks a numeric ``/benchmarks/<digits>`` path, or mismatches expected_benchmark_id
+        """
+        if not isinstance(raw_url, str):
+            raise ValueError("Invalid benchmark URL: expected string")
+
+        cleaned = raw_url.strip()
+        if not cleaned or cleaned.startswith(("@", "//")) or "\\" in cleaned:
+            raise ValueError(f"Invalid benchmark URL '{raw_url}'")
+
+        base_url = Config.get_workbench_base_url()
+        base_parsed = urlsplit(base_url)
+
+        raw_parsed = urlsplit(cleaned)
+        if raw_parsed.scheme == "" and raw_parsed.netloc == "":
+            resolved = urljoin(f"{base_url}/", cleaned)
+        else:
+            resolved = cleaned
+
+        parsed = urlsplit(resolved)
+        if (
+            parsed.scheme.lower() != base_parsed.scheme.lower()
+            or parsed.username is not None
+            or parsed.password is not None
+            or "@" in parsed.netloc
+            or parsed.netloc.lower() != base_parsed.netloc.lower()
+            or ".." in parsed.path.split("/")
+        ):
+            raise ValueError(
+                f"Invalid benchmark URL '{raw_url}': must match configured WorkBench origin {base_url}"
+            )
+
+        path_match = WorkBenchCatalogParser._BENCHMARK_PATH_RE.match(parsed.path)
+        if not path_match:
+            raise ValueError(
+                f"Invalid benchmark URL '{raw_url}': path must match /benchmarks/<digits>"
+            )
+
+        benchmark_id = path_match.group(1)
+        if expected_benchmark_id is not None and benchmark_id != expected_benchmark_id:
+            raise ValueError(
+                f"Invalid benchmark URL '{raw_url}': benchmark ID '{benchmark_id}' does not match '{expected_benchmark_id}'"
+            )
+
+        return benchmark_id, f"{base_url}/benchmarks/{benchmark_id}"
+
     @staticmethod
     def _parse_table_row(row) -> dict | None:
         """Parse single table row.
@@ -126,19 +177,9 @@ class WorkBenchCatalogParser:
         href = link.get("href", "")
         title = link.get_text(strip=True)
 
-        # Extract benchmark ID from URL
-        # Format: https://workbench.cisecurity.org/benchmarks/23598
-        benchmark_id = None
-        if "/benchmarks/" in href:
-            try:
-                # Extract ID from URL
-                id_part = href.split("/benchmarks/")[1]
-                benchmark_id = id_part.split("/")[0].split("?")[0]
-            except (IndexError, AttributeError):
-                logger.warning(f"Could not extract ID from URL: {href}")
-                return None
-
-        if not benchmark_id:
+        try:
+            benchmark_id, url = WorkBenchCatalogParser.normalize_benchmark_url(href)
+        except ValueError:
             return None
 
         # Clean title (remove leading pipe and org name)
@@ -159,20 +200,12 @@ class WorkBenchCatalogParser:
         collections_text = cells[4].get_text(strip=True)
         owner = cells[5].get_text(strip=True) or None
 
-        # Parse collections (might be comma-separated or single)
-        collections = []
-        if collections_text:
-            # Split by comma or use as single
-            if "," in collections_text:
-                collections = [c.strip() for c in collections_text.split(",")]
-            else:
-                collections = [collections_text]
-
-        # Build full URL
-        if href.startswith("http"):
-            url = href
-        else:
-            url = f"https://workbench.cisecurity.org{href}"
+        # Parse collections (comma-separated or single, stripped and deduplicated)
+        collections = (
+            list(dict.fromkeys(c.strip() for c in collections_text.split(",") if c.strip()))
+            if collections_text
+            else []
+        )
 
         return {
             "benchmark_id": benchmark_id,
@@ -189,6 +222,8 @@ class WorkBenchCatalogParser:
 
     # Platform mapping: (keywords, platform_type, platform_name)
     PLATFORM_PATTERNS = [
+        # Managed Kubernetes services that include cloud vendor names in title (check before cloud)
+        (["aks"], "container", "azure-aks"),
         # Cloud Platforms (check before OS to catch "Oracle Cloud" before "Oracle")
         (["oracle cloud", "oci"], "cloud", "oracle-cloud"),
         (["amazon web services", "aws"], "cloud", "aws"),
@@ -214,7 +249,6 @@ class WorkBenchCatalogParser:
         (["macos", "mac os"], "os", "macos"),
         # Containers & Kubernetes (specific services)
         (["eks"], "container", "aws-eks"),
-        (["aks"], "container", "azure-aks"),
         (["gke"], "container", "google-gke"),
         (["oke", "oracle.*container engine"], "container", "oracle-oke"),
         (["kubernetes", "k8s"], "container", "kubernetes"),
@@ -246,8 +280,6 @@ class WorkBenchCatalogParser:
         for keywords, platform_type, platform_name in WorkBenchCatalogParser.PLATFORM_PATTERNS:
             for keyword in keywords:
                 # Use regex for patterns like "oracle.*container"
-                import re
-
                 if re.search(keyword, title_lower):
                     return (platform_type, platform_name)
 
@@ -318,8 +350,8 @@ class WorkBenchCatalogParser:
 
         # Extract published date
         # Format: "Published 3 months ago on Aug 1st 2025"
-        published_text = soup.find(text=re.compile(r"Published.*ago"))
-        if published_text:
+        published_text = soup.find(string=re.compile(r"Published.*ago"))
+        if isinstance(published_text, str):
             # Try to extract actual date
             date_match = re.search(r"on ([A-Za-z]+ \d+(?:st|nd|rd|th) \d{4})", published_text)
             if date_match:
@@ -327,8 +359,12 @@ class WorkBenchCatalogParser:
                 metadata["published_relative"] = published_text.strip()
 
         # Extract description from Overview section
-        overview = soup.find("h2", text=re.compile(r"Overview", re.I))
-        if overview:
+        overview = soup.find(
+            lambda tag: isinstance(tag, Tag)
+            and tag.name == "h2"
+            and "overview" in tag.get_text().lower()
+        )
+        if isinstance(overview, Tag):
             # Get text after Overview heading
             desc_parts = []
             for sibling in overview.find_next_siblings():

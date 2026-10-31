@@ -8,7 +8,7 @@ import sys
 import click
 from rich.console import Console
 
-from cis_bench.config import Config
+from cis_bench.config import Config, get_workbench_base_url
 from cis_bench.exporters import ExporterFactory
 from cis_bench.fetcher.auth import AuthManager
 from cis_bench.fetcher.workbench import WorkbenchScraper
@@ -78,20 +78,23 @@ def download(
     try:
         logger.debug("Getting authenticated session")
         with console.status("[bold green]Authenticating..."):
-            session = AuthManager.get_or_create_session()
+            session = AuthManager.get_or_create_session(verify_ssl=Config.get_verify_ssl())
 
         console.print("[green]✓[/green] Authenticated successfully\n")
         logger.debug("Authentication successful")
 
-    except ValueError:
-        # No saved session
-        console.print("\n[bold red]Authentication Required[/bold red]\n")
-        console.print("[bold cyan]Please log in first:[/bold cyan]")
-        console.print("  cis-bench auth login --browser chrome")
-        console.print("\n[dim]This saves your session for future commands.[/dim]")
-        console.print(
-            "\n[dim]Windows users: If Chrome fails, try Firefox or --cookies option.[/dim]"
-        )
+    except ValueError as e:
+        err_msg = str(e)
+        if "no saved session" in err_msg.lower() or "no session" in err_msg.lower():
+            console.print("\n[bold red]Authentication Required[/bold red]\n")
+            console.print("[bold cyan]Please log in first:[/bold cyan]")
+            console.print("  cis-bench auth login --browser chrome")
+            console.print("\n[dim]This saves your session for future commands.[/dim]")
+            console.print(
+                "\n[dim]Windows users: If Chrome fails, try Firefox or --cookies option.[/dim]"
+            )
+        else:
+            console.print(f"\n[bold red]Configuration Error[/bold red]\n[yellow]{e}[/yellow]")
         sys.exit(1)
     except Exception as e:
         logger.error(f"Authentication failed: {e}", exc_info=True)
@@ -106,6 +109,7 @@ def download(
 
     # Collect URLs to download
     urls = []
+    workbench_base_url = get_workbench_base_url()
 
     if urls_file:
         # Read from file
@@ -116,7 +120,7 @@ def download(
                     if line.startswith("http"):
                         urls.append(line)
                     else:
-                        urls.append(f"https://workbench.cisecurity.org/benchmarks/{line}")
+                        urls.append(f"{workbench_base_url}/benchmarks/{line}")
 
     elif benchmark_ids:
         # Convert IDs or URLs to full URLs
@@ -124,7 +128,7 @@ def download(
             if item.startswith("http"):
                 urls.append(item)
             else:
-                urls.append(f"https://workbench.cisecurity.org/benchmarks/{item}")
+                urls.append(f"{workbench_base_url}/benchmarks/{item}")
     else:
         console.print("[red]Error: Must specify benchmark IDs or --file[/red]")
         sys.exit(1)
@@ -192,13 +196,13 @@ def download(
             catalog_db_path = Config.get_catalog_db_path()
             if catalog_db_path.exists():
                 try:
-                    import hashlib
-
-                    from cis_bench.catalog.database import CatalogDatabase
+                    from cis_bench.catalog.database import (
+                        CatalogDatabase,
+                        serialize_benchmark_json,
+                    )
 
                     # Prepare data for database
-                    content_json = benchmark.model_dump_json()
-                    content_hash = hashlib.sha256(content_json.encode()).hexdigest()
+                    content_json, content_hash = serialize_benchmark_json(benchmark)
                     recommendation_count = len(benchmark.recommendations)
 
                     db = CatalogDatabase(catalog_db_path)

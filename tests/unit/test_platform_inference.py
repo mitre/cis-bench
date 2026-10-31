@@ -137,12 +137,12 @@ class TestPlatformInference:
         assert platform == "aws-eks"
 
     def test_aks_inference(self):
-        """Infer Azure AKS platform (categorized as cloud since it's Azure service)."""
+        """Infer Azure AKS platform before generic Azure cloud pattern."""
         platform_type, platform = WorkBenchCatalogParser._infer_platform(
             "CIS Azure Kubernetes Service (AKS) Benchmark"
         )
-        assert platform_type == "cloud"
-        assert platform == "azure"
+        assert platform_type == "container"
+        assert platform == "azure-aks"
 
     def test_oke_inference(self):
         """Infer Oracle OKE platform (categorized as cloud since it's Oracle Cloud service)."""

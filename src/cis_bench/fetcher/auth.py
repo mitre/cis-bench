@@ -3,10 +3,13 @@
 import http.cookiejar
 import logging
 import platform
+import re
 from pathlib import Path
+from urllib.parse import urljoin, urlparse
 
 import browser_cookie3
 import requests
+from bs4 import BeautifulSoup
 
 # Enable system certificate store usage (macOS Keychain, Windows cert store, Linux /etc/ssl)
 try:
@@ -17,14 +20,45 @@ except ImportError:
     # truststore not installed, will use certifi bundle
     pass
 
-from cis_bench.catalog.parser import WorkBenchCatalogParser
 from cis_bench.config import Config
 
 logger = logging.getLogger(__name__)
 
 
+def is_workbench_login_page(html: str) -> bool:
+    """Return True if HTML represents a CIS WorkBench login page."""
+    if not html:
+        return False
+
+    soup = BeautifulSoup(html, "html.parser")
+    login_indicators = [
+        soup.find("form", action=re.compile(r"/login")),
+        soup.find("input", {"name": "login"}),
+        soup.find("input", {"name": "password"}),
+        soup.find("div", class_="index-signin-wrapper"),
+        soup.find(string=re.compile(r"E-Mail or Username", re.I)),
+    ]
+    return any(indicator is not None for indicator in login_indicators)
+
+
 class AuthManager:
     """Manages authentication for CIS WorkBench."""
+
+    CIS_COOKIE_ROOT_DOMAIN = Config.CIS_ROOT_DOMAIN
+    TRUSTED_SSO_HOSTS = frozenset({"auth.portal.cisecurity.org", "auth.portal.qa.cisecurity.org"})
+    MAX_SSO_REDIRECTS = 8
+
+    @staticmethod
+    def _workbench_host() -> str:
+        return urlparse(Config.get_workbench_base_url()).netloc
+
+    @staticmethod
+    def _workbench_benchmarks_url() -> str:
+        return f"{Config.get_workbench_base_url()}/benchmarks"
+
+    @staticmethod
+    def _trusted_auth_hosts() -> frozenset[str]:
+        return AuthManager.TRUSTED_SSO_HOSTS | {AuthManager._workbench_host()}
 
     # Windows-specific error patterns that indicate permission/encryption issues
     WINDOWS_PERMISSION_PATTERNS = [
@@ -102,8 +136,13 @@ Workarounds:
 """
 
     @staticmethod
+    def _is_cis_cookie_domain(domain: str) -> bool:
+        """Return True when a cookie domain belongs to cisecurity.org or its subdomains."""
+        return Config.is_cis_domain(domain)
+
+    @staticmethod
     def load_cookies_from_browser(
-        browser="chrome", verify_ssl=None, try_fallback: bool = False
+        browser: str = "chrome", verify_ssl: bool | None = None, try_fallback: bool = False
     ) -> requests.Session:
         """Load cookies from browser using browser-cookie3.
 
@@ -127,26 +166,28 @@ Workarounds:
         else:
             session.verify = verify_ssl
 
+        browser_loaders = {
+            "chrome": browser_cookie3.chrome,
+            "firefox": browser_cookie3.firefox,
+            "edge": browser_cookie3.edge,
+            "safari": browser_cookie3.safari,
+        }
+
         try:
             logger.debug(f"Extracting cookies from {browser}...")
 
-            if browser.lower() == "chrome":
-                cj = browser_cookie3.chrome(domain_name="workbench.cisecurity.org")
-            elif browser.lower() == "firefox":
-                cj = browser_cookie3.firefox(domain_name="workbench.cisecurity.org")
-            elif browser.lower() == "edge":
-                cj = browser_cookie3.edge(domain_name="workbench.cisecurity.org")
-            elif browser.lower() == "safari":
-                cj = browser_cookie3.safari(domain_name="workbench.cisecurity.org")
-            else:
+            loader = browser_loaders.get(browser.lower())
+            if loader is None:
                 raise ValueError(
                     f"Unsupported browser: {browser}. Use chrome, firefox, edge, or safari"
                 )
 
-            session.cookies = cj
+            cj = loader(domain_name=AuthManager.CIS_COOKIE_ROOT_DOMAIN)
+            for cookie in cj:
+                if AuthManager._is_cis_cookie_domain(cookie.domain):
+                    session.cookies.set_cookie(cookie)
 
-            # Count cookies extracted
-            cookie_count = len([c for c in cj if "workbench.cisecurity.org" in c.domain])
+            cookie_count = len(list(session.cookies))
             logger.debug(f"Extracted {cookie_count} cookies from {browser}")
 
             return session
@@ -175,7 +216,9 @@ Workarounds:
             raise Exception(f"Failed to extract cookies from {browser}: {e}") from e
 
     @staticmethod
-    def load_cookies_from_file(cookies_file: str, verify_ssl=None) -> requests.Session:
+    def load_cookies_from_file(
+        cookies_file: str, verify_ssl: bool | None = None
+    ) -> requests.Session:
         """Load cookies from Netscape format cookies.txt file.
 
         Args:
@@ -201,9 +244,10 @@ Workarounds:
             logger.debug(f"Loading cookies from {cookies_file}...")
             cj = http.cookiejar.MozillaCookieJar(cookies_file)
             cj.load(ignore_discard=True, ignore_expires=True)
-            session.cookies = cj
+            for cookie in cj:
+                session.cookies.set_cookie(cookie)
 
-            cookie_count = len(list(cj))
+            cookie_count = len(list(session.cookies))
             logger.debug(f"Loaded {cookie_count} cookies from file")
 
             return session
@@ -306,7 +350,7 @@ Workarounds:
             raise Exception(f"Failed to save session: {e}") from e
 
     @staticmethod
-    def load_saved_session(verify_ssl=None) -> requests.Session:
+    def load_saved_session(verify_ssl: bool | None = None) -> requests.Session | None:
         """Load previously saved session from persistent storage.
 
         Args:
@@ -355,46 +399,93 @@ Workarounds:
             return False
 
     @staticmethod
-    def validate_session(session: requests.Session, verify_ssl: bool = True) -> bool:
-        """Validate that session cookies are still valid.
+    def validate_session(session: requests.Session | None, verify_ssl: bool | None = None) -> bool:
+        """Validate that session cookies are still valid, completing trusted CIS Auth0 SSO redirects.
 
         Args:
             session: Session to validate
-            verify_ssl: Whether to verify SSL certificates (default: True)
+            verify_ssl: SSL verification setting (None = use Config default)
 
         Returns:
-            True if session is valid, False otherwise
+            True if session is valid on configured WorkBench host, False otherwise
         """
         if not session or not session.cookies:
             return False
 
-        try:
-            # Test session by making a simple request to CIS WorkBench
-            response = session.get(
-                "https://workbench.cisecurity.org/benchmarks",
-                timeout=10,
-                allow_redirects=False,
-                verify=verify_ssl,
-            )
+        effective_verify_ssl = Config.get_verify_ssl() if verify_ssl is None else verify_ssl
+        workbench_host = AuthManager._workbench_host()
+        benchmarks_url = AuthManager._workbench_benchmarks_url()
+        trusted_hosts = AuthManager._trusted_auth_hosts()
 
-            # If we get redirected (any 3xx), session is likely invalid
-            # CIS WorkBench redirects to homepage (302) when unauthenticated
-            if 300 <= response.status_code < 400:
-                location = response.headers.get("Location", "")
-                logger.debug(f"Session invalid - redirected to {location}")
+        try:
+            current_url = benchmarks_url
+
+            for _ in range(AuthManager.MAX_SSO_REDIRECTS + 1):
+                response = session.get(
+                    current_url,
+                    timeout=10,
+                    allow_redirects=False,
+                    verify=effective_verify_ssl,
+                )
+
+                if 300 <= response.status_code < 400:
+                    location = response.headers.get("Location", "")
+                    if not location:
+                        logger.debug("Session invalid - redirect missing Location header")
+                        return False
+
+                    next_url = urljoin(current_url, location)
+                    parsed = urlparse(next_url)
+
+                    if parsed.scheme != "https" or parsed.netloc not in trusted_hosts:
+                        logger.debug(f"Session invalid - untrusted redirect target: {next_url}")
+                        return False
+
+                    if parsed.path.startswith("/login") or parsed.path.startswith("/u/login"):
+                        logger.debug(f"Session invalid - redirected to login: {next_url}")
+                        return False
+
+                    if next_url == current_url:
+                        logger.debug(f"Session invalid - self-redirect loop at {next_url}")
+                        return False
+
+                    current_url = next_url
+                    continue
+
+                if 200 <= response.status_code < 300:
+                    if urlparse(current_url).netloc != workbench_host:
+                        logger.debug(
+                            f"Session invalid - SSO stopped off WorkBench host at {current_url}"
+                        )
+                        return False
+
+                    if is_workbench_login_page(response.text):
+                        logger.debug("Session invalid - received login page")
+                        return False
+
+                    if current_url != benchmarks_url:
+                        bench_response = session.get(
+                            benchmarks_url,
+                            timeout=10,
+                            allow_redirects=False,
+                            verify=effective_verify_ssl,
+                        )
+                        if not (200 <= bench_response.status_code < 300):
+                            logger.debug(
+                                "Session invalid - /benchmarks inaccessible after SSO handshake"
+                            )
+                            return False
+                        if is_workbench_login_page(bench_response.text):
+                            logger.debug("Session invalid - /benchmarks returned login page")
+                            return False
+
+                    logger.debug("Session validated successfully")
+                    return True
+
+                logger.warning(f"Session validation returned status {response.status_code}")
                 return False
 
-            # Check if response is the login page (even with 200 OK status)
-            if 200 <= response.status_code < 300:
-                # Check if we got the login page instead of actual content
-                if WorkBenchCatalogParser.is_login_page(response.text):
-                    logger.debug("Session invalid - received login page")
-                    return False
-
-                logger.debug("Session validated successfully")
-                return True
-
-            logger.warning(f"Session validation returned status {response.status_code}")
+            logger.debug("Session invalid - exceeded maximum SSO redirects")
             return False
 
         except Exception as e:
@@ -403,7 +494,7 @@ Workarounds:
 
     @staticmethod
     def get_or_create_session(
-        browser=None, force_refresh=False, verify_ssl=True
+        browser=None, force_refresh=False, verify_ssl: bool | None = None
     ) -> requests.Session:
         """Get authenticated session, using saved session if available.
 
@@ -413,23 +504,25 @@ Workarounds:
         Args:
             browser: Browser to extract cookies from if needed
             force_refresh: Force refresh from browser even if saved session exists
-            verify_ssl: Whether to verify SSL certificates (default: True)
+            verify_ssl: SSL verification setting (None = use Config default)
 
         Returns:
             Authenticated requests.Session
 
         Raises:
-            ValueError: If no saved session and no browser specified
+            ValueError: If no saved session and no browser specified, or WorkBench URL invalid
             Exception: If authentication fails
         """
+        effective_verify_ssl = Config.get_verify_ssl() if verify_ssl is None else verify_ssl
+
         # If force refresh, skip saved session
         if not force_refresh:
             # Try to load saved session
-            saved_session = AuthManager.load_saved_session(verify_ssl=verify_ssl)
+            saved_session = AuthManager.load_saved_session(verify_ssl=effective_verify_ssl)
 
             if saved_session:
                 # Validate the saved session
-                if AuthManager.validate_session(saved_session, verify_ssl=verify_ssl):
+                if AuthManager.validate_session(saved_session, verify_ssl=effective_verify_ssl):
                     logger.debug("Using saved session")
                     return saved_session
                 else:
@@ -445,12 +538,13 @@ Workarounds:
 
         # Extract fresh cookies from browser
         logger.debug(f"Authenticating via {browser}")
-        session = AuthManager.load_cookies_from_browser(browser, verify_ssl=verify_ssl)
+        session = AuthManager.load_cookies_from_browser(browser, verify_ssl=effective_verify_ssl)
 
         # Validate new session
-        if not AuthManager.validate_session(session, verify_ssl=verify_ssl):
+        if not AuthManager.validate_session(session, verify_ssl=effective_verify_ssl):
+            workbench_host = AuthManager._workbench_host()
             raise Exception(
-                f"Failed to authenticate. Please ensure you are logged into workbench.cisecurity.org in {browser}"
+                f"Failed to authenticate. Please ensure you are logged into {workbench_host} in {browser}"
             )
 
         # Save for future use

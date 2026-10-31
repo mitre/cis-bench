@@ -1146,14 +1146,14 @@ class TestIDFormatValidation:
 
     # --- Profile Select Element ID Tests ---
 
-    def test_disa_profile_selects_use_sv_rule_ids(self, disa_engine, almalinux_complete_benchmark):
+    def test_disa_profile_selects_use_sv_rule_ids(self, disa_engine, synthetic_complete_benchmark):
         """Profile select elements should reference SV- rule IDs in DISA style."""
         # Get profile config from engine config (not context)
         profile_config = disa_engine.config.benchmark.get("profiles", {})
 
         # Generate profiles
         profiles = disa_engine.generate_profiles_from_rules(
-            almalinux_complete_benchmark.recommendations, profile_config
+            synthetic_complete_benchmark.recommendations, profile_config
         )
 
         # Check at least one profile has selects
@@ -1167,7 +1167,7 @@ class TestIDFormatValidation:
                 )
 
     def test_cis_profile_selects_use_benchmarks_rule_ids(
-        self, cis_engine, almalinux_complete_benchmark
+        self, cis_engine, synthetic_complete_benchmark
     ):
         """Profile select elements should reference cisecurity.benchmarks rule IDs in CIS style."""
         # Get profile config from engine config (not context)
@@ -1175,7 +1175,7 @@ class TestIDFormatValidation:
 
         # Generate profiles
         profiles = cis_engine.generate_profiles_from_rules(
-            almalinux_complete_benchmark.recommendations, profile_config
+            synthetic_complete_benchmark.recommendations, profile_config
         )
 
         # Check at least one profile has selects
@@ -1270,17 +1270,17 @@ class TestDISAVulcanCompatibility:
         assert source is not None, "DISA group description should have a source field"
         assert source == "title", "DISA group description source should be 'title'"
 
-    def test_disa_map_group_uses_ref_as_title(self, disa_config_path, almalinux_complete_benchmark):
+    def test_disa_map_group_uses_ref_as_title(self, disa_config_path, synthetic_complete_benchmark):
         """map_group should use CIS ref as group title."""
         engine = MappingEngine(disa_config_path)
-        benchmark = almalinux_complete_benchmark
+        benchmark = synthetic_complete_benchmark
         rec = benchmark.recommendations[0]
         context = {"platform": "test", "benchmark": benchmark}
 
         rule = engine.map_rule(rec, context)
         group = engine.map_group(rec, rule, context)
 
-        # Group title should contain the ref (e.g., "6.1.1")
+        # Group title should contain the ref (e.g., "1.1.1")
         assert group.title, "Group should have title"
         title_content = (
             group.title[0].content[0]
@@ -1296,11 +1296,11 @@ class TestDISAVulcanCompatibility:
         )
 
     def test_disa_map_group_uses_rule_title_as_description(
-        self, disa_config_path, almalinux_complete_benchmark
+        self, disa_config_path, synthetic_complete_benchmark
     ):
         """map_group should use rule title as group description."""
         engine = MappingEngine(disa_config_path)
-        benchmark = almalinux_complete_benchmark
+        benchmark = synthetic_complete_benchmark
         rec = benchmark.recommendations[0]
         context = {"platform": "test", "benchmark": benchmark}
 
@@ -1377,3 +1377,91 @@ class TestEdgeCases:
         # Should handle duplicates gracefully
         assert isinstance(ccis, list)
         assert isinstance(extra_nist, list)
+
+
+# ============================================================================
+# TEST: Config-Driven XCCDF Notice Creation
+# ============================================================================
+
+
+class TestNoticeCreation:
+    """Unit tests for config-driven XCCDF <notice> construction in MappingEngine."""
+
+    def test_create_notice_populates_content_id_and_lang_from_style_config(
+        self, cis_config_path, synthetic_complete_benchmark
+    ):
+        """create_notice resolves direct id, lang, and variable-substituted content."""
+        engine = MappingEngine(cis_config_path)
+        engine.config.benchmark["notice"] = {
+            "id": "custom-notice",
+            "lang": "en-US",
+            "xccdf_type": "NoticeType",
+            "content": "Exported from {benchmark.title} ({benchmark.url})",
+        }
+
+        notice = engine.create_notice(synthetic_complete_benchmark)
+
+        assert notice.id == "custom-notice"
+        assert notice.lang == "en-US"
+        assert notice.content == [
+            f"Exported from {synthetic_complete_benchmark.title} ({synthetic_complete_benchmark.url})"
+        ]
+
+    def test_create_notice_resolves_attributes_dict_and_default_id(
+        self, disa_config_path, synthetic_complete_benchmark
+    ):
+        """create_notice resolves attributes.id and attributes['xml:lang'] and normalizes HttpUrl."""
+        engine = MappingEngine(disa_config_path)
+        engine.config.benchmark["notice"] = {
+            "element": "notice",
+            "xccdf_type": "NoticeType",
+            "attributes": {
+                "id": "attr-notice-id",
+                "xml:lang": "en",
+            },
+            "content": "{benchmark.url}",
+        }
+
+        notice = engine.create_notice(synthetic_complete_benchmark)
+
+        assert notice.id == "attr-notice-id"
+        assert notice.lang == "en"
+        assert notice.content == [str(synthetic_complete_benchmark.url)]
+        assert isinstance(notice.content[0], str)
+
+        engine.config.benchmark["notice"] = {
+            "xccdf_type": "NoticeType",
+            "content": "Plain notice without explicit id or lang",
+        }
+        fallback_notice = engine.create_notice(synthetic_complete_benchmark)
+        assert fallback_notice.id == "terms-of-use"
+        assert fallback_notice.lang is None
+        assert fallback_notice.content == ["Plain notice without explicit id or lang"]
+
+    def test_create_notice_preserves_empty_content_when_omitted_or_blank(
+        self, cis_config_path, synthetic_complete_benchmark
+    ):
+        """Custom styles with empty or omitted notice content preserve content=[]."""
+        engine = MappingEngine(cis_config_path)
+
+        engine.config.benchmark["notice"] = {
+            "id": "empty-str",
+            "lang": "en",
+            "content": "",
+        }
+        empty_notice = engine.create_notice(synthetic_complete_benchmark)
+        assert empty_notice.id == "empty-str"
+        assert empty_notice.lang == "en"
+        assert empty_notice.content == []
+
+        engine.config.benchmark["notice"] = {"id": "omitted-content"}
+        omitted_notice = engine.create_notice(synthetic_complete_benchmark)
+        assert omitted_notice.id == "omitted-content"
+        assert omitted_notice.lang is None
+        assert omitted_notice.content == []
+
+        engine.config.benchmark.pop("notice", None)
+        missing_section_notice = engine.create_notice(synthetic_complete_benchmark)
+        assert missing_section_notice.id == "terms-of-use"
+        assert missing_section_notice.lang is None
+        assert missing_section_notice.content == []

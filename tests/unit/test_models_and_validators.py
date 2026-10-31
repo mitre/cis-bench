@@ -39,8 +39,8 @@ from cis_bench.validators.disa_conventions import (
 
 # Using shared fixtures from tests/conftest.py:
 #   - project_root
-#   - almalinux_complete_file (points to tests/fixtures/benchmarks/almalinux_complete.json)
-#   - valid_disa_xccdf_file (points to tests/fixtures/xccdf/valid_disa_full.xml)
+#   - synthetic_complete_file (points to tests/fixtures/benchmarks/synthetic_complete.json)
+#   - valid_disa_xccdf_file (points to tests/fixtures/xccdf/generated/disa/valid_disa_full.xml)
 
 
 @pytest.fixture
@@ -59,8 +59,8 @@ def complete_recommendation_data():
     """Complete recommendation with all fields."""
     return {
         "ref": "6.1.1",
-        "title": "Ensure AIDE is installed",
-        "url": "https://workbench.cisecurity.org/sections/3680740/recommendations/6083840",
+        "title": "Ensure filesystem integrity verification agent is active",
+        "url": "https://workbench.cisecurity.org/sections/900010/recommendations/900611",
         "assessment_status": "Automated",
         "profiles": ["Level 1 - Server", "Level 1 - Workstation"],
         "cis_controls": [
@@ -79,11 +79,11 @@ def complete_recommendation_data():
             "mitigations": ["M1022"],
         },
         "nist_controls": ["AU-2", "SI-3"],
-        "description": "<p>AIDE is an intrusion detection tool</p>",
+        "description": "<p>Periodic cryptographic checksum verification detects tampering.</p>",
         "rationale": "<p>Security rationale here</p>",
         "impact": "<p>Impact statement</p>",
-        "audit": "<p>Run: <code>rpm -q aide</code></p>",
-        "remediation": "<p>Run: <code>dnf install aide</code></p>",
+        "audit": "<p>Run: <code>integrity-agent --status</code></p>",
+        "remediation": "<p>Run: <code>service-ctl enable --now integrity-agent</code></p>",
     }
 
 
@@ -491,13 +491,13 @@ class TestSerialization:
         finally:
             Path(temp_path).unlink(missing_ok=True)
 
-    def test_benchmark_from_json_file(self, almalinux_complete_file):
+    def test_benchmark_from_json_file(self, synthetic_complete_file):
         """Test loading benchmark from JSON file."""
-        benchmark = Benchmark.from_json_file(str(almalinux_complete_file))
+        benchmark = Benchmark.from_json_file(str(synthetic_complete_file))
 
-        assert benchmark.title
-        assert benchmark.benchmark_id
-        assert len(benchmark.recommendations) > 0
+        assert benchmark.title == "CIS Synthetic Enterprise Platform Benchmark v1.0.0"
+        assert benchmark.benchmark_id == "90001"
+        assert len(benchmark.recommendations) == 20
         assert benchmark.total_recommendations == len(benchmark.recommendations)
 
     def test_benchmark_round_trip_json(self, minimal_benchmark_data):
@@ -549,60 +549,120 @@ class TestSerialization:
 
 
 # ============================================================================
-# REAL DATA TESTS
+# SYNTHETIC FIXTURE DATA TESTS
 # ============================================================================
 
 
-class TestRealBenchmarkData:
-    """Test with real benchmark data from test files."""
+class TestSyntheticBenchmarkData:
+    """Test deterministic platform-agnostic synthetic benchmark fixture."""
 
-    def test_load_complete_benchmark(self, almalinux_complete_file):
-        """Test loading complete test benchmark (322 recommendations)."""
-        benchmark = Benchmark.from_json_file(str(almalinux_complete_file))
+    def test_load_synthetic_complete_benchmark(self, synthetic_complete_file):
+        """Test loading complete synthetic benchmark and verifying full domain coverage."""
+        import re
 
-        assert benchmark.title == "CIS AlmaLinux OS 8 Benchmark v4.0.0"
-        assert benchmark.benchmark_id == "23598"
-        assert benchmark.version == "v4.0.0"
-        assert benchmark.total_recommendations == 322
-        assert len(benchmark.recommendations) == 322
+        from cis_bench.utils.cci_lookup import get_cci_service
 
-    def test_complete_benchmark_all_recommendations_valid(self, almalinux_complete_file):
-        """Test all recommendations in complete benchmark are valid."""
-        benchmark = Benchmark.from_json_file(str(almalinux_complete_file))
+        benchmark = Benchmark.from_json_file(str(synthetic_complete_file))
+
+        assert benchmark.title == "CIS Synthetic Enterprise Platform Benchmark v1.0.0"
+        assert benchmark.benchmark_id == "90001"
+        assert benchmark.version == "v1.0.0"
+        assert benchmark.total_recommendations == 20
+        assert len(benchmark.recommendations) == 20
+
+        refs = [r.ref for r in benchmark.recommendations]
+        assert refs[0] == "1.1.1"
+        assert refs[-1] == "6.2.1"
+        assert len({ref.split(".")[0] for ref in refs}) == 6
+
+        profiles_seen = {p for r in benchmark.recommendations for p in r.profiles}
+        assert profiles_seen == {
+            "Level 1 - Server",
+            "Level 1 - Workstation",
+            "Level 2 - Server",
+            "Level 2 - Workstation",
+        }
+
+        statuses_seen = {r.assessment_status for r in benchmark.recommendations}
+        assert statuses_seen == {"Automated", "Manual"}
+
+        recs_with_parent = [r for r in benchmark.recommendations if r.parent is not None]
+        recs_with_artifacts = [r for r in benchmark.recommendations if r.artifacts]
+        assert len(recs_with_parent) >= 4
+        assert len(recs_with_artifacts) >= 4
+
+        cci_service = get_cci_service()
+        resolved_ccis: list[str] = []
+        for rec in benchmark.recommendations:
+            if rec.cis_controls:
+                ccis, _ = cci_service.deduplicate_nist_controls(
+                    [c.control for c in rec.cis_controls],
+                    rec.nist_controls,
+                )
+                resolved_ccis.extend(ccis)
+        assert len(resolved_ccis) >= 40
+        assert all(re.fullmatch(r"CCI-\d{6}", cci) for cci in resolved_ccis)
+
+        combined_html = "\n".join(
+            field
+            for r in benchmark.recommendations
+            for field in (
+                r.description,
+                r.rationale,
+                r.impact,
+                r.audit,
+                r.remediation,
+                r.additional_info,
+                r.default_value,
+            )
+            if field
+        )
+        for token in ("<code>", "<pre>", "<ul>", "<table>", "&amp;", "&lt;", "&gt;", '"', "'"):
+            assert token in combined_html, f"Expected HTML/XML token {token!r} in synthetic fixture"
+
+    def test_complete_benchmark_all_recommendations_valid(self, synthetic_complete_file):
+        """Test all recommendations in complete synthetic benchmark are valid."""
+        benchmark = Benchmark.from_json_file(str(synthetic_complete_file))
 
         for rec in benchmark.recommendations:
             assert isinstance(rec, Recommendation)
             assert rec.ref
             assert rec.title
             assert rec.url
-            assert rec.assessment_status
+            assert rec.assessment_status in {"Automated", "Manual"}
 
-    def test_complete_benchmark_has_cis_controls(self, almalinux_complete_file):
-        """Test complete benchmark has CIS controls."""
-        benchmark = Benchmark.from_json_file(str(almalinux_complete_file))
+    def test_complete_benchmark_has_cis_controls(self, synthetic_complete_file):
+        """Test synthetic benchmark has dual v7 + v8 CIS controls and IG combinations."""
+        benchmark = Benchmark.from_json_file(str(synthetic_complete_file))
 
-        # At least some recommendations should have CIS controls
         recs_with_controls = [r for r in benchmark.recommendations if r.cis_controls]
-        assert len(recs_with_controls) > 0
+        assert len(recs_with_controls) == 19
 
-        # Verify control structure
+        ig_tuples: set[tuple[bool, bool, bool]] = set()
         for rec in recs_with_controls:
+            versions = {c.version for c in rec.cis_controls}
+            assert versions == {7, 8}
             for control in rec.cis_controls:
                 assert isinstance(control, CISControl)
-                assert control.version in [7, 8]
                 assert control.control
+                ig_tuples.add((control.ig1, control.ig2, control.ig3))
 
-    def test_complete_benchmark_has_mitre_mappings(self, almalinux_complete_file):
-        """Test complete benchmark has MITRE mappings."""
-        benchmark = Benchmark.from_json_file(str(almalinux_complete_file))
+        assert (True, True, True) in ig_tuples
+        assert (False, True, True) in ig_tuples
+        assert (False, False, True) in ig_tuples
 
-        # At least some recommendations should have MITRE mappings
+    def test_complete_benchmark_has_mitre_mappings(self, synthetic_complete_file):
+        """Test synthetic benchmark has MITRE techniques, tactics, and mitigations."""
+        benchmark = Benchmark.from_json_file(str(synthetic_complete_file))
+
         recs_with_mitre = [r for r in benchmark.recommendations if r.mitre_mapping]
-        assert len(recs_with_mitre) > 0
+        assert len(recs_with_mitre) == 18
 
-        # Verify mapping structure
         for rec in recs_with_mitre:
             assert isinstance(rec.mitre_mapping, MITREMapping)
+            assert rec.mitre_mapping.techniques
+            assert rec.mitre_mapping.tactics
+            assert rec.mitre_mapping.mitigations
 
 
 # ============================================================================
@@ -830,10 +890,10 @@ class TestEdgeCases:
 class TestIntegration:
     """Integration tests combining multiple components."""
 
-    def test_load_benchmark_export_and_reload(self, almalinux_complete_file):
+    def test_load_benchmark_export_and_reload(self, synthetic_complete_file):
         """Test full round-trip: load → export → reload → compare."""
         # Load original
-        original = Benchmark.from_json_file(str(almalinux_complete_file))
+        original = Benchmark.from_json_file(str(synthetic_complete_file))
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             temp_path = f.name
