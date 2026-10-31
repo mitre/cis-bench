@@ -755,6 +755,53 @@ class TestLookupTables:
             assert temp_db.get_metadata(f"pending-{label}") == f"preserved-{label}"
         competing_db.engine.dispose()
 
+    def test_savepoint_lookup_creation_rolls_back_with_outer_session(self, temp_db):
+        """SAVEPOINT release inside _get_or_create must not auto-commit lookup rows before outer commit."""
+        from sqlmodel import Session, select
+
+        from cis_bench.catalog.models import Platform
+
+        observer_db = CatalogDatabase(temp_db.db_path)
+        try:
+            with Session(temp_db.engine) as session:
+                created = temp_db.get_or_create_platform("RollbackOnlyPlatform", session)
+                assert created.platform_id is not None
+
+                with Session(observer_db.engine) as observer_session:
+                    visible_before_commit = observer_session.exec(
+                        select(Platform).where(Platform.name == "RollbackOnlyPlatform")
+                    ).first()
+                    assert visible_before_commit is None
+
+                session.rollback()
+
+            with Session(observer_db.engine) as observer_session:
+                persisted_after_rollback = observer_session.exec(
+                    select(Platform).where(Platform.name == "RollbackOnlyPlatform")
+                ).first()
+                assert persisted_after_rollback is None
+        finally:
+            observer_db.engine.dispose()
+
+    def test_catalog_database_init_tolerates_eperm_on_unowned_paths(self, temp_db, monkeypatch):
+        """Opening a readable catalog database owned by another user tolerates chmod PermissionError."""
+        import errno
+
+        original_chmod = Path.chmod
+
+        def _deny_chmod(path_obj: Path, mode: int, *, follow_symlinks: bool = True) -> None:
+            if path_obj in {temp_db.db_path, temp_db.db_path.parent}:
+                raise PermissionError(errno.EPERM, "Operation not permitted", str(path_obj))
+            original_chmod(path_obj, mode, follow_symlinks=follow_symlinks)
+
+        monkeypatch.setattr(Path, "chmod", _deny_chmod)
+
+        shared_db = CatalogDatabase(temp_db.db_path)
+        try:
+            assert shared_db.get_catalog_stats()["total_benchmarks"] == 0
+        finally:
+            shared_db.engine.dispose()
+
 
 class TestDownloadedBenchmarks:
     """Test downloaded benchmark tracking."""
@@ -1154,6 +1201,33 @@ class TestCollections:
         assert len(links) == 2
 
         conn.close()
+
+    def test_get_benchmark_includes_sorted_collections(self, temp_db):
+        """get_benchmark returns sorted collection names and an empty list when none exist."""
+        temp_db.insert_benchmark(
+            {
+                "benchmark_id": "10",
+                "title": "Tagged Benchmark",
+                "url": "https://workbench.cisecurity.org/benchmarks/10",
+                "status": "Published",
+                "collections": ["STIG", "Cloud", "Linux"],
+            }
+        )
+        temp_db.insert_benchmark(
+            {
+                "benchmark_id": "11",
+                "title": "Untagged Benchmark",
+                "url": "https://workbench.cisecurity.org/benchmarks/11",
+                "status": "Published",
+            }
+        )
+
+        tagged = temp_db.get_benchmark("10")
+        untagged = temp_db.get_benchmark("11")
+        assert tagged is not None
+        assert untagged is not None
+        assert tagged["collections"] == ["Cloud", "Linux", "STIG"]
+        assert untagged["collections"] == []
 
 
 class TestEdgeCases:

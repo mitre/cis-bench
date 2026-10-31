@@ -399,23 +399,25 @@ Workarounds:
             return False
 
     @staticmethod
-    def validate_session(session: requests.Session | None, verify_ssl: bool = True) -> bool:
+    def validate_session(session: requests.Session | None, verify_ssl: bool | None = None) -> bool:
         """Validate that session cookies are still valid, completing trusted CIS Auth0 SSO redirects.
 
         Args:
             session: Session to validate
-            verify_ssl: Whether to verify SSL certificates (default: True)
+            verify_ssl: SSL verification setting (None = use Config default)
 
         Returns:
-            True if session is valid on workbench.cisecurity.org, False otherwise
+            True if session is valid on configured WorkBench host, False otherwise
         """
         if not session or not session.cookies:
             return False
 
+        effective_verify_ssl = Config.get_verify_ssl() if verify_ssl is None else verify_ssl
+        workbench_host = AuthManager._workbench_host()
+        benchmarks_url = AuthManager._workbench_benchmarks_url()
+        trusted_hosts = AuthManager._trusted_auth_hosts()
+
         try:
-            workbench_host = AuthManager._workbench_host()
-            benchmarks_url = AuthManager._workbench_benchmarks_url()
-            trusted_hosts = AuthManager._trusted_auth_hosts()
             current_url = benchmarks_url
 
             for _ in range(AuthManager.MAX_SSO_REDIRECTS + 1):
@@ -423,7 +425,7 @@ Workarounds:
                     current_url,
                     timeout=10,
                     allow_redirects=False,
-                    verify=verify_ssl,
+                    verify=effective_verify_ssl,
                 )
 
                 if 300 <= response.status_code < 400:
@@ -466,7 +468,7 @@ Workarounds:
                             benchmarks_url,
                             timeout=10,
                             allow_redirects=False,
-                            verify=verify_ssl,
+                            verify=effective_verify_ssl,
                         )
                         if not (200 <= bench_response.status_code < 300):
                             logger.debug(
@@ -492,7 +494,7 @@ Workarounds:
 
     @staticmethod
     def get_or_create_session(
-        browser=None, force_refresh=False, verify_ssl=True
+        browser=None, force_refresh=False, verify_ssl: bool | None = None
     ) -> requests.Session:
         """Get authenticated session, using saved session if available.
 
@@ -502,23 +504,25 @@ Workarounds:
         Args:
             browser: Browser to extract cookies from if needed
             force_refresh: Force refresh from browser even if saved session exists
-            verify_ssl: Whether to verify SSL certificates (default: True)
+            verify_ssl: SSL verification setting (None = use Config default)
 
         Returns:
             Authenticated requests.Session
 
         Raises:
-            ValueError: If no saved session and no browser specified
+            ValueError: If no saved session and no browser specified, or WorkBench URL invalid
             Exception: If authentication fails
         """
+        effective_verify_ssl = Config.get_verify_ssl() if verify_ssl is None else verify_ssl
+
         # If force refresh, skip saved session
         if not force_refresh:
             # Try to load saved session
-            saved_session = AuthManager.load_saved_session(verify_ssl=verify_ssl)
+            saved_session = AuthManager.load_saved_session(verify_ssl=effective_verify_ssl)
 
             if saved_session:
                 # Validate the saved session
-                if AuthManager.validate_session(saved_session, verify_ssl=verify_ssl):
+                if AuthManager.validate_session(saved_session, verify_ssl=effective_verify_ssl):
                     logger.debug("Using saved session")
                     return saved_session
                 else:
@@ -534,10 +538,10 @@ Workarounds:
 
         # Extract fresh cookies from browser
         logger.debug(f"Authenticating via {browser}")
-        session = AuthManager.load_cookies_from_browser(browser, verify_ssl=verify_ssl)
+        session = AuthManager.load_cookies_from_browser(browser, verify_ssl=effective_verify_ssl)
 
         # Validate new session
-        if not AuthManager.validate_session(session, verify_ssl=verify_ssl):
+        if not AuthManager.validate_session(session, verify_ssl=effective_verify_ssl):
             workbench_host = AuthManager._workbench_host()
             raise Exception(
                 f"Failed to authenticate. Please ensure you are logged into {workbench_host} in {browser}"

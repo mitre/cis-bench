@@ -511,3 +511,27 @@ class TestCatalogPackageExportsAndBoundaries:
                 check=False,
             )
             assert res.returncode == 0, res.stderr
+
+    def test_importing_catalog_search_does_not_import_requests_or_browser_cookie3(self):
+        """Read-only catalog search imports must not eagerly load scraper/downloader HTTP dependencies."""
+        import subprocess
+        import sys
+
+        probe = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                (
+                    "import sys, cis_bench.catalog.search; "
+                    "eager = [m for m in ("
+                    "'requests', 'browser_cookie3', "
+                    "'cis_bench.catalog.downloader', 'cis_bench.catalog.scraper', 'cis_bench.catalog.parser'"
+                    ") if m in sys.modules]; "
+                    "assert not eager, f'Read-only catalog search eagerly imported: {eager}'"
+                ),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert probe.returncode == 0, probe.stderr

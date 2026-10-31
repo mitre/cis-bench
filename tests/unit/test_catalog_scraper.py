@@ -65,9 +65,9 @@ class TestScraperInitialization:
 
         assert scraper.session.verify == verify_setting
 
-    def test_base_url(self):
-        """Test base URL is set correctly."""
-        assert CatalogScraper.BASE_URL == "https://workbench.cisecurity.org/benchmarks"
+    def test_scraper_does_not_expose_unused_base_url_constant(self):
+        """CatalogScraper resolves WorkBench URLs dynamically via Config without a dead BASE_URL attribute."""
+        assert not hasattr(CatalogScraper, "BASE_URL")
 
 
 class TestConnectionTesting:
@@ -301,6 +301,75 @@ class TestQuickUpdate:
         assert saved is not None
         assert saved["status"] == "Final Update"
         assert saved["version"] == "v4.0.1"
+
+    def test_page_one_update_recomputes_latest_versions_when_rows_change(
+        self, temp_db, mock_session, monkeypatch
+    ):
+        """scrape_page_one_update recomputes is_latest flags when a newer benchmark version lands."""
+        temp_db.insert_benchmark(
+            {
+                "benchmark_id": "601",
+                "title": "CIS RHEL 9 Benchmark",
+                "version": "v1.0.0",
+                "status": "Published",
+                "url": "https://workbench.cisecurity.org/benchmarks/601",
+                "published_date": "2024-01-01",
+            }
+        )
+        temp_db.mark_latest_versions()
+        assert temp_db.get_benchmark("601")["is_latest"] is True
+
+        incoming = [
+            {
+                "benchmark_id": "602",
+                "title": "CIS RHEL 9 Benchmark",
+                "version": "v2.0.0",
+                "status": "Published",
+                "url": "https://workbench.cisecurity.org/benchmarks/602",
+                "published_date": "2025-01-01",
+            }
+        ]
+        scraper = _stub_scraper_pages(temp_db, mock_session, monkeypatch, lambda _html: incoming)
+
+        stats = scraper.scrape_page_one_update(rate_limit_seconds=0)
+        assert stats == {"new_count": 1, "updated_count": 0}
+        assert temp_db.get_benchmark("601")["is_latest"] is False
+        assert temp_db.get_benchmark("602")["is_latest"] is True
+
+    def test_page_one_update_detects_collection_changes_without_order_false_positives(
+        self, temp_db, mock_session, monkeypatch
+    ):
+        """scrape_page_one_update treats collection sets order-insensitively and updates when tags change."""
+        base_row = {
+            "benchmark_id": "701",
+            "title": "CIS Container Runtime Benchmark",
+            "version": "v1.0.0",
+            "status": "Published",
+            "url": "https://workbench.cisecurity.org/benchmarks/701",
+            "collections": ["Linux", "STIG"],
+        }
+        current_rows = [dict(base_row)]
+        scraper = _stub_scraper_pages(
+            temp_db, mock_session, monkeypatch, lambda _html: [dict(item) for item in current_rows]
+        )
+
+        assert scraper.scrape_page_one_update(rate_limit_seconds=0) == {
+            "new_count": 1,
+            "updated_count": 0,
+        }
+
+        current_rows[:] = [{**base_row, "collections": ["STIG", "Linux"]}]
+        assert scraper.scrape_page_one_update(rate_limit_seconds=0) == {
+            "new_count": 0,
+            "updated_count": 0,
+        }
+
+        current_rows[:] = [{**base_row, "collections": ["Linux", "STIG", "Zero Trust"]}]
+        assert scraper.scrape_page_one_update(rate_limit_seconds=0) == {
+            "new_count": 0,
+            "updated_count": 1,
+        }
+        assert temp_db.get_benchmark("701")["collections"] == ["Linux", "STIG", "Zero Trust"]
 
 
 def _stub_scraper_pages(

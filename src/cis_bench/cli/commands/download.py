@@ -78,20 +78,23 @@ def download(
     try:
         logger.debug("Getting authenticated session")
         with console.status("[bold green]Authenticating..."):
-            session = AuthManager.get_or_create_session()
+            session = AuthManager.get_or_create_session(verify_ssl=Config.get_verify_ssl())
 
         console.print("[green]✓[/green] Authenticated successfully\n")
         logger.debug("Authentication successful")
 
-    except ValueError:
-        # No saved session
-        console.print("\n[bold red]Authentication Required[/bold red]\n")
-        console.print("[bold cyan]Please log in first:[/bold cyan]")
-        console.print("  cis-bench auth login --browser chrome")
-        console.print("\n[dim]This saves your session for future commands.[/dim]")
-        console.print(
-            "\n[dim]Windows users: If Chrome fails, try Firefox or --cookies option.[/dim]"
-        )
+    except ValueError as e:
+        err_msg = str(e)
+        if "no saved session" in err_msg.lower() or "no session" in err_msg.lower():
+            console.print("\n[bold red]Authentication Required[/bold red]\n")
+            console.print("[bold cyan]Please log in first:[/bold cyan]")
+            console.print("  cis-bench auth login --browser chrome")
+            console.print("\n[dim]This saves your session for future commands.[/dim]")
+            console.print(
+                "\n[dim]Windows users: If Chrome fails, try Firefox or --cookies option.[/dim]"
+            )
+        else:
+            console.print(f"\n[bold red]Configuration Error[/bold red]\n[yellow]{e}[/yellow]")
         sys.exit(1)
     except Exception as e:
         logger.error(f"Authentication failed: {e}", exc_info=True)

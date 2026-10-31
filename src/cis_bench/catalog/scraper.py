@@ -23,7 +23,6 @@ logger = logging.getLogger(__name__)
 class CatalogScraper:
     """Scrape CIS WorkBench catalog and populate database."""
 
-    BASE_URL = "https://workbench.cisecurity.org/benchmarks"
     _CATALOG_COMPARISON_FIELDS = (
         "title",
         "version",
@@ -234,6 +233,9 @@ class CatalogScraper:
         if benchmarks and (new_count + updated_count + unchanged_count) == 0:
             raise ValueError(f"All {len(benchmarks)} benchmarks on page 1 failed validation")
 
+        if new_count > 0 or updated_count > 0:
+            self.db.mark_latest_versions()
+
         # Update metadata
         from datetime import UTC, datetime
 
@@ -247,13 +249,26 @@ class CatalogScraper:
 
     @classmethod
     def _has_catalog_changes(cls, existing: dict, incoming: dict) -> bool:
-        """Return True when any scraped catalog field or provided revision date changed."""
+        """Return True when any scraped catalog field, collection set, or revision date changed."""
         for field in cls._CATALOG_COMPARISON_FIELDS:
             inc_val = incoming.get(field)
             if isinstance(inc_val, str):
                 inc_val = inc_val.strip() or None
             if existing.get(field) != inc_val:
                 return True
+
+        existing_collections = {
+            c.strip()
+            for c in (existing.get("collections") or [])
+            if isinstance(c, str) and c.strip()
+        }
+        incoming_collections = {
+            c.strip()
+            for c in (incoming.get("collections") or [])
+            if isinstance(c, str) and c.strip()
+        }
+        if existing_collections != incoming_collections:
+            return True
 
         inc_rev = incoming.get("last_revision_date")
         return inc_rev is not None and existing.get("last_revision_date") != inc_rev

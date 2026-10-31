@@ -41,7 +41,8 @@ def search_cmd(query, platform, platform_type, status, latest, limit, output_for
     """Search for CIS benchmarks (uses catalog if available).
 
     Searches the local catalog database if it exists, otherwise provides
-    instructions for building the catalog.
+    instructions for building the catalog. Multi-word queries match all terms
+    (boolean keywords like AND, OR, and NOT are treated as literal search words).
 
     \b
     Examples:

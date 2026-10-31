@@ -156,6 +156,40 @@ class TestDownloadAuthErrors:
             assert "session may have expired" in result.output
             assert "cis-bench auth login" in result.output
 
+    def test_download_forwards_configured_verify_ssl_and_surfaces_invalid_workbench_url(
+        self, runner, sample_benchmark, tmp_path
+    ):
+        """Download passes Config.get_verify_ssl() to AuthManager and surfaces invalid URL errors."""
+        with runner.isolated_filesystem():
+            with (
+                patch("cis_bench.cli.commands.download.Config") as mock_config,
+                patch(
+                    "cis_bench.cli.commands.download.AuthManager.get_or_create_session"
+                ) as mock_auth,
+                patch("cis_bench.cli.commands.download.WorkbenchScraper") as mock_scraper_cls,
+            ):
+                mock_config.get_verify_ssl.return_value = False
+                mock_config.get_catalog_db_path.return_value = tmp_path / "missing.db"
+                mock_auth.return_value = Mock()
+                mock_scraper = Mock()
+                mock_scraper.download_benchmark.return_value = sample_benchmark
+                mock_scraper_cls.return_value = mock_scraper
+
+                ok_result = runner.invoke(cli, ["download", "12345"])
+                assert ok_result.exit_code == 0, ok_result.output
+                mock_auth.assert_called_once_with(verify_ssl=False)
+
+            with patch(
+                "cis_bench.cli.commands.download.AuthManager.get_or_create_session",
+                side_effect=ValueError(
+                    "CIS_BENCH_WORKBENCH_URL must use https:// and a cisecurity.org host"
+                ),
+            ):
+                bad_url_result = runner.invoke(cli, ["download", "12345"])
+                assert bad_url_result.exit_code == 1
+                assert "CIS_BENCH_WORKBENCH_URL" in bad_url_result.output
+                assert "Authentication Required" not in bad_url_result.output
+
 
 class TestDownloadFileInput:
     """Test download command file-based URL input (lines 112-119, 125)."""
@@ -767,6 +801,71 @@ class TestGetDownloadErrors:
 
                             assert result.exit_code == 1
                             assert "Download failed" in result.output
+
+    def test_get_forwards_configured_verify_ssl_and_surfaces_invalid_workbench_url(
+        self, runner, sample_benchmark, tmp_path
+    ):
+        """Get passes Config.get_verify_ssl() to AuthManager and surfaces invalid URL errors."""
+        catalog_path = tmp_path / "catalog.db"
+        catalog_path.touch()
+
+        with (
+            patch("cis_bench.cli.commands.get.Config") as mock_config,
+            patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class,
+            patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class,
+            patch("cis_bench.cli.commands.get.AuthManager") as mock_auth,
+            patch("cis_bench.cli.helpers.download_helper.download_with_progress") as mock_dl,
+        ):
+            mock_config.get_catalog_db_path.return_value = catalog_path
+            mock_config.get_verify_ssl.return_value = False
+            mock_db = Mock()
+            mock_db_class.return_value = mock_db
+            mock_db.get_downloaded.side_effect = [
+                None,
+                {
+                    "benchmark_id": "12345",
+                    "content_json": sample_benchmark.model_dump_json(),
+                    "downloaded_at": datetime.now(),
+                },
+            ]
+            mock_search = Mock()
+            mock_search_class.return_value = mock_search
+            mock_search.search.return_value = [
+                {
+                    "benchmark_id": "12345",
+                    "title": "Test",
+                    "version": "v1",
+                    "status": "Published",
+                }
+            ]
+            mock_auth.get_or_create_session.return_value = Mock()
+            mock_dl.return_value = sample_benchmark
+
+            ok_res = runner.invoke(
+                cli,
+                [
+                    "get",
+                    "test",
+                    "--format",
+                    "json",
+                    "--output",
+                    str(tmp_path / "out.json"),
+                    "--non-interactive",
+                ],
+            )
+            assert ok_res.exit_code == 0, ok_res.output
+            mock_auth.get_or_create_session.assert_called_once_with(verify_ssl=False)
+
+            mock_db.get_downloaded.side_effect = None
+            mock_db.get_downloaded.return_value = None
+            mock_auth.get_or_create_session.side_effect = ValueError(
+                "CIS_BENCH_WORKBENCH_URL must use https:// and a cisecurity.org host"
+            )
+            bad_url_res = runner.invoke(cli, ["get", "test", "--non-interactive"])
+            assert bad_url_res.exit_code == 1
+            assert "Configuration Error" in bad_url_res.output
+            assert "CIS_BENCH_WORKBENCH_URL" in bad_url_res.output
+            assert "Authentication Required" not in bad_url_res.output
 
 
 class TestGetXccdfExport:

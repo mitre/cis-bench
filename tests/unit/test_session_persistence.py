@@ -476,3 +476,48 @@ class TestGetOrCreateSession:
                         mock_load.assert_not_called()
                         # Should create new session
                         mock_browser.assert_called_once()
+
+    def test_get_or_create_session_preserves_saved_cookies_on_invalid_workbench_url(
+        self, temp_session_path, monkeypatch
+    ):
+        """Invalid CIS_BENCH_WORKBENCH_URL raises ValueError without deleting saved session cookies."""
+        with patch.object(AuthManager, "get_session_file_path", return_value=temp_session_path):
+            seed = requests.Session()
+            seed.cookies.set(
+                "cis_workbench_session", "valid_token", domain="workbench.cisecurity.org"
+            )
+            AuthManager.save_session(seed)
+            assert temp_session_path.exists()
+
+            monkeypatch.setenv("CIS_BENCH_WORKBENCH_URL", "http://insecure.example.com")
+
+            with pytest.raises(ValueError, match="CIS_BENCH_WORKBENCH_URL"):
+                AuthManager.get_or_create_session()
+
+            assert temp_session_path.exists()
+
+    def test_get_or_create_and_validate_session_default_verify_ssl_from_config(
+        self, temp_session_path, monkeypatch
+    ):
+        """validate_session and get_or_create_session default verify_ssl to Config.get_verify_ssl()."""
+        monkeypatch.setenv("CIS_BENCH_VERIFY_SSL", "false")
+        with patch.object(AuthManager, "get_session_file_path", return_value=temp_session_path):
+            seed = requests.Session()
+            seed.cookies.set(
+                "cis_workbench_session", "valid_token", domain="workbench.cisecurity.org"
+            )
+            AuthManager.save_session(seed)
+
+            ok_resp = Mock(
+                status_code=200,
+                headers={},
+                text="<html><body><h1>Benchmarks</h1><table></table></body></html>",
+            )
+            with patch("requests.Session.get", return_value=ok_resp) as mock_get:
+                session = AuthManager.get_or_create_session()
+                assert session.verify is False
+                assert mock_get.call_args.kwargs["verify"] is False
+
+            with patch.object(seed, "get", return_value=ok_resp) as explicit_get:
+                assert AuthManager.validate_session(seed, verify_ssl=True) is True
+                assert explicit_get.call_args.kwargs["verify"] is True

@@ -24,7 +24,7 @@ from sqlalchemy import (
 from sqlalchemy import (
     select as sa_select,
 )
-from sqlalchemy.engine import URL
+from sqlalchemy.engine import URL, Connection
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.sql.elements import ColumnElement
 from sqlmodel import Session, SQLModel, col, create_engine, select
@@ -95,6 +95,14 @@ def deserialize_benchmark_json(content_json: str) -> Benchmark:
     return Benchmark.model_validate_json(content_json)
 
 
+def _try_chmod(path: Path, mode: int) -> None:
+    """Best-effort permission tightening that tolerates shared unowned read-only files."""
+    try:
+        path.chmod(mode)
+    except OSError as exc:
+        logger.debug(f"Skipping chmod({oct(mode)}) on {path}: {exc}")
+
+
 class CatalogDatabase:
     """SQLite database for CIS benchmark catalog."""
 
@@ -109,9 +117,9 @@ class CatalogDatabase:
         parent_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
         resolved_parent = parent_dir.resolve()
         if resolved_parent not in {Path("/"), Path(tempfile.gettempdir()).resolve()}:
-            parent_dir.chmod(0o700)
+            _try_chmod(parent_dir, 0o700)
         if self.db_path.exists():
-            self.db_path.chmod(0o600)
+            _try_chmod(self.db_path, 0o600)
 
         db_url = URL.create("sqlite", database=str(self.db_path))
         self.engine = create_engine(db_url, echo=False)
@@ -128,7 +136,25 @@ class CatalogDatabase:
                     deterministic=True,
                 )
             if self.db_path.exists():
-                self.db_path.chmod(0o600)
+                _try_chmod(self.db_path, 0o600)
+
+        @event.listens_for(self.engine, "before_cursor_execute")
+        def _ensure_transaction_before_savepoint(
+            conn: Connection,
+            _cursor: object,
+            statement: str,
+            _parameters: object,
+            _context: object,
+            _executemany: bool,
+        ) -> None:
+            # CPython's sqlite3 legacy transaction mode implicitly emits BEGIN before
+            # DML (INSERT/UPDATE/DELETE) but not before SAVEPOINT. Starting BEGIN when
+            # SAVEPOINT runs outside a transaction prevents RELEASE SAVEPOINT from
+            # auto-committing while keeping read-only SELECTs lock-free.
+            if statement.lstrip().upper().startswith("SAVEPOINT "):
+                raw_conn = conn.connection.dbapi_connection
+                if isinstance(raw_conn, sqlite3.Connection) and not raw_conn.in_transaction:
+                    raw_conn.execute("BEGIN")
 
         logger.debug(f"Initialized catalog database: {self.db_path}")
 
@@ -545,6 +571,18 @@ class CatalogDatabase:
             if not benchmark:
                 return None
 
+            collection_names = list(
+                session.exec(
+                    select(Collection.name)
+                    .join(
+                        BenchmarkCollection,
+                        col(Collection.collection_id) == col(BenchmarkCollection.collection_id),
+                    )
+                    .where(col(BenchmarkCollection.benchmark_id) == benchmark_id)
+                    .order_by(col(Collection.name))
+                ).all()
+            )
+
             return {
                 "benchmark_id": benchmark.benchmark_id,
                 "title": benchmark.title,
@@ -560,6 +598,7 @@ class CatalogDatabase:
                 "description": benchmark.description,
                 "is_latest": benchmark.is_latest,
                 "is_vnext": benchmark.is_vnext,
+                "collections": collection_names,
                 "metadata_json": benchmark.metadata_json,
             }
 
