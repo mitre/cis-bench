@@ -1344,3 +1344,82 @@ class TestGetCatalogDb:
         assert info_res.exit_code == 1
         assert "Benchmark 99999 not found in catalog." in info_res.output
         assert "Info failed" not in info_res.output
+
+
+class TestVerifiedTLSByDefault:
+    """refresh, update and download verify certificates unless CIS_BENCH_VERIFY_SSL opts out."""
+
+    @patch("cis_bench.cli.commands.catalog.get_catalog_db")
+    @patch("cis_bench.cli.commands.catalog.AuthManager")
+    @patch("cis_bench.cli.commands.catalog.CatalogScraper")
+    def test_refresh_defaults_to_verified_tls(
+        self, mock_scraper_class, mock_auth, mock_get_db, runner, mock_db, monkeypatch
+    ):
+        monkeypatch.delenv("CIS_BENCH_VERIFY_SSL", raising=False)
+        mock_get_db.return_value = mock_db
+        mock_auth.get_or_create_session.return_value = Mock()
+        mock_auth.validate_session.return_value = True
+        mock_scraper = Mock()
+        mock_scraper.test_connection.return_value = True
+        mock_scraper.scrape_full_catalog.return_value = {
+            "total_benchmarks": 1,
+            "pages_scraped": 1,
+            "failed_pages": [],
+        }
+        mock_scraper_class.return_value = mock_scraper
+
+        result = runner.invoke(cli, ["catalog", "refresh"])
+
+        assert result.exit_code == 0, result.output
+        mock_auth.get_or_create_session.assert_called_once_with(browser="chrome", verify_ssl=True)
+        for call in mock_auth.validate_session.call_args_list:
+            assert call.kwargs["verify_ssl"] is True
+
+    @patch("cis_bench.cli.commands.catalog.get_catalog_db")
+    @patch("cis_bench.cli.commands.catalog.AuthManager")
+    @patch("cis_bench.cli.commands.catalog.CatalogScraper")
+    def test_update_defaults_to_verified_tls(
+        self, mock_scraper_class, mock_auth, mock_get_db, runner, mock_db, monkeypatch
+    ):
+        monkeypatch.delenv("CIS_BENCH_VERIFY_SSL", raising=False)
+        mock_get_db.return_value = mock_db
+        mock_auth.get_or_create_session.return_value = Mock()
+        mock_scraper = Mock()
+        mock_scraper.scrape_page_one_update.return_value = {"new_count": 0, "updated_count": 0}
+        mock_scraper_class.return_value = mock_scraper
+
+        result = runner.invoke(cli, ["catalog", "update"])
+
+        assert result.exit_code == 0, result.output
+        mock_auth.get_or_create_session.assert_called_once_with(browser="chrome", verify_ssl=True)
+
+    @patch("cis_bench.cli.commands.catalog.get_catalog_db")
+    @patch("cis_bench.cli.commands.catalog.AuthManager")
+    @patch("cis_bench.cli.commands.catalog.WorkbenchScraper")
+    @patch("cis_bench.cli.commands.catalog.CatalogDownloader")
+    def test_download_defaults_to_verified_tls(
+        self,
+        mock_downloader_class,
+        mock_scraper_class,
+        mock_auth,
+        mock_get_db,
+        runner,
+        mock_db,
+        monkeypatch,
+    ):
+        monkeypatch.delenv("CIS_BENCH_VERIFY_SSL", raising=False)
+        mock_get_db.return_value = mock_db
+        mock_auth.get_or_create_session.return_value = Mock()
+        mock_downloader = Mock()
+        mock_downloader.download_by_id.return_value = {
+            "status": "downloaded",
+            "benchmark_id": "23598",
+            "recommendation_count": 1,
+            "file_size": 10,
+        }
+        mock_downloader_class.return_value = mock_downloader
+
+        result = runner.invoke(cli, ["catalog", "download", "23598"])
+
+        assert result.exit_code == 0, result.output
+        mock_auth.get_or_create_session.assert_called_once_with(browser="chrome", verify_ssl=True)

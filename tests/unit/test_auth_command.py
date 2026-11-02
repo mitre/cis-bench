@@ -20,6 +20,7 @@ import pytest
 from click.testing import CliRunner
 
 from cis_bench.cli.app import cli
+from cis_bench.exceptions import TLSVerificationError
 
 
 @pytest.fixture
@@ -466,13 +467,15 @@ class TestAuthLoginCookieFileErrors:
         assert "Failed to load cookies" in result.output
 
 
-class TestAuthLoginSSLVerificationTip:
-    """Tests for SSL verification tip on validation failure (lines 205-208)."""
+class TestAuthLoginTLSFailureReporting:
+    """An invalid session and a TLS trust failure are different problems and get different output."""
 
     @patch("cis_bench.cli.commands.auth.AuthManager")
     @patch("cis_bench.cli.commands.auth.Config.get_verify_ssl")
-    def test_login_shows_ssl_tip_when_ssl_enabled(self, mock_get_ssl, mock_auth, runner):
-        """Should show SSL tip when validation fails with SSL verification enabled."""
+    def test_login_invalid_session_does_not_suggest_disabling_tls(
+        self, mock_get_ssl, mock_auth, runner
+    ):
+        """A session WorkBench rejected is a login problem; TLS was fine, so no TLS tip."""
         mock_get_ssl.return_value = True
 
         mock_session = MagicMock()
@@ -485,27 +488,33 @@ class TestAuthLoginSSLVerificationTip:
 
         assert result.exit_code == 1
         assert "Session validation failed" in result.output
-        assert "--no-verify-ssl" in result.output
-        assert "CIS_BENCH_VERIFY_SSL=false" in result.output
+        assert "--no-verify-ssl" not in result.output
+        assert "CIS_BENCH_VERIFY_SSL=false" not in result.output
 
     @patch("cis_bench.cli.commands.auth.AuthManager")
     @patch("cis_bench.cli.commands.auth.Config.get_verify_ssl")
-    def test_login_no_ssl_tip_when_ssl_disabled(self, mock_get_ssl, mock_auth, runner):
-        """Should NOT show SSL tip when SSL verification is already disabled."""
-        mock_get_ssl.return_value = False
+    def test_login_reports_tls_failure_with_remediation(self, mock_get_ssl, mock_auth, runner):
+        """A certificate trust failure surfaces its own message and remediation, exit 1."""
+        mock_get_ssl.return_value = True
 
         mock_session = MagicMock()
         mock_session.cookies = [MagicMock()]
         mock_auth.load_cookies_from_browser.return_value = mock_session
-        mock_auth.validate_session.return_value = False
+        mock_auth.validate_session.side_effect = TLSVerificationError(
+            "TLS certificate verification failed for workbench.cisecurity.org: "
+            "unable to get local issuer certificate. If a proxy re-signs HTTPS traffic, "
+            "point REQUESTS_CA_BUNDLE at its CA bundle; to skip verification entirely "
+            "set CIS_BENCH_VERIFY_SSL=false."
+        )
         mock_auth._is_windows_permission_error.return_value = False
 
         result = runner.invoke(cli, ["auth", "login", "--browser", "chrome"])
 
         assert result.exit_code == 1
-        assert "Session validation failed" in result.output
-        # Should NOT show SSL tip when already disabled
-        assert "--no-verify-ssl" not in result.output
+        assert "TLS certificate verification failed for workbench.cisecurity.org" in result.output
+        assert "REQUESTS_CA_BUNDLE" in result.output
+        assert "Session validation failed" not in result.output
+        assert "Login failed" not in result.output
 
 
 class TestAuthLoginExceptionHandlers:
@@ -695,3 +704,56 @@ class TestAuthHelpMessages:
 
         assert result.exit_code == 0
         assert "Log out and clear saved session" in result.output
+
+
+class TestVerifiedTLSByDefault:
+    """auth login and auth status verify certificates unless CIS_BENCH_VERIFY_SSL opts out."""
+
+    @patch("cis_bench.cli.commands.auth.AuthManager")
+    def test_login_defaults_to_verified_tls(self, mock_auth, runner, tmp_path, monkeypatch):
+        monkeypatch.delenv("CIS_BENCH_VERIFY_SSL", raising=False)
+        mock_session = MagicMock()
+        mock_session.cookies = [MagicMock()]
+        mock_auth.load_cookies_from_browser.return_value = mock_session
+        mock_auth.validate_session.return_value = True
+        mock_auth.get_session_file_path.return_value = tmp_path / "session.cookies"
+
+        result = runner.invoke(cli, ["auth", "login", "--browser", "chrome"])
+
+        assert result.exit_code == 0, result.output
+        assert mock_auth.load_cookies_from_browser.call_args.kwargs["verify_ssl"] is True
+        mock_auth.validate_session.assert_called_once_with(mock_session, verify_ssl=True)
+
+    @patch("cis_bench.cli.commands.auth.AuthManager")
+    def test_login_no_verify_ssl_flag_overrides_default(
+        self, mock_auth, runner, tmp_path, monkeypatch
+    ):
+        monkeypatch.delenv("CIS_BENCH_VERIFY_SSL", raising=False)
+        mock_session = MagicMock()
+        mock_session.cookies = [MagicMock()]
+        mock_auth.load_cookies_from_browser.return_value = mock_session
+        mock_auth.validate_session.return_value = True
+        mock_auth.get_session_file_path.return_value = tmp_path / "session.cookies"
+
+        result = runner.invoke(cli, ["auth", "login", "--browser", "chrome", "--no-verify-ssl"])
+
+        assert result.exit_code == 0, result.output
+        assert mock_auth.load_cookies_from_browser.call_args.kwargs["verify_ssl"] is False
+        mock_auth.validate_session.assert_called_once_with(mock_session, verify_ssl=False)
+
+    @patch("cis_bench.cli.commands.auth.AuthManager")
+    def test_status_defaults_to_verified_tls(self, mock_auth, runner, tmp_path, monkeypatch):
+        monkeypatch.delenv("CIS_BENCH_VERIFY_SSL", raising=False)
+        session_path = tmp_path / "session.cookies"
+        session_path.touch()
+        mock_session = MagicMock()
+        mock_session.cookies = [MagicMock()]
+        mock_auth.get_session_file_path.return_value = session_path
+        mock_auth.load_saved_session.return_value = mock_session
+        mock_auth.validate_session.return_value = True
+
+        result = runner.invoke(cli, ["auth", "status", "--output-format", "json"])
+
+        assert result.exit_code == 0, result.output
+        mock_auth.validate_session.assert_called_once_with(mock_session, verify_ssl=True)
+        assert '"ssl_verify": true' in result.output

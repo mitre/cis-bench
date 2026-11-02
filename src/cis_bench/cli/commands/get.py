@@ -6,8 +6,10 @@ import sys
 import click
 import questionary
 from rich.console import Console
+from rich.markup import escape
 
 from cis_bench.config import Config, get_workbench_base_url
+from cis_bench.exceptions import TLSVerificationError
 from cis_bench.exporters import ExporterFactory
 from cis_bench.exporters.xccdf_unified_exporter import XCCDFExporter
 from cis_bench.fetcher.auth import AuthManager
@@ -247,6 +249,10 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
                 console.print(f"\n[bold red]Configuration Error[/bold red]\n[yellow]{e}[/yellow]")
             else:
                 console.print(f"[red]✗ Download failed: {e}[/red]")
+            sys.exit(1)
+        except TLSVerificationError as e:
+            # The server could not be trusted; the message carries the remediation.
+            console.print(f"\n[red]✗ {escape(str(e))}[/red]")
             sys.exit(1)
         except Exception as e:
             logger.error(f"Download failed: {e}", exc_info=True)

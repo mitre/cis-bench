@@ -19,6 +19,7 @@ import pytest
 from click.testing import CliRunner
 
 from cis_bench.cli.app import cli
+from cis_bench.exceptions import TLSVerificationError
 from cis_bench.models.benchmark import Benchmark, Recommendation
 
 # ============================================================================
@@ -1172,3 +1173,140 @@ class TestCanonicalContentHashConsistency:
             db_catalog.engine.dispose()
             db_download.engine.dispose()
             db_get.engine.dispose()
+
+
+class TestVerifiedTLSByDefault:
+    """download and get verify certificates unless CIS_BENCH_VERIFY_SSL opts out."""
+
+    def test_download_defaults_to_verified_tls(
+        self, runner, sample_benchmark, tmp_path, monkeypatch
+    ):
+        monkeypatch.delenv("CIS_BENCH_VERIFY_SSL", raising=False)
+        with runner.isolated_filesystem():
+            with (
+                patch(
+                    "cis_bench.cli.commands.download.Config.get_catalog_db_path",
+                    return_value=tmp_path / "missing.db",
+                ),
+                patch(
+                    "cis_bench.cli.commands.download.AuthManager.get_or_create_session"
+                ) as mock_auth,
+                patch("cis_bench.cli.commands.download.WorkbenchScraper") as mock_scraper_cls,
+            ):
+                mock_auth.return_value = Mock()
+                mock_scraper = Mock()
+                mock_scraper.download_benchmark.return_value = sample_benchmark
+                mock_scraper_cls.return_value = mock_scraper
+
+                result = runner.invoke(cli, ["download", "12345"])
+
+                assert result.exit_code == 0, result.output
+                mock_auth.assert_called_once_with(verify_ssl=True)
+
+    def test_download_reports_tls_failure_without_session_hint(self, runner, tmp_path, monkeypatch):
+        """A certificate trust failure is not an expired session; say what it is and stop."""
+        monkeypatch.delenv("CIS_BENCH_VERIFY_SSL", raising=False)
+        with runner.isolated_filesystem():
+            with (
+                patch(
+                    "cis_bench.cli.commands.download.Config.get_catalog_db_path",
+                    return_value=tmp_path / "missing.db",
+                ),
+                patch(
+                    "cis_bench.cli.commands.download.AuthManager.get_or_create_session",
+                    side_effect=TLSVerificationError(
+                        "TLS certificate verification failed for workbench.cisecurity.org: "
+                        "unable to get local issuer certificate. If a proxy re-signs HTTPS "
+                        "traffic, point REQUESTS_CA_BUNDLE at its CA bundle; to skip "
+                        "verification entirely set CIS_BENCH_VERIFY_SSL=false."
+                    ),
+                ),
+            ):
+                result = runner.invoke(cli, ["download", "12345"])
+
+        assert result.exit_code == 1
+        assert "TLS certificate verification failed for workbench.cisecurity.org" in result.output
+        assert "REQUESTS_CA_BUNDLE" in result.output
+        assert "session may have expired" not in result.output
+        assert "Authentication Failed" not in result.output
+
+    def test_get_defaults_to_verified_tls(self, runner, sample_benchmark, tmp_path, monkeypatch):
+        monkeypatch.delenv("CIS_BENCH_VERIFY_SSL", raising=False)
+        catalog_path = tmp_path / "catalog.db"
+        catalog_path.touch()
+
+        with (
+            patch(
+                "cis_bench.cli.commands.get.Config.get_catalog_db_path", return_value=catalog_path
+            ),
+            patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class,
+            patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class,
+            patch("cis_bench.cli.commands.get.AuthManager") as mock_auth,
+            patch("cis_bench.cli.helpers.download_helper.download_with_progress") as mock_dl,
+        ):
+            mock_db = Mock()
+            mock_db_class.return_value = mock_db
+            mock_db.get_downloaded.side_effect = [
+                None,
+                {
+                    "benchmark_id": "12345",
+                    "content_json": sample_benchmark.model_dump_json(),
+                    "downloaded_at": datetime.now(),
+                },
+            ]
+            mock_search = Mock()
+            mock_search_class.return_value = mock_search
+            mock_search.search.return_value = [
+                {"benchmark_id": "12345", "title": "Test", "version": "v1", "status": "Published"}
+            ]
+            mock_auth.get_or_create_session.return_value = Mock()
+            mock_dl.return_value = sample_benchmark
+
+            result = runner.invoke(
+                cli,
+                [
+                    "get",
+                    "test",
+                    "--format",
+                    "json",
+                    "--output",
+                    str(tmp_path / "out.json"),
+                    "--non-interactive",
+                ],
+            )
+
+            assert result.exit_code == 0, result.output
+            mock_auth.get_or_create_session.assert_called_once_with(verify_ssl=True)
+
+    def test_get_reports_tls_failure_as_such(self, runner, tmp_path, monkeypatch):
+        monkeypatch.delenv("CIS_BENCH_VERIFY_SSL", raising=False)
+        catalog_path = tmp_path / "catalog.db"
+        catalog_path.touch()
+        with (
+            patch(
+                "cis_bench.cli.commands.get.Config.get_catalog_db_path", return_value=catalog_path
+            ),
+            patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class,
+            patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class,
+            patch("cis_bench.cli.commands.get.AuthManager") as mock_auth,
+        ):
+            mock_db = Mock()
+            mock_db_class.return_value = mock_db
+            mock_db.get_downloaded.return_value = None
+            mock_search = Mock()
+            mock_search_class.return_value = mock_search
+            mock_search.search.return_value = [
+                {"benchmark_id": "12345", "title": "Test", "version": "v1", "status": "Published"}
+            ]
+            mock_auth.get_or_create_session.side_effect = TLSVerificationError(
+                "TLS certificate verification failed for workbench.cisecurity.org: boom. "
+                "If a proxy re-signs HTTPS traffic, point REQUESTS_CA_BUNDLE at its CA bundle; "
+                "to skip verification entirely set CIS_BENCH_VERIFY_SSL=false."
+            )
+
+            result = runner.invoke(cli, ["get", "test", "--non-interactive"])
+
+        assert result.exit_code == 1
+        assert "TLS certificate verification failed for workbench.cisecurity.org" in result.output
+        assert "REQUESTS_CA_BUNDLE" in result.output
+        assert "Download failed" not in result.output

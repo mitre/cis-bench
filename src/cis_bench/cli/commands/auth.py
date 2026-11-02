@@ -9,9 +9,11 @@ from urllib.parse import urlparse
 
 import click
 from rich.console import Console
+from rich.markup import escape
 
 from cis_bench.cli.helpers.output import output_data
 from cis_bench.config import Config, get_workbench_base_url
+from cis_bench.exceptions import TLSVerificationError
 from cis_bench.fetcher.auth import AuthManager
 
 console = Console()
@@ -208,11 +210,6 @@ def login(browser, cookies, open, no_verify_ssl):
             console.print(
                 f"\n[yellow]Please ensure you are logged into {workbench_host} in your browser[/yellow]"
             )
-            if verify_ssl:
-                console.print(
-                    "[dim]Tip: Try adding --no-verify-ssl if you're encountering SSL errors[/dim]"
-                )
-                console.print("[dim]Or set: export CIS_BENCH_VERIFY_SSL=false[/dim]")
             sys.exit(1)
 
         console.print("[green]✓[/green] Session is valid")
@@ -227,6 +224,10 @@ def login(browser, cookies, open, no_verify_ssl):
         console.print("[bold green]Login successful![/bold green]")
         console.print("[dim]You can now run commands without --browser flag[/dim]")
 
+    except TLSVerificationError as e:
+        # The server could not be trusted; the message carries the remediation.
+        console.print(f"[red]✗ {escape(str(e))}[/red]")
+        sys.exit(1)
     except ValueError as e:
         console.print(f"[red]✗ {e}[/red]")
         sys.exit(1)
