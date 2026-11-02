@@ -5,7 +5,7 @@ Provides high-level search operations with filtering, ranking, and formatting.
 
 import logging
 
-from cis_bench.catalog.database import CatalogDatabase, normalize_status_filter
+from cis_bench.catalog.database import CatalogDatabase
 
 logger = logging.getLogger(__name__)
 
@@ -47,16 +47,16 @@ class CatalogSearch:
             search = CatalogSearch(db)
             results = search.search("ubuntu", platform="Operating System", latest_only=True)
         """
-        normalized_status = normalize_status_filter(status)
         logger.debug(
-            f"Search: query='{query}', platform={platform}, platform_type={platform_type}, status={normalized_status}, latest={latest_only}"
+            f"Search: query='{query}', platform={platform}, platform_type={platform_type}, status={status!r}, latest={latest_only}"
         )
 
+        # The database normalizes the status filter (None, blank, 'all' -> unfiltered).
         results = self.db.search(
             query=query,
             platform=platform,
             platform_type=platform_type,
-            status=normalized_status,
+            status=status,
             latest_only=latest_only,
             limit=limit,
         )

@@ -1,5 +1,7 @@
 """Unit tests for catalog search."""
 
+from unittest.mock import patch
+
 import pytest
 
 from cis_bench.catalog.database import CatalogDatabase
@@ -77,6 +79,13 @@ class TestBasicSearch:
         """Test CatalogSearch can be created."""
         search = CatalogSearch(temp_db)
         assert search.db == temp_db
+
+    def test_search_forwards_status_unchanged_to_database(self, search):
+        """Normalizing the status filter is the database's job; the search layer passes it through."""
+        with patch.object(search.db, "search", return_value=[]) as db_search:
+            search.search("ubuntu", status=" ALL ")
+
+        assert db_search.call_args.kwargs["status"] == " ALL "
 
     def test_search_by_name(self, search):
         """Test searching by benchmark name."""

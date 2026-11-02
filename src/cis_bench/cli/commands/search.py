@@ -98,10 +98,8 @@ def search_cmd(query, platform, platform_type, status, latest, limit, output_for
         db = CatalogDatabase(catalog_db_path)
         search = CatalogSearch(db)
 
-        normalized_status = normalize_status_filter(status)
-
-        # Build filters
-        filters: dict[str, object] = {"status": normalized_status}
+        # Build filters; the database normalizes the status value (None/blank/'all' -> unfiltered)
+        filters: dict[str, object] = {"status": status}
         if platform:
             filters["platform"] = platform
         if platform_type:
@@ -125,7 +123,9 @@ def search_cmd(query, platform, platform_type, status, latest, limit, output_for
         if not results:
             if output_format == "table":
                 console.print("[yellow]No results found[/yellow]")
-                if platform or platform_type or normalized_status or latest:
+                # Only suggest loosening filters when one is actually narrowing the results
+                status_narrows = normalize_status_filter(status) is not None
+                if platform or platform_type or status_narrows or latest:
                     console.print("\n[dim]Try removing some filters to see more results[/dim]")
             else:
                 output_data([], output_format)

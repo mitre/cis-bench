@@ -7,7 +7,7 @@ from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
 
-from cis_bench.catalog.database import CatalogDatabase, normalize_status_filter
+from cis_bench.catalog.database import CatalogDatabase
 from cis_bench.catalog.downloader import CatalogDownloader
 from cis_bench.catalog.scraper import CatalogScraper
 from cis_bench.catalog.search import CatalogSearch
@@ -201,12 +201,10 @@ def search(query, platform, status, latest, limit, output_format):
         if limit is None:
             limit = Config.get_search_default_limit()
 
-        normalized_status = normalize_status_filter(status)
-
         results = search_obj.search(
             query=query or "",
             platform=platform,
-            status=normalized_status,
+            status=status,
             latest_only=latest,
             limit=limit,
         )

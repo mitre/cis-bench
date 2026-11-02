@@ -354,3 +354,26 @@ class TestSearchCommand:
             assert empty_res.exit_code == 0
             assert "No results found" in empty_res.output
             assert "Try removing some filters" not in empty_res.output
+
+
+class TestStatusFilterPassThrough:
+    """The search command forwards --status as typed; normalization lives in the database layer."""
+
+    def test_search_forwards_raw_status_to_catalog_search(self, runner, tmp_path):
+        catalog_path = tmp_path / "catalog.db"
+        catalog_path.touch()
+        with (
+            patch("cis_bench.cli.commands.search.Config") as mock_config,
+            patch("cis_bench.catalog.database.CatalogDatabase"),
+            patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class,
+        ):
+            mock_config.get_catalog_db_path.return_value = catalog_path
+            mock_config.get_search_default_limit.return_value = 1000
+            mock_config.get_table_title_width.return_value = 90
+            mock_search = mock_search_class.return_value
+            mock_search.search.return_value = []
+
+            result = runner.invoke(cli, ["search", "ubuntu", "--status", " ALL "])
+
+        assert result.exit_code == 0, result.output
+        assert mock_search.search.call_args.kwargs["status"] == " ALL "

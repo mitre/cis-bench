@@ -510,8 +510,8 @@ class TestCatalogSearchCommand:
         assert result.exit_code == 0
         assert "No benchmarks found matching: [/opt]" in result.output
 
-    def test_search_status_all_normalizes_to_none_and_returns_all_statuses(self, runner, tmp_path):
-        """catalog search --status all normalizes status to None and returns all benchmark statuses."""
+    def test_search_status_all_forwards_raw_value_and_returns_all_statuses(self, runner, tmp_path):
+        """catalog search passes --status through untouched; the database treats 'all' as unfiltered."""
         import json
 
         from cis_bench.catalog.database import CatalogDatabase
@@ -557,7 +557,7 @@ class TestCatalogSearchCommand:
                     "603",
                     "604",
                 ]
-                assert search_spy.call_args.kwargs["status"] is None
+                assert search_spy.call_args.kwargs["status"] == flag_val
         real_db.engine.dispose()
 
 
