@@ -41,6 +41,10 @@ benchmark:
   # Profile generation - convert CIS profiles to XCCDF Profile elements
   profiles:
     generate_from_rules: true
+    # Also create a profile for any profile name not listed below (e.g. "Level 1",
+    # "Level 1 - Database Engine", "SEVERITY: CAT II"); id is a slug of the name.
+    include_unmapped: true
+    unmapped_description: "CIS {name} profile recommendations"
     profile_mappings:
       - match: "Level 1 - Server"
         id: "level-1-server"

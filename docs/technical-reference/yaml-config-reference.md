@@ -262,6 +262,26 @@ they just don't drive CCI lookup.
 NIST controls that no CCI covers are emitted as `<reference>` elements when a
 `reference` mapping uses `source_logic: "nist_after_cci_deduplication"`.
 
+### Profiles
+
+```yaml
+benchmark:
+  profiles:
+    generate_from_rules: true
+    include_unmapped: true # also create a Profile for any name not in profile_mappings
+    unmapped_description: "CIS {name} profile recommendations"
+    profile_mappings:
+      - match: "Level 1 - Server" # exact match against Recommendation.profiles
+        id: "level-1-server"
+        title: "Level 1 - Server"
+        description: "CIS Level 1 recommendations for server environments"
+```
+
+Profile names vary by benchmark ("Level 1", "Level 1 - Database Engine",
+"Level 1 - Member Server", "SEVERITY: CAT II", ...). With `include_unmapped`, each
+unlisted name gets a Profile whose title is the name and whose id is a slug of it
+(`"SEVERITY: CAT II"` → `severity-cat-ii`).
+
 ### Custom Namespace Elements
 
 Elements in custom namespace:

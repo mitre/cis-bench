@@ -116,6 +116,43 @@ class TestControlMappingFidelity:
                 assert rule_ids[rec.ref] in selected[profile], f"{rec.ref} missing from {profile}"
 
 
+class TestUnmappedProfileNames:
+    """Profile names beyond the explicit Server/Workstation mappings still get Profiles."""
+
+    @pytest.mark.parametrize("style", ["cis", "disa"])
+    def test_non_server_workstation_profiles_generated(self, sample_benchmark, tmp_path, style):
+        names = [
+            ["Level 1 - Database Engine", "Level 1 - AWS RDS"],
+            ["Level 1 - Database Engine"],
+            ["SEVERITY: CAT II"],
+            ["Level 1"],
+            ["Level 1 - Server"],
+        ]
+        recs = [
+            rec.model_copy(update={"profiles": names[i % len(names)]})
+            for i, rec in enumerate(sample_benchmark.recommendations[:10])
+        ]
+        bench = sample_benchmark.model_copy(
+            update={"recommendations": recs, "total_recommendations": 10}
+        )
+
+        output = tmp_path / f"{style}.xml"
+        ExporterFactory.create("xccdf", style=style).export(bench, str(output))
+        tree = etree.parse(str(output))
+        profiles = {
+            p.find("{*}title").text: (p.get("id"), len(p.findall("{*}select")))
+            for p in tree.xpath(".//*[local-name()='Profile']")
+        }
+
+        assert profiles == {
+            "Level 1 - Server": ("level-1-server", 2),  # explicit mapping keeps its id
+            "Level 1 - Database Engine": ("level-1-database-engine", 4),
+            "Level 1 - AWS RDS": ("level-1-aws-rds", 2),
+            "SEVERITY: CAT II": ("severity-cat-ii", 2),
+            "Level 1": ("level-1", 2),
+        }
+
+
 class TestDISAStructureCompliance:
     """Ensure DISA exports match official DISA STIG structure."""
 

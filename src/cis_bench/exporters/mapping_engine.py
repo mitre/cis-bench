@@ -1378,7 +1378,32 @@ class MappingEngine:
         if not profile_config.get("generate_from_rules"):
             return []
 
-        profile_mappings = profile_config.get("profile_mappings", [])
+        profile_mappings = list(profile_config.get("profile_mappings", []))
+
+        # Benchmarks use many profile names beyond Server/Workstation ("Level 1",
+        # "Level 1 - Database Engine", "SEVERITY: CAT II", ...). Optionally create a
+        # profile for every name in the data that no explicit mapping covers.
+        if profile_config.get("include_unmapped"):
+            mapped = {m.get("match") for m in profile_mappings}
+            used_ids = {m.get("id") for m in profile_mappings}
+            desc_template = profile_config.get("unmapped_description", "{name}")
+            seen: list[str] = []
+            for rec in recommendations:
+                for name in rec.profiles:
+                    if name not in mapped and name not in seen:
+                        seen.append(name)
+            for name in seen:
+                profile_id = self._profile_slug(name, used_ids)
+                used_ids.add(profile_id)
+                profile_mappings.append(
+                    {
+                        "match": name,
+                        "id": profile_id,
+                        "title": name,
+                        "description": desc_template.replace("{name}", name),
+                    }
+                )
+
         if not profile_mappings:
             logger.warning("profile_mappings empty - no profiles will be generated")
             return []
@@ -1393,25 +1418,11 @@ class MappingEngine:
             profile_desc = mapping.get("description", "")
 
             # Find all rules that match this profile
-            select_list = []
-            for rec in recommendations:
-                if match_pattern in rec.profiles:
-                    # Generate rule ID using config template (same logic as map_rule)
-                    ref_normalized = self.normalize_ref(rec.ref)
-                    stig_number = self.ref_to_stig_number(rec.ref)
-                    rule_context = {
-                        "ref_normalized": ref_normalized,
-                        "stig_number": stig_number,
-                        "platform": "",  # Platform not needed for profile select idrefs
-                    }
-                    rule_id = VariableSubstituter.substitute(
-                        self.config.rule_id.get("template", "CIS-{ref_normalized}_rule"),
-                        rule_context,
-                    )
-
-                    # Create select element
-                    select = ProfileSelectType(idref=rule_id, selected=True)
-                    select_list.append(select)
+            select_list = [
+                ProfileSelectType(idref=self._rule_id_for_ref(rec.ref), selected=True)
+                for rec in recommendations
+                if match_pattern in rec.profiles
+            ]
 
             if not select_list:
                 logger.debug(f"Profile '{profile_id}' has no matching rules, skipping")
@@ -1433,6 +1444,28 @@ class MappingEngine:
 
         logger.info(f"Generated {len(profiles)} Profile elements")
         return profiles
+
+    def _rule_id_for_ref(self, ref: str) -> str:
+        """Rule ID for a recommendation ref, using the config template (same as map_rule)."""
+        rule_context = {
+            "ref_normalized": self.normalize_ref(ref),
+            "stig_number": self.ref_to_stig_number(ref),
+            "platform": "",  # Platform not needed for profile select idrefs
+        }
+        return VariableSubstituter.substitute(
+            self.config.rule_id.get("template", "CIS-{ref_normalized}_rule"), rule_context
+        )
+
+    @staticmethod
+    def _profile_slug(name: str, used_ids: set) -> str:
+        """Profile name -> unique NCName-safe id, e.g. "SEVERITY: CAT II" -> "severity-cat-ii"."""
+        base = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "profile"
+        if not base[0].isalpha():
+            base = f"profile-{base}"
+        slug, n = base, 2
+        while slug in used_ids:
+            slug, n = f"{base}-{n}", n + 1
+        return slug
 
     def generate_metadata_from_config(
         self, recommendation: "Recommendation", field_mapping: dict
