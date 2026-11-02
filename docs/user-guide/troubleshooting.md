@@ -109,16 +109,19 @@ Firefox doesn't use App-Bound Encryption and works reliably on Windows.
 
 ### SSL Certificate Error
 
-**Cause:** CIS WorkBench certificate chain or proxy inspection issues.
+**Cause:** A proxy that re-signs TLS traffic, or a missing corporate CA in the trust store.
 
-**Current:** Verification is disabled by default (`CIS_BENCH_VERIFY_SSL=false`).
+**Default:** Verification is on (`CIS_BENCH_VERIFY_SSL` unset or `true`).
 
 **Solutions:**
 ```bash
-# Authenticate with SSL verification disabled
+# Preferred: trust your proxy's CA bundle
+export REQUESTS_CA_BUNDLE=/etc/ssl/corporate-ca-bundle.crt
+
+# Last resort: disable verification for one login
 cis-bench auth login --browser chrome --no-verify-ssl
 
-# Or configure via environment / ~/.cis-bench/.env
+# Or for every command, via environment / ~/.cis-bench/.env
 export CIS_BENCH_VERIFY_SSL=false
 ```
 

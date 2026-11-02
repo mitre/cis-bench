@@ -286,31 +286,43 @@ class TestConfigSearchLimit:
 class TestConfigVerifySSL:
     """Tests for SSL verification configuration."""
 
-    def test_get_verify_ssl_default_false(self):
-        """Should return False when env var not set (CIS WorkBench cert issues)."""
+    def test_get_verify_ssl_default_true(self):
+        """Certificate verification is on when CIS_BENCH_VERIFY_SSL is unset or blank."""
         env = os.environ.copy()
         env.pop("CIS_BENCH_VERIFY_SSL", None)
         with patch.dict(os.environ, env, clear=True):
             from cis_bench.config import Config
 
-            with patch.dict(os.environ, {"CIS_BENCH_ENV": "test"}):
-                assert Config.get_verify_ssl() is False
+            assert Config.get_verify_ssl() is True
+
+        with patch.dict(os.environ, {"CIS_BENCH_VERIFY_SSL": "   "}):
+            assert Config.get_verify_ssl() is True
 
     def test_get_verify_ssl_true_values(self):
         """Should return True for 'true', '1', 'yes' values."""
         from cis_bench.config import Config
 
-        for value in ["true", "True", "TRUE", "1", "yes", "Yes", "YES"]:
+        for value in ["true", "True", "TRUE", "1", "yes", "Yes", "YES", " true "]:
             with patch.dict(os.environ, {"CIS_BENCH_VERIFY_SSL": value}):
                 assert Config.get_verify_ssl() is True, f"Failed for value: {value}"
 
     def test_get_verify_ssl_false_values(self):
-        """Should return False for 'false', '0', 'no' and other values."""
+        """Should return False only for the explicit opt-out values 'false', '0', 'no'."""
         from cis_bench.config import Config
 
-        for value in ["false", "False", "0", "no", "No", "anything", ""]:
+        for value in ["false", "False", "FALSE", "0", "no", "No", "NO", " false "]:
             with patch.dict(os.environ, {"CIS_BENCH_VERIFY_SSL": value}):
                 assert Config.get_verify_ssl() is False, f"Failed for value: {value}"
+
+    def test_get_verify_ssl_rejects_unrecognized_value(self):
+        """A typo in a security setting is a configuration error, never a silent opt-out."""
+        from cis_bench.config import Config
+
+        for value in ["anything", "off", "disable", "f"]:
+            with patch.dict(os.environ, {"CIS_BENCH_VERIFY_SSL": value}):
+                with pytest.raises(ValueError, match="CIS_BENCH_VERIFY_SSL") as exc_info:
+                    Config.get_verify_ssl()
+                assert value in str(exc_info.value)
 
 
 class TestConfigWorkbenchBaseUrl:
@@ -407,26 +419,26 @@ class TestDotenvLoading:
     """Tests for .env file loading at module import time."""
 
     def test_dotenv_loads_when_file_exists(self, tmp_path):
-        """Should load .env file when it exists in ~/.cis-bench/."""
-        # Create a mock .env file
+        """Importing the config module loads ~/.cis-bench/.env into the environment."""
         env_dir = tmp_path / ".cis-bench"
         env_dir.mkdir()
-        env_file = env_dir / ".env"
-        env_file.write_text("TEST_VAR=loaded_from_dotenv\n")
+        (env_dir / ".env").write_text("CIS_BENCH_DOTENV_PROBE=loaded_from_dotenv\n")
 
-        # Mock Path.home() to return our tmp_path
-        with patch("pathlib.Path.home", return_value=tmp_path):
-            # We need to reload the module to trigger the dotenv loading
-            # First, remove it from sys.modules if present
-            if "cis_bench.config" in sys.modules:
-                del sys.modules["cis_bench.config"]
+        # patch.dict restores sys.modules afterwards, so the original config module
+        # object (the one other modules hold a reference to) comes back.
+        with (
+            patch("pathlib.Path.home", return_value=tmp_path),
+            patch.dict(os.environ),
+            patch.dict(sys.modules),
+        ):
+            os.environ.pop("CIS_BENCH_DOTENV_PROBE", None)
+            del sys.modules["cis_bench.config"]
 
-            # Now import - this should trigger dotenv loading
             import cis_bench.config  # noqa: F401
 
-            # Note: The actual loading happens at import time, so we can't
-            # easily test it without module reloading. This test documents
-            # the expected behavior.
+            assert os.environ["CIS_BENCH_DOTENV_PROBE"] == "loaded_from_dotenv"
+
+        assert "CIS_BENCH_DOTENV_PROBE" not in os.environ
 
     def test_dotenv_import_error_handled_gracefully(self):
         """Should not fail if python-dotenv is not installed."""

@@ -639,7 +639,7 @@ xargs -I {} cis-bench download {}
 **Session/Auth:**
 
 - `CIS_BENCH_WORKBENCH_URL` - CIS WorkBench base URL (`https://*.cisecurity.org`, default: `https://workbench.cisecurity.org`)
-- `CIS_BENCH_VERIFY_SSL` - SSL verification (true/false, default: false)
+- `CIS_BENCH_VERIFY_SSL` - TLS certificate verification (`true`/`1`/`yes` or `false`/`0`/`no`, default: `true`)
 
 **Display:**
 

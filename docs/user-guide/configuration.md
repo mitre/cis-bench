@@ -46,14 +46,19 @@ export CIS_BENCH_WORKBENCH_URL=https://workbench.cisecurity.org
 
 ### `CIS_BENCH_VERIFY_SSL`
 
-Enable or disable SSL certificate verification for CIS WorkBench requests.
+TLS certificate verification for CIS WorkBench requests.
 
-- **Default:** `false`
-- **Accepted values:** `true`, `false`, `1`, `0`, `yes`, `no`
+- **Default:** `true` (verification on; unset or blank means on)
+- **Accepted values:** `true`, `1`, `yes` keep verification on; `false`, `0`, `no` turn it off. Any other value is a configuration error and the command exits.
 
-**Usage:**
+**Usage (opt out, for example behind a TLS-inspecting proxy):**
 ```bash
-export CIS_BENCH_VERIFY_SSL=true
+export CIS_BENCH_VERIFY_SSL=false
+```
+
+Prefer pointing `requests` at your proxy's CA bundle instead of disabling verification:
+```bash
+export REQUESTS_CA_BUNDLE=/etc/ssl/corporate-ca-bundle.crt
 ```
 
 ---
@@ -70,8 +75,8 @@ CIS_BENCH_ENV=dev
 # Optional CIS WorkBench origin override (https://*.cisecurity.org)
 CIS_BENCH_WORKBENCH_URL=https://workbench.cisecurity.org
 
-# Disable SSL verification (if needed)
-CIS_BENCH_VERIFY_SSL=false
+# Disable TLS verification only if your proxy breaks the certificate chain
+# CIS_BENCH_VERIFY_SSL=false
 ```
 
 **Loaded automatically** via python-dotenv if file exists.
@@ -200,12 +205,12 @@ Config._custom_data_dir = Path("/custom/location")
 
 ### SSL Verification
 
-Disabled by default (`CIS_BENCH_VERIFY_SSL=false`) due to CIS WorkBench certificate chain issues.
+Enabled by default. Every WorkBench request verifies the server certificate.
 
-To enable:
+To disable (not recommended; session cookies travel on these requests):
 ```bash
 # In ~/.cis-bench/.env
-CIS_BENCH_VERIFY_SSL=true
+CIS_BENCH_VERIFY_SSL=false
 ```
 
 ---

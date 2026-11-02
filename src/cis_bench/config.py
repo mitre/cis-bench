@@ -28,6 +28,8 @@ class Config:
     """Application configuration (environment-aware)."""
 
     CIS_ROOT_DOMAIN = "cisecurity.org"
+    _VERIFY_SSL_TRUE_VALUES = frozenset({"true", "1", "yes"})
+    _VERIFY_SSL_FALSE_VALUES = frozenset({"false", "0", "no"})
     DEFAULT_WORKBENCH_URL = f"https://workbench.{CIS_ROOT_DOMAIN}"
 
     @staticmethod
@@ -182,26 +184,34 @@ class Config:
 
     @staticmethod
     def get_verify_ssl() -> bool:
-        """Get SSL verification setting.
+        """Get the TLS certificate verification setting for WorkBench requests.
 
-        Checks environment variable.
+        Verification is on unless ``CIS_BENCH_VERIFY_SSL`` explicitly opts out.
 
-        Priority:
-        1. CIS_BENCH_VERIFY_SSL environment variable
-        2. Default: False (don't verify - CIS WorkBench has cert issues)
+        Accepted values (case-insensitive, surrounding whitespace ignored):
+        ``true``/``1``/``yes`` keep verification on, ``false``/``0``/``no`` turn it
+        off. Unset or blank means on.
 
         Returns:
-            True to verify SSL certificates, False to disable verification
+            True to verify certificates, False to skip verification.
+
+        Raises:
+            ValueError: If the variable holds any other value. A typo in a
+                security setting must never silently disable verification.
         """
-        # Check environment variable first
         env_value = os.getenv("CIS_BENCH_VERIFY_SSL")
+        if env_value is None or not env_value.strip():
+            return True
 
-        if env_value is not None:
-            # Parse as boolean (handles "true", "false", "1", "0", "yes", "no")
-            return env_value.lower() in ("true", "1", "yes")
-
-        # Default: DON'T verify SSL (CIS WorkBench has certificate issues)
-        return False
+        normalized = env_value.strip().lower()
+        if normalized in Config._VERIFY_SSL_TRUE_VALUES:
+            return True
+        if normalized in Config._VERIFY_SSL_FALSE_VALUES:
+            return False
+        raise ValueError(
+            f"CIS_BENCH_VERIFY_SSL has unrecognized value {env_value!r}; "
+            "use true/1/yes to verify certificates or false/0/no to disable verification"
+        )
 
 
 # Convenience functions
