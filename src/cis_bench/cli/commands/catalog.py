@@ -8,14 +8,10 @@ from rich.markup import escape
 from rich.table import Table
 
 from cis_bench.catalog.database import CatalogDatabase
-from cis_bench.catalog.downloader import CatalogDownloader
-from cis_bench.catalog.scraper import CatalogScraper
 from cis_bench.catalog.search import CatalogSearch
 from cis_bench.cli.helpers.output import output_data
 from cis_bench.config import Config
 from cis_bench.exceptions import AuthenticationError
-from cis_bench.fetcher.auth import AuthManager
-from cis_bench.fetcher.workbench import WorkbenchScraper
 
 console = Console()
 logger = logging.getLogger(__name__)
@@ -78,6 +74,9 @@ def refresh(browser, max_pages, rate_limit):
 
         # The session helper validates the saved or freshly extracted session itself
         # and raises AuthenticationError when neither is accepted by WorkBench.
+        from cis_bench.catalog.scraper import CatalogScraper
+        from cis_bench.fetcher.auth import AuthManager
+
         console.print("[cyan]Validating session...[/cyan]")
         session = AuthManager.get_or_create_session(
             browser=browser, verify_ssl=Config.get_verify_ssl()
@@ -145,6 +144,9 @@ def update(browser):
         )
 
         db.initialize_schema()
+
+        from cis_bench.catalog.scraper import CatalogScraper
+        from cis_bench.fetcher.auth import AuthManager
 
         session = AuthManager.get_or_create_session(
             browser=browser, verify_ssl=Config.get_verify_ssl()
@@ -467,6 +469,10 @@ def download(benchmark_id_or_name, browser, force, interactive):
     """
     try:
         db = require_catalog_db()
+
+        from cis_bench.catalog.downloader import CatalogDownloader
+        from cis_bench.fetcher.auth import AuthManager
+        from cis_bench.fetcher.workbench import WorkbenchScraper
 
         # Get authenticated session (reuses saved session or authenticates via browser)
         session = AuthManager.get_or_create_session(

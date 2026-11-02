@@ -5,12 +5,27 @@ import click
 from rich.console import Console
 
 from cis_bench import __version__
+from cis_bench.cli.lazy_group import LazyGroup
 from cis_bench.utils.logging_config import LoggingConfig
 
 console = Console()
 
 
-@click.group()
+# Subcommands are imported on first use (Click's documented lazy-loading pattern), so
+# `cis-bench export` never loads the scraper or catalog stacks and startup stays fast.
+LAZY_SUBCOMMANDS = {
+    "auth": "cis_bench.cli.commands.auth.auth",
+    "catalog": "cis_bench.cli.commands.catalog.catalog",
+    "download": "cis_bench.cli.commands.download.download",
+    "export": "cis_bench.cli.commands.export.export_cmd",
+    "get": "cis_bench.cli.commands.get.get_cmd",
+    "info": "cis_bench.cli.commands.info.info",
+    "list": "cis_bench.cli.commands.list_cmd.list_benchmarks",
+    "search": "cis_bench.cli.commands.search.search_cmd",
+}
+
+
+@click.group(cls=LazyGroup, lazy_subcommands=LAZY_SUBCOMMANDS)
 @click.version_option(version=__version__, prog_name="cis-bench")
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose (DEBUG level) logging")
 @click.option(
@@ -58,19 +73,6 @@ def cli(ctx, verbose, debug, quiet):
     ctx.ensure_object(dict)
     ctx.obj["verbose"] = verbose
     ctx.obj["quiet"] = quiet
-
-
-# Import and register commands
-from cis_bench.cli.commands import auth, catalog, download, export, get, info, list_cmd, search
-
-cli.add_command(auth.auth)
-cli.add_command(download.download)
-cli.add_command(export.export_cmd)
-cli.add_command(get.get_cmd)
-cli.add_command(list_cmd.list_benchmarks)
-cli.add_command(info.info)
-cli.add_command(search.search_cmd)
-cli.add_command(catalog.catalog)
 
 
 if __name__ == "__main__":

@@ -106,8 +106,8 @@ class TestCatalogRefreshCommand:
     """Tests for catalog refresh command."""
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
-    @patch("cis_bench.cli.commands.catalog.AuthManager")
-    @patch("cis_bench.cli.commands.catalog.CatalogScraper")
+    @patch("cis_bench.fetcher.auth.AuthManager")
+    @patch("cis_bench.catalog.scraper.CatalogScraper")
     @patch("cis_bench.cli.commands.catalog.Config")
     def test_refresh_success(
         self, mock_config, mock_scraper_class, mock_auth, mock_get_db, runner, mock_db
@@ -135,7 +135,7 @@ class TestCatalogRefreshCommand:
         mock_db.initialize_schema.assert_called_once()
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
-    @patch("cis_bench.cli.commands.catalog.CatalogScraper")
+    @patch("cis_bench.catalog.scraper.CatalogScraper")
     def test_refresh_validates_session_once(
         self, mock_scraper_class, mock_get_db, runner, mock_db, monkeypatch
     ):
@@ -186,8 +186,8 @@ class TestCatalogRefreshCommand:
         mock_save.assert_not_called()
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
-    @patch("cis_bench.cli.commands.catalog.AuthManager")
-    @patch("cis_bench.cli.commands.catalog.CatalogScraper")
+    @patch("cis_bench.fetcher.auth.AuthManager")
+    @patch("cis_bench.catalog.scraper.CatalogScraper")
     @patch("cis_bench.cli.commands.catalog.Config")
     def test_refresh_with_failed_pages(
         self, mock_config, mock_scraper_class, mock_auth, mock_get_db, runner, mock_db
@@ -215,7 +215,7 @@ class TestCatalogRefreshCommand:
         assert "3" in result.output
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
-    @patch("cis_bench.cli.commands.catalog.AuthManager")
+    @patch("cis_bench.fetcher.auth.AuthManager")
     @patch("cis_bench.cli.commands.catalog.Config")
     def test_refresh_authentication_error(
         self, mock_config, mock_auth, mock_get_db, runner, mock_db
@@ -232,8 +232,8 @@ class TestCatalogRefreshCommand:
         assert "Authentication required" in result.output
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
-    @patch("cis_bench.cli.commands.catalog.AuthManager")
-    @patch("cis_bench.cli.commands.catalog.CatalogScraper")
+    @patch("cis_bench.fetcher.auth.AuthManager")
+    @patch("cis_bench.catalog.scraper.CatalogScraper")
     @patch("cis_bench.cli.commands.catalog.Config")
     def test_refresh_generic_error(
         self, mock_config, mock_scraper_class, mock_auth, mock_get_db, runner, mock_db
@@ -260,8 +260,8 @@ class TestCatalogUpdateCommand:
 
     @patch("cis_bench.cli.commands.catalog.Config")
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
-    @patch("cis_bench.cli.commands.catalog.AuthManager")
-    @patch("cis_bench.cli.commands.catalog.CatalogScraper")
+    @patch("cis_bench.fetcher.auth.AuthManager")
+    @patch("cis_bench.catalog.scraper.CatalogScraper")
     def test_update_success(
         self, mock_scraper_class, mock_auth, mock_get_db, mock_config, runner, mock_db
     ):
@@ -304,8 +304,8 @@ class TestCatalogUpdateCommand:
 
     @patch("cis_bench.cli.commands.catalog.Config")
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
-    @patch("cis_bench.cli.commands.catalog.AuthManager")
-    @patch("cis_bench.cli.commands.catalog.CatalogScraper")
+    @patch("cis_bench.fetcher.auth.AuthManager")
+    @patch("cis_bench.catalog.scraper.CatalogScraper")
     def test_update_failure(
         self, mock_scraper_class, mock_auth, mock_get_db, mock_config, runner, mock_db
     ):
@@ -944,9 +944,9 @@ class TestCatalogDownloadCommand:
 
     @patch("cis_bench.cli.commands.catalog.Config")
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
-    @patch("cis_bench.cli.commands.catalog.AuthManager")
-    @patch("cis_bench.cli.commands.catalog.WorkbenchScraper")
-    @patch("cis_bench.cli.commands.catalog.CatalogDownloader")
+    @patch("cis_bench.fetcher.auth.AuthManager")
+    @patch("cis_bench.fetcher.workbench.WorkbenchScraper")
+    @patch("cis_bench.catalog.downloader.CatalogDownloader")
     def test_download_by_id_success(
         self,
         mock_downloader_class,
@@ -991,9 +991,9 @@ class TestCatalogDownloadCommand:
         ],
     )
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
-    @patch("cis_bench.cli.commands.catalog.AuthManager")
-    @patch("cis_bench.cli.commands.catalog.WorkbenchScraper")
-    @patch("cis_bench.cli.commands.catalog.CatalogDownloader")
+    @patch("cis_bench.fetcher.auth.AuthManager")
+    @patch("cis_bench.fetcher.workbench.WorkbenchScraper")
+    @patch("cis_bench.catalog.downloader.CatalogDownloader")
     def test_download_by_name(
         self,
         mock_downloader_class,
@@ -1028,9 +1028,9 @@ class TestCatalogDownloadCommand:
         )
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
-    @patch("cis_bench.cli.commands.catalog.AuthManager")
-    @patch("cis_bench.cli.commands.catalog.WorkbenchScraper")
-    @patch("cis_bench.cli.commands.catalog.CatalogDownloader")
+    @patch("cis_bench.fetcher.auth.AuthManager")
+    @patch("cis_bench.fetcher.workbench.WorkbenchScraper")
+    @patch("cis_bench.catalog.downloader.CatalogDownloader")
     def test_download_already_current(
         self, mock_downloader_class, mock_scraper_class, mock_auth, mock_get_db, runner, mock_db
     ):
@@ -1053,9 +1053,9 @@ class TestCatalogDownloadCommand:
         assert "already up-to-date" in result.output
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
-    @patch("cis_bench.cli.commands.catalog.AuthManager")
-    @patch("cis_bench.cli.commands.catalog.WorkbenchScraper")
-    @patch("cis_bench.cli.commands.catalog.CatalogDownloader")
+    @patch("cis_bench.fetcher.auth.AuthManager")
+    @patch("cis_bench.fetcher.workbench.WorkbenchScraper")
+    @patch("cis_bench.catalog.downloader.CatalogDownloader")
     def test_download_unchanged(
         self, mock_downloader_class, mock_scraper_class, mock_auth, mock_get_db, runner, mock_db
     ):
@@ -1078,9 +1078,9 @@ class TestCatalogDownloadCommand:
         assert "No changes detected" in result.output
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
-    @patch("cis_bench.cli.commands.catalog.AuthManager")
-    @patch("cis_bench.cli.commands.catalog.WorkbenchScraper")
-    @patch("cis_bench.cli.commands.catalog.CatalogDownloader")
+    @patch("cis_bench.fetcher.auth.AuthManager")
+    @patch("cis_bench.fetcher.workbench.WorkbenchScraper")
+    @patch("cis_bench.catalog.downloader.CatalogDownloader")
     def test_download_with_force(
         self, mock_downloader_class, mock_scraper_class, mock_auth, mock_get_db, runner, mock_db
     ):
@@ -1105,9 +1105,9 @@ class TestCatalogDownloadCommand:
         mock_downloader.download_by_id.assert_called_once_with("23598", force=True)
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
-    @patch("cis_bench.cli.commands.catalog.AuthManager")
-    @patch("cis_bench.cli.commands.catalog.WorkbenchScraper")
-    @patch("cis_bench.cli.commands.catalog.CatalogDownloader")
+    @patch("cis_bench.fetcher.auth.AuthManager")
+    @patch("cis_bench.fetcher.workbench.WorkbenchScraper")
+    @patch("cis_bench.catalog.downloader.CatalogDownloader")
     def test_download_value_error(
         self, mock_downloader_class, mock_scraper_class, mock_auth, mock_get_db, runner, mock_db
     ):
@@ -1129,9 +1129,9 @@ class TestCatalogDownloadCommand:
         assert "Multiple matches found" in result.output
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
-    @patch("cis_bench.cli.commands.catalog.AuthManager")
-    @patch("cis_bench.cli.commands.catalog.WorkbenchScraper")
-    @patch("cis_bench.cli.commands.catalog.CatalogDownloader")
+    @patch("cis_bench.fetcher.auth.AuthManager")
+    @patch("cis_bench.fetcher.workbench.WorkbenchScraper")
+    @patch("cis_bench.catalog.downloader.CatalogDownloader")
     def test_download_generic_error(
         self, mock_downloader_class, mock_scraper_class, mock_auth, mock_get_db, runner, mock_db
     ):
@@ -1151,9 +1151,9 @@ class TestCatalogDownloadCommand:
         assert "Download failed" in result.output
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
-    @patch("cis_bench.cli.commands.catalog.AuthManager")
-    @patch("cis_bench.cli.commands.catalog.WorkbenchScraper")
-    @patch("cis_bench.cli.commands.catalog.CatalogDownloader")
+    @patch("cis_bench.fetcher.auth.AuthManager")
+    @patch("cis_bench.fetcher.workbench.WorkbenchScraper")
+    @patch("cis_bench.catalog.downloader.CatalogDownloader")
     def test_download_escapes_rich_markup_in_query_and_error(
         self, mock_downloader_class, mock_scraper_class, mock_auth, mock_get_db, runner, mock_db
     ):
@@ -1354,7 +1354,7 @@ class TestGetCatalogDb:
         with (
             patch("cis_bench.cli.commands.catalog.get_catalog_db", return_value=real_db),
             patch(
-                "cis_bench.cli.commands.catalog.AuthManager.get_or_create_session",
+                "cis_bench.fetcher.auth.AuthManager.get_or_create_session",
                 side_effect=AuthenticationError(
                     "Failed to authenticate. Please ensure you are logged into "
                     "workbench.cisecurity.org in chrome"
@@ -1381,8 +1381,8 @@ class TestVerifiedTLSByDefault:
     """refresh, update and download verify certificates unless CIS_BENCH_VERIFY_SSL opts out."""
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
-    @patch("cis_bench.cli.commands.catalog.AuthManager")
-    @patch("cis_bench.cli.commands.catalog.CatalogScraper")
+    @patch("cis_bench.fetcher.auth.AuthManager")
+    @patch("cis_bench.catalog.scraper.CatalogScraper")
     def test_refresh_defaults_to_verified_tls(
         self, mock_scraper_class, mock_auth, mock_get_db, runner, mock_db, monkeypatch
     ):
@@ -1405,8 +1405,8 @@ class TestVerifiedTLSByDefault:
         mock_auth.validate_session.assert_not_called()
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
-    @patch("cis_bench.cli.commands.catalog.AuthManager")
-    @patch("cis_bench.cli.commands.catalog.CatalogScraper")
+    @patch("cis_bench.fetcher.auth.AuthManager")
+    @patch("cis_bench.catalog.scraper.CatalogScraper")
     def test_update_defaults_to_verified_tls(
         self, mock_scraper_class, mock_auth, mock_get_db, runner, mock_db, monkeypatch
     ):
@@ -1423,9 +1423,9 @@ class TestVerifiedTLSByDefault:
         mock_auth.get_or_create_session.assert_called_once_with(browser="chrome", verify_ssl=True)
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
-    @patch("cis_bench.cli.commands.catalog.AuthManager")
-    @patch("cis_bench.cli.commands.catalog.WorkbenchScraper")
-    @patch("cis_bench.cli.commands.catalog.CatalogDownloader")
+    @patch("cis_bench.fetcher.auth.AuthManager")
+    @patch("cis_bench.fetcher.workbench.WorkbenchScraper")
+    @patch("cis_bench.catalog.downloader.CatalogDownloader")
     def test_download_defaults_to_verified_tls(
         self,
         mock_downloader_class,

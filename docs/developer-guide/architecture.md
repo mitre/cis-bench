@@ -62,11 +62,27 @@ F --> F4[update]
 
 **Commands:**
 
+- `auth` - Log in with browser cookies, show or clear the saved session
 - `download` - Fetch benchmarks from WorkBench
+- `get` - Search the catalog, download and export in one step
 - `export` - Convert to formats (JSON, YAML, CSV, MD, XCCDF)
 - `list` - Show downloaded benchmarks
 - `info` - Display benchmark details
-- `catalog` - Manage catalog (8 subcommands)
+- `search` - Search the local catalog
+- `catalog` - Manage catalog (9 subcommands)
+
+**Command loading:** `cli` is a `LazyGroup` (`src/cis_bench/cli/lazy_group.py`), Click's
+documented pattern for CLIs with slow imports. `app.py` maps each command name to an import
+path in `LAZY_SUBCOMMANDS`; the command module is imported when the command is invoked,
+when root `--help` renders its one-line description, or on shell completion. Running one
+command never imports another command's dependencies, and `cis-bench --version` or
+`export --help` never load the scraper, catalog or exporter stacks. To add a command, add
+its import path to `LAZY_SUBCOMMANDS`; the structure tests run `--help` on every command so
+a wrong path fails fast. Inside `catalog`, the scraper, downloader and auth modules are
+imported by the subcommands that need them (`refresh`, `update`, `download`), so
+database-only subcommands such as `search` and `stats` stay light. The package root
+`cis_bench/__init__.py` resolves its public re-exports on first access (PEP 562
+`__getattr__`) for the same reason.
 
 ---
 

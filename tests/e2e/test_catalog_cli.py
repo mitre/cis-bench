@@ -54,8 +54,8 @@ class TestCatalogRefresh:
         assert result.exit_code == 0
         assert "refresh" in result.output.lower()
 
-    @patch("cis_bench.cli.commands.catalog.AuthManager")
-    @patch("cis_bench.cli.commands.catalog.CatalogScraper")
+    @patch("cis_bench.fetcher.auth.AuthManager")
+    @patch("cis_bench.catalog.scraper.CatalogScraper")
     def test_refresh_with_mocked_scraper(self, mock_scraper_class, mock_auth, runner):
         """Test refresh command with mocked dependencies."""
         # Mock auth
