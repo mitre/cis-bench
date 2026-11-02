@@ -21,6 +21,7 @@ except ImportError:
     pass
 
 from cis_bench.config import Config
+from cis_bench.exceptions import TLSVerificationError
 
 logger = logging.getLogger(__name__)
 
@@ -368,9 +369,15 @@ Workarounds:
             logger.debug("No saved session found")
             return None
 
+        # Resolve configuration outside the try: a bad CIS_BENCH_VERIFY_SSL value is a
+        # configuration error and must not be reported as an unreadable session file.
+        effective_verify_ssl = Config.get_verify_ssl() if verify_ssl is None else verify_ssl
+
         try:
             logger.debug(f"Loading saved session from {session_path}")
-            return AuthManager.load_cookies_from_file(str(session_path), verify_ssl=verify_ssl)
+            return AuthManager.load_cookies_from_file(
+                str(session_path), verify_ssl=effective_verify_ssl
+            )
 
         except Exception as e:
             logger.warning(f"Failed to load saved session: {e}")
@@ -408,6 +415,11 @@ Workarounds:
 
         Returns:
             True if session is valid on configured WorkBench host, False otherwise
+
+        Raises:
+            TLSVerificationError: If the server certificate cannot be verified. This is
+                raised rather than returned as False so callers never report a trust
+                failure as an expired session.
         """
         if not session or not session.cookies:
             return False
@@ -488,7 +500,14 @@ Workarounds:
             logger.debug("Session invalid - exceeded maximum SSO redirects")
             return False
 
-        except Exception as e:
+        except requests.exceptions.SSLError as e:
+            logger.error(f"TLS certificate verification failed for {workbench_host}: {e}")
+            raise TLSVerificationError(
+                f"TLS certificate verification failed for {workbench_host}: {e}. "
+                "If a proxy re-signs HTTPS traffic, point REQUESTS_CA_BUNDLE at its CA "
+                "bundle; to skip verification entirely set CIS_BENCH_VERIFY_SSL=false."
+            ) from e
+        except requests.exceptions.RequestException as e:
             logger.warning(f"Session validation failed: {e}")
             return False
 

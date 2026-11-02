@@ -1,12 +1,39 @@
 """Unit tests for session persistence in AuthManager."""
 
+import http.cookiejar
 from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
 import requests
 
+from cis_bench.exceptions import TLSVerificationError
 from cis_bench.fetcher.auth import AuthManager
+
+
+def _workbench_cookie(
+    name: str = "test_cookie", value: str = "test_value"
+) -> http.cookiejar.Cookie:
+    """A secure cookie scoped to the WorkBench host, as the browser would store it."""
+    return http.cookiejar.Cookie(
+        version=0,
+        name=name,
+        value=value,
+        port=None,
+        port_specified=False,
+        domain="workbench.cisecurity.org",
+        domain_specified=True,
+        domain_initial_dot=False,
+        path="/",
+        path_specified=True,
+        secure=True,
+        expires=None,
+        discard=False,
+        comment=None,
+        comment_url=None,
+        rest={},
+        rfc2109=False,
+    )
 
 
 @pytest.fixture
@@ -69,30 +96,8 @@ class TestLoadSavedSession:
 
     def test_load_saved_session_returns_session_with_cookies(self, temp_session_path):
         """load_saved_session returns session with cookies."""
-        # Create a valid cookie file
-        import http.cookiejar
-
         cj = http.cookiejar.MozillaCookieJar(str(temp_session_path))
-        cookie = http.cookiejar.Cookie(
-            version=0,
-            name="test_cookie",
-            value="test_value",
-            port=None,
-            port_specified=False,
-            domain="workbench.cisecurity.org",
-            domain_specified=True,
-            domain_initial_dot=False,
-            path="/",
-            path_specified=True,
-            secure=True,
-            expires=None,
-            discard=False,
-            comment=None,
-            comment_url=None,
-            rest={},
-            rfc2109=False,
-        )
-        cj.set_cookie(cookie)
+        cj.set_cookie(_workbench_cookie())
         cj.save(ignore_discard=True, ignore_expires=True)
 
         with patch("cis_bench.fetcher.auth.AuthManager.get_session_file_path") as mock_path:
@@ -106,10 +111,35 @@ class TestLoadSavedSession:
                 assert len(list(session.cookies)) > 0
                 assert session.verify is False
 
+    # ============================================================================
+    # Tests: Clear Saved Session
+    # ============================================================================
 
-# ============================================================================
-# Tests: Clear Saved Session
-# ============================================================================
+    def test_load_saved_session_defaults_to_verified_tls(self, temp_session_path, monkeypatch):
+        """With CIS_BENCH_VERIFY_SSL unset, a restored session verifies certificates."""
+        monkeypatch.delenv("CIS_BENCH_VERIFY_SSL", raising=False)
+        cj = http.cookiejar.MozillaCookieJar(str(temp_session_path))
+        cj.set_cookie(_workbench_cookie())
+        cj.save(ignore_discard=True, ignore_expires=True)
+
+        with patch.object(AuthManager, "get_session_file_path", return_value=temp_session_path):
+            session = AuthManager.load_saved_session()
+
+        assert session is not None
+        assert session.verify is True
+
+    def test_load_saved_session_propagates_configuration_error(
+        self, temp_session_path, monkeypatch
+    ):
+        """A bad CIS_BENCH_VERIFY_SSL value is a configuration error, not a missing session."""
+        temp_session_path.write_text("# Netscape HTTP Cookie File\n")
+        monkeypatch.setenv("CIS_BENCH_VERIFY_SSL", "bogus")
+
+        with patch("cis_bench.fetcher.auth.AuthManager.get_session_file_path") as mock_path:
+            mock_path.return_value = temp_session_path
+
+            with pytest.raises(ValueError, match="CIS_BENCH_VERIFY_SSL"):
+                AuthManager.load_saved_session()
 
 
 class TestClearSavedSession:
@@ -397,10 +427,39 @@ class TestValidateSession:
         with patch.object(session, "get", return_value=redirect_to_prod):
             assert AuthManager.validate_session(session, verify_ssl=False) is False
 
+    # ============================================================================
+    # Tests: Get or Create Session
+    # ============================================================================
 
-# ============================================================================
-# Tests: Get or Create Session
-# ============================================================================
+    def test_validate_session_raises_tls_error_when_certificate_verification_fails(self):
+        """A TLS trust failure is reported as such, never as an expired session."""
+        session = requests.Session()
+        session.cookies.set("test", "value")
+
+        with patch.object(session, "get") as mock_get:
+            mock_get.side_effect = requests.exceptions.SSLError(
+                "certificate verify failed: unable to get local issuer certificate"
+            )
+
+            with pytest.raises(TLSVerificationError) as exc_info:
+                AuthManager.validate_session(session, verify_ssl=True)
+
+        message = str(exc_info.value)
+        assert "workbench.cisecurity.org" in message
+        assert "unable to get local issuer certificate" in message
+        assert "REQUESTS_CA_BUNDLE" in message
+        assert "CIS_BENCH_VERIFY_SSL=false" in message
+        assert isinstance(exc_info.value.__cause__, requests.exceptions.SSLError)
+
+    def test_validate_session_still_returns_false_on_non_tls_connection_errors(self):
+        """Network failures other than TLS trust keep the existing False contract."""
+        session = requests.Session()
+        session.cookies.set("test", "value")
+
+        with patch.object(session, "get") as mock_get:
+            mock_get.side_effect = requests.exceptions.ConnectionError("connection refused")
+
+            assert AuthManager.validate_session(session, verify_ssl=True) is False
 
 
 class TestGetOrCreateSession:
@@ -496,11 +555,21 @@ class TestGetOrCreateSession:
 
             assert temp_session_path.exists()
 
+    @pytest.mark.parametrize(
+        ("env_value", "expected_verify"),
+        [
+            pytest.param(None, True, id="unset-verifies"),
+            pytest.param("false", False, id="opt-out"),
+        ],
+    )
     def test_get_or_create_and_validate_session_default_verify_ssl_from_config(
-        self, temp_session_path, monkeypatch
+        self, temp_session_path, monkeypatch, env_value, expected_verify
     ):
-        """validate_session and get_or_create_session default verify_ssl to Config.get_verify_ssl()."""
-        monkeypatch.setenv("CIS_BENCH_VERIFY_SSL", "false")
+        """get_or_create_session and validate_session take verify_ssl from Config when omitted."""
+        if env_value is None:
+            monkeypatch.delenv("CIS_BENCH_VERIFY_SSL", raising=False)
+        else:
+            monkeypatch.setenv("CIS_BENCH_VERIFY_SSL", env_value)
         with patch.object(AuthManager, "get_session_file_path", return_value=temp_session_path):
             seed = requests.Session()
             seed.cookies.set(
@@ -515,9 +584,38 @@ class TestGetOrCreateSession:
             )
             with patch("requests.Session.get", return_value=ok_resp) as mock_get:
                 session = AuthManager.get_or_create_session()
-                assert session.verify is False
-                assert mock_get.call_args.kwargs["verify"] is False
+                assert session.verify is expected_verify
+                assert mock_get.call_args.kwargs["verify"] is expected_verify
+
+            with patch.object(seed, "get", return_value=ok_resp) as default_get:
+                assert AuthManager.validate_session(seed) is True
+                assert default_get.call_args.kwargs["verify"] is expected_verify
 
             with patch.object(seed, "get", return_value=ok_resp) as explicit_get:
                 assert AuthManager.validate_session(seed, verify_ssl=True) is True
                 assert explicit_get.call_args.kwargs["verify"] is True
+
+
+class TestCookieLoadersDefaultVerification:
+    """Both cookie loaders verify certificates unless the environment opts out."""
+
+    def test_load_cookies_from_file_defaults_to_verified_tls(self, temp_session_path, monkeypatch):
+        monkeypatch.delenv("CIS_BENCH_VERIFY_SSL", raising=False)
+        cj = http.cookiejar.MozillaCookieJar(str(temp_session_path))
+        cj.set_cookie(_workbench_cookie())
+        cj.save(ignore_discard=True, ignore_expires=True)
+
+        session = AuthManager.load_cookies_from_file(str(temp_session_path))
+
+        assert session.verify is True
+
+    def test_load_cookies_from_browser_defaults_to_verified_tls(self, monkeypatch):
+        monkeypatch.delenv("CIS_BENCH_VERIFY_SSL", raising=False)
+        jar = http.cookiejar.CookieJar()
+        jar.set_cookie(_workbench_cookie("workbench_session", "wb-1"))
+
+        with patch("cis_bench.fetcher.auth.browser_cookie3.chrome", return_value=jar):
+            session = AuthManager.load_cookies_from_browser("chrome")
+
+        assert session.verify is True
+        assert {c.name for c in session.cookies} == {"workbench_session"}
