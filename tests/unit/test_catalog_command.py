@@ -22,6 +22,7 @@ from click.testing import CliRunner
 
 from cis_bench.cli.app import cli
 from cis_bench.exceptions import AuthenticationError
+from cis_bench.fetcher.auth import AuthManager
 
 
 @pytest.fixture
@@ -117,7 +118,6 @@ class TestCatalogRefreshCommand:
 
         mock_session = Mock()
         mock_auth.get_or_create_session.return_value = mock_session
-        mock_auth.validate_session.return_value = True
 
         mock_scraper = Mock()
         mock_scraper.test_connection.return_value = True
@@ -135,22 +135,55 @@ class TestCatalogRefreshCommand:
         mock_db.initialize_schema.assert_called_once()
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
-    @patch("cis_bench.cli.commands.catalog.AuthManager")
-    @patch("cis_bench.cli.commands.catalog.Config")
-    def test_refresh_invalid_session(self, mock_config, mock_auth, mock_get_db, runner, mock_db):
-        """Test refresh with invalid session (lines 74-76)."""
+    @patch("cis_bench.cli.commands.catalog.CatalogScraper")
+    def test_refresh_validates_session_once(
+        self, mock_scraper_class, mock_get_db, runner, mock_db, monkeypatch
+    ):
+        """The session helper owns validation; refresh must not validate a second time."""
+        monkeypatch.delenv("CIS_BENCH_VERIFY_SSL", raising=False)
         mock_get_db.return_value = mock_db
-        mock_config.get_verify_ssl.return_value = False
+        saved_session = Mock()
+        saved_session.cookies = [Mock()]
+        mock_scraper = Mock()
+        mock_scraper.test_connection.return_value = True
+        mock_scraper.scrape_full_catalog.return_value = {
+            "total_benchmarks": 1,
+            "pages_scraped": 1,
+            "failed_pages": [],
+        }
+        mock_scraper_class.return_value = mock_scraper
 
-        mock_session = Mock()
-        mock_auth.get_or_create_session.return_value = mock_session
-        mock_auth.validate_session.return_value = False  # Invalid session
+        with (
+            patch.object(AuthManager, "load_saved_session", return_value=saved_session),
+            patch.object(AuthManager, "validate_session", return_value=True) as mock_validate,
+        ):
+            result = runner.invoke(cli, ["catalog", "refresh"])
 
-        result = runner.invoke(cli, ["catalog", "refresh"])
+        assert result.exit_code == 0, result.output
+        mock_validate.assert_called_once_with(saved_session, verify_ssl=True)
+        assert result.output.count("Session valid") == 1
+
+    @patch("cis_bench.cli.commands.catalog.get_catalog_db")
+    def test_refresh_invalid_session(self, mock_get_db, runner, mock_db, monkeypatch):
+        """When neither the saved nor the browser session validates, refresh says how to log in."""
+        monkeypatch.delenv("CIS_BENCH_VERIFY_SSL", raising=False)
+        mock_get_db.return_value = mock_db
+        stale_session = Mock()
+        stale_session.cookies = [Mock()]
+
+        with (
+            patch.object(AuthManager, "load_saved_session", return_value=stale_session),
+            patch.object(AuthManager, "clear_saved_session", return_value=True),
+            patch.object(AuthManager, "load_cookies_from_browser", return_value=stale_session),
+            patch.object(AuthManager, "validate_session", return_value=False),
+            patch.object(AuthManager, "save_session") as mock_save,
+        ):
+            result = runner.invoke(cli, ["catalog", "refresh"])
 
         assert result.exit_code == 1
-        assert "Session invalid or expired" in result.output
+        assert "Authentication required" in result.output
         assert "cis-bench auth login" in result.output
+        mock_save.assert_not_called()
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     @patch("cis_bench.cli.commands.catalog.AuthManager")
@@ -165,7 +198,6 @@ class TestCatalogRefreshCommand:
 
         mock_session = Mock()
         mock_auth.get_or_create_session.return_value = mock_session
-        mock_auth.validate_session.return_value = True
 
         mock_scraper = Mock()
         mock_scraper.test_connection.return_value = True
@@ -212,7 +244,6 @@ class TestCatalogRefreshCommand:
 
         mock_session = Mock()
         mock_auth.get_or_create_session.return_value = mock_session
-        mock_auth.validate_session.return_value = True
 
         mock_scraper = Mock()
         mock_scraper.test_connection.side_effect = RuntimeError("Connection failed")
@@ -1324,17 +1355,17 @@ class TestGetCatalogDb:
             patch("cis_bench.cli.commands.catalog.get_catalog_db", return_value=real_db),
             patch(
                 "cis_bench.cli.commands.catalog.AuthManager.get_or_create_session",
-                return_value=Mock(),
-            ),
-            patch(
-                "cis_bench.cli.commands.catalog.AuthManager.validate_session",
-                return_value=False,
+                side_effect=AuthenticationError(
+                    "Failed to authenticate. Please ensure you are logged into "
+                    "workbench.cisecurity.org in chrome"
+                ),
             ),
         ):
             refresh_res = runner.invoke(cli, ["catalog", "refresh"])
 
         assert refresh_res.exit_code == 1
-        assert "Session invalid or expired" in refresh_res.output
+        assert "Authentication required" in refresh_res.output
+        assert "cis-bench auth login" in refresh_res.output
         assert "Catalog refresh failed" not in refresh_res.output
 
         with patch("cis_bench.cli.commands.catalog.get_catalog_db", return_value=real_db):
@@ -1358,7 +1389,6 @@ class TestVerifiedTLSByDefault:
         monkeypatch.delenv("CIS_BENCH_VERIFY_SSL", raising=False)
         mock_get_db.return_value = mock_db
         mock_auth.get_or_create_session.return_value = Mock()
-        mock_auth.validate_session.return_value = True
         mock_scraper = Mock()
         mock_scraper.test_connection.return_value = True
         mock_scraper.scrape_full_catalog.return_value = {
@@ -1372,8 +1402,7 @@ class TestVerifiedTLSByDefault:
 
         assert result.exit_code == 0, result.output
         mock_auth.get_or_create_session.assert_called_once_with(browser="chrome", verify_ssl=True)
-        for call in mock_auth.validate_session.call_args_list:
-            assert call.kwargs["verify_ssl"] is True
+        mock_auth.validate_session.assert_not_called()
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     @patch("cis_bench.cli.commands.catalog.AuthManager")

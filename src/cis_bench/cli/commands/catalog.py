@@ -76,16 +76,12 @@ def refresh(browser, max_pages, rate_limit):
         db = get_catalog_db()
         db.initialize_schema()
 
-        # Proactive auth check - use saved session or prompt for login
-        verify_ssl = Config.get_verify_ssl()
-        session = AuthManager.get_or_create_session(browser=browser, verify_ssl=verify_ssl)
-
-        # Validate session before attempting scrape
+        # The session helper validates the saved or freshly extracted session itself
+        # and raises AuthenticationError when neither is accepted by WorkBench.
         console.print("[cyan]Validating session...[/cyan]")
-        if not AuthManager.validate_session(session, verify_ssl=verify_ssl):
-            console.print("[red]✗[/red] Session invalid or expired")
-            console.print("[yellow]Please run: cis-bench auth login --browser chrome[/yellow]")
-            raise click.Abort()
+        session = AuthManager.get_or_create_session(
+            browser=browser, verify_ssl=Config.get_verify_ssl()
+        )
         console.print("[green]✓[/green] Session valid\n")
 
         # Create scraper
@@ -124,6 +120,7 @@ def refresh(browser, max_pages, rate_limit):
     except AuthenticationError as e:
         console.print("[red]✗ Authentication required[/red]")
         console.print(f"[yellow]{escape(str(e))}[/yellow]")
+        console.print("[yellow]Please run: cis-bench auth login --browser chrome[/yellow]")
         raise click.Abort() from e
     except Exception as e:
         console.print(f"[red]✗ Catalog refresh failed: {escape(str(e))}[/red]")

@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 import pytest
 import requests
 
-from cis_bench.exceptions import TLSVerificationError
+from cis_bench.exceptions import AuthenticationError, TLSVerificationError
 from cis_bench.fetcher.auth import AuthManager
 
 
@@ -554,6 +554,23 @@ class TestGetOrCreateSession:
                 AuthManager.get_or_create_session()
 
             assert temp_session_path.exists()
+
+    def test_get_or_create_session_raises_authentication_error_when_browser_session_invalid(
+        self, temp_session_path
+    ):
+        """Fresh browser cookies that WorkBench rejects are an authentication failure, typed."""
+        browser_session = requests.Session()
+        browser_session.cookies.set("stale", "1", domain="workbench.cisecurity.org")
+        with (
+            patch.object(AuthManager, "get_session_file_path", return_value=temp_session_path),
+            patch.object(AuthManager, "load_cookies_from_browser", return_value=browser_session),
+            patch.object(AuthManager, "validate_session", return_value=False),
+            patch.object(AuthManager, "save_session") as mock_save,
+        ):
+            with pytest.raises(AuthenticationError, match="workbench.cisecurity.org"):
+                AuthManager.get_or_create_session(browser="chrome")
+
+        mock_save.assert_not_called()
 
     @pytest.mark.parametrize(
         ("env_value", "expected_verify"),

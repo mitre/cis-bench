@@ -21,7 +21,7 @@ except ImportError:
     pass
 
 from cis_bench.config import Config
-from cis_bench.exceptions import TLSVerificationError
+from cis_bench.exceptions import AuthenticationError, TLSVerificationError
 
 logger = logging.getLogger(__name__)
 
@@ -530,7 +530,8 @@ Workarounds:
 
         Raises:
             ValueError: If no saved session and no browser specified, or WorkBench URL invalid
-            Exception: If authentication fails
+            AuthenticationError: If freshly extracted browser cookies are not accepted by WorkBench
+            TLSVerificationError: If the WorkBench certificate cannot be verified
         """
         effective_verify_ssl = Config.get_verify_ssl() if verify_ssl is None else verify_ssl
 
@@ -562,7 +563,7 @@ Workarounds:
         # Validate new session
         if not AuthManager.validate_session(session, verify_ssl=effective_verify_ssl):
             workbench_host = AuthManager._workbench_host()
-            raise Exception(
+            raise AuthenticationError(
                 f"Failed to authenticate. Please ensure you are logged into {workbench_host} in {browser}"
             )
 
