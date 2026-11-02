@@ -220,7 +220,10 @@ class WorkBenchCatalogParser:
             "collections": collections if collections else [],
         }
 
-    # Platform mapping: (keywords, platform_type, platform_name)
+    # Platform mapping: (keywords, platform_type, platform_name).
+    # Each keyword is a regex fragment matched case-insensitively on whole words only
+    # (anchored with \b on both sides), so "aks" matches "(AKS)" but not "Oaks".
+    # All keywords are literal text except "oracle.*container engine".
     PLATFORM_PATTERNS = [
         # Managed Kubernetes services that include cloud vendor names in title (check before cloud)
         (["aks"], "container", "azure-aks"),
@@ -258,8 +261,17 @@ class WorkBenchCatalogParser:
         (["tomcat"], "application", "tomcat"),
     ]
 
+    _COMPILED_PLATFORM_PATTERNS = [
+        (
+            [re.compile(rf"\b(?:{keyword})\b", re.IGNORECASE) for keyword in keywords],
+            platform_type,
+            platform_name,
+        )
+        for keywords, platform_type, platform_name in PLATFORM_PATTERNS
+    ]
+
     @staticmethod
-    def _infer_platform(title: str) -> tuple:
+    def _infer_platform(title: str) -> tuple[str | None, str | None]:
         """Infer platform type and name from benchmark title.
 
         Args:
@@ -274,14 +286,15 @@ class WorkBenchCatalogParser:
             "CIS Oracle Database 19c" → ("database", "oracle-database")
             "CIS Oracle Cloud Infrastructure" → ("cloud", "oracle-cloud")
         """
-        title_lower = title.lower()
-
-        # Check patterns in order (more specific first)
-        for keywords, platform_type, platform_name in WorkBenchCatalogParser.PLATFORM_PATTERNS:
-            for keyword in keywords:
-                # Use regex for patterns like "oracle.*container"
-                if re.search(keyword, title_lower):
-                    return (platform_type, platform_name)
+        # Check patterns in order (more specific first); every keyword is anchored on
+        # word boundaries, so ordering only decides genuinely ambiguous titles.
+        for (
+            patterns,
+            platform_type,
+            platform_name,
+        ) in WorkBenchCatalogParser._COMPILED_PLATFORM_PATTERNS:
+            if any(pattern.search(title) for pattern in patterns):
+                return (platform_type, platform_name)
 
         # No match
         return (None, None)
