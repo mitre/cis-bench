@@ -17,6 +17,105 @@ def sample_benchmark(almalinux_complete_file):
     return Benchmark.from_json_file(str(almalinux_complete_file))
 
 
+def _rules_by_ref(tree):
+    """Map CIS ref (Rule/version text) -> Rule element."""
+    return {rule.find("{*}version").text: rule for rule in tree.xpath(".//*[local-name()='Rule']")}
+
+
+class TestControlMappingFidelity:
+    """Every control mapping in the source JSON must survive into the XCCDF."""
+
+    def test_disa_ccis_come_only_from_v8_controls(self, sample_benchmark, tmp_path):
+        """The CCI mapping file is keyed by CIS Controls v8. v7 IDs reuse the same
+        numbers for unrelated safeguards, so they must not be looked up."""
+        from cis_bench.utils.cci_lookup import get_cci_service
+
+        output = tmp_path / "disa.xml"
+        ExporterFactory.create("xccdf", style="disa").export(sample_benchmark, str(output))
+        rules = _rules_by_ref(etree.parse(str(output)))
+        cci_service = get_cci_service()
+
+        checked = 0
+        for rec in sample_benchmark.recommendations:
+            expected = []
+            for c in rec.cis_controls:
+                if c.version != 8:
+                    continue
+                for m in cci_service.get_ccis_for_cis_control(c.control, extract="primary"):
+                    if m.cci not in expected:
+                        expected.append(m.cci)
+            expected = expected or ["CCI-000366"]
+            got = [
+                i.text
+                for i in rules[rec.ref].findall("{*}ident")
+                if i.get("system") == "http://cyber.mil/cci"
+            ]
+            assert got == expected, f"{rec.ref}: CCIs {got} != expected {expected}"
+            checked += 1
+        assert checked == len(sample_benchmark.recommendations)
+
+    def test_disa_keeps_nist_controls_not_covered_by_ccis(self, sample_benchmark, tmp_path):
+        """NIST controls with no matching CCI must appear as <reference> elements."""
+        output = tmp_path / "disa.xml"
+        ExporterFactory.create("xccdf", style="disa").export(sample_benchmark, str(output))
+        rules = _rules_by_ref(etree.parse(str(output)))
+        dc_id = "{http://purl.org/dc/elements/1.1/}identifier"
+
+        # Rules with NIST citations but no CIS Controls get only the fallback CCI,
+        # so every NIST citation must be carried as a reference.
+        uncovered = [
+            r for r in sample_benchmark.recommendations if r.nist_controls and not r.cis_controls
+        ]
+        for rec in uncovered:
+            refs = [e.text for e in rules[rec.ref].iter(dc_id)]
+            assert sorted(refs) == sorted(rec.nist_controls), (
+                f"{rec.ref}: lost NIST {rec.nist_controls}"
+            )
+
+        total_refs = sum(len(list(r.iter(dc_id))) for r in rules.values())
+        assert total_refs > 0, "DISA export should carry uncovered NIST controls as references"
+
+    def test_cis_controls_idents_carry_control_uri(self, sample_benchmark, tmp_path):
+        """CIS-style CIS Controls idents have empty text, so the control number must
+        be in the cc7/cc8:controlURI attribute."""
+        output = tmp_path / "cis.xml"
+        ExporterFactory.create("xccdf", style="cis").export(sample_benchmark, str(output))
+        rules = _rules_by_ref(etree.parse(str(output)))
+
+        for rec in sample_benchmark.recommendations:
+            for ver in (7, 8):
+                expected = sorted(
+                    f"http://cisecurity.org/20-cc/v{ver}/control/{c.control}"
+                    for c in rec.cis_controls
+                    if c.version == ver
+                )
+                got = sorted(
+                    i.get(f"{{http://cisecurity.org/20-cc/v{ver}.0}}controlURI")
+                    for i in rules[rec.ref].findall("{*}ident")
+                    if i.get("system") == f"http://cisecurity.org/20-cc/v{ver}"
+                )
+                assert got == expected, f"{rec.ref} v{ver}: {got} != {expected}"
+
+    @pytest.mark.parametrize("style", ["cis", "disa"])
+    def test_profiles_select_every_rule_listing_them(self, sample_benchmark, tmp_path, style):
+        """A rule in several profiles must be selected by each of them."""
+        output = tmp_path / f"{style}.xml"
+        ExporterFactory.create("xccdf", style=style).export(sample_benchmark, str(output))
+        tree = etree.parse(str(output))
+        rule_ids = {
+            r.find("{*}version").text: r.get("id") for r in tree.xpath(".//*[local-name()='Rule']")
+        }
+        selected = {
+            p.find("{*}title").text: {s.get("idref") for s in p.findall("{*}select")}
+            for p in tree.xpath(".//*[local-name()='Profile']")
+        }
+
+        for rec in sample_benchmark.recommendations:
+            for profile in rec.profiles:
+                assert profile in selected, f"No Profile generated for '{profile}'"
+                assert rule_ids[rec.ref] in selected[profile], f"{rec.ref} missing from {profile}"
+
+
 class TestDISAStructureCompliance:
     """Ensure DISA exports match official DISA STIG structure."""
 
@@ -55,7 +154,10 @@ class TestDISAStructureCompliance:
             ".//*[local-name()='ident'][contains(@system, 'attack.mitre.org')]"
         )
 
-        assert len(cci_idents) > 500, f"Should have many CCIs, found {len(cci_idents)}"
+        rule_count = len(tree.xpath(".//*[local-name()='Rule']"))
+        assert len(cci_idents) >= rule_count, (
+            f"Every rule needs at least one CCI: {len(cci_idents)} CCIs for {rule_count} rules"
+        )
         assert len(cis_idents) > 600, f"Should have CIS Controls idents, found {len(cis_idents)}"
         assert len(mitre_idents) > 1500, f"Should have MITRE idents, found {len(mitre_idents)}"
 

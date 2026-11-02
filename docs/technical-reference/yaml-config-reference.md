@@ -247,11 +247,20 @@ cci_lookup:
 enabled: true
 mapping_file: "data/cis-cci-mapping.json"
 source_field: "cis_controls"
+cis_controls_version: 8 # only look up controls of this version (the mapping file is keyed by v8 IDs)
 extract: "all" # primary + supporting
 deduplicate_nist: true
 attributes:
 system: "http://cyber.mil/cci"
 ```
+
+`cis_controls_version` matters because v7 and v8 reuse the same numbers for
+unrelated safeguards (v7 `6.2` "Activate audit logging" vs v8 `6.2` "Establish an
+Access Revoking Process"). v7 controls are still exported as `<ident>` elements;
+they just don't drive CCI lookup.
+
+NIST controls that no CCI covers are emitted as `<reference>` elements when a
+`reference` mapping uses `source_logic: "nist_after_cci_deduplication"`.
 
 ### Custom Namespace Elements
 

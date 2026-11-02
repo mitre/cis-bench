@@ -212,6 +212,32 @@ class TestV2ExtractRecommendation:
         data = WorkbenchV2Strategy().extract_recommendation(v2_full_html)
         assert data["profiles"] == ["Level 2 - Docker - Linux"]
 
+    @pytest.mark.parametrize(
+        "text, expected",
+        [
+            # WorkBench joins profiles with a Markdown hard break ("  \n")
+            (
+                "Level 1 - Server  \nLevel 1 - Workstation",
+                ["Level 1 - Server", "Level 1 - Workstation"],
+            ),
+            (
+                "Level 1 - Server\r\nLevel 2 - Workstation",
+                ["Level 1 - Server", "Level 2 - Workstation"],
+            ),
+            (
+                "Level 1 - Server  \n\n  \nLevel 2 - Server",
+                ["Level 1 - Server", "Level 2 - Server"],
+            ),
+            ("Level 1 - Server  \nLevel 1 - Server", ["Level 1 - Server"]),
+        ],
+    )
+    def test_splits_multiple_profiles(self, text, expected):
+        html = (
+            f'<wb-recommendation-data attribute="profiles" text="{text}"></wb-recommendation-data>'
+        )
+        data = WorkbenchV2Strategy().extract_recommendation(html)
+        assert data["profiles"] == expected
+
     def test_parses_nist_from_references(self, v2_full_html):
         data = WorkbenchV2Strategy().extract_recommendation(v2_full_html)
         assert "AU-2" in data["nist_controls"]
