@@ -8,12 +8,13 @@ import questionary
 from rich.console import Console
 from rich.markup import escape
 
-from cis_bench.config import Config, get_workbench_base_url
-from cis_bench.exceptions import TLSVerificationError
+from cis_bench.config import Config
+from cis_bench.exceptions import ConfigurationError, NoSavedSessionError, TLSVerificationError
 from cis_bench.exporters import ExporterFactory
 from cis_bench.exporters.xccdf_unified_exporter import XCCDFExporter
 from cis_bench.fetcher.auth import AuthManager
 from cis_bench.fetcher.workbench import WorkbenchScraper
+from cis_bench.utils.workbench_urls import resolve_benchmark_reference
 
 console = Console()
 logger = logging.getLogger(__name__)
@@ -207,6 +208,18 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
         console.print("[cyan]Downloading benchmark...[/cyan]\n")
 
         try:
+            # The catalog row's ID becomes a canonical WorkBench URL on the configured origin
+            _, benchmark_url = resolve_benchmark_reference(str(benchmark_id))
+        except ConfigurationError as e:
+            console.print(
+                f"\n[bold red]Configuration Error[/bold red]\n[yellow]{escape(str(e))}[/yellow]"
+            )
+            sys.exit(1)
+        except ValueError as e:
+            console.print(f"[red]✗ {escape(str(e))}[/red]")
+            sys.exit(1)
+
+        try:
             # Get authenticated session (uses saved session only)
             logger.debug("Getting authenticated session for download")
             session = AuthManager.get_or_create_session(verify_ssl=Config.get_verify_ssl())
@@ -216,7 +229,6 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
             from cis_bench.cli.helpers.download_helper import download_with_progress
 
             scraper = WorkbenchScraper(session)
-            benchmark_url = f"{get_workbench_base_url()}/benchmarks/{benchmark_id}"
 
             benchmark = download_with_progress(scraper, benchmark_url, prefix="  ")
 
@@ -236,19 +248,18 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
 
             logger.debug(f"Saved benchmark {benchmark_id} to database")
 
-        except ValueError as e:
-            err_msg = str(e)
-            if "no saved session" in err_msg.lower() or "no session" in err_msg.lower():
-                console.print("\n[bold red]Authentication Required[/bold red]\n")
-                console.print("[cyan]Please log in first:[/cyan]")
-                console.print("  cis-bench auth login --browser chrome")
-                console.print(
-                    "\n[dim]Windows users: If Chrome fails, try Firefox or --cookies option.[/dim]"
-                )
-            elif "CIS_BENCH_WORKBENCH_URL" in err_msg:
-                console.print(f"\n[bold red]Configuration Error[/bold red]\n[yellow]{e}[/yellow]")
-            else:
-                console.print(f"[red]✗ Download failed: {e}[/red]")
+        except NoSavedSessionError:
+            console.print("\n[bold red]Authentication Required[/bold red]\n")
+            console.print("[cyan]Please log in first:[/cyan]")
+            console.print("  cis-bench auth login --browser chrome")
+            console.print(
+                "\n[dim]Windows users: If Chrome fails, try Firefox or --cookies option.[/dim]"
+            )
+            sys.exit(1)
+        except ConfigurationError as e:
+            console.print(
+                f"\n[bold red]Configuration Error[/bold red]\n[yellow]{escape(str(e))}[/yellow]"
+            )
             sys.exit(1)
         except TLSVerificationError as e:
             # The server could not be trusted; the message carries the remediation.

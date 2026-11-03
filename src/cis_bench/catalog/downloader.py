@@ -10,10 +10,10 @@ from cis_bench.catalog.database import (
     deserialize_benchmark_json,
     serialize_benchmark_json,
 )
-from cis_bench.catalog.parser import WorkBenchCatalogParser
 from cis_bench.catalog.search import CatalogSearch
 from cis_bench.fetcher.workbench import WorkbenchScraper
 from cis_bench.models.benchmark import Benchmark
+from cis_bench.utils.workbench_urls import normalize_benchmark_url
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +78,7 @@ class CatalogDownloader:
                 }
 
         # Validate and canonicalize benchmark URL against configured WorkBench origin
-        _, benchmark_url = WorkBenchCatalogParser.normalize_benchmark_url(
+        _, benchmark_url = normalize_benchmark_url(
             catalog_entry["url"],
             expected_benchmark_id=str(benchmark_id),
         )

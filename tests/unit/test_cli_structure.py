@@ -142,9 +142,11 @@ class TestNoSessionErrorMessage:
         from cis_bench.cli.app import cli
 
         # Mock no saved session
+        from cis_bench.exceptions import NoSavedSessionError
+
         mocker.patch(
             "cis_bench.fetcher.auth.AuthManager.get_or_create_session",
-            side_effect=ValueError("No saved session found"),
+            side_effect=NoSavedSessionError("No saved session found"),
         )
 
         result = cli_runner.invoke(cli, ["download", "23598"])

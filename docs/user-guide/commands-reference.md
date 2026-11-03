@@ -281,7 +281,9 @@ cis-bench download <BENCHMARK_ID> [BENCHMARK_ID...] [OPTIONS]
 
 **Input Options:**
 
-- `-f, --file PATH` - File containing URLs/IDs (one per line)
+- `-f, --file PATH` - File containing URLs/IDs (one per line; blank lines and `#` comments are skipped)
+
+**Accepted references:** a numeric benchmark ID (`23598`), a `/benchmarks/23598` path, or an `https://` URL on the configured WorkBench origin (`https://workbench.cisecurity.org/benchmarks/23598`; a query string or fragment is dropped). Every reference is validated before authentication: a cleartext `http://` URL, another host, a non-numeric ID or path traversal aborts the whole run, and with `--file` the message names the offending line, so nothing is downloaded from a bad list.
 
 **Output Options:**
 

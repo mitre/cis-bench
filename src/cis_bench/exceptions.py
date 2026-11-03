@@ -7,8 +7,27 @@ class CISBenchError(Exception):
     pass
 
 
+class ConfigurationError(CISBenchError, ValueError):
+    """Raised when an environment setting is invalid.
+
+    Subclasses ValueError so existing ``except ValueError`` callers keep working,
+    while the CLI can tell configuration problems apart from bad user input.
+    """
+
+    pass
+
+
 class AuthenticationError(CISBenchError):
     """Raised when authentication fails or session is invalid."""
+
+    pass
+
+
+class NoSavedSessionError(AuthenticationError):
+    """Raised when a command needs a saved session and none exists.
+
+    The remedy is always the same: run ``cis-bench auth login``.
+    """
 
     pass
 

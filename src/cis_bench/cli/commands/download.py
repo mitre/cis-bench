@@ -9,14 +9,48 @@ import click
 from rich.console import Console
 from rich.markup import escape
 
-from cis_bench.config import Config, get_workbench_base_url
-from cis_bench.exceptions import TLSVerificationError
+from cis_bench.config import Config
+from cis_bench.exceptions import (
+    AuthenticationError,
+    ConfigurationError,
+    NoSavedSessionError,
+    TLSVerificationError,
+)
 from cis_bench.exporters import ExporterFactory
 from cis_bench.fetcher.auth import AuthManager
 from cis_bench.fetcher.workbench import WorkbenchScraper
+from cis_bench.utils.workbench_urls import resolve_benchmark_reference
 
 console = Console()
 logger = logging.getLogger(__name__)
+
+
+def _collect_targets(
+    benchmark_ids: tuple[str, ...], urls_file: str | None
+) -> list[tuple[str, str]]:
+    """Turn CLI arguments or an input file into validated (benchmark_id, canonical_url) pairs.
+
+    Blank lines and ``#`` comments in the file are skipped. The first invalid reference
+    aborts the whole run with its location, so nothing is downloaded from a bad list.
+    """
+    if urls_file:
+        targets = []
+        with open(urls_file) as f:
+            for line_no, raw in enumerate(f, 1):
+                line = raw.strip()
+                if not line or line.startswith("#"):
+                    continue
+                try:
+                    targets.append(resolve_benchmark_reference(line))
+                except ConfigurationError:
+                    raise  # the environment is wrong, not this line
+                except ValueError as e:
+                    raise ValueError(f"line {line_no} of {urls_file}: {e}") from e
+        return targets
+    if benchmark_ids:
+        return [resolve_benchmark_reference(item) for item in benchmark_ids]
+    console.print("[red]Error: Must specify benchmark IDs or --file[/red]")
+    sys.exit(1)
 
 
 @click.command(name="download")
@@ -76,6 +110,23 @@ def download(
 
     logger.debug(f"Starting download command: output_dir={output_dir}, formats={export_formats}")
 
+    # Resolve and validate every benchmark reference before touching the network, so a bad
+    # ID, an off-origin URL or a cleartext URL can never be sent with the session cookies.
+    try:
+        targets = _collect_targets(benchmark_ids, urls_file)
+    except ConfigurationError as e:
+        console.print(
+            f"\n[bold red]Configuration Error[/bold red]\n[yellow]{escape(str(e))}[/yellow]"
+        )
+        sys.exit(1)
+    except ValueError as e:
+        console.print(f"[red]✗ {escape(str(e))}[/red]")
+        sys.exit(1)
+
+    if not targets:
+        console.print("[red]Error: No benchmarks to download[/red]")
+        sys.exit(1)
+
     # Get authenticated session (uses saved session only)
     try:
         logger.debug("Getting authenticated session")
@@ -85,27 +136,35 @@ def download(
         console.print("[green]✓[/green] Authenticated successfully\n")
         logger.debug("Authentication successful")
 
-    except ValueError as e:
-        err_msg = str(e)
-        if "no saved session" in err_msg.lower() or "no session" in err_msg.lower():
-            console.print("\n[bold red]Authentication Required[/bold red]\n")
-            console.print("[bold cyan]Please log in first:[/bold cyan]")
-            console.print("  cis-bench auth login --browser chrome")
-            console.print("\n[dim]This saves your session for future commands.[/dim]")
-            console.print(
-                "\n[dim]Windows users: If Chrome fails, try Firefox or --cookies option.[/dim]"
-            )
-        else:
-            console.print(f"\n[bold red]Configuration Error[/bold red]\n[yellow]{e}[/yellow]")
+    except NoSavedSessionError:
+        console.print("\n[bold red]Authentication Required[/bold red]\n")
+        console.print("[bold cyan]Please log in first:[/bold cyan]")
+        console.print("  cis-bench auth login --browser chrome")
+        console.print("\n[dim]This saves your session for future commands.[/dim]")
+        console.print(
+            "\n[dim]Windows users: If Chrome fails, try Firefox or --cookies option.[/dim]"
+        )
         sys.exit(1)
     except TLSVerificationError as e:
         # The server could not be trusted; the message carries the remediation.
         console.print(f"\n[red]✗ {escape(str(e))}[/red]")
         sys.exit(1)
+    except ValueError as e:
+        # Only configuration can raise ValueError here (e.g. CIS_BENCH_WORKBENCH_URL)
+        console.print(
+            f"\n[bold red]Configuration Error[/bold red]\n[yellow]{escape(str(e))}[/yellow]"
+        )
+        sys.exit(1)
+    except AuthenticationError as e:
+        console.print("\n[bold red]Authentication Failed[/bold red]\n")
+        console.print(f"[yellow]Error: {escape(str(e))}[/yellow]\n")
+        console.print("[bold cyan]Your session may have expired. To refresh:[/bold cyan]")
+        console.print("  cis-bench auth login --browser chrome")
+        sys.exit(1)
     except Exception as e:
         logger.error(f"Authentication failed: {e}", exc_info=True)
         console.print("\n[bold red]Authentication Failed[/bold red]\n")
-        console.print(f"[yellow]Error: {e}[/yellow]\n")
+        console.print(f"[yellow]Error: {escape(str(e))}[/yellow]\n")
         console.print("[bold cyan]Your session may have expired. To refresh:[/bold cyan]")
         console.print("  cis-bench auth login --browser chrome")
         sys.exit(1)
@@ -113,46 +172,13 @@ def download(
     # Create scraper
     scraper = WorkbenchScraper(session)
 
-    # Collect URLs to download
-    urls = []
-    workbench_base_url = get_workbench_base_url()
-
-    if urls_file:
-        # Read from file
-        with open(urls_file) as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#"):
-                    if line.startswith("http"):
-                        urls.append(line)
-                    else:
-                        urls.append(f"{workbench_base_url}/benchmarks/{line}")
-
-    elif benchmark_ids:
-        # Convert IDs or URLs to full URLs
-        for item in benchmark_ids:
-            if item.startswith("http"):
-                urls.append(item)
-            else:
-                urls.append(f"{workbench_base_url}/benchmarks/{item}")
-    else:
-        console.print("[red]Error: Must specify benchmark IDs or --file[/red]")
-        sys.exit(1)
-
-    if not urls:
-        console.print("[red]Error: No benchmarks to download[/red]")
-        sys.exit(1)
-
     # Download benchmarks
-    logger.debug(f"Starting download of {len(urls)} benchmark(s)")
-    console.print(f"[bold]Downloading {len(urls)} benchmark(s)...[/bold]\n")
+    logger.debug(f"Starting download of {len(targets)} benchmark(s)")
+    console.print(f"[bold]Downloading {len(targets)} benchmark(s)...[/bold]\n")
 
-    for idx, url in enumerate(urls, 1):
-        prefix = f"[{idx}/{len(urls)}]"
-        logger.debug(f"Processing benchmark {idx}/{len(urls)}: {url}")
-
-        # Extract benchmark ID from URL
-        benchmark_id = url.split("/")[-1]
+    for idx, (benchmark_id, url) in enumerate(targets, 1):
+        prefix = f"[{idx}/{len(targets)}]"
+        logger.debug(f"Processing benchmark {idx}/{len(targets)}: {url}")
 
         # Check if already cached (unless --force)
         if not force:

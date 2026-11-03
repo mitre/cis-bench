@@ -122,7 +122,9 @@ class TestDownloadCommand:
         with patch(
             "cis_bench.cli.commands.download.AuthManager.get_or_create_session"
         ) as mock_auth:
-            mock_auth.side_effect = ValueError(
+            from cis_bench.exceptions import NoSavedSessionError
+
+            mock_auth.side_effect = NoSavedSessionError(
                 "No saved session found. Please run 'cis-bench auth login --browser <browser>' to authenticate"
             )
 

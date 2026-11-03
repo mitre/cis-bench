@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 import pytest
 import requests
 
-from cis_bench.exceptions import AuthenticationError, TLSVerificationError
+from cis_bench.exceptions import AuthenticationError, NoSavedSessionError, TLSVerificationError
 from cis_bench.fetcher.auth import AuthManager
 
 
@@ -479,13 +479,16 @@ class TestGetOrCreateSession:
                 mock_load.assert_called_once()
                 mock_validate.assert_called_once()
 
-    def test_get_or_create_raises_error_when_no_session_and_no_browser(self):
-        """get_or_create_session raises ValueError when no session and no browser."""
+    def test_get_or_create_raises_typed_error_when_no_session_and_no_browser(self):
+        """No saved session and no browser is a typed authentication condition, not a ValueError."""
         with patch("cis_bench.fetcher.auth.AuthManager.load_saved_session") as mock_load:
             mock_load.return_value = None
 
-            with pytest.raises(ValueError) as exc_info:
+            with pytest.raises(NoSavedSessionError) as exc_info:
                 AuthManager.get_or_create_session()
+
+            assert isinstance(exc_info.value, AuthenticationError)
+            assert not isinstance(exc_info.value, ValueError)
 
             assert "No saved session" in str(exc_info.value)
             assert "auth login" in str(exc_info.value)

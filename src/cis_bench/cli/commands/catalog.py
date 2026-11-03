@@ -163,6 +163,11 @@ def update(browser):
 
     except click.Abort:
         raise
+    except AuthenticationError as e:
+        console.print("[red]✗ Authentication required[/red]")
+        console.print(f"[yellow]{escape(str(e))}[/yellow]")
+        console.print("[yellow]Please run: cis-bench auth login --browser chrome[/yellow]")
+        raise click.Abort() from e
     except Exception as e:
         console.print(f"[red]✗ Update failed: {escape(str(e))}[/red]")
         raise click.Abort() from e
@@ -511,6 +516,11 @@ def download(benchmark_id_or_name, browser, force, interactive):
 
     except click.Abort:
         raise
+    except AuthenticationError as e:
+        console.print("[red]✗ Authentication required[/red]")
+        console.print(f"[yellow]{escape(str(e))}[/yellow]")
+        console.print("[yellow]Please run: cis-bench auth login --browser chrome[/yellow]")
+        raise click.Abort() from e
     except ValueError as e:
         console.print(f"[red]✗ {escape(str(e))}[/red]")
         raise click.Abort() from e

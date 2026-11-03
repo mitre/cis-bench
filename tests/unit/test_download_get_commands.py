@@ -19,7 +19,7 @@ import pytest
 from click.testing import CliRunner
 
 from cis_bench.cli.app import cli
-from cis_bench.exceptions import TLSVerificationError
+from cis_bench.exceptions import ConfigurationError, NoSavedSessionError, TLSVerificationError
 from cis_bench.models.benchmark import Benchmark, Recommendation
 
 # ============================================================================
@@ -94,7 +94,7 @@ class TestDownloadLoggingConfig:
         with patch(
             "cis_bench.cli.commands.download.AuthManager.get_or_create_session"
         ) as mock_auth:
-            mock_auth.side_effect = ValueError("No session")
+            mock_auth.side_effect = NoSavedSessionError("No saved session found")
 
             with patch("cis_bench.utils.logging_config.LoggingConfig") as mock_logging:
                 result = runner.invoke(cli, ["download", "12345", "--verbose"])
@@ -107,7 +107,7 @@ class TestDownloadLoggingConfig:
         with patch(
             "cis_bench.cli.commands.download.AuthManager.get_or_create_session"
         ) as mock_auth:
-            mock_auth.side_effect = ValueError("No session")
+            mock_auth.side_effect = NoSavedSessionError("No saved session found")
 
             with patch("cis_bench.utils.logging_config.LoggingConfig") as mock_logging:
                 result = runner.invoke(cli, ["download", "12345", "--debug"])
@@ -119,7 +119,7 @@ class TestDownloadLoggingConfig:
         with patch(
             "cis_bench.cli.commands.download.AuthManager.get_or_create_session"
         ) as mock_auth:
-            mock_auth.side_effect = ValueError("No session")
+            mock_auth.side_effect = NoSavedSessionError("No saved session found")
 
             with patch("cis_bench.utils.logging_config.LoggingConfig") as mock_logging:
                 result = runner.invoke(cli, ["download", "12345", "--quiet"])
@@ -135,7 +135,7 @@ class TestDownloadAuthErrors:
         with patch(
             "cis_bench.cli.commands.download.AuthManager.get_or_create_session"
         ) as mock_auth:
-            mock_auth.side_effect = ValueError("No session")
+            mock_auth.side_effect = NoSavedSessionError("No saved session found")
 
             result = runner.invoke(cli, ["download", "12345"])
 
@@ -182,7 +182,7 @@ class TestDownloadAuthErrors:
 
             with patch(
                 "cis_bench.cli.commands.download.AuthManager.get_or_create_session",
-                side_effect=ValueError(
+                side_effect=ConfigurationError(
                     "CIS_BENCH_WORKBENCH_URL must use https:// and a cisecurity.org host"
                 ),
             ):
@@ -757,7 +757,9 @@ class TestGetDownloadErrors:
                     ]
 
                     with patch("cis_bench.cli.commands.get.AuthManager") as mock_auth:
-                        mock_auth.get_or_create_session.side_effect = ValueError("No session")
+                        mock_auth.get_or_create_session.side_effect = NoSavedSessionError(
+                            "No saved session found"
+                        )
 
                         result = runner.invoke(cli, ["get", "test", "--non-interactive"])
 
@@ -859,7 +861,7 @@ class TestGetDownloadErrors:
 
             mock_db.get_downloaded.side_effect = None
             mock_db.get_downloaded.return_value = None
-            mock_auth.get_or_create_session.side_effect = ValueError(
+            mock_auth.get_or_create_session.side_effect = ConfigurationError(
                 "CIS_BENCH_WORKBENCH_URL must use https:// and a cisecurity.org host"
             )
             bad_url_res = runner.invoke(cli, ["get", "test", "--non-interactive"])
@@ -1309,4 +1311,218 @@ class TestVerifiedTLSByDefault:
         assert result.exit_code == 1
         assert "TLS certificate verification failed for workbench.cisecurity.org" in result.output
         assert "REQUESTS_CA_BUNDLE" in result.output
+        assert "Download failed" not in result.output
+
+
+class TestDownloadReferenceValidation:
+    """download validates every benchmark reference before it authenticates or downloads."""
+
+    @pytest.mark.parametrize(
+        ("ref", "fragment"),
+        [
+            (
+                "http://workbench.cisecurity.org/benchmarks/23598",
+                "must match configured WorkBench origin",
+            ),
+            ("https://evil.example/benchmarks/23598", "must match configured WorkBench origin"),
+            (
+                "https://workbench.cisecurity.org@evil.example/benchmarks/23598",
+                "must match configured WorkBench origin",
+            ),
+            (
+                "https://workbench.cisecurity.org/benchmarks/../admin",
+                "must match configured WorkBench origin",
+            ),
+            (
+                "https://workbench.cisecurity.org/benchmarks/abc",
+                "path must match /benchmarks/<digits>",
+            ),
+            ("abc", "Invalid benchmark"),
+        ],
+    )
+    def test_rejects_bad_reference_before_any_network_call(self, runner, ref, fragment):
+        with (
+            patch("cis_bench.cli.commands.download.AuthManager.get_or_create_session") as mock_auth,
+            patch("cis_bench.cli.commands.download.WorkbenchScraper") as mock_scraper_cls,
+        ):
+            result = runner.invoke(cli, ["download", ref])
+
+        assert result.exit_code == 1
+        # Rich wraps long lines in the test console; compare on collapsed whitespace
+        assert fragment in " ".join(result.output.split())
+        mock_auth.assert_not_called()
+        mock_scraper_cls.assert_not_called()
+
+    def test_accepts_id_canonical_url_and_decorated_url(self, runner, sample_benchmark, tmp_path):
+        with runner.isolated_filesystem():
+            with (
+                patch(
+                    "cis_bench.cli.commands.download.Config.get_catalog_db_path",
+                    return_value=tmp_path / "missing.db",
+                ),
+                patch(
+                    "cis_bench.cli.commands.download.AuthManager.get_or_create_session",
+                    return_value=Mock(),
+                ),
+                patch("cis_bench.cli.commands.download.WorkbenchScraper") as mock_scraper_cls,
+            ):
+                mock_scraper = Mock()
+                mock_scraper.download_benchmark.return_value = sample_benchmark
+                mock_scraper_cls.return_value = mock_scraper
+
+                result = runner.invoke(
+                    cli,
+                    [
+                        "download",
+                        "23598",
+                        "https://workbench.cisecurity.org/benchmarks/22605",
+                        "https://workbench.cisecurity.org/benchmarks/11111?tab=overview#top",
+                    ],
+                )
+
+        assert result.exit_code == 0, result.output
+        downloaded = [c.args[0] for c in mock_scraper.download_benchmark.call_args_list]
+        assert downloaded == [
+            "https://workbench.cisecurity.org/benchmarks/23598",
+            "https://workbench.cisecurity.org/benchmarks/22605",
+            "https://workbench.cisecurity.org/benchmarks/11111",
+        ]
+
+    def test_file_with_one_bad_line_reports_the_line_and_downloads_nothing(self, runner, tmp_path):
+        url_file = tmp_path / "urls.txt"
+        url_file.write_text(
+            "# comment\n23598\nhttp://workbench.cisecurity.org/benchmarks/22605\n11111\n"
+        )
+        with (
+            patch("cis_bench.cli.commands.download.AuthManager.get_or_create_session") as mock_auth,
+            patch("cis_bench.cli.commands.download.WorkbenchScraper") as mock_scraper_cls,
+        ):
+            result = runner.invoke(cli, ["download", "--file", str(url_file)])
+
+        assert result.exit_code == 1
+        flat = " ".join(result.output.split())
+        assert "line 3 of" in flat
+        assert url_file.name in flat
+        assert "must match configured WorkBench origin" in flat
+        mock_auth.assert_not_called()
+        mock_scraper_cls.assert_not_called()
+
+
+class TestTypedAuthErrors:
+    """No saved session is a typed condition; the commands never match on message text."""
+
+    def test_download_no_saved_session_is_caught_by_type(self, runner):
+        with patch(
+            "cis_bench.cli.commands.download.AuthManager.get_or_create_session",
+            side_effect=NoSavedSessionError("session.cookies is missing"),
+        ):
+            result = runner.invoke(cli, ["download", "23598"])
+
+        assert result.exit_code == 1
+        assert "Authentication Required" in result.output
+        assert "cis-bench auth login" in result.output
+
+    def test_download_invalid_workbench_url_is_a_configuration_error(self, runner, monkeypatch):
+        """A bad CIS_BENCH_WORKBENCH_URL is reported as configuration, never as a bad reference."""
+        monkeypatch.setenv("CIS_BENCH_WORKBENCH_URL", "http://evil.example")
+        with patch(
+            "cis_bench.cli.commands.download.AuthManager.get_or_create_session"
+        ) as mock_auth:
+            result = runner.invoke(cli, ["download", "23598"])
+
+        flat = " ".join(result.output.split())
+        assert result.exit_code == 1
+        assert "Configuration Error" in flat
+        assert "CIS_BENCH_WORKBENCH_URL" in flat
+        assert "Authentication Required" not in flat
+        mock_auth.assert_not_called()
+
+    def test_download_file_with_invalid_workbench_url_does_not_blame_a_line(
+        self, runner, tmp_path, monkeypatch
+    ):
+        monkeypatch.setenv("CIS_BENCH_WORKBENCH_URL", "http://evil.example")
+        url_file = tmp_path / "ids.txt"
+        url_file.write_text("23598\n")
+        with patch(
+            "cis_bench.cli.commands.download.AuthManager.get_or_create_session"
+        ) as mock_auth:
+            result = runner.invoke(cli, ["download", "--file", str(url_file)])
+
+        flat = " ".join(result.output.split())
+        assert result.exit_code == 1
+        assert "Configuration Error" in flat
+        assert "line 1" not in flat
+        mock_auth.assert_not_called()
+
+    def test_get_invalid_workbench_url_is_a_configuration_error(
+        self, runner, tmp_path, monkeypatch
+    ):
+        monkeypatch.setenv("CIS_BENCH_WORKBENCH_URL", "http://evil.example")
+        catalog_path = tmp_path / "catalog.db"
+        catalog_path.touch()
+        with (
+            patch(
+                "cis_bench.cli.commands.get.Config.get_catalog_db_path", return_value=catalog_path
+            ),
+            patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class,
+            patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class,
+            patch("cis_bench.cli.commands.get.AuthManager") as mock_auth,
+        ):
+            mock_db_class.return_value.get_downloaded.return_value = None
+            mock_search_class.return_value.search.return_value = [
+                {"benchmark_id": "23598", "title": "Test", "version": "v1", "status": "Published"}
+            ]
+            result = runner.invoke(cli, ["get", "test", "--non-interactive"])
+
+        flat = " ".join(result.output.split())
+        assert result.exit_code == 1
+        assert "Configuration Error" in flat
+        assert "CIS_BENCH_WORKBENCH_URL" in flat
+        mock_auth.get_or_create_session.assert_not_called()
+
+    def test_get_rejects_invalid_catalog_id_before_authenticating(self, runner, tmp_path):
+        catalog_path = tmp_path / "catalog.db"
+        catalog_path.touch()
+        with (
+            patch(
+                "cis_bench.cli.commands.get.Config.get_catalog_db_path", return_value=catalog_path
+            ),
+            patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class,
+            patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class,
+            patch("cis_bench.cli.commands.get.AuthManager") as mock_auth,
+        ):
+            mock_db_class.return_value.get_downloaded.return_value = None
+            mock_search_class.return_value.search.return_value = [
+                {"benchmark_id": "../etc", "title": "Test", "version": "v1", "status": "Published"}
+            ]
+            result = runner.invoke(cli, ["get", "test", "--non-interactive"])
+
+        flat = " ".join(result.output.split())
+        assert result.exit_code == 1
+        assert "Invalid benchmark" in flat
+        mock_auth.get_or_create_session.assert_not_called()
+
+    def test_get_no_saved_session_is_caught_by_type(self, runner, tmp_path):
+        catalog_path = tmp_path / "catalog.db"
+        catalog_path.touch()
+        with (
+            patch(
+                "cis_bench.cli.commands.get.Config.get_catalog_db_path", return_value=catalog_path
+            ),
+            patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class,
+            patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class,
+            patch("cis_bench.cli.commands.get.AuthManager") as mock_auth,
+        ):
+            mock_db_class.return_value.get_downloaded.return_value = None
+            mock_search_class.return_value.search.return_value = [
+                {"benchmark_id": "23598", "title": "Test", "version": "v1", "status": "Published"}
+            ]
+            mock_auth.get_or_create_session.side_effect = NoSavedSessionError(
+                "session.cookies is missing"
+            )
+
+            result = runner.invoke(cli, ["get", "test", "--non-interactive"])
+
+        assert result.exit_code == 1
+        assert "Authentication Required" in result.output
         assert "Download failed" not in result.output

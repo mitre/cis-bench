@@ -21,7 +21,7 @@ import pytest
 from click.testing import CliRunner
 
 from cis_bench.cli.app import cli
-from cis_bench.exceptions import AuthenticationError
+from cis_bench.exceptions import AuthenticationError, NoSavedSessionError
 from cis_bench.fetcher.auth import AuthManager
 
 
@@ -1452,3 +1452,24 @@ class TestVerifiedTLSByDefault:
 
         assert result.exit_code == 0, result.output
         mock_auth.get_or_create_session.assert_called_once_with(browser="chrome", verify_ssl=True)
+
+
+class TestCatalogCommandsNoSavedSession:
+    """Every catalog command that needs a session reports a missing one with the login instruction."""
+
+    @pytest.mark.parametrize("args", [["catalog", "update"], ["catalog", "download", "23598"]])
+    @patch("cis_bench.cli.commands.catalog.get_catalog_db")
+    def test_missing_session_prints_login_instruction_without_a_failure_banner(
+        self, mock_get_db, runner, mock_db, args
+    ):
+        mock_get_db.return_value = mock_db
+        with patch(
+            "cis_bench.fetcher.auth.AuthManager.get_or_create_session",
+            side_effect=NoSavedSessionError("session.cookies is missing"),
+        ):
+            result = runner.invoke(cli, args)
+
+        assert result.exit_code == 1
+        assert "Authentication required" in result.output
+        assert "cis-bench auth login" in result.output
+        assert "failed" not in result.output.lower()

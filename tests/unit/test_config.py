@@ -526,3 +526,27 @@ class TestConfigPathsForAllEnvironments:
             assert catalog_path.parent == data_dir
             assert benchmarks_dir.parent == data_dir
             assert config_path.parent == data_dir
+
+
+class TestConfigurationErrorType:
+    """Configuration problems raise ConfigurationError so callers can classify them by type."""
+
+    def test_invalid_workbench_url_raises_configuration_error(self):
+        from cis_bench.exceptions import ConfigurationError
+
+        with patch.dict(os.environ, {"CIS_BENCH_WORKBENCH_URL": "http://evil.example"}):
+            from cis_bench.config import Config
+
+            with pytest.raises(ConfigurationError, match="CIS_BENCH_WORKBENCH_URL") as exc_info:
+                Config.get_workbench_base_url()
+        assert isinstance(exc_info.value, ValueError)
+
+    def test_invalid_verify_ssl_raises_configuration_error(self):
+        from cis_bench.exceptions import ConfigurationError
+
+        with patch.dict(os.environ, {"CIS_BENCH_VERIFY_SSL": "bogus"}):
+            from cis_bench.config import Config
+
+            with pytest.raises(ConfigurationError, match="CIS_BENCH_VERIFY_SSL") as exc_info:
+                Config.get_verify_ssl()
+        assert isinstance(exc_info.value, ValueError)

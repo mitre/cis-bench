@@ -10,6 +10,8 @@ import os
 from pathlib import Path
 from urllib.parse import urlparse
 
+from cis_bench.exceptions import ConfigurationError
+
 # Load .env file if it exists (production/dev use)
 # Tests don't need this - they set env vars directly
 try:
@@ -68,7 +70,7 @@ class Config:
             or bool(parsed.query)
             or bool(parsed.fragment)
         ):
-            raise ValueError(
+            raise ConfigurationError(
                 f"Invalid CIS_BENCH_WORKBENCH_URL '{raw}': must be an https://*.cisecurity.org origin without path, query, fragment, or credentials"
             )
 
@@ -196,7 +198,7 @@ class Config:
             True to verify certificates, False to skip verification.
 
         Raises:
-            ValueError: If the variable holds any other value. A typo in a
+            ConfigurationError: If the variable holds any other value. A typo in a
                 security setting must never silently disable verification.
         """
         env_value = os.getenv("CIS_BENCH_VERIFY_SSL")
@@ -208,7 +210,7 @@ class Config:
             return True
         if normalized in Config._VERIFY_SSL_FALSE_VALUES:
             return False
-        raise ValueError(
+        raise ConfigurationError(
             f"CIS_BENCH_VERIFY_SSL has unrecognized value {env_value!r}; "
             "use true/1/yes to verify certificates or false/0/no to disable verification"
         )

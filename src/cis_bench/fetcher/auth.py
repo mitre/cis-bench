@@ -21,7 +21,7 @@ except ImportError:
     pass
 
 from cis_bench.config import Config
-from cis_bench.exceptions import AuthenticationError, TLSVerificationError
+from cis_bench.exceptions import AuthenticationError, NoSavedSessionError, TLSVerificationError
 
 logger = logging.getLogger(__name__)
 
@@ -513,7 +513,7 @@ Workarounds:
 
     @staticmethod
     def get_or_create_session(
-        browser=None, force_refresh=False, verify_ssl: bool | None = None
+        browser: str | None = None, force_refresh: bool = False, verify_ssl: bool | None = None
     ) -> requests.Session:
         """Get authenticated session, using saved session if available.
 
@@ -529,7 +529,8 @@ Workarounds:
             Authenticated requests.Session
 
         Raises:
-            ValueError: If no saved session and no browser specified, or WorkBench URL invalid
+            NoSavedSessionError: If no saved session exists and no browser was given
+            ValueError: If the configured WorkBench URL is invalid
             AuthenticationError: If freshly extracted browser cookies are not accepted by WorkBench
             TLSVerificationError: If the WorkBench certificate cannot be verified
         """
@@ -552,7 +553,7 @@ Workarounds:
 
         # No valid saved session, need to authenticate
         if not browser:
-            raise ValueError(
+            raise NoSavedSessionError(
                 "No saved session found. Please run 'cis-bench auth login --browser <browser>' to authenticate"
             )
 

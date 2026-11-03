@@ -5,13 +5,12 @@ Extracts benchmark metadata from HTML catalog listing pages.
 
 import logging
 import re
-from urllib.parse import urljoin, urlsplit
 
 from bs4 import BeautifulSoup, Tag
 
-from cis_bench.config import Config
 from cis_bench.exceptions import AuthenticationError
 from cis_bench.fetcher.auth import is_workbench_login_page
+from cis_bench.utils.workbench_urls import normalize_benchmark_url
 
 logger = logging.getLogger(__name__)
 
@@ -86,69 +85,6 @@ class WorkBenchCatalogParser:
         logger.info(f"Parsed {len(benchmarks)} benchmarks from catalog page")
         return benchmarks
 
-    _BENCHMARK_PATH_RE = re.compile(r"^/benchmarks/([0-9]+)(?:/.*)?$")
-
-    @staticmethod
-    def normalize_benchmark_url(
-        raw_url: str, *, expected_benchmark_id: str | None = None
-    ) -> tuple[str, str]:
-        """Resolve, validate, and canonicalize a CIS WorkBench benchmark URL.
-
-        Args:
-            raw_url: Relative or absolute benchmark href/URL
-            expected_benchmark_id: Optional catalog benchmark ID that the URL must match
-
-        Returns:
-            Tuple of (benchmark_id, canonical_url) where canonical_url is
-            ``<workbench_base_url>/benchmarks/<digits>``
-
-        Raises:
-            ValueError: If raw_url is off-origin, contains userinfo/path traversal,
-                lacks a numeric ``/benchmarks/<digits>`` path, or mismatches expected_benchmark_id
-        """
-        if not isinstance(raw_url, str):
-            raise ValueError("Invalid benchmark URL: expected string")
-
-        cleaned = raw_url.strip()
-        if not cleaned or cleaned.startswith(("@", "//")) or "\\" in cleaned:
-            raise ValueError(f"Invalid benchmark URL '{raw_url}'")
-
-        base_url = Config.get_workbench_base_url()
-        base_parsed = urlsplit(base_url)
-
-        raw_parsed = urlsplit(cleaned)
-        if raw_parsed.scheme == "" and raw_parsed.netloc == "":
-            resolved = urljoin(f"{base_url}/", cleaned)
-        else:
-            resolved = cleaned
-
-        parsed = urlsplit(resolved)
-        if (
-            parsed.scheme.lower() != base_parsed.scheme.lower()
-            or parsed.username is not None
-            or parsed.password is not None
-            or "@" in parsed.netloc
-            or parsed.netloc.lower() != base_parsed.netloc.lower()
-            or ".." in parsed.path.split("/")
-        ):
-            raise ValueError(
-                f"Invalid benchmark URL '{raw_url}': must match configured WorkBench origin {base_url}"
-            )
-
-        path_match = WorkBenchCatalogParser._BENCHMARK_PATH_RE.match(parsed.path)
-        if not path_match:
-            raise ValueError(
-                f"Invalid benchmark URL '{raw_url}': path must match /benchmarks/<digits>"
-            )
-
-        benchmark_id = path_match.group(1)
-        if expected_benchmark_id is not None and benchmark_id != expected_benchmark_id:
-            raise ValueError(
-                f"Invalid benchmark URL '{raw_url}': benchmark ID '{benchmark_id}' does not match '{expected_benchmark_id}'"
-            )
-
-        return benchmark_id, f"{base_url}/benchmarks/{benchmark_id}"
-
     @staticmethod
     def _parse_table_row(row) -> dict | None:
         """Parse single table row.
@@ -178,7 +114,7 @@ class WorkBenchCatalogParser:
         title = link.get_text(strip=True)
 
         try:
-            benchmark_id, url = WorkBenchCatalogParser.normalize_benchmark_url(href)
+            benchmark_id, url = normalize_benchmark_url(href)
         except ValueError:
             return None
 
