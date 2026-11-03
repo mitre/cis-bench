@@ -159,7 +159,7 @@ Ensure Only Approved Ports, Protocols and Services Are Running
 |-----------|-------|-----------|
 | Rule/@severity | "medium" | CIS has no severity concept, default to medium (CAT II equivalent) |
 | Rule/@weight | "10.0" | DISA standard weight |
-| Rule/@id | `xccdf_cis_{platform}_rule_{ref}` | Synthetic ID, CIS-prefixed |
+| Rule/@id | `xccdf_org.cisecurity.benchmarks_rule_{ref_normalized}` | CIS ref in the CIS benchmarks namespace |
 | fixtext/@fixref | `F-{ref}` | Links to fix element |
 | fix/@id | `F-{ref}` | Matches fixref |
 | check/@system | `C-{ref}` | Synthetic check ID |

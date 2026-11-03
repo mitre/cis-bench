@@ -153,7 +153,7 @@ class TestArchitectureCompliance:
             # Load test data
             benchmark = Benchmark.from_json_file(str(synthetic_complete_file))
             rec = benchmark.recommendations[0]
-            context = {"platform": "test", "benchmark": benchmark}
+            context = {"benchmark": benchmark}
 
             # Map rule
             rule = engine.map_rule(rec, context)
@@ -211,7 +211,7 @@ class TestArchitectureCompliance:
         # Check they work
         benchmark = synthetic_complete_benchmark
         rec = benchmark.recommendations[0]
-        context = {"platform": "test", "benchmark": benchmark}
+        context = {"benchmark": benchmark}
 
         # Test map_rule
         rule = engine.map_rule(rec, context)

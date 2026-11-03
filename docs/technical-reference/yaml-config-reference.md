@@ -77,7 +77,7 @@ Benchmark-level field mappings:
 ```yaml
 benchmark:
 # ID template with variables
-id_template: "xccdf_cis_{platform}_benchmark"
+id_template: "xccdf_org.cisecurity.benchmarks_benchmark_{version}_{title_slug}"
 
 # Simple field mapping
 title:
@@ -111,7 +111,7 @@ Template for generating rule IDs:
 
 ```yaml
 rule_id:
-template: "xccdf_cis_{platform}_rule_{ref_normalized}"
+template: "xccdf_org.cisecurity.benchmarks_rule_{ref_normalized}"
 ref_normalized: "replace('.', '_')" # 3.1.1 3_1_1
 ```
 
@@ -363,9 +363,10 @@ Available variables for substitution in templates:
 ### Benchmark-Level Variables
 
 ```yaml
-# Available in benchmark mappings
-{platform} # Extracted from title (e.g., "eks")
+# Available in benchmark.id_template
 {benchmark_id} # CIS WorkBench ID (e.g., "22605")
+{version} # Benchmark version, NCName-safe (e.g., "v1.0.0")
+{title_slug} # Benchmark title, NCName-safe (e.g., "CIS_Ubuntu_Linux_22.04_LTS_Benchmark")
 ```
 
 ### Rule-Level Variables
@@ -374,7 +375,7 @@ Available variables for substitution in templates:
 # Available in rule mappings
 {ref} # Original ref (e.g., "3.1.1")
 {ref_normalized} # Normalized ref (e.g., "3_1_1")
-{platform} # Same as benchmark level
+{stig_number} # Zero-padded ref for DISA ids (e.g., "030101")
 ```
 
 ### Nested Variables (in loops)
@@ -509,7 +510,7 @@ description: "Minimal XCCDF export"
 xccdf_version: "1.2"
 
 benchmark:
-id_template: "xccdf_cis_{platform}_benchmark"
+id_template: "xccdf_org.cisecurity.benchmarks_benchmark_{version}_{title_slug}"
 title:
 source: "title"
 transform: "none"
@@ -523,7 +524,7 @@ weight: "10.0"
 selected: "true"
 
 rule_id:
-template: "xccdf_cis_{platform}_rule_{ref_normalized}"
+template: "xccdf_org.cisecurity.benchmarks_rule_{ref_normalized}"
 ref_normalized: "replace('.', '_')"
 
 field_mappings:
@@ -608,7 +609,7 @@ ident:
 ```yaml
 # Be consistent with ID templates
 rule_id:
-template: "xccdf_cis_{platform}_rule_{ref_normalized}"
+template: "xccdf_org.cisecurity.benchmarks_rule_{ref_normalized}"
 
 # Use same pattern for other IDs
 check:
@@ -810,7 +811,7 @@ Error: Variable 'unknown_var' not found in template
 
 **Solution**: Check variable name. Available variables:
 
-- {ref}, {ref_normalized}, {platform}
+- {ref}, {ref_normalized}, {stig_number}
 - {control.version}, {control.control}
 - {nist_control_id}, {technique}, {tactic}
 - See "Variables Reference" section

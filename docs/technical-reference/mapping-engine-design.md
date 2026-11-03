@@ -597,14 +597,14 @@ Variables:
 
 - {ref}: Original ref (e.g., "3.1.1")
 - {ref_normalized}: Normalized ref (e.g., "3_1_1")
-- {platform}: Benchmark platform
+- {version}, {title_slug}: NCName-safe benchmark version and title (Benchmark ID template only)
 - {control.version}: CIS Control version
 - {control.control}: CIS Control ID
 - {nist_control_id}: NIST control ID
 
 Used in:
 
-- ID templates: "xccdf_cis_{platform}_rule_{ref_normalized}"
+- ID templates: "xccdf_org.cisecurity.benchmarks_rule_{ref_normalized}"
 - Attributes: fixref="F-{ref_normalized}"
 - Content: "{control.title}"
 """
@@ -1190,22 +1190,21 @@ value = html_to_markdown(value)
 
 # 1. YAML template
 rule_id:
-template: "xccdf_cis_{platform}_rule_{ref_normalized}"
+template: "xccdf_org.cisecurity.benchmarks_rule_{ref_normalized}"
 
 # 2. Context has variables
 context = MappingContext(
 benchmark=benchmark,
 recommendation=rec,
-platform="eks", # Extracted from title
 ref_normalized="3_1_1" # From rec.ref "3.1.1"
 )
 
 # 3. Substitute variables
 rule_id = variable_substituter.substitute(
-"xccdf_cis_{platform}_rule_{ref_normalized}",
+"xccdf_org.cisecurity.benchmarks_rule_{ref_normalized}",
 context
 )
-# Result: "xccdf_cis_eks_rule_3_1_1"
+# Result: "xccdf_org.cisecurity.benchmarks_rule_3_1_1"
 ```
 
 ### Nested Variable Access
@@ -1412,17 +1411,16 @@ assert result == "Desc\n\nRationale"
 def test_variable_substitution():
 """Test variable substitution in templates."""
 context = MappingContext(
-ref_normalized="3_1_1",
-platform="eks"
+ref_normalized="3_1_1"
 )
 
 substituter = VariableSubstituter()
 result = substituter.substitute(
-"xccdf_cis_{platform}_rule_{ref_normalized}",
+"xccdf_org.cisecurity.benchmarks_rule_{ref_normalized}",
 context
 )
 
-assert result == "xccdf_cis_eks_rule_3_1_1"
+assert result == "xccdf_org.cisecurity.benchmarks_rule_3_1_1"
 ```
 
 ### Integration Tests

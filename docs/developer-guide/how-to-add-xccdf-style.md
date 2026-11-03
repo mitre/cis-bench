@@ -77,7 +77,7 @@ namespaces:
 
 # Benchmark-level configuration
 benchmark:
-  id_template: "xccdf_pci_dss_{platform}"
+  id_template: "xccdf_org.pcisecuritystandards_benchmark_{version}_{title_slug}"
   title:
     source: "title"
     transform: "none"

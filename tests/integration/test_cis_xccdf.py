@@ -390,3 +390,50 @@ class TestCISXCCDFExport:
         assert "Center for Internet Security, Inc." in notice_text
         assert "https://workbench.cisecurity.org/terms-of-use" in notice_text
         assert "cis-bench" in notice_text
+
+
+def _benchmark_id(exporter, benchmark, output_path: Path) -> str:
+    exporter.export(benchmark, str(output_path))
+    root = etree.parse(str(output_path)).getroot()
+    assert root.tag.endswith("Benchmark")
+    return root.get("id")
+
+
+def test_benchmark_id_follows_cis_convention(sample_benchmark, tmp_path):
+    """CIS-style Benchmark/@id is the CIS-published form: namespace, version, title slug.
+
+    Reference form from CIS's own XCCDF: xccdf_org.cisecurity.benchmarks_benchmark_
+    1.0.0_CIS_Ubuntu_Linux_22.04_LTS_Benchmark. Version is the benchmark version as
+    given (NCName-safe); the title has whitespace and other non-NCName characters
+    replaced by single underscores.
+    """
+    exporter = ExporterFactory.create("xccdf", style="cis")
+
+    bench_id = _benchmark_id(exporter, sample_benchmark, tmp_path / "first.xml")
+    assert bench_id == (
+        "xccdf_org.cisecurity.benchmarks_benchmark_v1.0.0"
+        "_CIS_Synthetic_Enterprise_Platform_Benchmark_v1.0.0"
+    )
+
+    # Same input, same id.
+    assert _benchmark_id(exporter, sample_benchmark, tmp_path / "again.xml") == bench_id
+
+    # A different title is a different benchmark and must get a different id.
+    other = sample_benchmark.model_copy(update={"title": "CIS Other Platform Benchmark"})
+    other_id = _benchmark_id(exporter, other, tmp_path / "other.xml")
+    assert (
+        other_id == "xccdf_org.cisecurity.benchmarks_benchmark_v1.0.0_CIS_Other_Platform_Benchmark"
+    )
+    assert other_id != bench_id
+
+
+def test_benchmark_id_slugs_a_version_that_is_not_ncname_safe(sample_benchmark, tmp_path):
+    """WorkBench carries versions like 'v7.1.0 (vNext)'; the id stays an NCName."""
+    exporter = ExporterFactory.create("xccdf", style="cis")
+    vnext = sample_benchmark.model_copy(update={"version": "v7.1.0 (vNext)"})
+
+    bench_id = _benchmark_id(exporter, vnext, tmp_path / "vnext.xml")
+    assert bench_id == (
+        "xccdf_org.cisecurity.benchmarks_benchmark_v7.1.0_vNext"
+        "_CIS_Synthetic_Enterprise_Platform_Benchmark_v1.0.0"
+    )

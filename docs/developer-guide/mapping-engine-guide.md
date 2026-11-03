@@ -98,7 +98,7 @@ description: "My custom XCCDF format"
 
 # Benchmark-level settings
 benchmark:
-id_template: "xccdf_custom_benchmark_{benchmark_id}"
+id_template: "xccdf_custom_benchmark_{version}_{title_slug}"
 title:
 source: "title"
 transform: "strip_html"
@@ -133,6 +133,33 @@ extract: "primary"
 | `rule_defaults` | Default attributes for all rules | No |
 | `transformations` | Custom transformation definitions | No |
 | `validation` | Validation rules and constraints | No |
+
+### Benchmark ID
+
+`benchmark.id_template` names the `<Benchmark>` element. It is required: a style
+without one fails with `ExportError` at export time. The engine substitutes three
+variables:
+
+| Variable | Value |
+|----------|-------|
+| `{benchmark_id}` | CIS WorkBench benchmark ID, as stored (e.g. `23598`) |
+| `{version}` | `benchmark.version` reduced to an NCName-safe segment (`v1.0.0` stays `v1.0.0`; `v7.1.0 (vNext)` becomes `v7.1.0_vNext`) |
+| `{title_slug}` | `benchmark.title` with every run of whitespace or other non-NCName characters replaced by one `_` (`CIS Ubuntu Linux 22.04 LTS Benchmark` becomes `CIS_Ubuntu_Linux_22.04_LTS_Benchmark`) |
+
+The two shipped styles:
+
+```yaml
+# cis.yaml — the form CIS publishes:
+# xccdf_org.cisecurity.benchmarks_benchmark_1.0.0_CIS_Ubuntu_Linux_22.04_LTS_Benchmark
+id_template: "xccdf_org.cisecurity.benchmarks_benchmark_{version}_{title_slug}"
+
+# disa.yaml — short form; Vulcan shows it in the STIG ID column
+id_template: "CIS_{benchmark_id}"
+```
+
+XCCDF 1.2 requires Benchmark ids to match `xccdf_<namespace>_benchmark_<name>` and
+to be an NCName, so a 1.2 style's template must start with `xccdf_`, contain
+`_benchmark_`, and use only the variables above after it.
 
 ---
 
@@ -375,10 +402,14 @@ Use `{variable}` syntax to insert dynamic values:
 - `{benchmark.url}` - Benchmark URL
 - `{benchmark_id}` - Numeric ID
 
+**Benchmark ID template only** (see [Benchmark ID](#benchmark-id)):
+
+- `{version}` - Benchmark version reduced to an NCName-safe segment
+- `{title_slug}` - Benchmark title reduced to an NCName-safe segment
+
 **Generated:**
 
 - `{download_date}` - Current date
-- `{platform}` - Inferred platform name
 
 ### Example: Dynamic Attributes
 

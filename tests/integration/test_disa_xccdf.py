@@ -4,6 +4,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from lxml import etree
 
 from cis_bench.exporters import ExporterFactory
 from cis_bench.models.benchmark import Benchmark
@@ -141,3 +142,9 @@ def test_disa_export_populates_benchmark_notice_from_style_config(disa_export_fi
     assert "Center for Internet Security, Inc." in notice_text
     assert "https://workbench.cisecurity.org/terms-of-use" in notice_text
     assert "cis-bench" in notice_text
+
+
+def test_disa_benchmark_id_is_cis_prefixed_workbench_id(disa_export_file):
+    """DISA-style Benchmark/@id stays CIS_<WorkBench id>: Vulcan shows it as the STIG ID."""
+    root = etree.parse(str(disa_export_file)).getroot()
+    assert root.get("id") == "CIS_90001"

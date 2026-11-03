@@ -23,7 +23,10 @@ group_elements:
 
 # Benchmark-level mappings
 benchmark:
-  id_template: "xccdf_org.cisecurity.benchmarks_benchmark_{platform}"
+  # CIS-published form: xccdf_org.cisecurity.benchmarks_benchmark_<version>_<Title_With_Underscores>
+  # e.g. xccdf_org.cisecurity.benchmarks_benchmark_1.0.0_CIS_Ubuntu_Linux_22.04_LTS_Benchmark
+  # {version} and {title_slug} are the benchmark version and title reduced to NCName-safe text.
+  id_template: "xccdf_org.cisecurity.benchmarks_benchmark_{version}_{title_slug}"
 
   # Profile generation - XCCDF 1.2 profileIdType pattern (xccdf_[^_]+_profile_.+)
   profiles:
@@ -90,7 +93,7 @@ rule_defaults:
 
 # ID Generation - CIS Native Format
 # CIS uses descriptive IDs with organization prefix
-# Variables: {stig_number}, {ref_normalized}, {platform}
+# Variables: {stig_number}, {ref_normalized}
 
 group_id:
   template: "xccdf_org.cisecurity.benchmarks_group_{ref_normalized}"

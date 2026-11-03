@@ -145,7 +145,7 @@ rule_defaults:
 # ID Generation - DISA STIG Format
 # DISA STIGs use V-NNNNNN for Groups and SV-NNNNNNrREV_rule for Rules
 # We convert CIS refs (1.1.1) to padded numbers (010101) for STIG-style IDs
-# Variables: {stig_number}, {ref_normalized}, {platform}
+# Variables: {stig_number}, {ref_normalized}
 
 group_id:
   template: "V-{stig_number}"

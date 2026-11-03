@@ -9,6 +9,8 @@ Tests the core helper functions that power the mapping engine:
 - HTMLCleaner: HTML transformation methods
 """
 
+from pathlib import Path
+
 import pytest
 
 from cis_bench.exporters.mapping_engine import (
@@ -1086,7 +1088,7 @@ class TestIDFormatValidation:
         """map_rule() with DISA config should produce SV- prefixed rule ID."""
         import re
 
-        context = {"platform": "eks", "benchmark": None}
+        context = {"benchmark": None}
         rule = disa_engine.map_rule(sample_recommendation, context)
 
         assert rule.id.startswith("SV-"), f"DISA Rule ID should start with SV-, got: {rule.id}"
@@ -1096,7 +1098,7 @@ class TestIDFormatValidation:
         """map_group() with DISA config should produce V- prefixed group ID."""
         import re
 
-        context = {"platform": "eks", "benchmark": None}
+        context = {"benchmark": None}
         rule = disa_engine.map_rule(sample_recommendation, context)
         group = disa_engine.map_group(sample_recommendation, rule, context)
 
@@ -1105,7 +1107,7 @@ class TestIDFormatValidation:
 
     def test_cis_map_rule_produces_benchmarks_id(self, cis_engine, sample_recommendation):
         """map_rule() with CIS config should produce cisecurity.benchmarks rule ID."""
-        context = {"platform": "eks", "benchmark": None}
+        context = {"benchmark": None}
         rule = cis_engine.map_rule(sample_recommendation, context)
 
         assert "cisecurity.benchmarks" in rule.id, (
@@ -1118,7 +1120,7 @@ class TestIDFormatValidation:
 
     def test_cis_map_group_produces_benchmarks_id(self, cis_engine, sample_recommendation):
         """map_group() with CIS config should produce cisecurity.benchmarks group ID."""
-        context = {"platform": "eks", "benchmark": None}
+        context = {"benchmark": None}
         rule = cis_engine.map_rule(sample_recommendation, context)
         group = cis_engine.map_group(sample_recommendation, rule, context)
 
@@ -1132,7 +1134,7 @@ class TestIDFormatValidation:
 
     def test_disa_rule_and_group_ids_correspond(self, disa_engine, sample_recommendation):
         """DISA Rule and Group IDs should use same stig_number."""
-        context = {"platform": "eks", "benchmark": None}
+        context = {"benchmark": None}
         rule = disa_engine.map_rule(sample_recommendation, context)
         group = disa_engine.map_group(sample_recommendation, rule, context)
 
@@ -1235,7 +1237,7 @@ class TestDISAVulcanCompatibility:
         )
 
         # Should produce short readable ID using benchmark_id
-        context = {"platform": "AlmaLinux", "benchmark_id": "23598"}
+        context = {"benchmark_id": "23598"}
         bench_id = VariableSubstituter.substitute(id_template, context)
 
         assert len(bench_id) < 50, "Benchmark ID should be reasonably short"
@@ -1275,7 +1277,7 @@ class TestDISAVulcanCompatibility:
         engine = MappingEngine(disa_config_path)
         benchmark = synthetic_complete_benchmark
         rec = benchmark.recommendations[0]
-        context = {"platform": "test", "benchmark": benchmark}
+        context = {"benchmark": benchmark}
 
         rule = engine.map_rule(rec, context)
         group = engine.map_group(rec, rule, context)
@@ -1302,7 +1304,7 @@ class TestDISAVulcanCompatibility:
         engine = MappingEngine(disa_config_path)
         benchmark = synthetic_complete_benchmark
         rec = benchmark.recommendations[0]
-        context = {"platform": "test", "benchmark": benchmark}
+        context = {"benchmark": benchmark}
 
         rule = engine.map_rule(rec, context)
         group = engine.map_group(rec, rule, context)
@@ -1465,3 +1467,39 @@ class TestNoticeCreation:
         assert missing_section_notice.id == "terms-of-use"
         assert missing_section_notice.lang is None
         assert missing_section_notice.content == []
+
+
+class TestBenchmarkIdTemplate:
+    """Benchmark/@id comes from the style's id_template and the engine's substitution values."""
+
+    def test_missing_id_template_is_an_export_error(
+        self, styles_dir, synthetic_complete_benchmark, tmp_path
+    ):
+        """A style without benchmark.id_template cannot name its Benchmark; the engine says so."""
+        from cis_bench.exceptions import ExportError
+
+        config = tmp_path / "no_id.yaml"
+        config.write_text(
+            f"extends: {Path(styles_dir).parent / 'base.yaml'}\n"
+            'metadata:\n  style_name: "no_id"\n  xccdf_version: "1.2"\n'
+        )
+        engine = MappingEngine(config)
+
+        with pytest.raises(ExportError, match="benchmark.id_template"):
+            engine.map_benchmark(
+                synthetic_complete_benchmark, [], {"benchmark": synthetic_complete_benchmark}
+            )
+
+    def test_cis_template_substitutes_version_and_title_slug(
+        self, cis_config_path, synthetic_complete_benchmark
+    ):
+        engine = MappingEngine(cis_config_path)
+        bench = synthetic_complete_benchmark.model_copy(
+            update={"title": "CIS Red Hat Enterprise Linux 9 Benchmark", "version": "v2.0.0"}
+        )
+
+        xccdf_bench = engine.map_benchmark(bench, [], {"benchmark": bench, "recommendations": []})
+
+        assert xccdf_bench.id == (
+            "xccdf_org.cisecurity.benchmarks_benchmark_v2.0.0_CIS_Red_Hat_Enterprise_Linux_9_Benchmark"
+        )

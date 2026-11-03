@@ -33,6 +33,7 @@ from typing import Any
 
 import yaml
 
+from cis_bench.exceptions import ExportError
 from cis_bench.models.benchmark import Benchmark, Recommendation
 
 # Import XCCDF types for element creation (XCCDF 1.2 - for type hints only)
@@ -40,6 +41,7 @@ from cis_bench.models.benchmark import Benchmark, Recommendation
 from cis_bench.utils.cci_lookup import get_cci_service
 from cis_bench.utils.html_parser import HTMLCleaner
 from cis_bench.utils.xhtml_formatter import XHTMLFormatter
+from cis_bench.utils.xml_utils import ncname_slug
 
 # Set up logger
 logger = logging.getLogger(__name__)
@@ -195,10 +197,10 @@ class ConfigLoader:
 
             # Check for inheritance
             if "extends" in config_data:
-                extends_path = config_data.pop("extends")
+                extends_path = Path(config_data.pop("extends"))
 
                 # Resolve relative to current file's directory
-                if not Path(extends_path).is_absolute():
+                if not extends_path.is_absolute():
                     extends_path = config_path.parent / extends_path
 
                 # Recursively load parent configuration
@@ -820,7 +822,6 @@ class MappingEngine:
                 "ref_normalized": ref_norm,
                 "stig_number": stig_number,
                 "rec": rec,
-                "platform": context.get("platform", ""),
             }
         )
 
@@ -1071,7 +1072,7 @@ class MappingEngine:
         )
 
         # Use config-driven template with fallback for backward compatibility
-        default_template = "xccdf_org.cisecurity_group_{platform}{ref_normalized}"
+        default_template = "xccdf_org.cisecurity_group_{ref_normalized}"
         group_id = VariableSubstituter.substitute(
             self.config.group_id.get("template", default_template), context
         )
@@ -1126,14 +1127,23 @@ class MappingEngine:
         XCCDFBenchmark = self.get_xccdf_class("Benchmark")
         Status = self.get_xccdf_class("Status")
 
-        # Generate Benchmark ID
-        platform = context.get("platform", "")
-        bench_id_template = self.config.benchmark.get(
-            "id_template", "CIS_{platform}_{benchmark_id}"
-        )
+        # Generate Benchmark ID from the style's template. Substitution values
+        # that come from free text are reduced to NCName-safe segments so the
+        # result satisfies XCCDF's benchmarkIdType whatever the title or
+        # version contains.
+        bench_id_template = self.config.benchmark.get("id_template")
+        if not bench_id_template:
+            raise ExportError(
+                f"Style '{self.config.metadata.get('style_name', '?')}' has no "
+                "benchmark.id_template; every style must name its Benchmark"
+            )
         bench_id = VariableSubstituter.substitute(
             bench_id_template,
-            {"platform": platform.title(), "benchmark_id": benchmark.benchmark_id},
+            {
+                "benchmark_id": benchmark.benchmark_id,
+                "version": ncname_slug(benchmark.version),
+                "title_slug": ncname_slug(benchmark.title),
+            },
         )
 
         # Start with required fields
@@ -1401,7 +1411,6 @@ class MappingEngine:
                     rule_context = {
                         "ref_normalized": ref_normalized,
                         "stig_number": stig_number,
-                        "platform": "",  # Platform not needed for profile select idrefs
                     }
                     rule_id = VariableSubstituter.substitute(
                         self.config.rule_id.get("template", "CIS-{ref_normalized}_rule"),

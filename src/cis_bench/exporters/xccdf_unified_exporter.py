@@ -104,9 +104,7 @@ class XCCDFExporter(BaseExporter):
         The mapping engine handles all style-specific logic based on the
         loaded YAML configuration.
         """
-        platform = benchmark.title.lower().split()[0] if benchmark.title else "CIS"
         context = {
-            "platform": platform,
             "benchmark": benchmark,
             "recommendations": benchmark.recommendations,  # Needed for profile generation
         }
