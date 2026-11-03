@@ -16,6 +16,8 @@ from cis_bench.catalog.database import CatalogDatabase
 from cis_bench.catalog.parser import WorkBenchCatalogParser
 from cis_bench.config import Config
 from cis_bench.exceptions import AuthenticationError
+from cis_bench.fetcher.auth import is_workbench_login_page
+from cis_bench.utils.workbench_urls import resolve_benchmark_reference
 
 logger = logging.getLogger(__name__)
 
@@ -302,6 +304,43 @@ class CatalogScraper:
                 f"All {len(benchmarks)} benchmarks on page {page_num} failed validation"
             )
         return inserted_count
+
+    def refresh_downloaded_revision_dates(self, rate_limit_seconds: float = 2.0) -> int:
+        """Fetch each downloaded benchmark's detail page and record its publication date.
+
+        Only downloaded benchmarks are visited (a handful of requests, never the
+        whole catalog). A page without a recognisable date leaves the row as it
+        was. A login page means the session is gone and raises immediately.
+
+        Returns:
+            Number of benchmarks whose date was recorded
+        """
+        headers = {"User-Agent": f"cis-bench-cli/{__version__} (github.com/mitre/cis-bench)"}
+        refreshed = 0
+        for benchmark_id in self.db.list_downloaded_benchmark_ids():
+            try:
+                _, url = resolve_benchmark_reference(str(benchmark_id))
+            except ValueError as e:
+                logger.warning(
+                    f"Skipping downloaded benchmark with invalid id {benchmark_id!r}: {e}"
+                )
+                continue
+            logger.debug(f"Fetching detail page for downloaded benchmark {benchmark_id}: {url}")
+            response = self.session.get(url, headers=headers, timeout=30)
+            response.raise_for_status()
+            if is_workbench_login_page(response.text):
+                raise AuthenticationError(
+                    "WorkBench returned the login page; the saved session has expired"
+                )
+            metadata = WorkBenchCatalogParser.parse_benchmark_detail_page(response.text)
+            iso_date = WorkBenchCatalogParser.published_date_to_iso(metadata.get("published_date"))
+            if iso_date is not None:
+                self.db.set_downloaded_revision_date(benchmark_id, iso_date)
+                refreshed += 1
+            else:
+                logger.debug(f"No publication date found on detail page for {benchmark_id}")
+            time.sleep(rate_limit_seconds)
+        return refreshed
 
     def _benchmarks_url(self) -> str:
         """Resolve configured CIS WorkBench catalog listing URL."""

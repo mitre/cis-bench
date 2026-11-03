@@ -563,6 +563,21 @@ cis-bench catalog platforms --output-format json
 
 ---
 
+### `cis-bench catalog check-updates`
+
+Report downloaded benchmarks that WorkBench has moved past.
+
+**Options:**
+
+- `--offline` - Compare versions only; do not contact WorkBench
+
+**How it decides:** a benchmark is listed when the catalog now carries a newer version than the one you downloaded, or (unless `--offline`) when its WorkBench page shows a publication date after your download. Only downloaded benchmarks are fetched, one page each, so run `cis-bench catalog refresh` first if the catalog itself is stale.
+
+```bash
+cis-bench catalog check-updates
+cis-bench catalog check-updates --offline
+```
+
 ### `cis-bench catalog stats`
 
 Show catalog statistics.

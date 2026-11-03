@@ -989,3 +989,53 @@ class TestBenchmarkDetailPageParsing:
 
         assert len(rows) == 1
         assert rows[0]["url"] == "https://workbench-staging.cisecurity.org/benchmarks/61"
+
+
+class TestPublishedDateToIso:
+    """WorkBench shows 'Published 3 months ago on Aug 28th 2025'; comparisons need ISO dates."""
+
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            ("Aug 28th 2025", "2025-08-28"),
+            ("Aug 1st 2025", "2025-08-01"),
+            ("Dec 22nd 2024", "2024-12-22"),
+            ("Mar 3rd 2023", "2023-03-03"),
+            ("September 9th 2025", "2025-09-09"),
+        ],
+    )
+    def test_ordinal_month_day_year_becomes_iso(self, text, expected):
+        assert WorkBenchCatalogParser.published_date_to_iso(text) == expected
+
+    @pytest.mark.parametrize("text", [None, "", "yesterday", "Smarch 1st 2025", "Aug 32nd 2025"])
+    def test_unparseable_text_is_none(self, text):
+        assert WorkBenchCatalogParser.published_date_to_iso(text) is None
+
+
+class TestDetailPagePublishedDateRealMarkup:
+    """WorkBench renders the status label in its own <p> and leaves the date as a bare
+    sibling text node; the two never share a string."""
+
+    REAL_MARKUP = """
+    <div class="grid grid-cols-12 gap-4">
+        <div class="col-span-6">
+            <div class="object-status" data-cy="benchmark-status-label">
+                <p class="label label-published">Published</p>
+                1 year ago on Aug 28th 2025
+            </div>
+        </div>
+    </div>
+    """
+
+    def test_date_in_a_sibling_text_node_is_extracted(self):
+        metadata = WorkBenchCatalogParser.parse_benchmark_detail_page(self.REAL_MARKUP)
+        assert metadata["published_date"] == "Aug 28th 2025"
+        assert metadata["published_relative"] == "1 year ago on Aug 28th 2025"
+
+    def test_draft_label_with_a_date_is_also_extracted(self):
+        html = self.REAL_MARKUP.replace("label-published", "label-draft").replace(
+            ">Published<", ">Draft<"
+        )
+        assert WorkBenchCatalogParser.parse_benchmark_detail_page(html)["published_date"] == (
+            "Aug 28th 2025"
+        )

@@ -240,6 +240,7 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
             recommendation_count = len(benchmark.recommendations)
 
             db.save_downloaded(
+                version=benchmark.version,
                 benchmark_id=benchmark_id,
                 content_json=content_json,
                 content_hash=content_hash,

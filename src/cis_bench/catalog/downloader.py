@@ -96,6 +96,7 @@ class CatalogDownloader:
             logger.info("Content unchanged (same hash), updating timestamp only")
 
         self.db.save_downloaded(
+            version=benchmark.version,
             benchmark_id=benchmark_id,
             content_json=content_json,
             content_hash=content_hash,

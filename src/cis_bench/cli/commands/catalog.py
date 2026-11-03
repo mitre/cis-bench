@@ -531,15 +531,34 @@ def download(benchmark_id_or_name, browser, force, interactive):
 
 
 @catalog.command(name="check-updates")
-def check_updates():
+@click.option(
+    "--offline",
+    is_flag=True,
+    help="Compare versions only; do not fetch publication dates from WorkBench",
+)
+def check_updates(offline):
     """Check downloaded benchmarks for available updates.
+
+    Compares each downloaded benchmark's version with the catalog, and (unless
+    --offline) fetches its WorkBench page to see whether it was published again
+    after you downloaded it.
 
     \b
     Example:
         cis-bench catalog check-updates
+        cis-bench catalog check-updates --offline
     """
     try:
         db = require_catalog_db()
+
+        if not offline:
+            from cis_bench.catalog.scraper import CatalogScraper
+            from cis_bench.fetcher.auth import AuthManager
+
+            session = AuthManager.get_or_create_session(verify_ssl=Config.get_verify_ssl())
+            console.print("[cyan]Checking WorkBench publication dates...[/cyan]")
+            refreshed = CatalogScraper(db, session).refresh_downloaded_revision_dates()
+            console.print(f"[green]✓[/green] Checked {refreshed} downloaded benchmark(s)\n")
 
         updates = db.check_updates_available()
 
@@ -550,15 +569,27 @@ def check_updates():
         console.print(f"\n[yellow]Updates available for {len(updates)} benchmarks:[/yellow]\n")
 
         for u in updates:
-            console.print(f"  [{u['benchmark_id']}] {u['title']} {u.get('version', '')}")
+            console.print(f"  [{u['benchmark_id']}] {escape(str(u['title']))}")
+            if u["reason"] == "newer version in catalog":
+                console.print(
+                    f"      Version: {u['downloaded_version'] or '?'} -> {u['catalog_version']}"
+                )
+            else:
+                console.print(f"      WorkBench published {u['published_date']}")
             console.print(f"      Downloaded: {u['downloaded_at']}")
-            console.print(f"      Latest: {u['last_revision_date']}")
             console.print()
 
         console.print("[cyan]Use 'cis-bench catalog download <id> --force' to update.[/cyan]")
 
     except click.Abort:
         raise
+    except AuthenticationError as e:
+        console.print("[red]✗ Authentication required[/red]")
+        console.print(f"[yellow]{escape(str(e))}[/yellow]")
+        console.print(
+            "[yellow]Please run: cis-bench auth login --browser chrome, or use --offline[/yellow]"
+        )
+        raise click.Abort() from e
     except Exception as e:
         console.print(f"[red]✗ Check updates failed: {escape(str(e))}[/red]")
         raise click.Abort() from e

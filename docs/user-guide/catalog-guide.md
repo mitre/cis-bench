@@ -256,8 +256,13 @@ cis-bench catalog refresh
 See which downloaded benchmarks have updates:
 
 ```bash
-cis-bench catalog check-updates
+cis-bench catalog check-updates            # versions + WorkBench publication dates
+cis-bench catalog check-updates --offline  # versions only, no network
 ```
+
+A benchmark is listed when the catalog carries a newer version than you downloaded, or when its WorkBench page shows it was published again after your download. Refresh the catalog first so the version comparison sees the current listing.
+
+**About `--latest`:** the catalog page lists no dates, so "latest" is decided by version: within one title and status, the highest parseable version (`v2.0.1` beats `v1.0.0`; `v10` beats `v9`) is latest. Labels without a number such as `vNext` are latest only when every version in the group is unnumbered.
 
 ---
 

@@ -844,51 +844,119 @@ class TestDownloadedBenchmarks:
         downloaded = temp_db.get_downloaded("99999")
         assert downloaded is None
 
-    def test_check_updates_available(self, temp_db, sample_benchmark_data):
-        """Test checking for available updates."""
+    def test_save_downloaded_stores_the_downloaded_version(self, temp_db, sample_benchmark_data):
+        """check-updates compares the catalog version against the version that was downloaded."""
         temp_db.insert_benchmark(sample_benchmark_data)
+        temp_db.save_downloaded("23598", '{"version": "v2.0.1"}', "hash1", 100, version="v2.0.1")
 
-        # Download with old revision date
-        temp_db.save_downloaded(
-            "23598", '{"test": 1}', "hash1", 100, workbench_last_modified="2024-10-01"
+        assert temp_db.get_downloaded("23598")["version"] == "v2.0.1"
+
+    def test_initialize_schema_adds_the_version_column_to_an_older_downloaded_table(self, tmp_path):
+        """Upgrading a database created before the column existed is idempotent."""
+        import sqlite3
+
+        db_path = tmp_path / "old.db"
+        con = sqlite3.connect(db_path)
+        con.executescript(
+            """
+            CREATE TABLE benchmark_statuses (status_id INTEGER PRIMARY KEY, name VARCHAR NOT NULL,
+                is_active BOOLEAN NOT NULL, sort_order INTEGER NOT NULL);
+            CREATE TABLE catalog_benchmarks (benchmark_id VARCHAR PRIMARY KEY, url VARCHAR NOT NULL,
+                title VARCHAR NOT NULL, version VARCHAR, status_id INTEGER NOT NULL, platform_id INTEGER,
+                community_id INTEGER, owner_id INTEGER, platform_type VARCHAR, published_date VARCHAR,
+                last_revision_date VARCHAR, description VARCHAR, is_latest BOOLEAN NOT NULL,
+                is_vnext BOOLEAN NOT NULL, metadata_json VARCHAR, scraped_at DATETIME NOT NULL);
+            CREATE TABLE downloaded_benchmarks (benchmark_id VARCHAR PRIMARY KEY, content_json VARCHAR NOT NULL,
+                content_hash VARCHAR NOT NULL, file_size INTEGER, recommendation_count INTEGER,
+                downloaded_at DATETIME NOT NULL, last_accessed DATETIME NOT NULL,
+                workbench_last_modified VARCHAR);
+            """
+        )
+        con.close()
+
+        db = CatalogDatabase(db_path)
+        db.initialize_schema()
+        db.initialize_schema()  # second run must be a no-op
+
+        con = sqlite3.connect(db_path)
+        columns = {row[1] for row in con.execute("PRAGMA table_info(downloaded_benchmarks)")}
+        con.close()
+        assert "version" in columns
+        db.engine.dispose()
+
+    def _insert(self, db, bid, version, status="Published"):
+        db.insert_benchmark(
+            {
+                "benchmark_id": bid,
+                "title": f"CIS Benchmark {bid}",
+                "version": version,
+                "url": f"https://workbench.cisecurity.org/benchmarks/{bid}",
+                "status": status,
+            }
         )
 
-        # Catalog has newer revision
-        updates = temp_db.check_updates_available()
-
-        assert len(updates) == 1
-        assert updates[0]["benchmark_id"] == "23598"
-
-    def test_check_updates_available_ignores_null_catalog_revision_dates(self, temp_db):
-        """check_updates_available skips benchmarks whose catalog last_revision_date is NULL."""
-        cases = [
-            ("201", None, None),
-            ("202", None, "2024-10-01"),
-            ("203", "2024-11-01", None),
-            ("204", "2024-11-15", "2024-11-01"),
-            ("205", "2024-11-01", "2024-11-01"),
-        ]
-        for bid, last_rev, downloaded_mod in cases:
-            temp_db.insert_benchmark(
-                {
-                    "benchmark_id": bid,
-                    "title": f"Benchmark {bid}",
-                    "url": f"https://workbench.cisecurity.org/benchmarks/{bid}",
-                    "status": "Published",
-                    "last_revision_date": last_rev,
-                }
-            )
-            temp_db.save_downloaded(
-                bid,
-                '{"recommendations": []}',
-                f"hash-{bid}",
-                0,
-                workbench_last_modified=downloaded_mod,
-            )
+    def test_check_updates_reports_a_newer_catalog_version(self, temp_db):
+        """The catalog now lists v2.0.0 for a benchmark downloaded at v1.0.0."""
+        self._insert(temp_db, "301", "v2.0.0")
+        temp_db.save_downloaded("301", "{}", "h", 1, version="v1.0.0")
 
         updates = temp_db.check_updates_available()
 
-        assert [row["benchmark_id"] for row in updates] == ["204", "203"]
+        assert [u["benchmark_id"] for u in updates] == ["301"]
+        assert updates[0]["downloaded_version"] == "v1.0.0"
+        assert updates[0]["catalog_version"] == "v2.0.0"
+        assert updates[0]["reason"] == "newer version in catalog"
+
+    def test_check_updates_is_silent_when_versions_match_and_no_newer_date_is_known(self, temp_db):
+        self._insert(temp_db, "302", "v1.0.0")
+        temp_db.save_downloaded("302", "{}", "h", 1, version="v1.0.0")
+
+        assert temp_db.check_updates_available() == []
+
+    def test_check_updates_reports_a_publication_date_after_the_download(self, temp_db):
+        """Same version, but WorkBench shows a publication date after we downloaded it."""
+        self._insert(temp_db, "303", "v1.0.0")
+        temp_db.save_downloaded("303", "{}", "h", 1, version="v1.0.0")
+        temp_db.set_downloaded_revision_date("303", "2999-01-01")
+
+        updates = temp_db.check_updates_available()
+
+        assert [u["benchmark_id"] for u in updates] == ["303"]
+        assert updates[0]["published_date"] == "2999-01-01"
+        assert updates[0]["reason"] == "published after download"
+
+    def test_check_updates_ignores_a_publication_date_before_the_download(self, temp_db):
+        self._insert(temp_db, "304", "v1.0.0")
+        temp_db.save_downloaded("304", "{}", "h", 1, version="v1.0.0")
+        temp_db.set_downloaded_revision_date("304", "2000-01-01")
+
+        assert temp_db.check_updates_available() == []
+
+    def test_check_updates_ignores_a_non_iso_legacy_publication_value(self, temp_db):
+        """Only YYYY-MM-DD values are comparable; anything else is treated as unknown."""
+        self._insert(temp_db, "307", "v1.0.0")
+        temp_db.save_downloaded("307", "{}", "h", 1, version="v1.0.0")
+        temp_db.set_downloaded_revision_date("307", "Aug 28th 2999")  # lexically > any ISO date
+
+        assert temp_db.check_updates_available() == []
+
+    def test_check_updates_skips_the_date_signal_when_the_catalog_is_behind_the_download(
+        self, temp_db
+    ):
+        """A stale catalog listing an older version than we hold is not an update, whatever the date says."""
+        self._insert(temp_db, "308", "v1.0.0")
+        temp_db.save_downloaded("308", "{}", "h", 1, version="v2.0.0")
+        temp_db.set_downloaded_revision_date("308", "2999-01-01")
+
+        assert temp_db.check_updates_available() == []
+
+    def test_check_updates_never_reports_an_unversioned_or_older_catalog_entry(self, temp_db):
+        self._insert(temp_db, "305", "vNext")
+        temp_db.save_downloaded("305", "{}", "h", 1, version="v1.0.0")
+        self._insert(temp_db, "306", "v1.0.0")
+        temp_db.save_downloaded("306", "{}", "h", 1, version="v2.0.0")
+
+        assert temp_db.check_updates_available() == []
 
 
 class TestStatistics:
@@ -1270,6 +1338,60 @@ class TestEdgeCases:
 
         assert stats["total_benchmarks"] == 0
         assert stats["published_benchmarks"] == 0
+
+    def test_mark_latest_versions_uses_the_version_column_not_published_date(self, temp_db):
+        """The catalog list page carries no dates; the highest parseable version in a
+        (base title, status) group is latest, regardless of published_date."""
+        rows = [
+            ("90101", "v2.0.0", "Published"),
+            ("90102", "v1.0.0", "Published"),
+            ("90103", "v10.0.0", "Published"),
+            ("90104", "v3.0.0 (vNext)", "Draft"),
+            ("90105", "vNext", "Draft"),
+        ]
+        for bid, version, status in rows:
+            temp_db.insert_benchmark(
+                {
+                    "benchmark_id": bid,
+                    "title": "CIS Ubuntu Linux 22.04 LTS Benchmark",
+                    "version": version,
+                    "url": f"https://workbench.cisecurity.org/benchmarks/{bid}",
+                    "status": status,
+                }
+            )
+        temp_db.mark_latest_versions()
+
+        latest = {
+            r["benchmark_id"]: r["is_latest"]
+            for r in temp_db.search("", status="all", limit=50)
+            if r["benchmark_id"].startswith("9010")
+        }
+        assert latest == {
+            "90101": False,
+            "90102": False,
+            "90103": True,  # v10 beats v2 and v1 numerically, not lexically
+            "90104": True,  # highest parseable version among the Drafts
+            "90105": False,  # unversioned loses to a parseable sibling
+        }
+
+    def test_mark_latest_versions_group_with_only_unversioned_rows_marks_them_all(self, temp_db):
+        for bid, version in (("90201", "vNext"), ("90202", "vDev")):
+            temp_db.insert_benchmark(
+                {
+                    "benchmark_id": bid,
+                    "title": "CIS Experimental Benchmark",
+                    "version": version,
+                    "url": f"https://workbench.cisecurity.org/benchmarks/{bid}",
+                    "status": "Draft",
+                }
+            )
+        temp_db.mark_latest_versions()
+        latest = {
+            r["benchmark_id"]: r["is_latest"]
+            for r in temp_db.search("", status="Draft", limit=50)
+            if r["benchmark_id"].startswith("9020")
+        }
+        assert latest == {"90201": True, "90202": True}
 
     def test_mark_latest_versions_no_benchmarks(self, temp_db):
         """Test mark_latest on empty database doesn't error."""

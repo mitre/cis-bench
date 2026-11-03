@@ -1,7 +1,7 @@
 """Unit tests for catalog scraper."""
 
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -706,3 +706,106 @@ class TestErrorHandling:
 
         with pytest.raises(ValueError, match="No benchmarks found on catalog page 1"):
             scraper.scrape_full_catalog(max_pages=5, rate_limit_seconds=0)
+
+
+class TestRefreshDownloadedRevisionDates:
+    """check-updates fetches the detail page of each downloaded benchmark, never the whole catalog."""
+
+    def _seed(self, db, bid, version="v1.0.0"):
+        db.insert_benchmark(
+            {
+                "benchmark_id": bid,
+                "title": f"CIS Benchmark {bid}",
+                "version": version,
+                "url": f"https://workbench.cisecurity.org/benchmarks/{bid}",
+                "status": "Published",
+            }
+        )
+        db.save_downloaded(bid, "{}", "h", 1, version=version)
+
+    @staticmethod
+    def _response(html, status=200):
+        response = Mock()
+        response.text = html
+        response.status_code = status
+        response.raise_for_status = Mock()
+        return response
+
+    def test_stores_the_iso_publication_date_for_each_downloaded_benchmark(self, temp_db):
+        self._seed(temp_db, "401")
+        self._seed(temp_db, "402")
+        temp_db.insert_benchmark(
+            {
+                "benchmark_id": "403",
+                "title": "Not downloaded",
+                "version": "v1.0.0",
+                "url": "https://workbench.cisecurity.org/benchmarks/403",
+                "status": "Published",
+            }
+        )
+        session = Mock()
+        session.get = Mock(
+            return_value=self._response(
+                "<html><body><span>Published 2 months ago on Aug 28th 2025</span></body></html>"
+            )
+        )
+        scraper = CatalogScraper(temp_db, session)
+
+        with patch("cis_bench.catalog.scraper.time.sleep") as sleep:
+            refreshed = scraper.refresh_downloaded_revision_dates(rate_limit_seconds=0.5)
+
+        assert refreshed == 2
+        fetched = sorted(call.args[0] for call in session.get.call_args_list)
+        assert fetched == [
+            "https://workbench.cisecurity.org/benchmarks/401",
+            "https://workbench.cisecurity.org/benchmarks/402",
+        ]
+        assert sleep.call_count == 2
+        assert temp_db.get_downloaded("401")["workbench_last_modified"] == "2025-08-28"
+        assert temp_db.get_downloaded("402")["workbench_last_modified"] == "2025-08-28"
+
+    def test_a_malformed_stored_id_is_skipped_and_never_fetched(self, temp_db, caplog):
+        """The detail URL goes through the same validator as every other WorkBench URL."""
+        self._seed(temp_db, "407")
+        self._seed(temp_db, "../admin")
+        session = Mock()
+        session.get = Mock(
+            return_value=self._response(
+                "<html><body><p>Published</p> 1 year ago on Aug 28th 2025</body></html>"
+            )
+        )
+
+        with patch("cis_bench.catalog.scraper.time.sleep"), caplog.at_level("WARNING"):
+            refreshed = CatalogScraper(temp_db, session).refresh_downloaded_revision_dates()
+
+        assert refreshed == 1
+        assert [c.args[0] for c in session.get.call_args_list] == [
+            "https://workbench.cisecurity.org/benchmarks/407"
+        ]
+        assert "../admin" in caplog.text
+
+    def test_page_without_a_date_leaves_the_row_unchanged(self, temp_db):
+        self._seed(temp_db, "404")
+        session = Mock()
+        session.get = Mock(return_value=self._response("<html><body>No date here</body></html>"))
+
+        with patch("cis_bench.catalog.scraper.time.sleep"):
+            refreshed = CatalogScraper(temp_db, session).refresh_downloaded_revision_dates()
+
+        assert refreshed == 0
+        assert temp_db.get_downloaded("404")["workbench_last_modified"] is None
+
+    def test_login_page_raises_authentication_error_immediately(self, temp_db):
+        self._seed(temp_db, "405")
+        self._seed(temp_db, "406")
+        session = Mock()
+        session.get = Mock(
+            return_value=self._response(
+                '<html><body><form action="/login"><input name="password"></form></body></html>'
+            )
+        )
+
+        with patch("cis_bench.catalog.scraper.time.sleep"), pytest.raises(AuthenticationError):
+            CatalogScraper(temp_db, session).refresh_downloaded_revision_dates()
+
+        assert session.get.call_count == 1

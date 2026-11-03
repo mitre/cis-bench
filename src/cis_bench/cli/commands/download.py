@@ -239,6 +239,7 @@ def download(
 
                     db = CatalogDatabase(catalog_db_path)
                     db.save_downloaded(
+                        version=benchmark.version,
                         benchmark_id=benchmark_id,
                         content_json=content_json,
                         content_hash=content_hash,

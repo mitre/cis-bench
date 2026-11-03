@@ -9,6 +9,7 @@ import re
 import sqlite3
 import tempfile
 from collections.abc import Callable
+from datetime import date
 from pathlib import Path
 from typing import TypeVar
 
@@ -20,6 +21,7 @@ from sqlalchemy import (
     literal_column,
     table,
     text,
+    update,
 )
 from sqlalchemy import (
     select as sa_select,
@@ -43,6 +45,7 @@ from cis_bench.catalog.models import (
     ScrapeMetadata,
     utcnow,
 )
+from cis_bench.catalog.versions import VersionSortKey, is_newer_version, version_sort_key
 from cis_bench.models.benchmark import Benchmark
 
 logger = logging.getLogger(__name__)
@@ -65,6 +68,21 @@ def _normalize_base_title(title: str | None) -> str:
     if not title:
         return ""
     return _TRAILING_VERSION_RE.sub("", title.strip())
+
+
+def _parse_iso_date(value: str | None) -> date | None:
+    """Return the date for a YYYY-MM-DD string, or None for anything else.
+
+    Only values written by ``set_downloaded_revision_date`` are expected here; a legacy
+    or hand-edited value that is not ISO is treated as unknown rather than compared.
+    """
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        logger.warning(f"Ignoring non-ISO publication date {value!r}")
+        return None
 
 
 def normalize_status_filter(status: str | None) -> str | None:
@@ -128,13 +146,6 @@ class CatalogDatabase:
         def _configure_sqlite_connection(
             dbapi_connection: object, _connection_record: object
         ) -> None:
-            if isinstance(dbapi_connection, sqlite3.Connection):
-                dbapi_connection.create_function(
-                    "normalize_base_title",
-                    1,
-                    _normalize_base_title,
-                    deterministic=True,
-                )
             if self.db_path.exists():
                 _try_chmod(self.db_path, 0o600)
 
@@ -164,6 +175,7 @@ class CatalogDatabase:
 
         # Create all tables from SQLModel models
         SQLModel.metadata.create_all(self.engine)
+        self._ensure_column("downloaded_benchmarks", "version", "VARCHAR")
 
         # Insert or backfill default statuses idempotently and create FTS5 virtual table
         with Session(self.engine) as session:
@@ -196,6 +208,18 @@ class CatalogDatabase:
             logger.info("Created FTS5 virtual table")
 
         logger.info("Database schema initialized")
+
+    def _ensure_column(self, table_name: str, column_name: str, column_type: str) -> None:
+        """Add a column to an existing table if an older database predates it (idempotent)."""
+        with self.engine.begin() as connection:
+            existing = {
+                row[1] for row in connection.execute(text(f"PRAGMA table_info({table_name})"))
+            }
+            if column_name not in existing:
+                connection.execute(
+                    text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
+                )
+                logger.info(f"Added column {table_name}.{column_name}")
 
     def _get_or_create(
         self,
@@ -629,45 +653,46 @@ class CatalogDatabase:
                 for c in communities
             ]
 
-    def mark_latest_versions(self):
-        """Mark latest version for each normalized base title and status group."""
+    def mark_latest_versions(self) -> None:
+        """Mark the latest version of each benchmark per (base title, status).
+
+        The catalog list page carries no dates, so "latest" is decided by the
+        version column: within a (normalized base title, status) group the rows
+        whose parsed version equals the group maximum are latest. Unversioned
+        strings (``vNext``, ``vDev``) sort below every numbered version, so they
+        are latest only when the whole group is unversioned. Ties stay latest.
+        """
         with Session(self.engine) as session:
-            sql = """
-                WITH normalized AS (
-                    SELECT
-                        benchmark_id,
-                        status_id,
-                        published_date,
-                        normalize_base_title(title) AS base_title
-                    FROM catalog_benchmarks
-                ),
-                group_latest AS (
-                    SELECT
-                        base_title,
-                        status_id,
-                        MAX(published_date) AS max_published_date
-                    FROM normalized
-                    GROUP BY base_title, status_id
+            rows = session.exec(
+                select(
+                    CatalogBenchmark.benchmark_id,
+                    CatalogBenchmark.title,
+                    CatalogBenchmark.status_id,
+                    CatalogBenchmark.version,
                 )
-                UPDATE catalog_benchmarks
-                SET is_latest = CASE
-                    WHEN benchmark_id IN (
-                        SELECT n.benchmark_id
-                        FROM normalized n
-                        JOIN group_latest g
-                          ON n.base_title = g.base_title
-                         AND n.status_id = g.status_id
-                        WHERE g.max_published_date IS NULL
-                           OR n.published_date = g.max_published_date
-                    )
-                    THEN 1
-                    ELSE 0
-                END
-            """
-            session.execute(text(sql))
+            ).all()
+
+            group_max: dict[tuple[str, int], VersionSortKey] = {}
+            keyed_rows: list[tuple[str, tuple[str, int], VersionSortKey]] = []
+            for benchmark_id, title, status_id, version in rows:
+                group = (_normalize_base_title(title), status_id)
+                key = version_sort_key(version)
+                keyed_rows.append((benchmark_id, group, key))
+                if group not in group_max or key > group_max[group]:
+                    group_max[group] = key
+
+            latest_ids = {bid for bid, group, key in keyed_rows if key == group_max[group]}
+
+            session.execute(update(CatalogBenchmark).values(is_latest=False))
+            if latest_ids:
+                session.execute(
+                    update(CatalogBenchmark)
+                    .where(col(CatalogBenchmark.benchmark_id).in_(latest_ids))
+                    .values(is_latest=True)
+                )
             session.commit()
 
-            logger.info("Updated is_latest flags")
+            logger.info(f"Updated is_latest flags ({len(latest_ids)} latest of {len(rows)})")
 
     def save_downloaded(
         self,
@@ -676,8 +701,13 @@ class CatalogDatabase:
         content_hash: str,
         recommendation_count: int,
         workbench_last_modified: str | None = None,
+        version: str | None = None,
     ):
-        """Save downloaded benchmark content."""
+        """Save downloaded benchmark content.
+
+        ``version`` is the downloaded benchmark's own version string; check-updates
+        compares it against the catalog's current version for the same benchmark.
+        """
         now = utcnow()
         with Session(self.engine) as session:
             existing = session.get(DownloadedBenchmark, benchmark_id)
@@ -688,6 +718,7 @@ class CatalogDatabase:
                 existing.recommendation_count = recommendation_count
                 existing.file_size = len(content_json)
                 existing.workbench_last_modified = workbench_last_modified
+                existing.version = version
                 existing.downloaded_at = now
                 existing.last_accessed = now
             else:
@@ -697,6 +728,7 @@ class CatalogDatabase:
                     content_hash=content_hash,
                     file_size=len(content_json),
                     recommendation_count=recommendation_count,
+                    version=version,
                     downloaded_at=now,
                     last_accessed=now,
                     workbench_last_modified=workbench_last_modified,
@@ -721,31 +753,72 @@ class CatalogDatabase:
                 "downloaded_at": downloaded.downloaded_at,
                 "last_accessed": downloaded.last_accessed,
                 "recommendation_count": downloaded.recommendation_count,
+                "version": downloaded.version,
                 "workbench_last_modified": downloaded.workbench_last_modified,
             }
 
-    def check_updates_available(self) -> list[dict]:
-        """Check downloaded benchmarks for available updates."""
+    def list_downloaded_benchmark_ids(self) -> list[str]:
+        """IDs of every benchmark whose content has been downloaded."""
         with Session(self.engine) as session:
-            sql = """
-                SELECT
-                    b.benchmark_id,
-                    b.title,
-                    b.version,
-                    d.downloaded_at,
-                    d.workbench_last_modified,
-                    b.last_revision_date
-                FROM catalog_benchmarks b
-                JOIN downloaded_benchmarks d ON b.benchmark_id = d.benchmark_id
-                WHERE b.last_revision_date IS NOT NULL
-                  AND (
-                      d.workbench_last_modified IS NULL
-                      OR b.last_revision_date > d.workbench_last_modified
-                  )
-                ORDER BY b.last_revision_date DESC
-            """
-            result = session.execute(text(sql))
-            return [dict(row._mapping) for row in result.fetchall()]
+            return list(session.exec(select(DownloadedBenchmark.benchmark_id)).all())
+
+    def set_downloaded_revision_date(self, benchmark_id: str, iso_date: str | None) -> None:
+        """Record the publication date WorkBench currently shows for a downloaded benchmark."""
+        with Session(self.engine) as session:
+            downloaded = session.get(DownloadedBenchmark, benchmark_id)
+            if downloaded is None:
+                return
+            downloaded.workbench_last_modified = iso_date
+            session.add(downloaded)
+            session.commit()
+
+    def check_updates_available(self) -> list[dict]:
+        """Downloaded benchmarks that WorkBench has moved past.
+
+        Two signals, either is enough:
+        - the catalog's version for the benchmark parses as newer than the version
+          that was downloaded ("newer version in catalog");
+        - the publication date recorded from the benchmark's detail page (see
+          ``set_downloaded_revision_date``) falls after the download
+          ("published after download").
+        The catalog list page carries no dates, so nothing here depends on
+        ``last_revision_date``.
+        """
+        with Session(self.engine) as session:
+            rows = session.exec(
+                select(DownloadedBenchmark, CatalogBenchmark).join(
+                    CatalogBenchmark,
+                    col(CatalogBenchmark.benchmark_id) == col(DownloadedBenchmark.benchmark_id),
+                )
+            ).all()
+
+            updates: list[dict] = []
+            for downloaded, catalog in rows:
+                reason: str | None = None
+                if is_newer_version(catalog.version, downloaded.version):
+                    reason = "newer version in catalog"
+                elif is_newer_version(downloaded.version, catalog.version):
+                    # The catalog listing is behind what we hold; a date cannot make it an update
+                    reason = None
+                else:
+                    published_on = _parse_iso_date(downloaded.workbench_last_modified)
+                    if published_on is not None and published_on > downloaded.downloaded_at.date():
+                        reason = "published after download"
+                if reason is None:
+                    continue
+                updates.append(
+                    {
+                        "benchmark_id": downloaded.benchmark_id,
+                        "title": catalog.title,
+                        "downloaded_version": downloaded.version,
+                        "catalog_version": catalog.version,
+                        "downloaded_at": downloaded.downloaded_at,
+                        "published_date": downloaded.workbench_last_modified,
+                        "reason": reason,
+                    }
+                )
+            updates.sort(key=lambda u: u["benchmark_id"])
+            return updates
 
     def get_catalog_stats(self) -> dict[str, int]:
         """Get catalog statistics using SQL COUNT(*) aggregates."""

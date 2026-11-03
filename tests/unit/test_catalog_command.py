@@ -1191,56 +1191,89 @@ class TestCatalogCheckUpdatesCommand:
         assert "Catalog not found" in result.output
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
-    def test_check_updates_no_updates(self, mock_get_db, runner, mock_db):
-        """Test check-updates with no updates available (lines 527-529)."""
+    def test_check_updates_offline_skips_enrichment_and_reports_up_to_date(
+        self, mock_get_db, runner, mock_db
+    ):
+        mock_db.check_updates_available.return_value = []
         mock_get_db.return_value = mock_db
+        with (
+            patch("cis_bench.fetcher.auth.AuthManager.get_or_create_session") as mock_auth,
+            patch("cis_bench.catalog.scraper.CatalogScraper") as mock_scraper_cls,
+        ):
+            result = runner.invoke(cli, ["catalog", "check-updates", "--offline"])
 
-        result = runner.invoke(cli, ["catalog", "check-updates"])
-
-        assert result.exit_code == 0
+        assert result.exit_code == 0, result.output
         assert "All downloaded benchmarks are up-to-date" in result.output
+        mock_auth.assert_not_called()
+        mock_scraper_cls.assert_not_called()
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
-    def test_check_updates_with_updates(self, mock_get_db, runner):
-        """Test check-updates with updates available (lines 531-539)."""
+    def test_check_updates_refreshes_dates_then_lists_version_and_date_reasons(
+        self, mock_get_db, runner, monkeypatch
+    ):
+        monkeypatch.delenv("CIS_BENCH_VERIFY_SSL", raising=False)
         mock_db = MagicMock()
-        mock_db.db_path = MagicMock()
         mock_db.db_path.exists.return_value = True
         mock_db.check_updates_available.return_value = [
             {
                 "benchmark_id": "23598",
                 "title": "CIS Ubuntu Linux 20.04 LTS Benchmark",
-                "version": "v2.0.1",
+                "downloaded_version": "v1.0.0",
+                "catalog_version": "v2.0.1",
                 "downloaded_at": "2024-07-15",
-                "last_revision_date": "2024-08-01",
+                "published_date": None,
+                "reason": "newer version in catalog",
             },
             {
                 "benchmark_id": "23599",
                 "title": "CIS CentOS Linux 8 Benchmark",
-                "version": "v1.0.0",
+                "downloaded_version": "v1.0.0",
+                "catalog_version": "v1.0.0",
                 "downloaded_at": "2024-06-01",
-                "last_revision_date": "2024-07-15",
+                "published_date": "2024-07-15",
+                "reason": "published after download",
             },
         ]
         mock_get_db.return_value = mock_db
+        with (
+            patch("cis_bench.fetcher.auth.AuthManager.get_or_create_session") as mock_auth,
+            patch("cis_bench.catalog.scraper.CatalogScraper") as mock_scraper_cls,
+        ):
+            mock_scraper_cls.return_value.refresh_downloaded_revision_dates.return_value = 2
+            result = runner.invoke(cli, ["catalog", "check-updates"])
 
-        result = runner.invoke(cli, ["catalog", "check-updates"])
+        assert result.exit_code == 0, result.output
+        mock_auth.assert_called_once_with(verify_ssl=True)
+        mock_scraper_cls.return_value.refresh_downloaded_revision_dates.assert_called_once()
+        flat = " ".join(result.output.split())
+        assert "Updates available for 2 benchmarks" in flat
+        assert "23598" in flat and "v1.0.0 -> v2.0.1" in flat
+        assert "23599" in flat and "published 2024-07-15" in flat
+        assert "cis-bench catalog download <id> --force" in flat
 
-        assert result.exit_code == 0
-        assert "Updates available for 2 benchmarks" in result.output
-        assert "23598" in result.output
-        assert "CIS Ubuntu Linux 20.04 LTS Benchmark" in result.output
-        assert "Downloaded: 2024-07-15" in result.output
-        assert "Latest: 2024-08-01" in result.output
-        assert "cis-bench catalog download <id> --force" in result.output
+    @patch("cis_bench.cli.commands.catalog.get_catalog_db")
+    def test_check_updates_without_a_session_prints_login_instruction(
+        self, mock_get_db, runner, mock_db
+    ):
+        mock_get_db.return_value = mock_db
+        with patch(
+            "cis_bench.fetcher.auth.AuthManager.get_or_create_session",
+            side_effect=NoSavedSessionError("session.cookies is missing"),
+        ):
+            result = runner.invoke(cli, ["catalog", "check-updates"])
+
+        assert result.exit_code == 1
+        assert "Authentication required" in result.output
+        assert "cis-bench auth login" in result.output
+        assert "--offline" in result.output
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     def test_check_updates_failure(self, mock_get_db, runner, mock_db):
-        """Test check-updates failure (lines 541-543)."""
+        """A database failure during the comparison is reported, not swallowed."""
         mock_db.check_updates_available.side_effect = RuntimeError("Database error")
         mock_get_db.return_value = mock_db
 
-        result = runner.invoke(cli, ["catalog", "check-updates"])
+        result = runner.invoke(cli, ["catalog", "check-updates", "--offline"])
 
         assert result.exit_code == 1
         assert "Check updates failed" in result.output
