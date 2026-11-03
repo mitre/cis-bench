@@ -228,6 +228,23 @@ cis-bench catalog info 23598
 cis-bench catalog update
 ```
 
+### Download stalls or a recommendation fails to fetch
+
+Every WorkBench request has a timeout (30 seconds to read by default, 10 to
+connect) and is retried twice on a timeout, a connection error or a 502/503/504
+response. A recommendation that still fails is logged with its URL and
+skipped, so a download finishes with fewer recommendations rather than
+hanging. Each retry is logged as a warning with the attempt number and the
+wait before the next try; `-v` adds the full debug trace around it.
+
+On a slow or lossy connection raise the read timeout:
+```bash
+export CIS_BENCH_REQUEST_TIMEOUT=90
+```
+
+If the same URL keeps failing, open it in a browser while logged in to check
+whether WorkBench itself is returning an error for that page.
+
 ### "Already up-to-date"
 
 **Not an error** - Benchmark hasn't changed.

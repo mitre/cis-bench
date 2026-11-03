@@ -61,6 +61,25 @@ Prefer pointing `requests` at your proxy's CA bundle instead of disabling verifi
 export REQUESTS_CA_BUNDLE=/etc/ssl/corporate-ca-bundle.crt
 ```
 
+### `CIS_BENCH_REQUEST_TIMEOUT`
+
+Read timeout, in seconds, for every request the benchmark scraper makes to CIS
+WorkBench (benchmark page, navigation tree, each recommendation page).
+
+- **Default:** `30`
+- **Accepted values:** a positive number of seconds. Any other value is a configuration error and the command exits.
+- **Connect timeout:** fixed at 10 seconds, or the read timeout if that is shorter.
+
+A request that times out, fails to connect, or gets a 502, 503 or 504 is
+retried twice, after 1 and then 2 seconds. A request that still fails is
+reported with its URL and the recommendation is skipped; the download never
+hangs on one connection. Other HTTP errors are not retried.
+
+**Usage (slow network):**
+```bash
+export CIS_BENCH_REQUEST_TIMEOUT=90
+```
+
 ---
 
 ## .env File

@@ -550,3 +550,45 @@ class TestConfigurationErrorType:
             with pytest.raises(ConfigurationError, match="CIS_BENCH_VERIFY_SSL") as exc_info:
                 Config.get_verify_ssl()
         assert isinstance(exc_info.value, ValueError)
+
+
+class TestConfigRequestTimeout:
+    """CIS_BENCH_REQUEST_TIMEOUT bounds every scraper request so a stalled connection cannot hang a download."""
+
+    def test_default_is_thirty_second_read_with_ten_second_connect(self):
+        env = os.environ.copy()
+        env.pop("CIS_BENCH_REQUEST_TIMEOUT", None)
+        with patch.dict(os.environ, env, clear=True):
+            from cis_bench.config import Config
+
+            assert Config.get_request_timeout() == (10.0, 30.0)
+        with patch.dict(os.environ, {"CIS_BENCH_REQUEST_TIMEOUT": "  "}):
+            assert Config.get_request_timeout() == (10.0, 30.0)
+
+    def test_value_sets_the_read_timeout(self):
+        from cis_bench.config import Config
+
+        with patch.dict(os.environ, {"CIS_BENCH_REQUEST_TIMEOUT": "60"}):
+            assert Config.get_request_timeout() == (10.0, 60.0)
+        with patch.dict(os.environ, {"CIS_BENCH_REQUEST_TIMEOUT": " 45.5 "}):
+            assert Config.get_request_timeout() == (10.0, 45.5)
+
+    def test_connect_timeout_never_exceeds_read_timeout(self):
+        from cis_bench.config import Config
+
+        with patch.dict(os.environ, {"CIS_BENCH_REQUEST_TIMEOUT": "5"}):
+            assert Config.get_request_timeout() == (5.0, 5.0)
+
+    def test_rejects_non_positive_or_non_numeric_values(self):
+        from cis_bench.config import Config
+        from cis_bench.exceptions import ConfigurationError
+
+        # inf would turn the timeout off again and nan is accepted by float() but
+        # rejected by sockets; both must be configuration errors.
+        for value in ["abc", "0", "-5", "30s", "nan", "inf", "-inf", "infinity"]:
+            with patch.dict(os.environ, {"CIS_BENCH_REQUEST_TIMEOUT": value}):
+                with pytest.raises(
+                    ConfigurationError, match="CIS_BENCH_REQUEST_TIMEOUT"
+                ) as exc_info:
+                    Config.get_request_timeout()
+                assert value in str(exc_info.value)

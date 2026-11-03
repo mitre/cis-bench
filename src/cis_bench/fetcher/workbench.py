@@ -6,6 +6,7 @@ It produces validated Pydantic Benchmark models.
 
 import logging
 import re
+import time
 from collections.abc import Callable
 from datetime import datetime
 from typing import Any
@@ -16,6 +17,8 @@ from bs4 import BeautifulSoup, Tag
 from pydantic import HttpUrl
 
 from cis_bench.config import Config
+from cis_bench.exceptions import AuthenticationError, FetchError
+from cis_bench.fetcher.auth import is_workbench_login_page
 from cis_bench.fetcher.strategies.base import ScraperStrategy
 from cis_bench.fetcher.strategies.detector import StrategyDetector
 from cis_bench.models.benchmark import Benchmark, Recommendation
@@ -43,6 +46,7 @@ class WorkbenchScraper:
         self.session = session
         self.strategy = strategy
         self._detected_strategy: ScraperStrategy | None = None
+        self.timeout = Config.get_request_timeout()
 
     def _get_strategy(self, html: str) -> ScraperStrategy:
         """Get strategy to use (override or auto-detect).
@@ -62,6 +66,47 @@ class WorkbenchScraper:
 
         return self._detected_strategy
 
+    # Pause before each retry, in seconds; one more attempt than there are pauses.
+    _RETRY_BACKOFF_SECONDS = (1, 2)
+    _MAX_ATTEMPTS = len(_RETRY_BACKOFF_SECONDS) + 1
+    # Server-side conditions worth retrying; everything else is final.
+    _RETRYABLE_STATUS_CODES = frozenset({502, 503, 504})
+
+    def _request(self, url: str) -> requests.Response:
+        """GET url with the configured timeout and a bounded retry.
+
+        Timeouts, connection errors and 502/503/504 responses are retried with
+        backoff; any other HTTP error is raised at once. When the last attempt
+        still fails, FetchError names the url so the caller can skip or report
+        the item instead of hanging on it.
+
+        Raises:
+            FetchError: After the final failed attempt.
+            requests.HTTPError: For a non-retryable HTTP status.
+        """
+        for attempt in range(1, self._MAX_ATTEMPTS + 1):
+            try:
+                response = self.session.get(url, timeout=self.timeout)
+                response.raise_for_status()
+                return response
+            except requests.HTTPError as e:
+                status = e.response.status_code if e.response is not None else None
+                if status not in self._RETRYABLE_STATUS_CODES:
+                    raise
+                failure: requests.RequestException = e
+            except (requests.Timeout, requests.ConnectionError) as e:
+                failure = e
+
+            if attempt == self._MAX_ATTEMPTS:
+                raise FetchError(url, attempt, str(failure)) from failure
+            wait = self._RETRY_BACKOFF_SECONDS[attempt - 1]
+            logger.warning(
+                f"Request failed (attempt {attempt}/{self._MAX_ATTEMPTS}), "
+                f"retrying in {wait}s: {url}: {failure}"
+            )
+            time.sleep(wait)
+        raise AssertionError("unreachable: every attempt returns or raises")
+
     def fetch_html(self, url: str) -> str:
         """Fetch HTML from URL.
 
@@ -72,11 +117,17 @@ class WorkbenchScraper:
             HTML content
 
         Raises:
-            requests.HTTPError: If request fails
+            FetchError: If the request still fails after every retry
+            AuthenticationError: If WorkBench answered with its login page (an
+                expired session); that is final, never retried
+            requests.HTTPError: For a non-retryable HTTP status
         """
-        response = self.session.get(url)
-        response.raise_for_status()
-        return response.text
+        html = self._request(url).text
+        if is_workbench_login_page(html):
+            raise AuthenticationError(
+                f"WorkBench returned the login page for {url}; the saved session has expired"
+            )
+        return html
 
     def fetch_json(self, url: str) -> dict[str, Any]:
         """Fetch JSON from URL.
@@ -88,11 +139,10 @@ class WorkbenchScraper:
             Parsed JSON data
 
         Raises:
-            requests.HTTPError: If request fails
+            FetchError: If the request still fails after every retry
+            requests.HTTPError: For a non-retryable HTTP status
         """
-        response = self.session.get(url)
-        response.raise_for_status()
-        payload = response.json()
+        payload = self._request(url).json()
         if not isinstance(payload, dict):
             raise ValueError(f"Expected JSON object from {url}, got {type(payload).__name__}")
         return payload
@@ -215,7 +265,9 @@ class WorkbenchScraper:
 
         Raises:
             ValueError: If data validation fails
-            requests.HTTPError: If HTTP request fails
+            AuthenticationError: If the session expires during the download
+            FetchError: If the benchmark page or navigation tree cannot be fetched
+            requests.HTTPError: For a non-retryable HTTP status on those requests
         """
 
         def log(msg: str, level="info"):
@@ -268,6 +320,9 @@ class WorkbenchScraper:
 
                 recommendations.append(recommendation)
 
+            except AuthenticationError:
+                # Every further fetch would get the login page too; stop here.
+                raise
             except Exception as e:
                 logger.error(f"Failed to fetch {rec_meta['url']}: {e}")
                 # Continue with other recommendations

@@ -114,6 +114,9 @@ def download(
     # ID, an off-origin URL or a cleartext URL can never be sent with the session cookies.
     try:
         targets = _collect_targets(benchmark_ids, urls_file)
+        # A bad request timeout is a configuration error too; surface it here,
+        # before authenticating, rather than when the scraper is built.
+        Config.get_request_timeout()
     except ConfigurationError as e:
         console.print(
             f"\n[bold red]Configuration Error[/bold red]\n[yellow]{escape(str(e))}[/yellow]"

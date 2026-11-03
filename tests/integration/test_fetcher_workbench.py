@@ -5,6 +5,7 @@ Uses real HTML samples from actual CIS WorkBench pages.
 """
 
 import json
+import logging
 from unittest.mock import Mock, patch
 
 import pytest
@@ -217,8 +218,10 @@ class TestWorkbenchScraperBasicOperations:
 
         # Verify
         assert html == "<html><body>Test</body></html>"
-        # No longer passes verify=False - it's set on session.verify
-        mock_session.get.assert_called_once_with("https://workbench.cisecurity.org/test")
+        # Every request carries the configured (connect, read) timeout; verify comes from session.verify
+        mock_session.get.assert_called_once_with(
+            "https://workbench.cisecurity.org/test", timeout=(10.0, 30.0)
+        )
         mock_response.raise_for_status.assert_called_once()
 
     def test_fetch_html_http_error(self, mock_session):
@@ -247,16 +250,162 @@ class TestWorkbenchScraperBasicOperations:
         with pytest.raises(requests.HTTPError, match="403 Forbidden"):
             scraper.fetch_html("https://workbench.cisecurity.org/benchmarks/123")
 
-    def test_fetch_html_timeout(self, mock_session):
-        """Test timeout handling."""
-        # Setup
-        mock_session.get.side_effect = requests.Timeout("Request timed out")
+    def test_fetch_html_times_out_instead_of_hanging(self, mock_session):
+        """A request that keeps timing out is retried a bounded number of times, then fails loudly.
 
+        Before this, fetch_html called session.get with no timeout at all, so one
+        stalled connection hung a 322-recommendation download for over an hour.
+        """
+        from cis_bench.exceptions import FetchError
+
+        mock_session.get.side_effect = requests.Timeout("Request timed out")
         scraper = WorkbenchScraper(mock_session)
 
-        # Execute and verify
-        with pytest.raises(requests.Timeout):
-            scraper.fetch_html("https://workbench.cisecurity.org/slow")
+        with patch("time.sleep") as mock_sleep:
+            with pytest.raises(
+                FetchError, match="https://workbench.cisecurity.org/slow"
+            ) as exc_info:
+                scraper.fetch_html("https://workbench.cisecurity.org/slow")
+
+        assert mock_session.get.call_count == 3
+        for call in mock_session.get.call_args_list:
+            assert call.kwargs["timeout"] == (10.0, 30.0)
+        assert [c.args[0] for c in mock_sleep.call_args_list] == [1, 2]
+        assert isinstance(exc_info.value.__cause__, requests.Timeout)
+        assert exc_info.value.url == "https://workbench.cisecurity.org/slow"
+
+    def test_each_retry_is_logged_with_attempt_and_backoff(self, mock_session, caplog):
+        """An operator watching the log sees every retry: which attempt, how long until the next."""
+        from cis_bench.exceptions import FetchError
+
+        mock_session.get.side_effect = requests.Timeout("Request timed out")
+        scraper = WorkbenchScraper(mock_session)
+
+        with (
+            patch("time.sleep"),
+            caplog.at_level(logging.WARNING, logger="cis_bench.fetcher.workbench"),
+        ):
+            with pytest.raises(FetchError):
+                scraper.fetch_html("https://workbench.cisecurity.org/slow")
+
+        retry_lines = [r.getMessage() for r in caplog.records if "retrying" in r.getMessage()]
+        assert len(retry_lines) == 2
+        assert "attempt 1/3" in retry_lines[0] and "retrying in 1s" in retry_lines[0]
+        assert "attempt 2/3" in retry_lines[1] and "retrying in 2s" in retry_lines[1]
+        assert all("https://workbench.cisecurity.org/slow" in line for line in retry_lines)
+
+    @pytest.mark.parametrize("status", [502, 503, 504])
+    def test_each_transient_status_is_retried(self, mock_session, status):
+        failing = Mock()
+        failing.status_code = status
+        failing.raise_for_status.side_effect = requests.HTTPError(
+            f"{status} error", response=failing
+        )
+        ok = Mock()
+        ok.status_code = 200
+        ok.text = "<html>ok</html>"
+        ok.raise_for_status = Mock()
+        mock_session.get.side_effect = [failing, ok]
+        scraper = WorkbenchScraper(mock_session)
+
+        with patch("time.sleep"):
+            assert scraper.fetch_html("https://workbench.cisecurity.org/flaky") == "<html>ok</html>"
+        assert mock_session.get.call_count == 2
+
+    def test_three_transient_failures_give_a_typed_error(self, mock_session):
+        from cis_bench.exceptions import FetchError
+
+        failing = Mock()
+        failing.status_code = 503
+        failing.raise_for_status.side_effect = requests.HTTPError("503", response=failing)
+        mock_session.get.return_value = failing
+        scraper = WorkbenchScraper(mock_session)
+
+        with patch("time.sleep"):
+            with pytest.raises(FetchError, match="3 attempts") as exc_info:
+                scraper.fetch_html("https://workbench.cisecurity.org/down")
+        assert mock_session.get.call_count == 3
+        assert isinstance(exc_info.value.__cause__, requests.HTTPError)
+
+    def test_a_login_page_is_an_authentication_error_not_a_retry(self, mock_session):
+        """WorkBench answers an expired session with a 200 login page; that is final, not transient."""
+        from cis_bench.exceptions import AuthenticationError
+
+        login = Mock()
+        login.status_code = 200
+        login.raise_for_status = Mock()
+        login.text = (
+            '<html><body><div class="index-signin-wrapper"><form action="/login">'
+            '<input name="login"><input name="password"></form></div></body></html>'
+        )
+        mock_session.get.return_value = login
+        scraper = WorkbenchScraper(mock_session)
+
+        with patch("time.sleep") as mock_sleep:
+            with pytest.raises(AuthenticationError):
+                scraper.fetch_html("https://workbench.cisecurity.org/sections/1/recommendations/1")
+        assert mock_session.get.call_count == 1
+        mock_sleep.assert_not_called()
+
+    def test_fetch_html_retries_transient_server_errors_then_succeeds(self, mock_session):
+        """502/503/504 are retried with backoff; the next good response is returned."""
+        unavailable = Mock()
+        unavailable.status_code = 503
+        unavailable.raise_for_status.side_effect = requests.HTTPError(
+            "503 Service Unavailable", response=unavailable
+        )
+        ok = Mock()
+        ok.status_code = 200
+        ok.text = "<html>ok</html>"
+        ok.raise_for_status = Mock()
+        mock_session.get.side_effect = [unavailable, ok]
+        scraper = WorkbenchScraper(mock_session)
+
+        with patch("time.sleep") as mock_sleep:
+            assert scraper.fetch_html("https://workbench.cisecurity.org/flaky") == "<html>ok</html>"
+
+        assert mock_session.get.call_count == 2
+        assert [c.args[0] for c in mock_sleep.call_args_list] == [1]
+
+    def test_fetch_html_does_not_retry_client_errors(self, mock_session):
+        """A 404 or 403 is final: one request, the HTTPError propagates unchanged."""
+        not_found = Mock()
+        not_found.status_code = 404
+        not_found.raise_for_status.side_effect = requests.HTTPError(
+            "404 Not Found", response=not_found
+        )
+        mock_session.get.return_value = not_found
+        scraper = WorkbenchScraper(mock_session)
+
+        with patch("time.sleep") as mock_sleep:
+            with pytest.raises(requests.HTTPError, match="404"):
+                scraper.fetch_html("https://workbench.cisecurity.org/missing")
+
+        assert mock_session.get.call_count == 1
+        mock_sleep.assert_not_called()
+
+    def test_fetch_html_connection_error_is_retried_then_typed(self, mock_session):
+        from cis_bench.exceptions import FetchError
+
+        mock_session.get.side_effect = requests.ConnectionError("connection reset")
+        scraper = WorkbenchScraper(mock_session)
+
+        with patch("time.sleep"):
+            with pytest.raises(FetchError, match="3 attempts"):
+                scraper.fetch_html("https://workbench.cisecurity.org/reset")
+        assert mock_session.get.call_count == 3
+
+    def test_fetch_json_uses_the_same_timeout_and_retry(self, mock_session):
+        from cis_bench.exceptions import FetchError
+
+        mock_session.get.side_effect = requests.Timeout("Request timed out")
+        scraper = WorkbenchScraper(mock_session)
+
+        with patch("time.sleep"):
+            with pytest.raises(FetchError):
+                scraper.fetch_json("https://workbench.cisecurity.org/api/v1/benchmarks/1/navtree")
+        assert mock_session.get.call_count == 3
+        assert mock_session.get.call_args.kwargs["timeout"] == (10.0, 30.0)
 
     def test_fetch_json_success(self, mock_session):
         """Test successful JSON fetch."""
@@ -274,7 +423,9 @@ class TestWorkbenchScraperBasicOperations:
 
         # Verify
         assert data == test_data
-        mock_session.get.assert_called_once_with("https://workbench.cisecurity.org/api/test")
+        mock_session.get.assert_called_once_with(
+            "https://workbench.cisecurity.org/api/test", timeout=(10.0, 30.0)
+        )
 
     def test_fetch_json_invalid_response(self, mock_session):
         """Test handling of invalid JSON response."""
@@ -414,7 +565,7 @@ class TestWorkbenchScraperNavtree:
         # Verify
         assert navtree == sample_benchmark_navtree
         mock_session.get.assert_called_once_with(
-            "https://workbench.cisecurity.org/api/v1/benchmarks/18528/navtree"
+            "https://workbench.cisecurity.org/api/v1/benchmarks/18528/navtree", timeout=(10.0, 30.0)
         )
 
     def test_parse_navtree_flat_structure(self, mock_session):
@@ -578,7 +729,8 @@ class TestWorkbenchScraperNavtree:
         parsed = scraper.parse_navtree(navtree)
 
         mock_session.get.assert_called_once_with(
-            "https://workbench-staging.cisecurity.org/api/v1/benchmarks/61/navtree"
+            "https://workbench-staging.cisecurity.org/api/v1/benchmarks/61/navtree",
+            timeout=(10.0, 30.0),
         )
         assert (
             parsed[0]["url"]
@@ -811,6 +963,92 @@ class TestWorkbenchScraperFullDownload:
         # Verify - should have 2 recommendations (skipped the failed one)
         assert len(benchmark.recommendations) == 2
         assert benchmark.total_recommendations == 2
+
+    @patch("cis_bench.fetcher.workbench.StrategyDetector.detect_strategy")
+    def test_download_benchmark_skips_a_recommendation_that_keeps_timing_out(
+        self,
+        mock_detector,
+        mock_session,
+        mock_strategy,
+        sample_benchmark_title_html,
+        sample_benchmark_navtree,
+        caplog,
+    ):
+        """One stalled recommendation costs that recommendation, not the whole download."""
+        mock_detector.return_value = mock_strategy
+        scraper = WorkbenchScraper(mock_session)
+        stalled_url = scraper.parse_navtree(sample_benchmark_navtree)[0]["url"]
+
+        def mock_get(url, **kwargs):
+            if url == stalled_url:
+                raise requests.Timeout("Read timed out")
+            response = Mock()
+            response.raise_for_status = Mock()
+            if "navtree" in url:
+                response.json.return_value = sample_benchmark_navtree
+            elif "/benchmarks/" in url:
+                response.text = sample_benchmark_title_html
+            else:
+                response.text = "<html>recommendation</html>"
+            return response
+
+        mock_session.get.side_effect = mock_get
+
+        with (
+            patch("time.sleep"),
+            caplog.at_level(logging.ERROR, logger="cis_bench.fetcher.workbench"),
+        ):
+            benchmark = scraper.download_benchmark(
+                "https://workbench.cisecurity.org/benchmarks/18528"
+            )
+
+        assert len(benchmark.recommendations) == 2
+        assert benchmark.total_recommendations == 2
+        stalled_calls = [c for c in mock_session.get.call_args_list if c.args[0] == stalled_url]
+        assert len(stalled_calls) == 3, "the stalled url is tried three times, then given up"
+        errors = [r.getMessage() for r in caplog.records if r.levelno == logging.ERROR]
+        assert any(stalled_url in line and "3 attempts" in line for line in errors), errors
+
+    @patch("cis_bench.fetcher.workbench.StrategyDetector.detect_strategy")
+    def test_download_benchmark_aborts_when_the_session_expires(
+        self,
+        mock_detector,
+        mock_session,
+        mock_strategy,
+        sample_benchmark_title_html,
+        sample_benchmark_navtree,
+    ):
+        """A login page mid-download means every further fetch would fail; stop, do not skip."""
+        from cis_bench.exceptions import AuthenticationError
+
+        mock_detector.return_value = mock_strategy
+        scraper = WorkbenchScraper(mock_session)
+        second_url = scraper.parse_navtree(sample_benchmark_navtree)[1]["url"]
+        login_html = (
+            '<html><body><div class="index-signin-wrapper"><form action="/login">'
+            '<input name="login"><input name="password"></form></div></body></html>'
+        )
+
+        def mock_get(url, **kwargs):
+            response = Mock()
+            response.raise_for_status = Mock()
+            if "navtree" in url:
+                response.json.return_value = sample_benchmark_navtree
+            elif "/benchmarks/" in url:
+                response.text = sample_benchmark_title_html
+            elif url == second_url:
+                response.text = login_html
+            else:
+                response.text = "<html>recommendation</html>"
+            return response
+
+        mock_session.get.side_effect = mock_get
+
+        with pytest.raises(AuthenticationError):
+            scraper.download_benchmark("https://workbench.cisecurity.org/benchmarks/18528")
+        fetched = [c.args[0] for c in mock_session.get.call_args_list]
+        assert fetched.count(second_url) == 1
+        assert scraper.parse_navtree(sample_benchmark_navtree)[2]["url"] not in fetched
 
     def test_download_benchmark_version_extraction(self, mock_session):
         """Test version extraction from benchmark title."""

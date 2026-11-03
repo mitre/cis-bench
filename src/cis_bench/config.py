@@ -6,6 +6,7 @@ and application settings. Supports test isolation.
 Loads configuration from .env file if present.
 """
 
+import math
 import os
 from pathlib import Path
 from urllib.parse import urlparse
@@ -30,6 +31,13 @@ class Config:
     """Application configuration (environment-aware)."""
 
     CIS_ROOT_DOMAIN = "cisecurity.org"
+    # Request timeouts for WorkBench scraping, in seconds. The read timeout is
+    # the configurable one (CIS_BENCH_REQUEST_TIMEOUT); the connect timeout is
+    # fixed but never longer than the read timeout. 30 s matches the catalog
+    # scraper's long-standing per-page timeout.
+    _DEFAULT_READ_TIMEOUT_SECONDS = 30.0
+    _CONNECT_TIMEOUT_SECONDS = 10.0
+
     _VERIFY_SSL_TRUE_VALUES = frozenset({"true", "1", "yes"})
     _VERIFY_SSL_FALSE_VALUES = frozenset({"false", "0", "no"})
     DEFAULT_WORKBENCH_URL = f"https://workbench.{CIS_ROOT_DOMAIN}"
@@ -183,6 +191,37 @@ class Config:
         if limit and limit.isdigit():
             return int(limit)
         return 1000
+
+    @staticmethod
+    def get_request_timeout() -> tuple[float, float]:
+        """Get the (connect, read) timeout applied to every WorkBench scraper request.
+
+        ``CIS_BENCH_REQUEST_TIMEOUT`` sets the read timeout in seconds; unset or
+        blank means 30. The connect timeout is 10 seconds, capped at the read
+        timeout. A request without a timeout can hang a download forever, so
+        there is no way to turn the timeout off.
+
+        Returns:
+            (connect_seconds, read_seconds)
+
+        Raises:
+            ConfigurationError: If the variable is not a positive number.
+        """
+        env_value = os.getenv("CIS_BENCH_REQUEST_TIMEOUT")
+        if env_value is None or not env_value.strip():
+            read_timeout = Config._DEFAULT_READ_TIMEOUT_SECONDS
+        else:
+            try:
+                read_timeout = float(env_value.strip())
+            except ValueError:
+                read_timeout = 0.0
+            # inf would switch the timeout off again; nan passes float() but not sockets.
+            if not math.isfinite(read_timeout) or read_timeout <= 0:
+                raise ConfigurationError(
+                    f"CIS_BENCH_REQUEST_TIMEOUT has invalid value {env_value!r}; "
+                    "use a positive, finite number of seconds"
+                )
+        return (min(Config._CONNECT_TIMEOUT_SECONDS, read_timeout), read_timeout)
 
     @staticmethod
     def get_verify_ssl() -> bool:

@@ -192,6 +192,29 @@ class TestDownloadAuthErrors:
                 assert "Authentication Required" not in bad_url_result.output
 
 
+class TestDownloadRequestTimeoutSetting:
+    """A bad CIS_BENCH_REQUEST_TIMEOUT is a configuration error reported before any network call."""
+
+    def test_download_rejects_bad_request_timeout_before_auth(self, runner, tmp_path, monkeypatch):
+        monkeypatch.setenv("CIS_BENCH_REQUEST_TIMEOUT", "abc")
+        with runner.isolated_filesystem():
+            with (
+                patch(
+                    "cis_bench.cli.commands.download.Config.get_catalog_db_path",
+                    return_value=tmp_path / "missing.db",
+                ),
+                patch(
+                    "cis_bench.cli.commands.download.AuthManager.get_or_create_session"
+                ) as mock_auth,
+            ):
+                result = runner.invoke(cli, ["download", "12345"])
+
+        assert result.exit_code == 1
+        assert "Configuration Error" in result.output
+        assert "CIS_BENCH_REQUEST_TIMEOUT" in result.output
+        mock_auth.assert_not_called()
+
+
 class TestDownloadFileInput:
     """Test download command file-based URL input (lines 112-119, 125)."""
 
