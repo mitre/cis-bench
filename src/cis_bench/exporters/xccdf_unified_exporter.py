@@ -8,9 +8,10 @@ a new YAML config file - no Python code changes needed.
 import logging
 from pathlib import Path
 
+from cis_bench.exceptions import ExportError
 from cis_bench.exporters.base import BaseExporter, ExporterFactory
 from cis_bench.exporters.mapping_engine import ConfigLoader, MappingEngine
-from cis_bench.models.benchmark import Benchmark
+from cis_bench.models.benchmark import Benchmark, Recommendation
 from cis_bench.utils.xml_utils import DublinCoreInjector, XCCDFPostProcessor, XCCDFSerializer
 
 logger = logging.getLogger(__name__)
@@ -114,16 +115,33 @@ class XCCDFExporter(BaseExporter):
         self.engine._metadata_for_post_processing = []
         self._rule_metadata_by_id: dict[str, list[object]] = {}
 
-        # Build all Groups (each contains one Rule)
+        # Build all Groups (each contains one Rule). Rule ids must be unique:
+        # XCCDF forbids duplicates and per-Rule metadata is keyed by id, so a
+        # collision would silently merge two recommendations into one Rule.
         groups = []
+        recommendations_by_rule_id: dict[str, list[Recommendation]] = {}
         for rec in benchmark.recommendations:
             before_count = len(self.engine._metadata_for_post_processing)
             rule = self.engine.map_rule(rec, context)
             new_metadata = self.engine._metadata_for_post_processing[before_count:]
             if new_metadata and getattr(rule, "id", None):
                 self._rule_metadata_by_id[str(rule.id)] = list(new_metadata)
+            recommendations_by_rule_id.setdefault(str(rule.id), []).append(rec)
             group = self.engine.map_group(rec, rule, context)
             groups.append(group)
+
+        collisions = {
+            rule_id: recs for rule_id, recs in recommendations_by_rule_id.items() if len(recs) > 1
+        }
+        if collisions:
+            details = "; ".join(
+                f"{rule_id} <- " + ", ".join(f"{rec.ref} ({rec.title})" for rec in recs)
+                for rule_id, recs in collisions.items()
+            )
+            raise ExportError(
+                f"Duplicate Rule ids in style '{self.style}': {details}. "
+                "XCCDF requires unique Rule ids; fix the colliding recommendations."
+            )
 
         # Build Benchmark (will generate Profiles if configured)
         xccdf_bench = self.engine.map_benchmark(benchmark, groups, context)
@@ -239,6 +257,20 @@ class XCCDFExporter(BaseExporter):
         """
         from lxml import etree
 
+        # Rule children must stay in schema order, so metadata goes before the
+        # first element the schema places after it. The order comes from the
+        # XCCDF model of this style's version; a version whose Rule has no
+        # metadata element (1.1.4) cannot carry injected metadata at all, so
+        # enabling this handler on such a style is a configuration error even
+        # when nothing happens to be queued.
+        element_order = self.engine.rule_element_order()
+        if "metadata" not in element_order:
+            raise ExportError(
+                f"XCCDF {self.engine.xccdf_version} Rules have no metadata element; "
+                f"the metadata_injection handler is not valid for style '{self.style}'"
+            )
+        elements_after_metadata = set(element_order[element_order.index("metadata") + 1 :])
+
         metadata_by_rule_id = getattr(self, "_rule_metadata_by_id", None)
         metadata_elements = getattr(self.engine, "_metadata_for_post_processing", [])
 
@@ -251,20 +283,6 @@ class XCCDFExporter(BaseExporter):
         root = etree.fromstring(xml_output.encode("utf-8"))
         rules = root.xpath(".//*[local-name()='Rule']")
         xccdf_ns = root.nsmap.get(None) or root.nsmap.get("default")
-        post_metadata_tags = {
-            "rationale",
-            "platform",
-            "requires",
-            "conflicts",
-            "ident",
-            "impact-metric",
-            "profile-note",
-            "fixtext",
-            "fix",
-            "check",
-            "complex-check",
-            "signature",
-        }
 
         for i, rule in enumerate(rules):
             rule_id = rule.get("id")
@@ -280,7 +298,7 @@ class XCCDFExporter(BaseExporter):
 
             insert_idx = len(rule)
             for child_idx, child in enumerate(rule):
-                if etree.QName(child).localname in post_metadata_tags:
+                if etree.QName(child).localname in elements_after_metadata:
                     insert_idx = child_idx
                     break
 

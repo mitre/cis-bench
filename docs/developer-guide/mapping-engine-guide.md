@@ -784,6 +784,36 @@ Uninstall or Disable Unnecessary Services
 </metadata>
 ```
 
+### Post-processing: metadata injection
+
+Elements marked `requires_post_processing: true` are built as lxml elements and
+inserted into the serialized XML by the `metadata_injection` handler, which a
+style enables under `post_processing.handlers`:
+
+```yaml
+post_processing:
+  handlers: [dublin_core_injection, metadata_injection]
+```
+
+Where the `<metadata>` lands is not configured. XCCDF fixes the order of a
+Rule's children, and the xsdata models in `cis_bench.models` are generated from
+the NIST schemas, so the exporter asks `MappingEngine.rule_element_order()` for
+the element sequence of the style's XCCDF version and inserts metadata before
+the first child the schema places after it (`rationale`, `platform`, `requires`,
+`conflicts`, `ident`, `impact-metric`, `profile-note`, `fixtext`, `fix`, `check`,
+`complex-check`, `signature` in 1.2). The schema is the single source of that
+order; there is no list to keep in sync.
+
+Two conditions stop an export with `ExportError`:
+
+- **Duplicate Rule ids.** Metadata is keyed by Rule id, and XCCDF requires ids
+  to be unique, so two recommendations whose `rule_id` template yields the same
+  id are reported with their refs and titles. No file is written.
+
+- **A version without Rule metadata.** XCCDF 1.1.4 allows `<metadata>` only on
+  the Benchmark, not inside a Rule, so enabling `metadata_injection` on a 1.1.4
+  style (such as DISA) is a configuration error.
+
 ---
 
 ## Real-World Example: Complete Field Mapping

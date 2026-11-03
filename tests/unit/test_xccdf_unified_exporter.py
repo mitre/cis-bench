@@ -363,7 +363,7 @@ class TestMetadataInjection:
 
     def test_inject_metadata_no_elements(self, minimal_benchmark):
         """Should return unchanged XML when no metadata elements."""
-        exporter = XCCDFExporter(style="disa")
+        exporter = XCCDFExporter(style="cis")
 
         test_xml = '<?xml version="1.0"?><Benchmark><Rule id="test"/></Benchmark>'
 
@@ -380,7 +380,7 @@ class TestMetadataInjection:
         """Should inject metadata elements into rules."""
         from lxml import etree
 
-        exporter = XCCDFExporter(style="disa")
+        exporter = XCCDFExporter(style="cis")
 
         # Create a simple metadata element to inject
         metadata_elem = etree.Element("test-metadata")
@@ -389,7 +389,7 @@ class TestMetadataInjection:
         # Store metadata for injection
         exporter.engine._metadata_for_post_processing = [metadata_elem]
 
-        test_xml = '<?xml version="1.0"?><Benchmark xmlns="http://checklists.nist.gov/xccdf/1.1"><Rule id="test"/></Benchmark>'
+        test_xml = '<?xml version="1.0"?><Benchmark xmlns="http://checklists.nist.gov/xccdf/1.2"><Rule id="test"/></Benchmark>'
 
         result = exporter._inject_metadata_from_config(test_xml)
 
@@ -400,7 +400,7 @@ class TestMetadataInjection:
         """Should not inject more metadata than rules exist."""
         from lxml import etree
 
-        exporter = XCCDFExporter(style="disa")
+        exporter = XCCDFExporter(style="cis")
 
         # Create multiple metadata elements (more than rules)
         metadata_elems = [etree.Element(f"meta-{i}") for i in range(5)]
@@ -408,7 +408,7 @@ class TestMetadataInjection:
 
         # XML with only 2 rules
         test_xml = """<?xml version="1.0"?>
-        <Benchmark xmlns="http://checklists.nist.gov/xccdf/1.1">
+        <Benchmark xmlns="http://checklists.nist.gov/xccdf/1.2">
             <Rule id="rule1"/>
             <Rule id="rule2"/>
         </Benchmark>"""
@@ -423,7 +423,7 @@ class TestMetadataInjection:
         """Should handle case where root has no namespace map."""
         from lxml import etree
 
-        exporter = XCCDFExporter(style="disa")
+        exporter = XCCDFExporter(style="cis")
 
         metadata_elem = etree.Element("test-metadata")
         exporter.engine._metadata_for_post_processing = [metadata_elem]
@@ -948,7 +948,7 @@ class TestMetadataInjectionAdditional:
         """Should break when metadata elements < rules (line 249)."""
         from lxml import etree
 
-        exporter = XCCDFExporter(style="disa")
+        exporter = XCCDFExporter(style="cis")
 
         # Create only 1 metadata element
         metadata_elem = etree.Element("test-metadata")
@@ -957,7 +957,7 @@ class TestMetadataInjectionAdditional:
 
         # XML with 3 rules
         test_xml = """<?xml version="1.0"?>
-        <Benchmark xmlns="http://checklists.nist.gov/xccdf/1.1">
+        <Benchmark xmlns="http://checklists.nist.gov/xccdf/1.2">
             <Rule id="rule1"/>
             <Rule id="rule2"/>
             <Rule id="rule3"/>
@@ -1020,3 +1020,121 @@ class TestFactoryRegistration:
         exporter = ExporterFactory.create("xccdf", style="cis")
 
         assert exporter.style == "cis"
+
+
+# ============================================================================
+# Test: Duplicate Rule IDs and schema-ordered metadata insertion
+# ============================================================================
+
+
+def _recommendation(ref: str, title: str) -> Recommendation:
+    return Recommendation(
+        ref=ref,
+        title=title,
+        url=f"https://workbench.cisecurity.org/sections/1/recommendations/{ref}",
+        assessment_status="Automated",
+    )
+
+
+class TestDuplicateRuleIds:
+    """Two recommendations that map to one Rule ID are invalid XCCDF and must not export."""
+
+    def test_export_raises_on_duplicate_rule_ids(self, tmp_path):
+        from cis_bench.exceptions import ExportError
+
+        benchmark = Benchmark(
+            title="Test Benchmark",
+            benchmark_id="12345",
+            url="https://workbench.cisecurity.org/benchmarks/12345",
+            version="v1.0.0",
+            scraper_version="1.0.0",
+            total_recommendations=3,
+            recommendations=[
+                _recommendation("1.1.1", "First"),
+                _recommendation("1.1.2", "Unrelated"),
+                _recommendation("1.1.1", "Second with the same ref"),
+            ],
+        )
+        output = tmp_path / "dup.xml"
+
+        with pytest.raises(ExportError) as exc_info:
+            XCCDFExporter(style="cis").export(benchmark, str(output))
+
+        message = str(exc_info.value)
+        assert "xccdf_org.cisecurity.benchmarks_rule_1_1_1" in message
+        assert "1.1.1" in message and "First" in message and "Second with the same ref" in message
+        assert "1.1.2" not in message
+        assert not output.exists(), "no file may be written for an invalid document"
+
+    def test_export_with_unique_rule_ids_still_writes(self, tmp_path):
+        benchmark = Benchmark(
+            title="Test Benchmark",
+            benchmark_id="12345",
+            url="https://workbench.cisecurity.org/benchmarks/12345",
+            version="v1.0.0",
+            scraper_version="1.0.0",
+            total_recommendations=2,
+            recommendations=[_recommendation("1.1.1", "First"), _recommendation("1.1.2", "Second")],
+        )
+        output = tmp_path / "ok.xml"
+        XCCDFExporter(style="cis").export(benchmark, str(output))
+        assert output.exists()
+
+
+class TestMetadataInsertionFollowsSchemaOrder:
+    """Metadata is placed where the XCCDF schema of the style's version puts it."""
+
+    def test_metadata_goes_after_the_last_item_element_present(self):
+        """XCCDF 1.2 Rule: ...reference, metadata, rationale, platform, ..., signature.
+
+        Order from schemas/xccdf/1.2/xccdf_1.2.xsd itemType -> selectableItemType -> ruleType.
+        """
+        from lxml import etree
+
+        exporter = XCCDFExporter(style="cis")
+        exporter.engine._metadata_for_post_processing = [etree.Element("extra")]
+        exporter._rule_metadata_by_id = {"r": [etree.Element("extra")]}
+        xml = (
+            '<Benchmark xmlns="http://checklists.nist.gov/xccdf/1.2">'
+            '<Rule id="r"><title/><description/><reference/><rationale/><fixtext/><check/></Rule>'
+            "</Benchmark>"
+        )
+
+        root = etree.fromstring(exporter._inject_metadata_from_config(xml).encode())
+        children = [etree.QName(c).localname for c in root[0]]
+        assert children == [
+            "title",
+            "description",
+            "reference",
+            "metadata",
+            "rationale",
+            "fixtext",
+            "check",
+        ]
+
+    def test_metadata_is_appended_when_no_later_element_is_present(self):
+        from lxml import etree
+
+        exporter = XCCDFExporter(style="cis")
+        exporter._rule_metadata_by_id = {"r": [etree.Element("extra")]}
+        xml = (
+            '<Benchmark xmlns="http://checklists.nist.gov/xccdf/1.2">'
+            '<Rule id="r"><title/><description/></Rule></Benchmark>'
+        )
+
+        root = etree.fromstring(exporter._inject_metadata_from_config(xml).encode())
+        assert [etree.QName(c).localname for c in root[0]] == ["title", "description", "metadata"]
+
+    def test_injection_is_refused_for_a_version_whose_rule_has_no_metadata(self):
+        """XCCDF 1.1.4 Rules carry no metadata element (schemas/xccdf-1.1.4.xsd itemType, 717-745).
+
+        Enabling the handler on such a style is a configuration error whether or
+        not anything happens to be queued for injection.
+        """
+        from cis_bench.exceptions import ExportError
+
+        exporter = XCCDFExporter(style="disa")
+        xml = '<Benchmark xmlns="http://checklists.nist.gov/xccdf/1.1"><Rule id="r"><title/></Rule></Benchmark>'
+
+        with pytest.raises(ExportError, match="1.1.4"):
+            exporter._inject_metadata_from_config(xml)

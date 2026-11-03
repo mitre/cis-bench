@@ -26,7 +26,7 @@ Adding PCI-DSS, ISO 27001, HIPAA, etc. MUST require ZERO code changes (YAML only
 import logging
 import re
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -359,6 +359,22 @@ class MappingEngine:
             Class from appropriate XCCDF module
         """
         return getattr(self.xccdf_models, class_name)
+
+    def rule_element_order(self) -> list[str]:
+        """Return the Rule child-element names in the order the XCCDF schema requires.
+
+        The xsdata models are generated from the NIST XSD of this engine's
+        version, so their field order is the schema sequence (itemType, then
+        selectableItemType, then ruleType) and their metadata carries the XML
+        names. The schema is therefore the single source of element order; no
+        list is kept in code or config.
+        """
+        rule_class = self.get_xccdf_class("Rule")
+        return [
+            f.metadata.get("name") or f.name
+            for f in fields(rule_class)
+            if f.metadata.get("type") == "Element"
+        ]
 
     def get_dc_class(self, class_name: str):
         """Get Dublin Core class by name.

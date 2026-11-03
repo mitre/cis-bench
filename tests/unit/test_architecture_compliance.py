@@ -225,3 +225,65 @@ class TestArchitectureCompliance:
         # Test map_benchmark
         xccdf_bench = engine.map_benchmark(benchmark, [group], context)
         assert xccdf_bench.id, "map_benchmark() didn't create benchmark with ID"
+
+
+class TestRuleChildOrderComesFromTheSchema:
+    """Injected metadata lands where the XCCDF schema places it, for every Rule.
+
+    Expected positions come from schemas/xccdf/1.2/xccdf_1.2.xsd, not from the
+    exporter: itemType ends with metadata (after reference), selectableItemType
+    and ruleType follow (rationale ... signature).
+    """
+
+    ITEM_ELEMENTS_BEFORE_METADATA = {
+        "status",
+        "dc-status",
+        "version",
+        "title",
+        "description",
+        "warning",
+        "question",
+        "reference",
+    }
+    ELEMENTS_AFTER_METADATA = {
+        "rationale",
+        "platform",
+        "requires",
+        "conflicts",
+        "ident",
+        "impact-metric",
+        "profile-note",
+        "fixtext",
+        "fix",
+        "check",
+        "complex-check",
+        "signature",
+    }
+
+    def test_cis_export_places_metadata_between_item_and_rule_elements(
+        self, synthetic_complete_benchmark, tmp_path
+    ):
+        from lxml import etree
+
+        from cis_bench.exporters import ExporterFactory
+
+        output = tmp_path / "cis.xml"
+        ExporterFactory.create("xccdf", style="cis").export(
+            synthetic_complete_benchmark, str(output)
+        )
+        rules = etree.parse(str(output)).getroot().xpath(".//*[local-name()='Rule']")
+        assert len(rules) == len(synthetic_complete_benchmark.recommendations)
+
+        rules_with_metadata = 0
+        for rule in rules:
+            names = [etree.QName(child).localname for child in rule]
+            if "metadata" not in names:
+                continue
+            rules_with_metadata += 1
+            first_meta = names.index("metadata")
+            last_meta = len(names) - 1 - names[::-1].index("metadata")
+            before, after = names[:first_meta], names[last_meta + 1 :]
+            assert set(names[first_meta : last_meta + 1]) == {"metadata"}, (rule.get("id"), names)
+            assert set(before) <= self.ITEM_ELEMENTS_BEFORE_METADATA, (rule.get("id"), before)
+            assert set(after) <= self.ELEMENTS_AFTER_METADATA, (rule.get("id"), after)
+        assert rules_with_metadata == len(rules), "every fixture Rule carries CIS Controls metadata"

@@ -1503,3 +1503,42 @@ class TestBenchmarkIdTemplate:
         assert xccdf_bench.id == (
             "xccdf_org.cisecurity.benchmarks_benchmark_v2.0.0_CIS_Red_Hat_Enterprise_Linux_9_Benchmark"
         )
+
+
+class TestRuleElementOrder:
+    """The engine reports the Rule child-element order of its XCCDF version's schema."""
+
+    def test_xccdf_1_2_order_matches_the_schema_sequence(self, cis_config_path):
+        """schemas/xccdf/1.2/xccdf_1.2.xsd: itemType, then selectableItemType, then ruleType."""
+        engine = MappingEngine(cis_config_path)
+        assert engine.rule_element_order() == [
+            "status",
+            "dc-status",
+            "version",
+            "title",
+            "description",
+            "warning",
+            "question",
+            "reference",
+            "metadata",
+            "rationale",
+            "platform",
+            "requires",
+            "conflicts",
+            "ident",
+            "impact-metric",
+            "profile-note",
+            "fixtext",
+            "fix",
+            "check",
+            "complex-check",
+            "signature",
+        ]
+
+    def test_xccdf_1_1_4_order_has_no_metadata(self, disa_config_path):
+        """schemas/xccdf-1.1.4.xsd itemType (717-745) has no metadata element."""
+        engine = MappingEngine(disa_config_path)
+        order = engine.rule_element_order()
+        assert "metadata" not in order
+        assert order[:3] == ["status", "version", "title"]
+        assert order[-1] == "signature"
