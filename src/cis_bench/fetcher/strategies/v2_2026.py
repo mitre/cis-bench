@@ -108,8 +108,7 @@ class WorkbenchV2Strategy(ScraperStrategy):
         data["assessment_status"] = self._normalize_status(status_text)
 
         profiles_el = soup.find("wb-recommendation-data", attrs={"attribute": "profiles"})
-        profiles_text = self._clean_text(profiles_el.get("text") if profiles_el else None)
-        data["profiles"] = [profiles_text] if profiles_text else []
+        data["profiles"] = self._split_profiles(profiles_el.get("text") if profiles_el else None)
 
         data["cis_controls"] = self._extract_cis_controls(soup)
         data["mitre_mapping"] = self._extract_mitre(soup)
@@ -125,6 +124,22 @@ class WorkbenchV2Strategy(ScraperStrategy):
             return None
         stripped = value.strip()
         return stripped or None
+
+    @staticmethod
+    def _split_profiles(value: str | None) -> list[str]:
+        """Split WorkBench's newline-joined profile text into one entry per profile.
+
+        WorkBench renders multiple profiles as Markdown lines, e.g.
+        ``"Level 1 - Server  \\nLevel 1 - Workstation"``.
+        """
+        if not value:
+            return []
+        profiles: list[str] = []
+        for line in value.splitlines():
+            name = line.strip()
+            if name and name not in profiles:
+                profiles.append(name)
+        return profiles
 
     @staticmethod
     def _normalize_status(text: str) -> str:

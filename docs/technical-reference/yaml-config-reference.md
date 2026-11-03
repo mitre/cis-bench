@@ -247,11 +247,40 @@ cci_lookup:
 enabled: true
 mapping_file: "data/cis-cci-mapping.json"
 source_field: "cis_controls"
+cis_controls_version: 8 # only look up controls of this version (the mapping file is keyed by v8 IDs)
 extract: "all" # primary + supporting
 deduplicate_nist: true
 attributes:
 system: "http://cyber.mil/cci"
 ```
+
+`cis_controls_version` matters because v7 and v8 reuse the same numbers for
+unrelated safeguards (v7 `6.2` "Activate audit logging" vs v8 `6.2` "Establish an
+Access Revoking Process"). v7 controls are still exported as `<ident>` elements;
+they just don't drive CCI lookup.
+
+NIST controls that no CCI covers are emitted as `<reference>` elements when a
+`reference` mapping uses `source_logic: "nist_after_cci_deduplication"`.
+
+### Profiles
+
+```yaml
+benchmark:
+  profiles:
+    generate_from_rules: true
+    include_unmapped: true # also create a Profile for any name not in profile_mappings
+    unmapped_description: "CIS {name} profile recommendations"
+    profile_mappings:
+      - match: "Level 1 - Server" # exact match against Recommendation.profiles
+        id: "level-1-server"
+        title: "Level 1 - Server"
+        description: "CIS Level 1 recommendations for server environments"
+```
+
+Profile names vary by benchmark ("Level 1", "Level 1 - Database Engine",
+"Level 1 - Member Server", "SEVERITY: CAT II", ...). With `include_unmapped`, each
+unlisted name gets a Profile whose title is the name and whose id is a slug of it
+(`"SEVERITY: CAT II"` → `severity-cat-ii`).
 
 ### Custom Namespace Elements
 

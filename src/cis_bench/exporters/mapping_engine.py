@@ -60,6 +60,7 @@ class MappingConfig:
     group_elements: dict[str, Any]  # Specification of each Group element and its xsdata type
     legacy_vms_tags: dict[str, Any] | None = None
     validation: dict[str, Any] | None = None
+    namespaces: dict[str, str] | None = None  # prefix -> namespace URI
 
 
 class TransformRegistry:
@@ -240,6 +241,11 @@ class ConfigLoader:
                 group_elements=config_data.get("group_elements", {}),
                 legacy_vms_tags=config_data.get("legacy_vms_tags"),
                 validation=config_data.get("validation"),
+                namespaces=(
+                    config_data.get("namespaces")
+                    or config_data.get("benchmark", {}).get("namespaces")
+                    or {}
+                ),
             )
 
         finally:
@@ -446,13 +452,19 @@ class MappingEngine:
             # No deduplication - return empty CCIs, all NIST as extras
             return [], rec.nist_controls
 
-        # Get CIS control IDs
-        cis_control_ids = [c.control for c in rec.cis_controls]
-
-        # Get extract parameter from ident field mapping (default: "all")
         ident_mapping = self.config.field_mappings.get("ident", {})
         cci_lookup_config = ident_mapping.get("cci_lookup", {})
         extract = cci_lookup_config.get("extract", "all")
+
+        # The CCI mapping file is keyed by one CIS Controls version. Control IDs from
+        # other versions reuse the same numbers for unrelated safeguards
+        # (v7 "6.2" Activate audit logging vs v8 "6.2" Access revoking), so filter.
+        controls_version = cci_lookup_config.get("cis_controls_version")
+        cis_control_ids = [
+            c.control
+            for c in rec.cis_controls
+            if controls_version is None or c.version == controls_version
+        ]
 
         # Use CCI service for deduplication
         ccis, extra_nist = self.cci_service.deduplicate_nist_controls(
@@ -872,7 +884,11 @@ class MappingEngine:
                 # Build NIST references with Dublin Core elements
                 source_field = field_mapping.get("source_field")
                 if source_field:
-                    nist_controls = getattr(rec, source_field, None)
+                    if field_mapping.get("source_logic") == "nist_after_cci_deduplication":
+                        # Only NIST controls not already represented by a CCI ident
+                        _, nist_controls = self.get_ccis_with_deduplication(rec)
+                    else:
+                        nist_controls = getattr(rec, source_field, None)
                     if nist_controls and isinstance(nist_controls, list):
                         dc_elements_config = field_mapping.get("dc_elements", [])
                         href = field_mapping.get("attributes", {}).get("href", "")
@@ -1260,20 +1276,8 @@ class MappingEngine:
             ident = IdentType(system=system, value=value)
 
             # Add custom namespace attributes if specified (e.g., cc7:controlURI)
-            if custom_attrs:
-                ident._custom_attrs = {}
-                for attr_config in custom_attrs:
-                    attr_name = attr_config.get("name")
-                    attr_template = attr_config.get("template", "")
-                    namespace_prefix = attr_config.get("namespace_prefix", "")
-
-                    attr_value = VariableSubstituter.substitute(attr_template, context)
-                    resolved_prefix = VariableSubstituter.substitute(namespace_prefix, context)
-
-                    ident._custom_attrs[attr_name] = {
-                        "value": attr_value,
-                        "namespace_prefix": resolved_prefix,
-                    }
+            for attr_config in custom_attrs:
+                self._set_ident_attribute(ident, attr_config, context)
 
             idents.append(ident)
 
@@ -1281,6 +1285,35 @@ class MappingEngine:
             f"Generated {len(idents)} idents from {source_field} (system={system_template})"
         )
         return idents
+
+    def _set_ident_attribute(self, ident: Any, attr_config: dict, context: dict) -> None:
+        """Set a namespaced attribute (e.g. ``cc8:controlURI``) on an ident.
+
+        The prefix is resolved to a URI via the config's ``namespaces`` section and
+        stored in the xsdata ``other_attributes`` map (Clark notation) so it is
+        actually serialized.
+        """
+        attr_name = attr_config.get("name")
+        if not attr_name:
+            return
+        if not hasattr(ident, "other_attributes"):
+            logger.warning(
+                f"IdentType in this XCCDF version has no other_attributes; dropping {attr_name}"
+            )
+            return
+
+        attr_value = VariableSubstituter.substitute(attr_config.get("template", ""), context)
+        prefix = VariableSubstituter.substitute(attr_config.get("namespace_prefix", ""), context)
+
+        key = attr_name
+        if prefix:
+            ns_uri = (self.config.namespaces or {}).get(prefix)
+            if ns_uri:
+                key = f"{{{ns_uri}}}{attr_name}"
+            else:
+                logger.warning(f"Namespace prefix '{prefix}' not in config namespaces")
+
+        ident.other_attributes[key] = attr_value
 
     def _get_nested_field(self, obj: Any, field_path: str) -> Any:
         """Get nested field from object using dot notation.
@@ -1345,7 +1378,32 @@ class MappingEngine:
         if not profile_config.get("generate_from_rules"):
             return []
 
-        profile_mappings = profile_config.get("profile_mappings", [])
+        profile_mappings = list(profile_config.get("profile_mappings", []))
+
+        # Benchmarks use many profile names beyond Server/Workstation ("Level 1",
+        # "Level 1 - Database Engine", "SEVERITY: CAT II", ...). Optionally create a
+        # profile for every name in the data that no explicit mapping covers.
+        if profile_config.get("include_unmapped"):
+            mapped = {m.get("match") for m in profile_mappings}
+            used_ids = {m.get("id") for m in profile_mappings}
+            desc_template = profile_config.get("unmapped_description", "{name}")
+            seen: list[str] = []
+            for rec in recommendations:
+                for name in rec.profiles:
+                    if name not in mapped and name not in seen:
+                        seen.append(name)
+            for name in seen:
+                profile_id = self._profile_slug(name, used_ids)
+                used_ids.add(profile_id)
+                profile_mappings.append(
+                    {
+                        "match": name,
+                        "id": profile_id,
+                        "title": name,
+                        "description": desc_template.replace("{name}", name),
+                    }
+                )
+
         if not profile_mappings:
             logger.warning("profile_mappings empty - no profiles will be generated")
             return []
@@ -1360,25 +1418,11 @@ class MappingEngine:
             profile_desc = mapping.get("description", "")
 
             # Find all rules that match this profile
-            select_list = []
-            for rec in recommendations:
-                if match_pattern in rec.profiles:
-                    # Generate rule ID using config template (same logic as map_rule)
-                    ref_normalized = self.normalize_ref(rec.ref)
-                    stig_number = self.ref_to_stig_number(rec.ref)
-                    rule_context = {
-                        "ref_normalized": ref_normalized,
-                        "stig_number": stig_number,
-                        "platform": "",  # Platform not needed for profile select idrefs
-                    }
-                    rule_id = VariableSubstituter.substitute(
-                        self.config.rule_id.get("template", "CIS-{ref_normalized}_rule"),
-                        rule_context,
-                    )
-
-                    # Create select element
-                    select = ProfileSelectType(idref=rule_id, selected=True)
-                    select_list.append(select)
+            select_list = [
+                ProfileSelectType(idref=self._rule_id_for_ref(rec.ref), selected=True)
+                for rec in recommendations
+                if match_pattern in rec.profiles
+            ]
 
             if not select_list:
                 logger.debug(f"Profile '{profile_id}' has no matching rules, skipping")
@@ -1400,6 +1444,28 @@ class MappingEngine:
 
         logger.info(f"Generated {len(profiles)} Profile elements")
         return profiles
+
+    def _rule_id_for_ref(self, ref: str) -> str:
+        """Rule ID for a recommendation ref, using the config template (same as map_rule)."""
+        rule_context = {
+            "ref_normalized": self.normalize_ref(ref),
+            "stig_number": self.ref_to_stig_number(ref),
+            "platform": "",  # Platform not needed for profile select idrefs
+        }
+        return VariableSubstituter.substitute(
+            self.config.rule_id.get("template", "CIS-{ref_normalized}_rule"), rule_context
+        )
+
+    @staticmethod
+    def _profile_slug(name: str, used_ids: set) -> str:
+        """Profile name -> unique NCName-safe id, e.g. "SEVERITY: CAT II" -> "severity-cat-ii"."""
+        base = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "profile"
+        if not base[0].isalpha():
+            base = f"profile-{base}"
+        slug, n = base, 2
+        while slug in used_ids:
+            slug, n = f"{base}-{n}", n + 1
+        return slug
 
     def generate_metadata_from_config(
         self, recommendation: "Recommendation", field_mapping: dict

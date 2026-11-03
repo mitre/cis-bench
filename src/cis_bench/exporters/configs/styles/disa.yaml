@@ -41,6 +41,10 @@ benchmark:
   # Profile generation - convert CIS profiles to XCCDF Profile elements
   profiles:
     generate_from_rules: true
+    # Also create a profile for any profile name not listed below (e.g. "Level 1",
+    # "Level 1 - Database Engine", "SEVERITY: CAT II"); id is a slug of the name.
+    include_unmapped: true
+    unmapped_description: "CIS {name} profile recommendations"
     profile_mappings:
       - match: "Level 1 - Server"
         id: "level-1-server"
@@ -225,6 +229,7 @@ field_mappings:
       enabled: true
       mapping_file: "data/cis-cci-mapping.json"
       source_field: "cis_controls"
+      cis_controls_version: 8  # mapping file is keyed by CIS Controls v8 IDs only
       extract: "primary"  # primary only (key compliance mapping) - use "all" for primary + supporting
       deduplicate_nist: true
       fallback_cci: "CCI-000366"  # Ensures every rule has at least one ident (DISA requirement)
@@ -239,6 +244,8 @@ field_mappings:
     source_field: "nist_controls"
     structure: "dublin_core"
     dc_elements:
+      - element: "dc:title"
+        content: "NIST SP 800-53"
       - element: "dc:identifier"
         content: "{nist_control_id}"
     attributes:
@@ -374,6 +381,10 @@ rule_elements:
 
   ident:
     xccdf_type: "IdentType"
+    multiple: true
+
+  reference:
+    xccdf_type: "ReferenceType"
     multiple: true
 
   fixtext:
