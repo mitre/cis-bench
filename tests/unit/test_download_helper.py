@@ -288,7 +288,8 @@ class TestDownloadWithProgress:
             "cis_bench.cli.helpers.download_helper.Console",
             return_value=Console(file=buffer, width=120),
         ):
-            download_with_progress(scraper, "https://example.com/benchmarks/1", prefix="[1/1] ")
+            # download passes the bare "[1/1]" prefix
+            download_with_progress(scraper, "https://example.com/benchmarks/1", prefix="[1/1]")
 
         assert "[1/1] CIS T [/t]" in buffer.getvalue()
 

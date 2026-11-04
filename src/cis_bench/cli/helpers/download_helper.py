@@ -10,14 +10,6 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeRe
 logger = logging.getLogger(__name__)
 
 
-def report_expired_session(console: Console, error: Exception) -> None:
-    """Tell the user WorkBench no longer accepts the saved session, and how to log in again."""
-    console.print("\n[bold red]Authentication Failed[/bold red]\n")
-    console.print(f"[yellow]Error: {escape(str(error))}[/yellow]\n")
-    console.print("[bold cyan]Your session may have expired. To refresh:[/bold cyan]")
-    console.print("  cis-bench auth login --browser chrome")
-
-
 def download_with_progress(scraper, url, prefix=""):
     """Download benchmark with Rich progress bar.
 
@@ -45,7 +37,7 @@ def download_with_progress(scraper, url, prefix=""):
         if "Benchmark title:" in msg:
             # Extract and show title
             benchmark_title = msg.split("Benchmark title:", 1)[1].strip()
-            console.print(f"{prefix}{escape(benchmark_title)}", highlight=False)
+            console.print(f"{prefix} {escape(benchmark_title)}", highlight=False)
         elif "Found" in msg and "recommendations" in msg:
             # Extract total and create progress bar
             match = re.search(r"Found (\d+) recommendations", msg)

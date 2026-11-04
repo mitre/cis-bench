@@ -9,6 +9,7 @@ from rich.table import Table
 
 from cis_bench.catalog.database import CatalogDatabase
 from cis_bench.catalog.search import CatalogSearch
+from cis_bench.cli.helpers.errors import report_configuration_error
 from cis_bench.cli.helpers.output import output_data
 from cis_bench.config import Config
 from cis_bench.exceptions import AuthenticationError, ConfigurationError
@@ -32,9 +33,7 @@ def _validate_request_timeout() -> None:
     try:
         Config.get_request_timeout()
     except ConfigurationError as e:
-        console.print(
-            f"\n[bold red]Configuration Error[/bold red]\n[yellow]{escape(str(e))}[/yellow]"
-        )
+        report_configuration_error(console, e)
         raise click.Abort() from e
 
 
@@ -553,9 +552,7 @@ def download(benchmark_id_or_name, browser, force, interactive):
         console.print("[yellow]Please run: cis-bench auth login --browser chrome[/yellow]")
         raise click.Abort() from e
     except ConfigurationError as e:
-        console.print(
-            f"\n[bold red]Configuration Error[/bold red]\n[yellow]{escape(str(e))}[/yellow]"
-        )
+        report_configuration_error(console, e)
         raise click.Abort() from e
     except ValueError as e:
         console.print(f"[red]✗ {escape(str(e))}[/red]")

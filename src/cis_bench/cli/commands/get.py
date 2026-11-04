@@ -8,7 +8,7 @@ import questionary
 from rich.console import Console
 from rich.markup import escape
 
-from cis_bench.cli.helpers.download_helper import report_expired_session
+from cis_bench.cli.helpers.errors import report_configuration_error, report_expired_session
 from cis_bench.config import Config
 from cis_bench.exceptions import (
     AuthenticationError,
@@ -204,9 +204,7 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
             # before authenticating, rather than when the scraper is built.
             Config.get_request_timeout()
         except ConfigurationError as e:
-            console.print(
-                f"\n[bold red]Configuration Error[/bold red]\n[yellow]{escape(str(e))}[/yellow]"
-            )
+            report_configuration_error(console, e)
             sys.exit(1)
         except ValueError as e:
             console.print(f"[red]✗ {escape(str(e))}[/red]")
@@ -251,9 +249,7 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
             )
             sys.exit(1)
         except ConfigurationError as e:
-            console.print(
-                f"\n[bold red]Configuration Error[/bold red]\n[yellow]{escape(str(e))}[/yellow]"
-            )
+            report_configuration_error(console, e)
             sys.exit(1)
         except TLSVerificationError as e:
             # The server could not be trusted; the message carries the remediation.

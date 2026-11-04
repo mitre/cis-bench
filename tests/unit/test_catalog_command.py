@@ -1653,7 +1653,7 @@ class TestCatalogRequestTimeoutSetting:
         ):
             result = runner.invoke(cli, args)
 
-        assert result.exit_code != 0
+        assert result.exit_code == 1
         assert "Configuration Error" in result.output
         assert "CIS_BENCH_REQUEST_TIMEOUT" in result.output
         mock_auth.assert_not_called()

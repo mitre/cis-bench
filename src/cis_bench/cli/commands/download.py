@@ -9,7 +9,7 @@ import click
 from rich.console import Console
 from rich.markup import escape
 
-from cis_bench.cli.helpers.download_helper import report_expired_session
+from cis_bench.cli.helpers.errors import report_configuration_error, report_expired_session
 from cis_bench.config import Config
 from cis_bench.exceptions import (
     AuthenticationError,
@@ -119,9 +119,7 @@ def download(
         # before authenticating, rather than when the scraper is built.
         Config.get_request_timeout()
     except ConfigurationError as e:
-        console.print(
-            f"\n[bold red]Configuration Error[/bold red]\n[yellow]{escape(str(e))}[/yellow]"
-        )
+        report_configuration_error(console, e)
         sys.exit(1)
     except ValueError as e:
         console.print(f"[red]✗ {escape(str(e))}[/red]")
@@ -155,9 +153,7 @@ def download(
         sys.exit(1)
     except ValueError as e:
         # Only configuration can raise ValueError here (e.g. CIS_BENCH_WORKBENCH_URL)
-        console.print(
-            f"\n[bold red]Configuration Error[/bold red]\n[yellow]{escape(str(e))}[/yellow]"
-        )
+        report_configuration_error(console, e)
         sys.exit(1)
     except AuthenticationError as e:
         report_expired_session(console, e)
