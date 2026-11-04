@@ -12,6 +12,7 @@ from cis_bench.catalog.search import CatalogSearch
 from cis_bench.cli.helpers.output import output_data
 from cis_bench.config import Config
 from cis_bench.exceptions import AuthenticationError, ConfigurationError
+from cis_bench.utils.parallel import DEFAULT_BATCH_DELAY_SECONDS
 
 console = Console()
 logger = logging.getLogger(__name__)
@@ -64,7 +65,9 @@ def catalog():
 @catalog.command()
 @click.option("--browser", default="chrome", help="Browser for cookie extraction")
 @click.option("--max-pages", type=int, help="Limit pages to scrape (for testing)")
-@click.option("--rate-limit", default=2.0, type=float, help="Seconds between requests")
+@click.option(
+    "--rate-limit", default=DEFAULT_BATCH_DELAY_SECONDS, type=float, help="Seconds between requests"
+)
 def refresh(browser, max_pages, rate_limit):
     """Refresh catalog from CIS WorkBench (scrape all pages).
 

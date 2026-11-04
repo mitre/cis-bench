@@ -17,7 +17,7 @@ from cis_bench.config import Config
 from cis_bench.exceptions import AuthenticationError, FetchError
 from cis_bench.fetcher.auth import is_workbench_login_page
 from cis_bench.fetcher.http import ThreadSessions, get_with_retry
-from cis_bench.utils.parallel import iter_batches
+from cis_bench.utils.parallel import DEFAULT_BATCH_DELAY_SECONDS, iter_batches
 from cis_bench.utils.workbench_urls import resolve_benchmark_reference
 
 logger = logging.getLogger(__name__)
@@ -57,7 +57,9 @@ class CatalogScraper:
         self._sessions = ThreadSessions(session)
 
     def scrape_full_catalog(
-        self, max_pages: int | None = None, rate_limit_seconds: float = 2.0
+        self,
+        max_pages: int | None = None,
+        rate_limit_seconds: float = DEFAULT_BATCH_DELAY_SECONDS,
     ) -> dict:
         """Scrape all catalog pages from CIS WorkBench.
 
@@ -195,7 +197,9 @@ class CatalogScraper:
 
         return stats
 
-    def scrape_page_one_update(self, rate_limit_seconds: float = 2.0) -> dict:
+    def scrape_page_one_update(
+        self, rate_limit_seconds: float = DEFAULT_BATCH_DELAY_SECONDS
+    ) -> dict:
         """Quick update by scraping only page 1 (newest benchmarks).
 
         Args:
@@ -309,7 +313,9 @@ class CatalogScraper:
             )
         return inserted_count
 
-    def refresh_downloaded_revision_dates(self, rate_limit_seconds: float = 2.0) -> int:
+    def refresh_downloaded_revision_dates(
+        self, rate_limit_seconds: float = DEFAULT_BATCH_DELAY_SECONDS
+    ) -> int:
         """Fetch each downloaded benchmark's detail page and record its publication date.
 
         Only downloaded benchmarks are visited (a handful of requests, never the
