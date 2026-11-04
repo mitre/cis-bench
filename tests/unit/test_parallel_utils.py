@@ -8,6 +8,7 @@ import pytest
 
 from cis_bench.utils.parallel import (
     ParallelResult,
+    iter_batches,
     parallel_execute,
     parallel_execute_batched,
 )
@@ -359,6 +360,84 @@ class TestParallelExecuteBatchedStopOn:
             )
 
         assert len(result.results) + len(result.failed) == 10
+
+
+class TestIterBatches:
+    """iter_batches yields each batch's result on the calling thread before starting the next."""
+
+    def test_yields_one_result_per_batch_in_order(self):
+        with patch("cis_bench.utils.parallel.time"):
+            batches = list(iter_batches(list(range(12)), lambda x: x * 10, batch_size=5))
+
+        assert [b.results for b in batches] == [
+            [0, 10, 20, 30, 40],
+            [50, 60, 70, 80, 90],
+            [100, 110],
+        ]
+        assert [b.total for b in batches] == [5, 5, 2]
+        assert all(b.failed == [] for b in batches)
+
+    def test_a_failure_is_reported_in_its_own_batch(self):
+        def work(x):
+            if x == 6:
+                raise ValueError("bad item")
+            return x
+
+        with patch("cis_bench.utils.parallel.time"):
+            batches = list(iter_batches(list(range(12)), work, batch_size=5))
+
+        assert [[item for item, _ in b.failed] for b in batches] == [[], [6], []]
+
+    def test_pauses_before_each_later_batch_only(self):
+        with patch("cis_bench.utils.parallel.time") as clock:
+            batches = iter_batches(list(range(12)), lambda x: x, batch_size=5, batch_delay=0.5)
+            next(batches)
+            clock.sleep.assert_not_called()  # no pause before the first batch
+            next(batches)
+            assert clock.sleep.call_args_list == [((0.5,),)]
+            next(batches)
+            assert clock.sleep.call_args_list == [((0.5,),), ((0.5,),)]
+            assert next(batches, None) is None
+        assert clock.sleep.call_count == 2  # never after the last batch
+
+    def test_a_consumer_that_stops_starts_no_further_batch_and_waits_no_pause(self):
+        started = []
+        lock = threading.Lock()
+
+        def work(x):
+            with lock:
+                started.append(x)
+            return x
+
+        with patch("cis_bench.utils.parallel.time") as clock:
+            for _batch in iter_batches(list(range(25)), work, batch_size=10):
+                break
+
+        assert sorted(started) == list(range(10))
+        clock.sleep.assert_not_called()
+
+    def test_progress_counts_across_batches(self):
+        calls = []
+        with patch("cis_bench.utils.parallel.time"):
+            for _batch in iter_batches(
+                list(range(12)),
+                lambda x: x,
+                batch_size=5,
+                progress_callback=lambda done, total, item: calls.append((done, total)),
+            ):
+                pass
+
+        assert [done for done, _ in calls] == list(range(1, 13))
+        assert {total for _, total in calls} == {12}
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [{"batch_size": 0}, {"max_workers": 0}, {"batch_delay": -1.0}],
+        ids=["batch_size", "max_workers", "batch_delay"],
+    )
+    def test_invalid_arguments_raise_when_called_not_when_iterated(self, kwargs):
+        with pytest.raises(ValueError):
+            iter_batches([1, 2], lambda x: x, **kwargs)
 
 
 class TestParallelResult:

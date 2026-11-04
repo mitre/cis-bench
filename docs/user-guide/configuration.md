@@ -63,17 +63,20 @@ export REQUESTS_CA_BUNDLE=/etc/ssl/corporate-ca-bundle.crt
 
 ### `CIS_BENCH_REQUEST_TIMEOUT`
 
-Read timeout, in seconds, for every request the benchmark scraper makes to CIS
-WorkBench (benchmark page, navigation tree, each recommendation page).
+Read timeout, in seconds, for every request cis-bench makes to CIS WorkBench:
+benchmark downloads (benchmark page, navigation tree, each recommendation page)
+and the catalog (`catalog refresh` and `catalog update` listing pages,
+`catalog check-updates` detail pages).
 
 - **Default:** `30`
-- **Accepted values:** a positive number of seconds. Any other value is a configuration error and the command exits.
+- **Accepted values:** a positive number of seconds. Any other value is a configuration error, and the command exits before it authenticates.
 - **Connect timeout:** fixed at 10 seconds, or the read timeout if that is shorter.
 
 A request that times out, fails to connect, or gets a 502, 503 or 504 is
 retried twice, after 1 and then 2 seconds. A request that still fails is
-reported with its URL and the recommendation is skipped; the download never
-hangs on one connection. Other HTTP errors are not retried.
+reported with its URL: a download skips that recommendation, and a catalog
+refresh counts that page as failed. Nothing hangs on one connection. Other HTTP
+errors, such as a 404, are not retried.
 
 **Usage (slow network):**
 ```bash

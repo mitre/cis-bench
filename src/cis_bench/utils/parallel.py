@@ -7,7 +7,7 @@ caller instead of being raised or dropped.
 
 import logging
 import time
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 
@@ -92,6 +92,61 @@ def parallel_execute[T, R](
     )
 
 
+def _check_batch_arguments(batch_size: int, max_workers: int, batch_delay: float) -> None:
+    _require_at_least_one("batch_size", batch_size)
+    _require_at_least_one("max_workers", max_workers)
+    if batch_delay < 0:
+        raise ValueError(f"batch_delay must not be negative, got {batch_delay}")
+
+
+def iter_batches[T, R](
+    items: Iterable[T],
+    func: Callable[[T], R],
+    batch_size: int = DEFAULT_BATCH_SIZE,
+    max_workers: int = DEFAULT_MAX_WORKERS,
+    batch_delay: float = DEFAULT_BATCH_DELAY_SECONDS,
+    progress_callback: ProgressCallback[T] | None = None,
+) -> Iterator[ParallelResult[T, R]]:
+    """Run ``parallel_execute`` over consecutive slices of ``items``, yielding each slice's result.
+
+    Each batch runs to completion before it is yielded, on the calling thread, so the caller can
+    act on it (for example write it to a database that only one thread may use) before the next
+    batch starts. The pause of ``batch_delay`` seconds comes before each later batch, so a caller
+    that stops iterating starts no further batch and waits no pause. ``progress_callback`` counts
+    across the whole run. Arguments are checked when this is called, not on first iteration.
+    """
+    _check_batch_arguments(batch_size, max_workers, batch_delay)
+    return _run_batches(list(items), func, batch_size, max_workers, batch_delay, progress_callback)
+
+
+def _run_batches[T, R](
+    items_list: list[T],
+    func: Callable[[T], R],
+    batch_size: int,
+    max_workers: int,
+    batch_delay: float,
+    progress_callback: ProgressCallback[T] | None,
+) -> Iterator[ParallelResult[T, R]]:
+    total = len(items_list)
+    completed = 0
+
+    def overall_progress(_batch_completed: int, _batch_total: int, item: T) -> None:
+        nonlocal completed
+        completed += 1
+        if progress_callback:
+            progress_callback(completed, total, item)
+
+    for batch_start in range(0, total, batch_size):
+        if batch_start > 0 and batch_delay > 0:
+            time.sleep(batch_delay)
+        yield parallel_execute(
+            items_list[batch_start : batch_start + batch_size],
+            func,
+            max_workers=max_workers,
+            progress_callback=overall_progress if progress_callback else None,
+        )
+
+
 def parallel_execute_batched[T, R](
     items: Iterable[T],
     func: Callable[[T], R],
@@ -101,7 +156,7 @@ def parallel_execute_batched[T, R](
     progress_callback: ProgressCallback[T] | None = None,
     stop_on: tuple[type[Exception], ...] = (),
 ) -> ParallelResult[T, R]:
-    """Run ``parallel_execute`` over consecutive slices of ``items``.
+    """Run every batch from ``iter_batches`` and combine the results.
 
     Items within a batch run concurrently; the run pauses ``batch_delay`` seconds between
     batches and never after the last one. The defaults match the catalog refresh pacing.
@@ -112,37 +167,15 @@ def parallel_execute_batched[T, R](
     in ``failed`` like any other, and the caller decides what it means. Use it for failures
     after which every remaining item would fail too, such as an expired login.
     """
-    _require_at_least_one("batch_size", batch_size)
-    _require_at_least_one("max_workers", max_workers)
-    if batch_delay < 0:
-        raise ValueError(f"batch_delay must not be negative, got {batch_delay}")
-
     items_list = list(items)
-    total = len(items_list)
     all_results: list[R] = []
     all_failed: list[tuple[T, Exception]] = []
-    completed = 0
-
-    def overall_progress(_batch_completed: int, _batch_total: int, item: T) -> None:
-        nonlocal completed
-        completed += 1
-        if progress_callback:
-            progress_callback(completed, total, item)
-
-    for batch_start in range(0, total, batch_size):
-        batch = items_list[batch_start : batch_start + batch_size]
-        batch_result = parallel_execute(
-            batch,
-            func,
-            max_workers=max_workers,
-            progress_callback=overall_progress if progress_callback else None,
-        )
-        all_results.extend(batch_result.results)
-        all_failed.extend(batch_result.failed)
-
-        if stop_on and any(isinstance(error, stop_on) for _, error in batch_result.failed):
+    for batch in iter_batches(
+        items_list, func, batch_size, max_workers, batch_delay, progress_callback
+    ):
+        all_results.extend(batch.results)
+        all_failed.extend(batch.failed)
+        if stop_on and any(isinstance(error, stop_on) for _, error in batch.failed):
             break
-        if batch_delay > 0 and batch_start + batch_size < total:
-            time.sleep(batch_delay)
 
-    return ParallelResult(results=all_results, failed=all_failed, total=total)
+    return ParallelResult(results=all_results, failed=all_failed, total=len(items_list))

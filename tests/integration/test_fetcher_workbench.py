@@ -14,10 +14,11 @@ from unittest.mock import Mock, patch
 
 import pytest
 import requests
-from requests.adapters import BaseAdapter, HTTPAdapter
+from requests.adapters import HTTPAdapter
 
+from cis_bench.fetcher.http import session_for_worker
 from cis_bench.fetcher.strategies.base import ScraperStrategy
-from cis_bench.fetcher.workbench import WorkbenchScraper, _session_for_worker
+from cis_bench.fetcher.workbench import WorkbenchScraper
 from cis_bench.models.benchmark import Benchmark
 from cis_bench.utils.parallel import parallel_execute
 
@@ -825,57 +826,6 @@ class TestWorkbenchScraperStrategyIntegration:
 # ============ Test Full Benchmark Download ============
 
 
-class _StubTransport(BaseAdapter):
-    """Transport adapter that answers from handler(url) instead of the network.
-
-    handler returns page text, a dict (sent as JSON), or raises (for example requests.Timeout).
-    Mounted on a real Session, it is shared by the per-thread session copies, so it sees every
-    request whichever thread sends it. Records the urls requested and the peak number of
-    requests in flight at once.
-    """
-
-    def __init__(self, handler):
-        super().__init__()
-        self.handler = handler
-        self.urls: list[str] = []
-        self.in_flight = 0
-        self.peak_in_flight = 0
-        self._lock = threading.Lock()
-
-    def send(self, request, **kwargs):
-        with self._lock:
-            self.urls.append(request.url)
-            self.in_flight += 1
-            self.peak_in_flight = max(self.peak_in_flight, self.in_flight)
-        try:
-            body = self.handler(request.url)
-        finally:
-            with self._lock:
-                self.in_flight -= 1
-        response = requests.Response()
-        response.status_code = 200
-        response.url = request.url
-        response.request = request
-        if isinstance(body, dict):
-            response._content = json.dumps(body).encode()
-            response.headers["Content-Type"] = "application/json"
-        else:
-            response._content = body.encode()
-            response.headers["Content-Type"] = "text/html; charset=utf-8"
-        response.encoding = "utf-8"
-        return response
-
-    def close(self):
-        pass
-
-
-def _stub_session(handler):
-    session = requests.Session()
-    transport = _StubTransport(handler)
-    session.mount("https://", transport)
-    return session, transport
-
-
 def _navtree_with(count):
     """A flat navtree with count recommendations, refs 1.1 .. 1.<count>."""
     return {
@@ -905,6 +855,7 @@ class TestWorkbenchScraperFullDownload:
         sample_benchmark_title_html,
         sample_benchmark_navtree,
         sample_recommendation_html,
+        stub_session,
     ):
         """Test successful full benchmark download."""
         mock_detector.return_value = mock_strategy
@@ -916,7 +867,7 @@ class TestWorkbenchScraperFullDownload:
                 return sample_benchmark_title_html
             return sample_recommendation_html
 
-        session, _ = _stub_session(handler)
+        session, _ = stub_session(handler)
         scraper = WorkbenchScraper(session)
 
         with patch("cis_bench.utils.parallel.time"):
@@ -940,6 +891,7 @@ class TestWorkbenchScraperFullDownload:
         sample_benchmark_title_html,
         sample_benchmark_navtree,
         sample_recommendation_html,
+        stub_session,
     ):
         """Test benchmark download with progress callback."""
         mock_detector.return_value = mock_strategy
@@ -952,7 +904,7 @@ class TestWorkbenchScraperFullDownload:
                 return sample_benchmark_title_html
             return sample_recommendation_html
 
-        session, _ = _stub_session(handler)
+        session, _ = stub_session(handler)
         scraper = WorkbenchScraper(session)
 
         with patch("cis_bench.utils.parallel.time"):
@@ -973,6 +925,7 @@ class TestWorkbenchScraperFullDownload:
         mock_strategy,
         sample_benchmark_title_html,
         sample_benchmark_navtree,
+        stub_session,
     ):
         """Test that benchmark download continues when individual recommendations fail."""
         mock_detector.return_value = mock_strategy
@@ -1001,7 +954,7 @@ class TestWorkbenchScraperFullDownload:
                 return sample_benchmark_title_html
             return "<html>recommendation</html>"
 
-        session, _ = _stub_session(handler)
+        session, _ = stub_session(handler)
         scraper = WorkbenchScraper(session)
 
         with patch("cis_bench.utils.parallel.time"):
@@ -1021,6 +974,7 @@ class TestWorkbenchScraperFullDownload:
         sample_benchmark_title_html,
         sample_benchmark_navtree,
         caplog,
+        stub_session,
     ):
         """One stalled recommendation costs that recommendation, not the whole download."""
         mock_detector.return_value = mock_strategy
@@ -1037,7 +991,7 @@ class TestWorkbenchScraperFullDownload:
                 return sample_benchmark_title_html
             return "<html>recommendation</html>"
 
-        session, transport = _stub_session(handler)
+        session, transport = stub_session(handler)
         scraper = WorkbenchScraper(session)
 
         with (
@@ -1060,6 +1014,7 @@ class TestWorkbenchScraperFullDownload:
         mock_detector,
         mock_strategy,
         sample_benchmark_title_html,
+        stub_session,
     ):
         """A login page mid-download means every further fetch would fail: the download
         raises, and no recommendation after the batch that saw the login page is requested."""
@@ -1083,7 +1038,7 @@ class TestWorkbenchScraperFullDownload:
                 return login_html
             return "<html>recommendation</html>"
 
-        session, transport = _stub_session(handler)
+        session, transport = stub_session(handler)
         scraper = WorkbenchScraper(session)
 
         with patch("cis_bench.utils.parallel.time"), pytest.raises(AuthenticationError):
@@ -1095,7 +1050,7 @@ class TestWorkbenchScraperFullDownload:
 
     @patch("cis_bench.fetcher.workbench.StrategyDetector.detect_strategy")
     def test_download_benchmark_fetches_recommendations_concurrently_in_ref_order(
-        self, mock_detector, mock_strategy, sample_benchmark_title_html
+        self, mock_detector, mock_strategy, sample_benchmark_title_html, stub_session
     ):
         mock_detector.return_value = mock_strategy
         navtree = _navtree_with(12)
@@ -1110,7 +1065,7 @@ class TestWorkbenchScraperFullDownload:
             time.sleep(0.01 * (len(rec_urls) - rec_urls.index(url)))
             return "<html>recommendation</html>"
 
-        session, transport = _stub_session(handler)
+        session, transport = stub_session(handler)
         scraper = WorkbenchScraper(session)
 
         with patch("cis_bench.utils.parallel.time") as clock:
@@ -1126,7 +1081,7 @@ class TestWorkbenchScraperFullDownload:
 
     @patch("cis_bench.fetcher.workbench.StrategyDetector.detect_strategy")
     def test_progress_reports_each_recommendation_after_it_is_fetched(
-        self, mock_detector, mock_strategy, sample_benchmark_title_html
+        self, mock_detector, mock_strategy, sample_benchmark_title_html, stub_session
     ):
         mock_detector.return_value = mock_strategy
         navtree = _navtree_with(12)
@@ -1143,7 +1098,7 @@ class TestWorkbenchScraperFullDownload:
                 finished[0] += 1
             return "<html>recommendation</html>"
 
-        session, _ = _stub_session(handler)
+        session, _ = stub_session(handler)
         scraper = WorkbenchScraper(session)
         messages = []
 
@@ -1167,7 +1122,7 @@ class TestWorkbenchScraperFullDownload:
 
     @patch("cis_bench.fetcher.workbench.StrategyDetector.detect_strategy")
     def test_a_failed_recommendation_is_logged_once_with_its_url_and_error(
-        self, mock_detector, mock_strategy, sample_benchmark_title_html, caplog
+        self, mock_detector, mock_strategy, sample_benchmark_title_html, caplog, stub_session
     ):
         mock_detector.return_value = mock_strategy
         navtree = _navtree_with(12)
@@ -1183,7 +1138,7 @@ class TestWorkbenchScraperFullDownload:
                 raise requests.ConnectionError("connection reset")
             return "<html>recommendation</html>"
 
-        session, _ = _stub_session(handler)
+        session, _ = stub_session(handler)
         scraper = WorkbenchScraper(session)
 
         with (
@@ -1204,7 +1159,7 @@ class TestWorkbenchScraperFullDownload:
 
     @patch("cis_bench.fetcher.workbench.StrategyDetector.detect_strategy")
     def test_the_cli_progress_bar_counts_every_fetched_recommendation(
-        self, mock_detector, mock_strategy, sample_benchmark_title_html
+        self, mock_detector, mock_strategy, sample_benchmark_title_html, stub_session
     ):
         from cis_bench.cli.helpers.download_helper import download_with_progress
 
@@ -1218,7 +1173,7 @@ class TestWorkbenchScraperFullDownload:
                 return sample_benchmark_title_html
             return "<html>recommendation</html>"
 
-        session, _ = _stub_session(handler)
+        session, _ = stub_session(handler)
         scraper = WorkbenchScraper(session)
 
         with (
@@ -1438,7 +1393,7 @@ class TestWorkbenchScraperConcurrentFetches:
         mounted = _VerifyRecordingAdapter()
         base.mount("https://", mounted)
 
-        worker = _session_for_worker(base)
+        worker = session_for_worker(base)
 
         for attr in ("auth", "stream", "verify", "cert", "max_redirects", "trust_env"):
             assert getattr(worker, attr) == getattr(base, attr), attr

@@ -112,7 +112,8 @@ J --> L[Recommendation]
 
 - `WorkbenchScraper` - Main scraper class
 - `AuthManager` - Cookie extraction
-- `utils/parallel.py` - `parallel_execute_batched` runs the recommendation fetches: five workers, batches of ten, two seconds between batches, results returned in input (navtree) order, and `stop_on` to end the run after a batch that hit an expired session
+- `fetcher/http.py` - `ThreadSessions` (per-thread copies of the logged-in session) and `get_with_retry` (timeout and bounded retry), shared with the catalog scraper
+- `utils/parallel.py` - `parallel_execute_batched` runs the recommendation fetches: five workers, batches of ten, two seconds between batches, results returned in input (navtree) order, and `stop_on` to end the run after a batch that hit an expired session; `iter_batches` yields each batch to the caller before the next one starts
 - `Strategy Pattern` - Adapts to HTML changes
 - `HTMLParser` - Extract data from HTML
 
@@ -237,6 +238,8 @@ M --> H
 - `catalog_benchmarks` - Main table with FKs
 - `downloaded_benchmarks` - Cached content
 - `scrape_metadata` - Tracking
+
+**Refresh fetch:** `CatalogScraper.scrape_full_catalog` fetches page 1 on the calling thread, then pages 2..N through `utils/parallel.py` `iter_batches` with the shared pacing. Each batch is yielded back to the calling thread, which writes it to SQLite (one writer), updates the progress count and checks the >10% failure threshold before the next batch starts; a login page ends the run after its batch. Requests go through `fetcher/http.py` (`ThreadSessions` per-thread session copies, `get_with_retry` timeout and retry), the same plumbing `WorkbenchScraper` uses.
 
 **FTS5 Search:**
 

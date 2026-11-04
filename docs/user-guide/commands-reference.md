@@ -494,7 +494,7 @@ cis-bench catalog refresh [OPTIONS]
 
 **Examples:**
 ```bash
-# Full catalog refresh (~2 minutes with parallel scraping)
+# Full catalog refresh (under a minute)
 cis-bench catalog refresh
 
 # Test with limited pages
@@ -507,17 +507,18 @@ cis-bench catalog refresh --rate-limit 1.0
 **What it does:**
 1. Authenticates with WorkBench
 2. Scrapes catalog pages in parallel (10 pages/batch, 5 threads)
-3. Detects ~66 pages automatically
-4. Builds searchable database with ~1,300+ benchmarks
+3. Detects the page count from page 1 (about 80 pages)
+4. Builds searchable database with about 1,500 benchmarks
 5. Creates FTS5 full-text search index
-6. Takes ~2 minutes for full catalog
+6. Takes under a minute for the full catalog
 
 **Performance:**
 
-- Parallel: 10 pages per batch
-- Threads: 5 concurrent
-- Retry logic: 3 attempts with backoff
+- Parallel: 10 pages per batch, 5 at a time, `--rate-limit` seconds between batches (the same pacing `cis-bench download` uses for recommendation pages)
+- Sessions: each worker thread uses its own copy of your saved session; nothing logs in again
+- Retry logic: the timeout from [`CIS_BENCH_REQUEST_TIMEOUT`](configuration.md#cis_bench_request_timeout) and up to 3 attempts on timeouts, dropped connections and 502/503/504; a 404 or a page that cannot be parsed is not retried
 - Failure threshold: Aborts if >10% fail
+- Expired session: a login page stops the refresh after the batch that saw it
 
 ---
 

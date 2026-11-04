@@ -11,10 +11,21 @@ from cis_bench.catalog.database import CatalogDatabase
 from cis_bench.catalog.search import CatalogSearch
 from cis_bench.cli.helpers.output import output_data
 from cis_bench.config import Config
-from cis_bench.exceptions import AuthenticationError
+from cis_bench.exceptions import AuthenticationError, ConfigurationError
 
 console = Console()
 logger = logging.getLogger(__name__)
+
+
+def _validate_request_timeout() -> None:
+    """Refuse a bad CIS_BENCH_REQUEST_TIMEOUT before authenticating, as download does."""
+    try:
+        Config.get_request_timeout()
+    except ConfigurationError as e:
+        console.print(
+            f"\n[bold red]Configuration Error[/bold red]\n[yellow]{escape(str(e))}[/yellow]"
+        )
+        raise click.Abort() from e
 
 
 def get_catalog_db() -> CatalogDatabase:
@@ -58,8 +69,9 @@ def refresh(browser, max_pages, rate_limit):
     """Refresh catalog from CIS WorkBench (scrape all pages).
 
     This builds or updates the complete catalog by scraping all benchmark
-    listing pages from CIS WorkBench. Takes approximately 10 minutes for
-    full catalog (~68 pages).
+    listing pages from CIS WorkBench (about 80 pages, about 1,500 benchmarks).
+    Pages are fetched five at a time in batches of ten; a full refresh takes
+    under a minute.
 
     \b
     Examples:
@@ -67,6 +79,7 @@ def refresh(browser, max_pages, rate_limit):
         cis-bench catalog refresh --max-pages 5  # Test with 5 pages
         cis-bench catalog refresh --rate-limit 1  # Faster (less polite)
     """
+    _validate_request_timeout()
     try:
         # Get database
         db = get_catalog_db()
@@ -138,6 +151,7 @@ def update(browser):
     Example:
         cis-bench catalog update
     """
+    _validate_request_timeout()
     try:
         db = require_catalog_db(
             missing_message="Catalog not initialized. Run 'cis-bench catalog refresh' first."
@@ -548,6 +562,8 @@ def check_updates(offline):
         cis-bench catalog check-updates
         cis-bench catalog check-updates --offline
     """
+    if not offline:
+        _validate_request_timeout()
     try:
         db = require_catalog_db()
 

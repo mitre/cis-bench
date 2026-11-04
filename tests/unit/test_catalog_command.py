@@ -1506,3 +1506,39 @@ class TestCatalogCommandsNoSavedSession:
         assert "Authentication required" in result.output
         assert "cis-bench auth login" in result.output
         assert "failed" not in result.output.lower()
+
+
+class TestCatalogRequestTimeoutSetting:
+    """A bad CIS_BENCH_REQUEST_TIMEOUT is refused before the catalog commands authenticate."""
+
+    @pytest.mark.parametrize(
+        "args", [["catalog", "refresh"], ["catalog", "update"], ["catalog", "check-updates"]]
+    )
+    def test_network_catalog_commands_reject_a_bad_timeout_before_auth(
+        self, runner, mock_db, monkeypatch, args
+    ):
+        monkeypatch.setenv("CIS_BENCH_REQUEST_TIMEOUT", "inf")
+        with (
+            patch("cis_bench.cli.commands.catalog.get_catalog_db", return_value=mock_db),
+            patch("cis_bench.cli.commands.catalog.require_catalog_db", return_value=mock_db),
+            patch.object(AuthManager, "get_or_create_session") as mock_auth,
+        ):
+            result = runner.invoke(cli, args)
+
+        assert result.exit_code != 0
+        assert "Configuration Error" in result.output
+        assert "CIS_BENCH_REQUEST_TIMEOUT" in result.output
+        mock_auth.assert_not_called()
+
+    def test_check_updates_offline_needs_no_timeout(self, runner, mock_db, monkeypatch):
+        monkeypatch.setenv("CIS_BENCH_REQUEST_TIMEOUT", "inf")
+        mock_db.check_updates_available.return_value = []
+        with (
+            patch("cis_bench.cli.commands.catalog.require_catalog_db", return_value=mock_db),
+            patch.object(AuthManager, "get_or_create_session") as mock_auth,
+        ):
+            result = runner.invoke(cli, ["catalog", "check-updates", "--offline"])
+
+        assert result.exit_code == 0, result.output
+        assert "up-to-date" in result.output
+        mock_auth.assert_not_called()

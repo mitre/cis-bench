@@ -15,11 +15,19 @@ Test organization:
   Run with: uv run pytest
 """
 
+import json
 import os
+import threading
+from dataclasses import dataclass
+from http import HTTPStatus
+from http.client import HTTPMessage
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+import requests
 from click.testing import CliRunner
+from requests.adapters import BaseAdapter
 
 from cis_bench.models.benchmark import Benchmark, Recommendation
 
@@ -289,3 +297,92 @@ def load_test_benchmark(file_path: Path) -> Benchmark:
         Loaded Benchmark object
     """
     return Benchmark.from_json_file(str(file_path))
+
+
+# ============================================================================
+# HTTP stub transport
+# ============================================================================
+
+
+@dataclass
+class StubReply:
+    """What the stub transport answers: a body (text, or a dict sent as JSON), an HTTP status,
+    and Set-Cookie header values that the session processes as it would a real response."""
+
+    body: str | dict = ""
+    status: int = 200
+    set_cookies: tuple[str, ...] = ()
+
+
+class _StubTransport(BaseAdapter):
+    """Transport adapter that answers from handler(url) instead of the network.
+
+    handler returns page text, a dict (sent as JSON), a StubReply, or raises (for example
+    requests.Timeout). Mounted on a real Session, it is shared by the per-thread session copies,
+    so it sees every request whichever thread sends it. Records each request's url, headers and
+    transport settings (timeout, verify), and the peak number of requests in flight at once.
+    """
+
+    def __init__(self, handler):
+        super().__init__()
+        self.handler = handler
+        self.urls: list[str] = []
+        self.headers: list[dict[str, str]] = []
+        self.settings: list[dict[str, object]] = []
+        self.in_flight = 0
+        self.peak_in_flight = 0
+        self._lock = threading.Lock()
+
+    def send(self, request, **kwargs):
+        with self._lock:
+            self.urls.append(request.url)
+            self.headers.append(dict(request.headers))
+            self.settings.append({"timeout": kwargs.get("timeout"), "verify": kwargs.get("verify")})
+            self.in_flight += 1
+            self.peak_in_flight = max(self.peak_in_flight, self.in_flight)
+        try:
+            reply = self.handler(request.url)
+        finally:
+            with self._lock:
+                self.in_flight -= 1
+        if not isinstance(reply, StubReply):
+            reply = StubReply(body=reply)
+        response = requests.Response()
+        response.status_code = reply.status
+        response.reason = HTTPStatus(reply.status).phrase
+        response.url = request.url
+        response.request = request
+        if isinstance(reply.body, dict):
+            response._content = json.dumps(reply.body).encode()
+            response.headers["Content-Type"] = "application/json"
+        else:
+            response._content = reply.body.encode()
+            response.headers["Content-Type"] = "text/html; charset=utf-8"
+        response.encoding = "utf-8"
+        # requests reads response cookies from the raw HTTP message (cookies.extract_cookies_to_jar).
+        message = HTTPMessage()
+        for value in reply.set_cookies:
+            message["Set-Cookie"] = value
+        response.raw = SimpleNamespace(_original_response=SimpleNamespace(msg=message))
+        return response
+
+    def close(self):
+        pass
+
+
+@pytest.fixture
+def stub_session():
+    """Factory: a real requests.Session whose https:// requests are answered by handler(url).
+
+    Returns (session, transport). Scrapers copy the caller's session for each worker thread and
+    the copies share its mounted adapters, so the stub sees every request; a Mock session cannot
+    be copied that way.
+    """
+
+    def make(handler):
+        session = requests.Session()
+        transport = _StubTransport(handler)
+        session.mount("https://", transport)
+        return session, transport
+
+    return make

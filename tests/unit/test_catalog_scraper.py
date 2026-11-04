@@ -119,7 +119,10 @@ class TestConnectionTesting:
 
         scraper = CatalogScraper(temp_db, session)
 
-        with pytest.raises(Exception, match="Connection failed"):
+        with (
+            patch("cis_bench.fetcher.http.time"),
+            pytest.raises(Exception, match="Connection failed"),
+        ):
             scraper.test_connection()
 
 
@@ -175,9 +178,10 @@ class TestPageFetching:
 class TestFullCatalogScrape:
     """Test full catalog scraping."""
 
-    def test_scrape_full_catalog(self, temp_db, mock_session):
+    def test_scrape_full_catalog(self, temp_db, sample_html, stub_session):
         """Test scraping multiple pages."""
-        scraper = CatalogScraper(temp_db, mock_session)
+        session, _ = stub_session(lambda url: sample_html)
+        scraper = CatalogScraper(temp_db, session)
 
         stats = scraper.scrape_full_catalog(max_pages=2, rate_limit_seconds=0)
 
@@ -185,9 +189,10 @@ class TestFullCatalogScrape:
         assert stats["pages_scraped"] >= 1
         assert isinstance(stats["failed_pages"], list)
 
-    def test_scrape_respects_max_pages(self, temp_db, mock_session):
+    def test_scrape_respects_max_pages(self, temp_db, sample_html, stub_session):
         """Test max_pages parameter limits scraping."""
-        scraper = CatalogScraper(temp_db, mock_session)
+        session, _ = stub_session(lambda url: sample_html)
+        scraper = CatalogScraper(temp_db, session)
 
         stats = scraper.scrape_full_catalog(max_pages=3, rate_limit_seconds=0)
 
@@ -396,36 +401,27 @@ def _stub_scraper_pages(
 class TestErrorHandling:
     """Test error handling and resilience."""
 
-    def test_failed_page_continues_scraping(self, temp_db, sample_html):
+    def test_failed_page_continues_scraping(self, temp_db, sample_html, stub_session):
         """Test that failing one page doesn't stop the scrape."""
-        session = Mock()
+        import requests
 
-        call_count = 0
+        def handler(url):
+            # Pages 1-19 succeed, only page 20 fails (5% failure - below 10% threshold)
+            if url.endswith("?page=20"):
+                raise requests.ConnectionError("Network error on page 20")
+            return sample_html
 
-        def side_effect(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
-
-            # First 19 calls succeed, only last fails (5% failure - below 10% threshold)
-            if call_count <= 19:  # Pages 1-19 succeed
-                response = Mock()
-                response.text = sample_html
-                response.status_code = 200
-                response.raise_for_status = Mock()
-                return response
-            else:
-                raise Exception("Network error on page 20")
-
-        session.get = Mock(side_effect=side_effect)
+        session, _ = stub_session(handler)
 
         scraper = CatalogScraper(temp_db, session)
 
         # This should not crash even if one page fails (19 succeed, 1 fails = 5% failure)
-        stats = scraper.scrape_full_catalog(max_pages=20, rate_limit_seconds=0)
+        with patch("cis_bench.fetcher.http.time"):
+            stats = scraper.scrape_full_catalog(max_pages=20, rate_limit_seconds=0)
 
         # Should have completed scrape attempt
         assert "total_benchmarks" in stats
-        assert "failed_pages" in stats
+        assert stats["failed_pages"] == [20]
         # At least page 1 should have succeeded
         assert stats["total_benchmarks"] > 0
 
@@ -636,7 +632,7 @@ class TestErrorHandling:
         monkeypatch.setattr(WorkBenchCatalogParser, "parse_catalog_page", staticmethod(raise_auth))
 
         with pytest.raises(AuthenticationError, match="Not authenticated"):
-            scraper._fetch_and_parse_page(2, max_retries=3)
+            scraper._fetch_and_parse_page(2)
 
         assert fetch_calls == [2]
         assert sleep_calls == []

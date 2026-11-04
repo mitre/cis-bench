@@ -4,12 +4,9 @@ This scraper uses the Strategy pattern to adapt to HTML changes.
 It produces validated Pydantic Benchmark models.
 """
 
-import copy
 import logging
 import re
 import threading
-import time
-from collections import OrderedDict
 from collections.abc import Callable
 from datetime import datetime
 from typing import Any
@@ -18,11 +15,11 @@ import requests
 import urllib3
 from bs4 import BeautifulSoup, Tag
 from pydantic import HttpUrl
-from requests.structures import CaseInsensitiveDict
 
 from cis_bench.config import Config
-from cis_bench.exceptions import AuthenticationError, FetchError
+from cis_bench.exceptions import AuthenticationError
 from cis_bench.fetcher.auth import is_workbench_login_page
+from cis_bench.fetcher.http import ThreadSessions, get_with_retry
 from cis_bench.fetcher.strategies.base import ScraperStrategy
 from cis_bench.fetcher.strategies.detector import StrategyDetector
 from cis_bench.models.benchmark import Benchmark, Recommendation
@@ -32,33 +29,6 @@ from cis_bench.utils.parallel import parallel_execute_batched
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 logger = logging.getLogger(__name__)
-
-
-def _session_for_worker(base: requests.Session) -> requests.Session:
-    """Return a Session that carries base's login and settings but owns its cookie jar.
-
-    requests does not make Session safe to share between threads, and WorkBench rotates its
-    session cookies on every response, so each worker thread works on its own copy. The copy
-    reuses base's mounted adapters: urllib3 connection pools are thread-safe, so workers share
-    one pool of keep-alive connections. Because the adapters are shared, a worker copy must
-    never be closed; closing it would close base's connections.
-    """
-    worker = requests.Session()
-    for adapter in worker.adapters.values():
-        adapter.close()  # the fresh default adapters are replaced by base's below
-    worker.adapters = OrderedDict(base.adapters)
-    worker.cookies = base.cookies.copy()
-    worker.headers = CaseInsensitiveDict(base.headers)
-    worker.auth = base.auth
-    worker.proxies = dict(base.proxies)
-    worker.hooks = {event: list(hooks) for event, hooks in base.hooks.items()}
-    worker.params = copy.copy(base.params)
-    worker.stream = base.stream
-    worker.verify = base.verify
-    worker.cert = base.cert
-    worker.max_redirects = base.max_redirects
-    worker.trust_env = base.trust_env
-    return worker
 
 
 class WorkbenchScraper:
@@ -83,19 +53,8 @@ class WorkbenchScraper:
         self.strategy = strategy
         self._detected_strategy: ScraperStrategy | None = None
         self._strategy_lock = threading.Lock()
-        self._owner_thread = threading.current_thread()
-        self._worker_sessions = threading.local()
+        self._sessions = ThreadSessions(session)
         self.timeout = Config.get_request_timeout()
-
-    def _current_session(self) -> requests.Session:
-        """The session this thread should send requests with."""
-        if threading.current_thread() is self._owner_thread:
-            return self.session
-        worker: requests.Session | None = getattr(self._worker_sessions, "session", None)
-        if worker is None:
-            worker = _session_for_worker(self.session)
-            self._worker_sessions.session = worker
-        return worker
 
     def _get_strategy(self, html: str) -> ScraperStrategy:
         """Get strategy to use (override or auto-detect).
@@ -119,46 +78,14 @@ class WorkbenchScraper:
 
         return detected
 
-    # Pause before each retry, in seconds; one more attempt than there are pauses.
-    _RETRY_BACKOFF_SECONDS = (1, 2)
-    _MAX_ATTEMPTS = len(_RETRY_BACKOFF_SECONDS) + 1
-    # Server-side conditions worth retrying; everything else is final.
-    _RETRYABLE_STATUS_CODES = frozenset({502, 503, 504})
-
     def _request(self, url: str) -> requests.Response:
-        """GET url with the configured timeout and a bounded retry.
-
-        Timeouts, connection errors and 502/503/504 responses are retried with
-        backoff; any other HTTP error is raised at once. When the last attempt
-        still fails, FetchError names the url so the caller can skip or report
-        the item instead of hanging on it.
+        """GET url on this thread's session with the shared timeout and retry policy.
 
         Raises:
             FetchError: After the final failed attempt.
             requests.HTTPError: For a non-retryable HTTP status.
         """
-        for attempt in range(1, self._MAX_ATTEMPTS + 1):
-            try:
-                response = self._current_session().get(url, timeout=self.timeout)
-                response.raise_for_status()
-                return response
-            except requests.HTTPError as e:
-                status = e.response.status_code if e.response is not None else None
-                if status not in self._RETRYABLE_STATUS_CODES:
-                    raise
-                failure: requests.RequestException = e
-            except (requests.Timeout, requests.ConnectionError) as e:
-                failure = e
-
-            if attempt == self._MAX_ATTEMPTS:
-                raise FetchError(url, attempt, str(failure)) from failure
-            wait = self._RETRY_BACKOFF_SECONDS[attempt - 1]
-            logger.warning(
-                f"Request failed (attempt {attempt}/{self._MAX_ATTEMPTS}), "
-                f"retrying in {wait}s: {url}: {failure}"
-            )
-            time.sleep(wait)
-        raise AssertionError("unreachable: every attempt returns or raises")
+        return get_with_retry(self._sessions.current(), url, timeout=self.timeout)
 
     def fetch_html(self, url: str) -> str:
         """Fetch HTML from URL.
