@@ -300,6 +300,67 @@ class TestParallelExecuteBatched:
             parallel_execute_batched([1, 2], lambda x: x, batch_delay=-0.1)
 
 
+class _StopRun(Exception):
+    """A failure after which no further batch should start."""
+
+
+class TestParallelExecuteBatchedStopOn:
+    """parallel_execute_batched(stop_on=...) ends the run after a batch with a fatal failure."""
+
+    def test_a_stop_on_failure_starts_no_further_batch(self):
+        started = []
+        lock = threading.Lock()
+
+        def work(x):
+            with lock:
+                started.append(x)
+            if x == 3:
+                raise _StopRun("session expired")
+            return x
+
+        with patch("cis_bench.utils.parallel.time") as clock:
+            result = parallel_execute_batched(
+                list(range(25)), work, batch_size=10, max_workers=5, stop_on=(_StopRun,)
+            )
+
+        assert sorted(started) == list(range(10))  # only the first batch ran
+        assert result.results == [0, 1, 2, 4, 5, 6, 7, 8, 9]
+        assert [item for item, _ in result.failed] == [3]
+        assert isinstance(result.failed[0][1], _StopRun)
+        assert result.total == 25
+        clock.sleep.assert_not_called()  # no pause before a batch that will never run
+
+    def test_an_ordinary_failure_does_not_stop_the_run(self):
+        def work(x):
+            if x == 3:
+                raise ValueError("one bad item")
+            return x
+
+        with patch("cis_bench.utils.parallel.time"):
+            result = parallel_execute_batched(
+                list(range(25)), work, batch_size=10, max_workers=5, stop_on=(_StopRun,)
+            )
+
+        assert len(result.results) == 24
+        assert [item for item, _ in result.failed] == [3]
+
+    def test_a_subclass_of_a_stop_on_type_also_stops_the_run(self):
+        class _SessionExpired(_StopRun):
+            pass
+
+        def work(x):
+            if x == 0:
+                raise _SessionExpired("login page")
+            return x
+
+        with patch("cis_bench.utils.parallel.time"):
+            result = parallel_execute_batched(
+                list(range(25)), work, batch_size=10, max_workers=5, stop_on=(_StopRun,)
+            )
+
+        assert len(result.results) + len(result.failed) == 10
+
+
 class TestParallelResult:
     """Tests for ParallelResult dataclass."""
 

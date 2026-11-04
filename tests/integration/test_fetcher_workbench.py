@@ -14,7 +14,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 import requests
-from requests.adapters import HTTPAdapter
+from requests.adapters import BaseAdapter, HTTPAdapter
 
 from cis_bench.fetcher.strategies.base import ScraperStrategy
 from cis_bench.fetcher.workbench import WorkbenchScraper, _session_for_worker
@@ -825,6 +825,75 @@ class TestWorkbenchScraperStrategyIntegration:
 # ============ Test Full Benchmark Download ============
 
 
+class _StubTransport(BaseAdapter):
+    """Transport adapter that answers from handler(url) instead of the network.
+
+    handler returns page text, a dict (sent as JSON), or raises (for example requests.Timeout).
+    Mounted on a real Session, it is shared by the per-thread session copies, so it sees every
+    request whichever thread sends it. Records the urls requested and the peak number of
+    requests in flight at once.
+    """
+
+    def __init__(self, handler):
+        super().__init__()
+        self.handler = handler
+        self.urls: list[str] = []
+        self.in_flight = 0
+        self.peak_in_flight = 0
+        self._lock = threading.Lock()
+
+    def send(self, request, **kwargs):
+        with self._lock:
+            self.urls.append(request.url)
+            self.in_flight += 1
+            self.peak_in_flight = max(self.peak_in_flight, self.in_flight)
+        try:
+            body = self.handler(request.url)
+        finally:
+            with self._lock:
+                self.in_flight -= 1
+        response = requests.Response()
+        response.status_code = 200
+        response.url = request.url
+        response.request = request
+        if isinstance(body, dict):
+            response._content = json.dumps(body).encode()
+            response.headers["Content-Type"] = "application/json"
+        else:
+            response._content = body.encode()
+            response.headers["Content-Type"] = "text/html; charset=utf-8"
+        response.encoding = "utf-8"
+        return response
+
+    def close(self):
+        pass
+
+
+def _stub_session(handler):
+    session = requests.Session()
+    transport = _StubTransport(handler)
+    session.mount("https://", transport)
+    return session, transport
+
+
+def _navtree_with(count):
+    """A flat navtree with count recommendations, refs 1.1 .. 1.<count>."""
+    return {
+        "navtree": [
+            {
+                "id": 1,
+                "title": "Section 1",
+                "view_level": "1",
+                "subsections_for_nav_tree": None,
+                "recommendations_for_nav_tree": [
+                    {"id": 1000 + n, "section_id": 1, "title": f"Rec {n}", "view_level": f"1.{n}"}
+                    for n in range(1, count + 1)
+                ],
+            }
+        ]
+    }
+
+
 class TestWorkbenchScraperFullDownload:
     """Test complete benchmark download workflow."""
 
@@ -832,39 +901,29 @@ class TestWorkbenchScraperFullDownload:
     def test_download_benchmark_success(
         self,
         mock_detector,
-        mock_session,
         mock_strategy,
         sample_benchmark_title_html,
         sample_benchmark_navtree,
         sample_recommendation_html,
     ):
         """Test successful full benchmark download."""
-        # Setup detector
         mock_detector.return_value = mock_strategy
 
-        # Setup HTTP responses
-        def mock_get(url, **kwargs):
-            response = Mock()
-            response.raise_for_status = Mock()
-
+        def handler(url):
             if "navtree" in url:
-                response.json.return_value = sample_benchmark_navtree
-            elif "/benchmarks/" in url:
-                response.text = sample_benchmark_title_html
-            else:
-                # Recommendation pages
-                response.text = sample_recommendation_html
+                return sample_benchmark_navtree
+            if "/benchmarks/" in url:
+                return sample_benchmark_title_html
+            return sample_recommendation_html
 
-            return response
+        session, _ = _stub_session(handler)
+        scraper = WorkbenchScraper(session)
 
-        mock_session.get.side_effect = mock_get
+        with patch("cis_bench.utils.parallel.time"):
+            benchmark = scraper.download_benchmark(
+                "https://workbench.cisecurity.org/benchmarks/18528"
+            )
 
-        scraper = WorkbenchScraper(mock_session)
-
-        # Execute
-        benchmark = scraper.download_benchmark("https://workbench.cisecurity.org/benchmarks/18528")
-
-        # Verify benchmark structure
         assert isinstance(benchmark, Benchmark)
         assert benchmark.benchmark_id == "18528"
         assert benchmark.title == "CIS Amazon Elastic Kubernetes Service (EKS) Benchmark v1.8.0"
@@ -877,43 +936,31 @@ class TestWorkbenchScraperFullDownload:
     def test_download_benchmark_with_progress_callback(
         self,
         mock_detector,
-        mock_session,
         mock_strategy,
         sample_benchmark_title_html,
         sample_benchmark_navtree,
         sample_recommendation_html,
     ):
         """Test benchmark download with progress callback."""
-        # Setup
         mock_detector.return_value = mock_strategy
         progress_messages = []
 
-        def progress_callback(msg):
-            progress_messages.append(msg)
-
-        def mock_get(url, **kwargs):
-            response = Mock()
-            response.raise_for_status = Mock()
-
+        def handler(url):
             if "navtree" in url:
-                response.json.return_value = sample_benchmark_navtree
-            elif "/benchmarks/" in url:
-                response.text = sample_benchmark_title_html
-            else:
-                response.text = sample_recommendation_html
+                return sample_benchmark_navtree
+            if "/benchmarks/" in url:
+                return sample_benchmark_title_html
+            return sample_recommendation_html
 
-            return response
+        session, _ = _stub_session(handler)
+        scraper = WorkbenchScraper(session)
 
-        mock_session.get.side_effect = mock_get
+        with patch("cis_bench.utils.parallel.time"):
+            scraper.download_benchmark(
+                "https://workbench.cisecurity.org/benchmarks/18528",
+                progress_callback=progress_messages.append,
+            )
 
-        scraper = WorkbenchScraper(mock_session)
-
-        # Execute
-        benchmark = scraper.download_benchmark(
-            "https://workbench.cisecurity.org/benchmarks/18528", progress_callback=progress_callback
-        )
-
-        # Verify progress messages
         assert len(progress_messages) > 0
         assert any("Fetching benchmark" in msg for msg in progress_messages)
         assert any("Found 3 recommendations" in msg for msg in progress_messages)
@@ -923,48 +970,44 @@ class TestWorkbenchScraperFullDownload:
     def test_download_benchmark_handles_failed_recommendations(
         self,
         mock_detector,
-        mock_session,
         mock_strategy,
         sample_benchmark_title_html,
         sample_benchmark_navtree,
     ):
         """Test that benchmark download continues when individual recommendations fail."""
-        # Setup
         mock_detector.return_value = mock_strategy
 
         # Make strategy fail for some recommendations
         # Save the original mock's return_value before replacing with function
         successful_extraction = mock_strategy.extract_recommendation.return_value
         call_count = [0]
+        count_lock = threading.Lock()
 
         def mock_extract(html):
-            call_count[0] += 1
-            if call_count[0] == 2:
+            with count_lock:
+                call_count[0] += 1
+                this_call = call_count[0]
+            if this_call == 2:
                 # Fail the second recommendation
                 raise Exception("Extraction failed")
             return successful_extraction
 
         mock_strategy.extract_recommendation = Mock(side_effect=mock_extract)
 
-        def mock_get(url, **kwargs):
-            response = Mock()
-            response.raise_for_status = Mock()
-
+        def handler(url):
             if "navtree" in url:
-                response.json.return_value = sample_benchmark_navtree
-            elif "/benchmarks/" in url:
-                response.text = sample_benchmark_title_html
-            else:
-                response.text = "<html>recommendation</html>"
+                return sample_benchmark_navtree
+            if "/benchmarks/" in url:
+                return sample_benchmark_title_html
+            return "<html>recommendation</html>"
 
-            return response
+        session, _ = _stub_session(handler)
+        scraper = WorkbenchScraper(session)
 
-        mock_session.get.side_effect = mock_get
-
-        scraper = WorkbenchScraper(mock_session)
-
-        # Execute
-        benchmark = scraper.download_benchmark("https://workbench.cisecurity.org/benchmarks/18528")
+        with patch("cis_bench.utils.parallel.time"):
+            benchmark = scraper.download_benchmark(
+                "https://workbench.cisecurity.org/benchmarks/18528"
+            )
 
         # Verify - should have 2 recommendations (skipped the failed one)
         assert len(benchmark.recommendations) == 2
@@ -974,7 +1017,6 @@ class TestWorkbenchScraperFullDownload:
     def test_download_benchmark_skips_a_recommendation_that_keeps_timing_out(
         self,
         mock_detector,
-        mock_session,
         mock_strategy,
         sample_benchmark_title_html,
         sample_benchmark_navtree,
@@ -982,23 +1024,21 @@ class TestWorkbenchScraperFullDownload:
     ):
         """One stalled recommendation costs that recommendation, not the whole download."""
         mock_detector.return_value = mock_strategy
-        scraper = WorkbenchScraper(mock_session)
-        stalled_url = scraper.parse_navtree(sample_benchmark_navtree)[0]["url"]
+        stalled_url = WorkbenchScraper(requests.Session()).parse_navtree(sample_benchmark_navtree)[
+            0
+        ]["url"]
 
-        def mock_get(url, **kwargs):
+        def handler(url):
             if url == stalled_url:
                 raise requests.Timeout("Read timed out")
-            response = Mock()
-            response.raise_for_status = Mock()
             if "navtree" in url:
-                response.json.return_value = sample_benchmark_navtree
-            elif "/benchmarks/" in url:
-                response.text = sample_benchmark_title_html
-            else:
-                response.text = "<html>recommendation</html>"
-            return response
+                return sample_benchmark_navtree
+            if "/benchmarks/" in url:
+                return sample_benchmark_title_html
+            return "<html>recommendation</html>"
 
-        mock_session.get.side_effect = mock_get
+        session, transport = _stub_session(handler)
+        scraper = WorkbenchScraper(session)
 
         with (
             patch("time.sleep"),
@@ -1010,8 +1050,7 @@ class TestWorkbenchScraperFullDownload:
 
         assert len(benchmark.recommendations) == 2
         assert benchmark.total_recommendations == 2
-        stalled_calls = [c for c in mock_session.get.call_args_list if c.args[0] == stalled_url]
-        assert len(stalled_calls) == 3, "the stalled url is tried three times, then given up"
+        assert transport.urls.count(stalled_url) == 3, "tried three times, then given up"
         errors = [r.getMessage() for r in caplog.records if r.levelno == logging.ERROR]
         assert any(stalled_url in line and "3 attempts" in line for line in errors), errors
 
@@ -1019,42 +1058,183 @@ class TestWorkbenchScraperFullDownload:
     def test_download_benchmark_aborts_when_the_session_expires(
         self,
         mock_detector,
-        mock_session,
         mock_strategy,
         sample_benchmark_title_html,
-        sample_benchmark_navtree,
     ):
-        """A login page mid-download means every further fetch would fail; stop, do not skip."""
+        """A login page mid-download means every further fetch would fail: the download
+        raises, and no recommendation after the batch that saw the login page is requested."""
         from cis_bench.exceptions import AuthenticationError
 
         mock_detector.return_value = mock_strategy
-        scraper = WorkbenchScraper(mock_session)
-        second_url = scraper.parse_navtree(sample_benchmark_navtree)[1]["url"]
+        navtree = _navtree_with(25)
+        rec_urls = [r["url"] for r in WorkbenchScraper(requests.Session()).parse_navtree(navtree)]
+        expired_url = rec_urls[1]
         login_html = (
             '<html><body><div class="index-signin-wrapper"><form action="/login">'
             '<input name="login"><input name="password"></form></div></body></html>'
         )
 
-        def mock_get(url, **kwargs):
-            response = Mock()
-            response.raise_for_status = Mock()
+        def handler(url):
             if "navtree" in url:
-                response.json.return_value = sample_benchmark_navtree
-            elif "/benchmarks/" in url:
-                response.text = sample_benchmark_title_html
-            elif url == second_url:
-                response.text = login_html
-            else:
-                response.text = "<html>recommendation</html>"
-            return response
+                return navtree
+            if "/benchmarks/" in url:
+                return sample_benchmark_title_html
+            if url == expired_url:
+                return login_html
+            return "<html>recommendation</html>"
 
-        mock_session.get.side_effect = mock_get
+        session, transport = _stub_session(handler)
+        scraper = WorkbenchScraper(session)
 
-        with pytest.raises(AuthenticationError):
+        with patch("cis_bench.utils.parallel.time"), pytest.raises(AuthenticationError):
             scraper.download_benchmark("https://workbench.cisecurity.org/benchmarks/18528")
-        fetched = [c.args[0] for c in mock_session.get.call_args_list]
-        assert fetched.count(second_url) == 1
-        assert scraper.parse_navtree(sample_benchmark_navtree)[2]["url"] not in fetched
+
+        assert transport.urls.count(expired_url) == 1
+        later_batches = set(rec_urls[10:])
+        assert later_batches.isdisjoint(transport.urls)
+
+    @patch("cis_bench.fetcher.workbench.StrategyDetector.detect_strategy")
+    def test_download_benchmark_fetches_recommendations_concurrently_in_ref_order(
+        self, mock_detector, mock_strategy, sample_benchmark_title_html
+    ):
+        mock_detector.return_value = mock_strategy
+        navtree = _navtree_with(12)
+        rec_urls = [r["url"] for r in WorkbenchScraper(requests.Session()).parse_navtree(navtree)]
+
+        def handler(url):
+            if "navtree" in url:
+                return navtree
+            if "/benchmarks/" in url:
+                return sample_benchmark_title_html
+            # Earlier recommendations answer more slowly, so completion order differs.
+            time.sleep(0.01 * (len(rec_urls) - rec_urls.index(url)))
+            return "<html>recommendation</html>"
+
+        session, transport = _stub_session(handler)
+        scraper = WorkbenchScraper(session)
+
+        with patch("cis_bench.utils.parallel.time") as clock:
+            benchmark = scraper.download_benchmark(
+                "https://workbench.cisecurity.org/benchmarks/18528"
+            )
+
+        assert [r.ref for r in benchmark.recommendations] == [f"1.{n}" for n in range(1, 13)]
+        assert benchmark.total_recommendations == 12
+        assert 2 <= transport.peak_in_flight <= 5
+        # Utility pacing: batches of ten, a two second pause between them.
+        assert clock.sleep.call_args_list == [((2.0,),)]
+
+    @patch("cis_bench.fetcher.workbench.StrategyDetector.detect_strategy")
+    def test_progress_reports_each_recommendation_after_it_is_fetched(
+        self, mock_detector, mock_strategy, sample_benchmark_title_html
+    ):
+        mock_detector.return_value = mock_strategy
+        navtree = _navtree_with(12)
+        finished = [0]
+        finished_lock = threading.Lock()
+
+        def handler(url):
+            if "navtree" in url:
+                return navtree
+            if "/benchmarks/" in url:
+                return sample_benchmark_title_html
+            time.sleep(0.005)
+            with finished_lock:
+                finished[0] += 1
+            return "<html>recommendation</html>"
+
+        session, _ = _stub_session(handler)
+        scraper = WorkbenchScraper(session)
+        messages = []
+
+        def on_progress(msg):
+            with finished_lock:
+                messages.append((msg, finished[0]))
+
+        with patch("cis_bench.utils.parallel.time"):
+            scraper.download_benchmark(
+                "https://workbench.cisecurity.org/benchmarks/18528", progress_callback=on_progress
+            )
+
+        texts = [msg for msg, _ in messages]
+        assert any(t.startswith("Benchmark title: ") for t in texts)
+        assert "Found 12 recommendations" in texts
+        counted = [(msg, done) for msg, done in messages if msg.startswith("[")]
+        assert [msg.split("]")[0] for msg, _ in counted] == [f"[{n}/12" for n in range(1, 13)]
+        for n, (msg, done) in enumerate(counted, start=1):
+            assert done >= n, f"{msg!r} was reported before {n} fetches had finished"
+            assert " Fetching 1." in msg
+
+    @patch("cis_bench.fetcher.workbench.StrategyDetector.detect_strategy")
+    def test_a_failed_recommendation_is_logged_once_with_its_url_and_error(
+        self, mock_detector, mock_strategy, sample_benchmark_title_html, caplog
+    ):
+        mock_detector.return_value = mock_strategy
+        navtree = _navtree_with(12)
+        rec_urls = [r["url"] for r in WorkbenchScraper(requests.Session()).parse_navtree(navtree)]
+        broken_url = rec_urls[4]
+
+        def handler(url):
+            if "navtree" in url:
+                return navtree
+            if "/benchmarks/" in url:
+                return sample_benchmark_title_html
+            if url == broken_url:
+                raise requests.ConnectionError("connection reset")
+            return "<html>recommendation</html>"
+
+        session, _ = _stub_session(handler)
+        scraper = WorkbenchScraper(session)
+
+        with (
+            patch("time.sleep"),
+            caplog.at_level(logging.ERROR, logger="cis_bench.fetcher.workbench"),
+        ):
+            benchmark = scraper.download_benchmark(
+                "https://workbench.cisecurity.org/benchmarks/18528"
+            )
+
+        assert [r.ref for r in benchmark.recommendations] == [
+            f"1.{n}" for n in range(1, 13) if n != 5
+        ]
+        errors = [r.getMessage() for r in caplog.records if r.levelno == logging.ERROR]
+        about_broken = [line for line in errors if broken_url in line]
+        assert len(about_broken) == 1, errors
+        assert "connection reset" in about_broken[0]
+
+    @patch("cis_bench.fetcher.workbench.StrategyDetector.detect_strategy")
+    def test_the_cli_progress_bar_counts_every_fetched_recommendation(
+        self, mock_detector, mock_strategy, sample_benchmark_title_html
+    ):
+        from cis_bench.cli.helpers.download_helper import download_with_progress
+
+        mock_detector.return_value = mock_strategy
+        navtree = _navtree_with(12)
+
+        def handler(url):
+            if "navtree" in url:
+                return navtree
+            if "/benchmarks/" in url:
+                return sample_benchmark_title_html
+            return "<html>recommendation</html>"
+
+        session, _ = _stub_session(handler)
+        scraper = WorkbenchScraper(session)
+
+        with (
+            patch("cis_bench.utils.parallel.time"),
+            patch("cis_bench.cli.helpers.download_helper.Progress") as progress_class,
+        ):
+            benchmark = download_with_progress(
+                scraper, "https://workbench.cisecurity.org/benchmarks/18528"
+            )
+
+        bar = progress_class.return_value
+        assert bar.add_task.call_args.kwargs["total"] == 12
+        completed = [c.kwargs["completed"] for c in bar.update.call_args_list]
+        assert completed == list(range(1, 13))
+        bar.stop.assert_called_once()
+        assert benchmark.total_recommendations == 12
 
     def test_download_benchmark_version_extraction(self, mock_session):
         """Test version extraction from benchmark title."""

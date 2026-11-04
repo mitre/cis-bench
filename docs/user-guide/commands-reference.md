@@ -318,10 +318,17 @@ cis-bench download --file urls.txt
 **What it does:**
 1. Checks if already cached (shows message if yes, unless --force)
 2. Uses saved session from `cis-bench auth login`
-3. Downloads benchmark from WorkBench with progress bar
+3. Downloads benchmark from WorkBench with progress bar (see "How recommendations are fetched" below)
 4. Saves to database cache
 5. Saves to file in output directory
 6. Exports to requested formats
+
+**How recommendations are fetched:**
+
+- Recommendation pages are fetched five at a time, in batches of ten, with a two-second pause between batches. This is the same pacing `cis-bench catalog refresh` uses.
+- The progress bar counts finished pages, so it can advance out of navtree order; the saved benchmark keeps navtree order.
+- Each request has a timeout and up to three attempts (see [`CIS_BENCH_REQUEST_TIMEOUT`](configuration.md#cis_bench_request_timeout)). A page that still fails is logged with its URL and the error, and the download continues without it.
+- If WorkBench answers with its login page, the saved session has expired: no further batch starts and the download stops with an authentication error. Run `cis-bench auth login` again.
 
 **Requirements:**
 

@@ -26,6 +26,7 @@ from cis_bench.fetcher.auth import is_workbench_login_page
 from cis_bench.fetcher.strategies.base import ScraperStrategy
 from cis_bench.fetcher.strategies.detector import StrategyDetector
 from cis_bench.models.benchmark import Benchmark, Recommendation
+from cis_bench.utils.parallel import parallel_execute_batched
 
 # Suppress SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -351,34 +352,37 @@ class WorkbenchScraper:
         recommendations_list = self.parse_navtree(navtree)
         log(f"Found {len(recommendations_list)} recommendations", level="debug")
 
-        # Fetch each recommendation
-        recommendations = []
-        for idx, rec_meta in enumerate(recommendations_list, 1):
+        def build_recommendation(rec_meta: dict[str, str]) -> Recommendation:
+            rec_data = self.fetch_recommendation(rec_meta["url"])
+            # Pydantic validates the extracted fields
+            return Recommendation(
+                ref=rec_meta["ref"],
+                title=rec_meta["title"],
+                url=HttpUrl(rec_meta["url"]),
+                **rec_data,
+            )
+
+        def report_completion(completed: int, total: int, rec_meta: dict[str, str]) -> None:
             log(
-                f"[{idx}/{len(recommendations_list)}] Fetching {rec_meta['ref']}: {rec_meta['title']}",
+                f"[{completed}/{total}] Fetching {rec_meta['ref']}: {rec_meta['title']}",
                 level="debug",
             )
 
-            try:
-                rec_data = self.fetch_recommendation(rec_meta["url"])
-
-                # Create Recommendation (Pydantic validates automatically)
-                recommendation = Recommendation(
-                    ref=rec_meta["ref"],
-                    title=rec_meta["title"],
-                    url=HttpUrl(rec_meta["url"]),
-                    **rec_data,  # Spread extracted fields
-                )
-
-                recommendations.append(recommendation)
-
-            except AuthenticationError:
-                # Every further fetch would get the login page too; stop here.
-                raise
-            except Exception as e:
-                logger.error(f"Failed to fetch {rec_meta['url']}: {e}")
-                # Continue with other recommendations
-                continue
+        # Fetch recommendations concurrently with the shared pacing; results come back in
+        # navtree order. An expired session stops the run after the batch that saw it.
+        fetched = parallel_execute_batched(
+            recommendations_list,
+            build_recommendation,
+            progress_callback=report_completion,
+            stop_on=(AuthenticationError,),
+        )
+        for _, error in fetched.failed:
+            if isinstance(error, AuthenticationError):
+                # Every further fetch would get the login page too.
+                raise error
+        for rec_meta, error in fetched.failed:
+            logger.error(f"Failed to fetch {rec_meta['url']}: {error}")
+        recommendations = fetched.results
 
         # Create Benchmark (Pydantic validates automatically)
         benchmark = Benchmark(

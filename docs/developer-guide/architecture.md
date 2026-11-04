@@ -112,8 +112,11 @@ J --> L[Recommendation]
 
 - `WorkbenchScraper` - Main scraper class
 - `AuthManager` - Cookie extraction
+- `utils/parallel.py` - `parallel_execute_batched` runs the recommendation fetches: five workers, batches of ten, two seconds between batches, results returned in input (navtree) order, and `stop_on` to end the run after a batch that hit an expired session
 - `Strategy Pattern` - Adapts to HTML changes
 - `HTMLParser` - Extract data from HTML
+
+**Concurrent fetch:** `download_benchmark` fetches recommendation pages from worker threads. `requests.Session` is not documented as thread-safe, and WorkBench re-issues its `XSRF-TOKEN` and `workbench_session` cookies on every response, so the thread that created the scraper keeps the session it was given and every other thread gets its own copy (same cookies, headers, auth and TLS settings; shared mounted adapters, so one urllib3 connection pool). Strategy detection is locked so it runs once. Progress messages (`[n/N] Fetching ...`) are sent from the calling thread as each page finishes.
 
 **Output:** Validated Pydantic models (19 fields per recommendation)
 
@@ -457,6 +460,7 @@ src/cis_bench/
 │ ├── xml_utils.py # XCCDF processing
 │ ├── html_parser.py # HTML cleaning
 │ ├── logging_config.py # Logging setup
+│ ├── parallel.py # Paced thread-pool execution
 │ └── ...
 ├── validators/ # XCCDF validators
 └── config.py # Environment config

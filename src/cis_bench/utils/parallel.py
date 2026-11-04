@@ -27,8 +27,8 @@ class ParallelResult[T, R]:
 
     ``results`` holds the return values of the calls that succeeded, in input order.
     ``failed`` holds ``(item, exception)`` pairs for the calls that raised, in input order.
-    ``total`` is the number of items submitted; with ``fail_fast`` it may exceed
-    ``len(results) + len(failed)`` because the remaining items were cancelled.
+    ``total`` is the number of items given; with ``fail_fast`` or ``stop_on`` it may exceed
+    ``len(results) + len(failed)`` because the remaining items never ran.
     """
 
     results: list[R]
@@ -99,12 +99,18 @@ def parallel_execute_batched[T, R](
     max_workers: int = DEFAULT_MAX_WORKERS,
     batch_delay: float = DEFAULT_BATCH_DELAY_SECONDS,
     progress_callback: ProgressCallback[T] | None = None,
+    stop_on: tuple[type[Exception], ...] = (),
 ) -> ParallelResult[T, R]:
     """Run ``parallel_execute`` over consecutive slices of ``items``.
 
     Items within a batch run concurrently; the run pauses ``batch_delay`` seconds between
     batches and never after the last one. The defaults match the catalog refresh pacing.
     ``progress_callback`` counts across the whole run, not per batch.
+
+    When a batch records a failure that is an instance of one of the ``stop_on`` types, the
+    rest of that batch still finishes but no further batch starts; the failure is returned
+    in ``failed`` like any other, and the caller decides what it means. Use it for failures
+    after which every remaining item would fail too, such as an expired login.
     """
     _require_at_least_one("batch_size", batch_size)
     _require_at_least_one("max_workers", max_workers)
@@ -134,6 +140,8 @@ def parallel_execute_batched[T, R](
         all_results.extend(batch_result.results)
         all_failed.extend(batch_result.failed)
 
+        if stop_on and any(isinstance(error, stop_on) for _, error in batch_result.failed):
+            break
         if batch_delay > 0 and batch_start + batch_size < total:
             time.sleep(batch_delay)
 
