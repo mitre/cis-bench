@@ -290,12 +290,14 @@ class TestWorkbenchScraperBasicOperations:
 
         with (
             patch("time.sleep"),
-            caplog.at_level(logging.WARNING, logger="cis_bench.fetcher.workbench"),
+            caplog.at_level(logging.WARNING, logger="cis_bench.fetcher.http"),
         ):
             with pytest.raises(FetchError):
                 scraper.fetch_html("https://workbench.cisecurity.org/slow")
 
-        retry_lines = [r.getMessage() for r in caplog.records if "retrying" in r.getMessage()]
+        retry_records = [r for r in caplog.records if "retrying" in r.getMessage()]
+        assert {r.name for r in retry_records} == {"cis_bench.fetcher.http"}
+        retry_lines = [r.getMessage() for r in retry_records]
         assert len(retry_lines) == 2
         assert "attempt 1/3" in retry_lines[0] and "retrying in 1s" in retry_lines[0]
         assert "attempt 2/3" in retry_lines[1] and "retrying in 2s" in retry_lines[1]
