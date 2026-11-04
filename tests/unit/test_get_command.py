@@ -327,3 +327,67 @@ class TestGetCommandNoResults:
 
                     assert result.exit_code == 1
                     assert "No results found" in result.output
+
+
+class TestGetRequestTimeoutSetting:
+    """A bad CIS_BENCH_REQUEST_TIMEOUT is refused before get authenticates to download."""
+
+    def _one_match(self, mock_search_class, mock_db_class, cached):
+        mock_search_class.return_value.search.return_value = [
+            {
+                "benchmark_id": "23456",
+                "title": "CIS Ubuntu Linux 22.04 Benchmark",
+                "version": "v2.0.0",
+                "status": "Published",
+            }
+        ]
+        mock_db_class.return_value.get_downloaded.return_value = cached
+
+    def test_get_rejects_a_bad_timeout_before_authenticating(self, runner, tmp_path, monkeypatch):
+        monkeypatch.setenv("CIS_BENCH_REQUEST_TIMEOUT", "inf")
+        catalog_path = tmp_path / "catalog.db"
+        catalog_path.touch()
+        with (
+            patch(
+                "cis_bench.cli.commands.get.Config.get_catalog_db_path", return_value=catalog_path
+            ),
+            patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class,
+            patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class,
+            patch("cis_bench.cli.commands.get.AuthManager") as mock_auth,
+        ):
+            self._one_match(mock_search_class, mock_db_class, cached=None)
+            result = runner.invoke(cli, ["get", "ubuntu 22", "--non-interactive"])
+
+        assert result.exit_code == 1
+        assert "Configuration Error" in result.output
+        assert "CIS_BENCH_REQUEST_TIMEOUT" in result.output
+        mock_auth.get_or_create_session.assert_not_called()
+
+    def test_get_serving_a_cached_benchmark_needs_no_timeout(
+        self, runner, sample_benchmark, tmp_path, monkeypatch
+    ):
+        monkeypatch.setenv("CIS_BENCH_REQUEST_TIMEOUT", "inf")
+        catalog_path = tmp_path / "catalog.db"
+        catalog_path.touch()
+        cached = {
+            "benchmark_id": "23456",
+            "content_json": sample_benchmark.model_dump_json(),
+            "downloaded_at": datetime.now(),
+        }
+        with runner.isolated_filesystem():
+            with (
+                patch(
+                    "cis_bench.cli.commands.get.Config.get_catalog_db_path",
+                    return_value=catalog_path,
+                ),
+                patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class,
+                patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class,
+                patch("cis_bench.cli.commands.get.AuthManager") as mock_auth,
+            ):
+                self._one_match(mock_search_class, mock_db_class, cached=cached)
+                result = runner.invoke(
+                    cli, ["get", "ubuntu 22", "--format", "json", "--non-interactive"]
+                )
+
+        assert result.exit_code == 0, result.output
+        mock_auth.get_or_create_session.assert_not_called()

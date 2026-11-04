@@ -1512,7 +1512,13 @@ class TestCatalogRequestTimeoutSetting:
     """A bad CIS_BENCH_REQUEST_TIMEOUT is refused before the catalog commands authenticate."""
 
     @pytest.mark.parametrize(
-        "args", [["catalog", "refresh"], ["catalog", "update"], ["catalog", "check-updates"]]
+        "args",
+        [
+            ["catalog", "refresh"],
+            ["catalog", "update"],
+            ["catalog", "check-updates"],
+            ["catalog", "download", "23598"],
+        ],
     )
     def test_network_catalog_commands_reject_a_bad_timeout_before_auth(
         self, runner, mock_db, monkeypatch, args
@@ -1542,3 +1548,23 @@ class TestCatalogRequestTimeoutSetting:
         assert result.exit_code == 0, result.output
         assert "up-to-date" in result.output
         mock_auth.assert_not_called()
+
+    def test_catalog_download_reports_a_configuration_error_with_its_heading(
+        self, runner, mock_db, monkeypatch
+    ):
+        from cis_bench.exceptions import ConfigurationError
+
+        monkeypatch.delenv("CIS_BENCH_REQUEST_TIMEOUT", raising=False)
+        with (
+            patch("cis_bench.cli.commands.catalog.require_catalog_db", return_value=mock_db),
+            patch.object(
+                AuthManager,
+                "get_or_create_session",
+                side_effect=ConfigurationError("CIS_BENCH_WORKBENCH_URL must use https"),
+            ),
+        ):
+            result = runner.invoke(cli, ["catalog", "download", "23598"])
+
+        assert result.exit_code != 0
+        assert "Configuration Error" in result.output
+        assert "CIS_BENCH_WORKBENCH_URL must use https" in result.output

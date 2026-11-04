@@ -486,6 +486,7 @@ def download(benchmark_id_or_name, browser, force, interactive):
         cis-bench catalog download 23598
         cis-bench catalog download "ubuntu 20.04" --interactive
     """
+    _validate_request_timeout()
     try:
         db = require_catalog_db()
 
@@ -534,6 +535,11 @@ def download(benchmark_id_or_name, browser, force, interactive):
         console.print("[red]✗ Authentication required[/red]")
         console.print(f"[yellow]{escape(str(e))}[/yellow]")
         console.print("[yellow]Please run: cis-bench auth login --browser chrome[/yellow]")
+        raise click.Abort() from e
+    except ConfigurationError as e:
+        console.print(
+            f"\n[bold red]Configuration Error[/bold red]\n[yellow]{escape(str(e))}[/yellow]"
+        )
         raise click.Abort() from e
     except ValueError as e:
         console.print(f"[red]✗ {escape(str(e))}[/red]")

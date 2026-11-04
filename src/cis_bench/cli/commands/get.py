@@ -216,6 +216,9 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
         try:
             # The catalog row's ID becomes a canonical WorkBench URL on the configured origin
             _, benchmark_url = resolve_benchmark_reference(str(benchmark_id))
+            # A bad request timeout is a configuration error too; surface it here,
+            # before authenticating, rather than when the scraper is built.
+            Config.get_request_timeout()
         except ConfigurationError as e:
             console.print(
                 f"\n[bold red]Configuration Error[/bold red]\n[yellow]{escape(str(e))}[/yellow]"
