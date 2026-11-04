@@ -475,6 +475,46 @@ cis-bench info benchmark.json --output-format yaml
 
 ---
 
+### `cis-bench remove`
+
+Remove downloaded benchmarks from the local cache.
+
+**Syntax:**
+```bash
+cis-bench remove <REFERENCE> [REFERENCE...] [OPTIONS]
+```
+
+**Arguments:**
+
+- `REFERENCE` - One or more benchmark IDs or URLs, in the same forms `cis-bench download` accepts
+
+**Options:**
+
+- `-y, --yes` - Remove without asking for confirmation
+
+**Examples:**
+```bash
+# Remove one cached benchmark (lists it and asks first)
+cis-bench remove 23598
+
+# Remove several without a prompt (scripts)
+cis-bench remove 23598 22605 --yes
+```
+
+**What it does:**
+
+1. Validates every reference first; one bad reference removes nothing
+2. Lists each cached benchmark it will remove (ID, title, version, download date) and asks for confirmation unless `--yes`
+3. Deletes the cached copy that `download`, `get` and `export <ID>` use
+4. Keeps the benchmark in the catalog, so `cis-bench search` still finds it and it can be downloaded again
+5. Leaves exported files such as `./benchmarks/*.json` untouched
+
+**Exit code:** `0` when every requested benchmark was removed; `1` when a reference is invalid, a benchmark was not downloaded, or you declined the prompt.
+
+To replace a bad copy instead of removing it, run `cis-bench download <ID> --force`. `remove` makes no network request and needs no login.
+
+---
+
 ## Catalog Management
 
 ### `cis-bench catalog refresh`
@@ -750,8 +790,8 @@ cis-bench list --output-format csv > inventory.csv
 
 **Downloaded Benchmarks:**
 
-- Stored in: `~/.cis-bench/catalog.db` (downloaded_benchmarks table)
-- Also saved as: `./benchmarks/*.json` files
+- Stored in: `~/.cis-bench/catalog.db` (downloaded_benchmarks table). This cached copy is what `download` checks, `get` and `export <ID>` read, and `catalog stats` counts; `cis-bench remove <ID>` deletes it and `cis-bench download <ID> --force` replaces it.
+- Also saved as: `./benchmarks/*.json` files. These are your exported copies; `cis-bench list` and `cis-bench info` read them, and `remove` does not delete them.
 
 **Development/Test:**
 

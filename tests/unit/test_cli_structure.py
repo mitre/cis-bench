@@ -238,7 +238,17 @@ class TestLazyStartup:
 
         top = cli_runner.invoke(cli, ["--help"])
         assert top.exit_code == 0, top.output
-        for name in ["auth", "catalog", "download", "export", "get", "info", "list", "search"]:
+        for name in [
+            "auth",
+            "catalog",
+            "download",
+            "export",
+            "get",
+            "info",
+            "list",
+            "remove",
+            "search",
+        ]:
             assert f"  {name}" in top.output
             res = cli_runner.invoke(cli, [name, "--help"])
             assert res.exit_code == 0, f"{name}: {res.output}"
@@ -255,6 +265,37 @@ class TestLazyStartup:
         ]:
             res = cli_runner.invoke(cli, ["catalog", sub, "--help"])
             assert res.exit_code == 0, f"catalog {sub}: {res.output}"
+
+    def test_remove_works_offline_without_loading_the_scraper_or_auth_stack(self, tmp_path):
+        scraper_stack = [
+            "browser_cookie3",
+            "requests",
+            "cis_bench.fetcher.auth",
+            "cis_bench.fetcher.workbench",
+            "cis_bench.catalog.scraper",
+            "cis_bench.catalog.downloader",
+        ]
+        result = self._run(
+            "import json, sys\n"
+            "from click.testing import CliRunner\n"
+            "from cis_bench.catalog.database import CatalogDatabase\n"
+            "from cis_bench.config import Config\n"
+            "Config.ensure_directories()\n"
+            "db = CatalogDatabase(Config.get_catalog_db_path())\n"
+            "db.initialize_schema()\n"
+            "db.insert_benchmark({'benchmark_id': '23598', 'title': 'CIS AlmaLinux OS 8 Benchmark',"
+            " 'version': 'v4.0.0', 'url': 'https://workbench.cisecurity.org/benchmarks/23598',"
+            " 'status': 'Published'})\n"
+            "db.save_downloaded('23598', '{}', 'h', 1)\n"
+            "from cis_bench.cli.app import cli\n"
+            "res = CliRunner().invoke(cli, ['remove', '23598', '--yes'])\n"
+            f"print(json.dumps({{'exit': res.exit_code, 'loaded': [m for m in {scraper_stack!r} if m in sys.modules],"
+            " 'left': db.get_downloaded('23598') is not None}))",
+            env={"CIS_BENCH_ENV": "test", "TMPDIR": str(tmp_path)},
+        )
+        assert result["exit"] == 0
+        assert result["loaded"] == []
+        assert result["left"] is False
 
     def test_database_only_catalog_command_does_not_load_scraper_stack(self, tmp_path):
         scraper_stack = [

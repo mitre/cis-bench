@@ -757,6 +757,24 @@ class CatalogDatabase:
                 "workbench_last_modified": downloaded.workbench_last_modified,
             }
 
+    def delete_downloaded(self, benchmark_id: str) -> bool:
+        """Delete a benchmark's cached downloaded copy; the catalog row stays.
+
+        The catalog row, its collections and its search entry are owned by catalog refresh
+        and are kept, so the benchmark is still found by search and can be downloaded again.
+
+        Returns:
+            True if a cached copy was deleted, False if the benchmark was not downloaded
+        """
+        with Session(self.engine) as session:
+            downloaded = session.get(DownloadedBenchmark, benchmark_id)
+            if downloaded is None:
+                return False
+            session.delete(downloaded)
+            session.commit()
+        logger.debug(f"Deleted downloaded benchmark: {benchmark_id}")
+        return True
+
     def list_downloaded_benchmark_ids(self) -> list[str]:
         """IDs of every benchmark whose content has been downloaded."""
         with Session(self.engine) as session:

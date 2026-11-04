@@ -844,6 +844,47 @@ class TestDownloadedBenchmarks:
         downloaded = temp_db.get_downloaded("99999")
         assert downloaded is None
 
+    def test_delete_downloaded_removes_the_cached_copy_and_keeps_the_catalog_row(
+        self, temp_db, sample_benchmark_data
+    ):
+        temp_db.insert_benchmark(sample_benchmark_data)
+        temp_db.save_downloaded("23598", '{"v": 1}', "hash1", 100, version="v2.0.1")
+
+        assert temp_db.delete_downloaded("23598") is True
+
+        assert temp_db.get_downloaded("23598") is None
+        assert "23598" not in temp_db.list_downloaded_benchmark_ids()
+        catalog_row = temp_db.get_benchmark("23598")
+        assert catalog_row is not None
+        assert sorted(catalog_row["collections"]) == ["Linux", "Operating System"]
+        assert [r["benchmark_id"] for r in temp_db.search("ubuntu")] == ["23598"]
+        assert temp_db.get_catalog_stats()["downloaded_benchmarks"] == 0
+
+    def test_delete_downloaded_reports_a_benchmark_that_was_not_downloaded(
+        self, temp_db, sample_benchmark_data
+    ):
+        temp_db.insert_benchmark(sample_benchmark_data)
+
+        assert temp_db.delete_downloaded("23598") is False
+        assert temp_db.delete_downloaded("99999") is False
+        assert temp_db.get_benchmark("23598") is not None
+
+    def test_delete_downloaded_leaves_other_downloads_alone(self, temp_db, sample_benchmark_data):
+        temp_db.insert_benchmark(sample_benchmark_data)
+        temp_db.insert_benchmark(
+            {
+                **sample_benchmark_data,
+                "benchmark_id": "24000",
+                "url": "https://workbench.cisecurity.org/benchmarks/24000",
+            }
+        )
+        temp_db.save_downloaded("23598", "{}", "h1", 1)
+        temp_db.save_downloaded("24000", "{}", "h2", 2)
+
+        temp_db.delete_downloaded("23598")
+
+        assert temp_db.list_downloaded_benchmark_ids() == ["24000"]
+
     def test_save_downloaded_stores_the_downloaded_version(self, temp_db, sample_benchmark_data):
         """check-updates compares the catalog version against the version that was downloaded."""
         temp_db.insert_benchmark(sample_benchmark_data)

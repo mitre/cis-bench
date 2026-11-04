@@ -21,6 +21,7 @@ LAZY_SUBCOMMANDS = {
     "get": "cis_bench.cli.commands.get.get_cmd",
     "info": "cis_bench.cli.commands.info.info",
     "list": "cis_bench.cli.commands.list_cmd.list_benchmarks",
+    "remove": "cis_bench.cli.commands.remove.remove_cmd",
     "search": "cis_bench.cli.commands.search.search_cmd",
 }
 
