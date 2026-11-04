@@ -96,7 +96,7 @@ cis-bench auth login --browser firefox
 
 **Supported browsers:** Chrome, Firefox, Edge, Safari
 
-### 2. Build Catalog (One-Time, ~2 minutes)
+### 2. Build Catalog (One-Time, Under a Minute)
 
 Build a searchable local database of all CIS benchmarks:
 
@@ -104,7 +104,7 @@ Build a searchable local database of all CIS benchmarks:
 cis-bench catalog refresh
 ```
 
-This scrapes ~66 pages from CIS WorkBench using parallel processing and creates a searchable database with:
+This scrapes about 80 pages from CIS WorkBench using parallel processing (under a minute) and creates a searchable database with:
 
 - 1,300+ benchmarks indexed
 - Full-text search (FTS5)
@@ -340,7 +340,7 @@ Keep your catalog up to date:
 # Quick update (page 1 only - new benchmarks)
 cis-bench catalog update
 
-# Full refresh (all 66 pages - ~2 minutes)
+# Full refresh (all pages - under a minute)
 cis-bench catalog refresh
 
 # Check for updates to downloaded benchmarks

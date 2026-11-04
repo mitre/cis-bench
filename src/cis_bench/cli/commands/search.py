@@ -64,7 +64,7 @@ def search_cmd(query, platform, platform_type, status, latest, limit, output_for
 
     \b
     First time usage:
-        cis-bench catalog refresh  # Build catalog (one-time, ~2 min)
+        cis-bench catalog refresh  # Build catalog (one-time, under a minute)
         cis-bench search "ubuntu"  # Then search
     """
     logger.info(f"Search command: query={query}, platform={platform}, status={status}")
@@ -81,7 +81,7 @@ def search_cmd(query, platform, platform_type, status, latest, limit, output_for
     if not catalog_db_path.exists():
         console.print("[yellow]⚠ Local catalog not found[/yellow]\n")
         console.print("The search command needs a local catalog database.")
-        console.print("This is a one-time setup that takes about 10 minutes.\n")
+        console.print("This is a one-time setup that takes under a minute.\n")
         console.print("[cyan]To build the catalog:[/cyan]")
         console.print("  cis-bench catalog refresh --browser chrome\n")
         console.print(

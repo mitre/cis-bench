@@ -43,7 +43,7 @@ def cli(ctx, verbose, debug, quiet):
     \b
     Quick Start:
         cis-bench auth login --browser chrome    # One-time login
-        cis-bench catalog refresh                # Build catalog (~2 min)
+        cis-bench catalog refresh                # Build catalog (under a minute)
         cis-bench get "ubuntu 22" --format xccdf # Get benchmark
 
     \b

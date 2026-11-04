@@ -302,7 +302,7 @@ CatalogScraper->>Parser: parse_catalog_page()
 Parser-->>CatalogScraper: List[benchmark_data]
 CatalogScraper->>Database: insert_benchmark()
 Database->>SQLite: INSERT + FTS5 update
-Note over CatalogScraper,SQLite: Repeat for 68 pages
+Note over CatalogScraper,SQLite: Remaining pages in paced batches of 10, saved after each batch
 CatalogScraper-->>CLI: Stats
 
 User->>CLI: cis-bench catalog search "ubuntu"
@@ -439,6 +439,7 @@ src/cis_bench/
 │ └── commands/ # Command modules
 ├── fetcher/ # WorkBench scraper
 │ ├── workbench.py # Main scraper
+│ ├── http.py # Per-thread sessions, request timeout and retry
 │ ├── auth.py # Authentication
 │ └── strategies/ # HTML strategies
 ├── exporters/ # Format exporters

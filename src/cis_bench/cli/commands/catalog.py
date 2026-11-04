@@ -64,7 +64,7 @@ def catalog():
 
     \b
     Example workflow:
-        cis-bench catalog refresh              # Build catalog (one-time, ~10 min)
+        cis-bench catalog refresh              # Build catalog (one-time, under a minute)
         cis-bench catalog search "ubuntu 20"   # Find benchmarks
         cis-bench catalog download 23598       # Download by ID
     """
@@ -79,7 +79,7 @@ def catalog():
     default=DEFAULT_BATCH_DELAY_SECONDS,
     type=float,
     callback=_validate_rate_limit,
-    help="Seconds between requests",
+    help="Seconds to pause between batches of pages",
 )
 def refresh(browser, max_pages, rate_limit):
     """Refresh catalog from CIS WorkBench (scrape all pages).

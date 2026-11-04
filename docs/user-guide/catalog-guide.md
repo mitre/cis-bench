@@ -42,17 +42,17 @@ A local SQLite database with full-text search containing metadata for all CIS be
 # Login (one-time)
 cis-bench auth login --browser chrome
 
-# Build catalog (one-time, ~2 minutes)
+# Build catalog (one-time, under a minute)
 cis-bench catalog refresh
 ```
 
 **What catalog refresh does:**
 
-- Scrapes ~66 pages from CIS WorkBench
+- Scrapes about 80 pages from CIS WorkBench
 - Parallel processing (10 pages/batch, 5 threads)
 - Builds searchable database
 - Infers platform taxonomy automatically
-- Takes ~2 minutes (vs ~10 min sequential)
+- Takes under a minute
 - Stored in: `~/.cis-bench/catalog.db`
 
 ### 2. Search and Use
@@ -275,13 +275,13 @@ A benchmark is listed when the catalog carries a newer version than you download
 - Batches: 10 pages per batch
 - Threads: 5 concurrent per batch
 - Rate limit: 2 seconds between batches
-- Retry: 3 attempts with exponential backoff
+- Retry: up to 3 attempts on timeouts, dropped connections and 502/503/504 (1 s, then 2 s); a missing page is not retried
 - Failure threshold: Aborts if >10% of pages fail
 
 **Performance:**
 
-- Full 66 pages: ~2 minutes
-- Per page: ~2 seconds (with parallelism)
+- Full refresh (about 80 pages): under a minute (77 pages took 33 s on 2026-11-04)
+- Pause: 2 seconds between batches of 10 pages
 - Respectful to CIS servers
 
 **Tuning:**

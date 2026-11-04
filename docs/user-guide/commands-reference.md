@@ -735,7 +735,7 @@ pip install -e .
 # Login (one-time)
 cis-bench auth login --browser chrome
 
-# Build catalog (one-time, ~2 min)
+# Build catalog (one-time, under a minute)
 cis-bench catalog refresh
 ```
 

@@ -175,13 +175,13 @@ cis-bench --quiet export ... # WARNING level
 
 **Rate Limiting:**
 
-- Default: 2 seconds between requests
+- Default: 2 seconds between batches of 10 pages (5 fetched at a time)
 - Configurable: `--rate-limit` option
 - Respectful to CIS servers
 
 **Pages:**
 
-- Default: All pages (~68)
+- Default: All pages (about 80)
 - Limit: `--max-pages` option
 - Update: Page 1 only
 

@@ -35,7 +35,7 @@ pip install cis-bench     # Not recommended - may have PATH issues
 # 2. Login (one-time)
 cis-bench auth login --browser chrome
 
-# 3. Build catalog (one-time, ~2 minutes)
+# 3. Build catalog (one-time, under a minute)
 cis-bench catalog refresh
 
 # 4. Get a benchmark
@@ -105,7 +105,7 @@ cis-bench search oracle --output-format json | jq -r '.[].benchmark_id'
 
 ### Performance
 
-- Parallel catalog scraping (~2 min for 1,300+ benchmarks)
+- Parallel catalog refresh (under a minute for 1,500+ benchmarks) and paced parallel benchmark downloads
 - Retry logic with exponential backoff
 - Progress bars on long operations
 

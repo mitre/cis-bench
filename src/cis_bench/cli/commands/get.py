@@ -98,7 +98,7 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
         console.print("The 'get' command requires a catalog database to search.\n")
         console.print("[bold cyan]First, initialize the catalog:[/bold cyan]")
         console.print("  cis-bench catalog refresh --browser chrome")
-        console.print("\n[dim]This is a one-time setup (~10 minutes)[/dim]\n")
+        console.print("\n[dim]This is a one-time setup (under a minute)[/dim]\n")
         console.print("[cyan]After initialization, you can use:[/cyan]")
         console.print(f'  cis-bench get "{query}" --format {export_format}')
         sys.exit(1)

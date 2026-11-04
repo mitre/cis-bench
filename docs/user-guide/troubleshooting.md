@@ -167,13 +167,13 @@ cis-bench catalog update
 
 ### Slow Catalog Refresh
 
-**Normal:** Full refresh takes ~10 minutes (68 pages × 2 sec rate limit).
+**Normal:** A full refresh takes under a minute: about 80 pages, fetched five at a time in batches of ten with a 2-second pause between batches. Much longer usually means slow responses or retries; run with `-v` to see them.
 
 **Alternatives:**
 
 - Use `catalog update` for quick refresh (~30 sec)
 - Test with `--max-pages 5` first
-- Increase rate with `--rate-limit 1` (less polite to CIS)
+- Shorten the pause between batches with `--rate-limit 1` (less polite to CIS)
 
 ---
 

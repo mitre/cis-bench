@@ -910,13 +910,12 @@ SUPPORTED_STYLES = {
 
 ### Parallel Processing
 
-Only catalog scraping uses parallelism:
+Catalog refresh and benchmark download both use the paced batches in `utils/parallel.py`:
 
 - 10 pages per batch
 - 5 concurrent threads
-- ~2 minutes for 1,300+ benchmarks
-
-Individual benchmark processing is sequential (fast enough).
+- 2-second pause between batches
+- Full catalog (about 80 pages): under a minute; one benchmark's recommendation pages (for example 322): about two minutes
 
 ---
 
