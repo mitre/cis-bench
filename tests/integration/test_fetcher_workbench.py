@@ -4,16 +4,22 @@ Tests WorkbenchScraper HTTP operations, navigation tree parsing, and recommendat
 Uses real HTML samples from actual CIS WorkBench pages.
 """
 
+import itertools
 import json
 import logging
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import Mock, patch
 
 import pytest
 import requests
+from requests.adapters import HTTPAdapter
 
 from cis_bench.fetcher.strategies.base import ScraperStrategy
-from cis_bench.fetcher.workbench import WorkbenchScraper
+from cis_bench.fetcher.workbench import WorkbenchScraper, _session_for_worker
 from cis_bench.models.benchmark import Benchmark
+from cis_bench.utils.parallel import parallel_execute
 
 # ============ Fixtures: Real HTML Samples ============
 
@@ -1086,3 +1092,189 @@ class TestWorkbenchScraperFullDownload:
 
             # Verify
             assert benchmark.version == expected_version
+
+
+# ============ Test Concurrent Fetches ============
+
+
+class _RotatingCookieServer:
+    """Local HTTP server that, like WorkBench, re-issues the session cookie on every response
+    and records the cookies each request carried."""
+
+    def __init__(self, page_html: str):
+        self.page_html = page_html.encode()
+        self.cookie_headers: list[str] = []
+        self._lock = threading.Lock()
+        self._counter = itertools.count(1)
+        server = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                with server._lock:
+                    server.cookie_headers.append(self.headers.get("Cookie", ""))
+                    rotation = next(server._counter)
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html")
+                self.send_header("Set-Cookie", f"workbench_session=rotated-{rotation}; Path=/")
+                self.send_header("Set-Cookie", f"XSRF-TOKEN=xsrf-{rotation}; Path=/")
+                self.send_header("Content-Length", str(len(server.page_html)))
+                self.end_headers()
+                self.wfile.write(server.page_html)
+
+            def log_message(self, *args):
+                pass
+
+        self._httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.base_url = f"http://127.0.0.1:{self._httpd.server_port}"
+        self._thread = threading.Thread(target=self._httpd.serve_forever, daemon=True)
+
+    def __enter__(self):
+        self._thread.start()
+        return self
+
+    def __exit__(self, *exc):
+        self._httpd.shutdown()
+        self._httpd.server_close()
+
+
+class _VerifyRecordingAdapter(HTTPAdapter):
+    """Transport that records the verify setting every request was sent with."""
+
+    def __init__(self):
+        super().__init__()
+        self.verify_seen: list[object] = []
+        self._lock = threading.Lock()
+
+    def send(self, request, **kwargs):
+        with self._lock:
+            self.verify_seen.append(kwargs.get("verify"))
+        return super().send(request, **kwargs)
+
+
+@pytest.fixture
+def saved_session(tmp_path):
+    """A session as AuthManager loads it: saved cookies plus a configured verify setting."""
+    session = requests.Session()
+    session.verify = str(tmp_path / "corporate-ca.pem")
+    session.cookies.set("auth0", "saved-auth", domain="127.0.0.1", path="/")
+    session.cookies.set("workbench_session", "saved-session", domain="127.0.0.1", path="/")
+    adapter = _VerifyRecordingAdapter()
+    session.mount("http://", adapter)
+    return session, adapter
+
+
+class TestWorkbenchScraperConcurrentFetches:
+    """Recommendations fetched from several threads at once."""
+
+    THREADS = 5
+    FETCHES = 50
+
+    def _fetch_concurrently(self, scraper, server):
+        urls = [f"{server.base_url}/sections/1/recommendations/{n}" for n in range(self.FETCHES)]
+        return parallel_execute(urls, scraper.fetch_recommendation, max_workers=self.THREADS)
+
+    @patch("cis_bench.fetcher.workbench.StrategyDetector.detect_strategy")
+    def test_concurrent_recommendation_fetches_share_auth_without_races(
+        self, mock_detector, saved_session, mock_strategy, sample_recommendation_html
+    ):
+        session, adapter = saved_session
+        mock_detector.return_value = mock_strategy
+        scraper = WorkbenchScraper(session)
+
+        with _RotatingCookieServer(sample_recommendation_html) as server:
+            result = self._fetch_concurrently(scraper, server)
+
+        assert result.failed == []
+        assert len(result.results) == self.FETCHES
+        assert len(server.cookie_headers) == self.FETCHES
+        for sent in server.cookie_headers:
+            cookies = dict(part.split("=", 1) for part in sent.split("; "))
+            assert cookies.get("auth0") == "saved-auth"
+            assert cookies.get("workbench_session", "").startswith(("saved-", "rotated-"))
+        assert adapter.verify_seen == [session.verify] * self.FETCHES
+
+    @patch("cis_bench.fetcher.workbench.StrategyDetector.detect_strategy")
+    def test_worker_threads_never_write_the_callers_session(
+        self, mock_detector, saved_session, mock_strategy, sample_recommendation_html
+    ):
+        session, _ = saved_session
+        mock_detector.return_value = mock_strategy
+        scraper = WorkbenchScraper(session)
+
+        with _RotatingCookieServer(sample_recommendation_html) as server:
+            result = self._fetch_concurrently(scraper, server)
+
+        assert result.failed == []
+        # Every response rotated the session cookie, but only in the workers' own sessions.
+        assert session.cookies.get("workbench_session") == "saved-session"
+        assert session.cookies.get("XSRF-TOKEN") is None
+
+    @patch("cis_bench.fetcher.workbench.StrategyDetector.detect_strategy")
+    def test_strategy_is_detected_once_across_threads(
+        self, mock_detector, saved_session, mock_strategy, sample_recommendation_html
+    ):
+        session, _ = saved_session
+
+        def slow_detection(html):
+            time.sleep(0.05)  # widen the window in which threads could detect at the same time
+            return mock_strategy
+
+        mock_detector.side_effect = slow_detection
+        scraper = WorkbenchScraper(session)
+
+        with _RotatingCookieServer(sample_recommendation_html) as server:
+            result = self._fetch_concurrently(scraper, server)
+
+        assert result.failed == []
+        assert mock_detector.call_count == 1
+
+    def test_the_calling_thread_keeps_using_and_updating_its_own_session(
+        self, saved_session, mock_strategy, sample_recommendation_html
+    ):
+        session, adapter = saved_session
+        scraper = WorkbenchScraper(session, strategy=mock_strategy)
+
+        with _RotatingCookieServer(sample_recommendation_html) as server:
+            scraper.fetch_recommendation(f"{server.base_url}/sections/1/recommendations/1")
+            scraper.fetch_recommendation(f"{server.base_url}/sections/1/recommendations/2")
+
+        assert session.cookies.get("workbench_session") == "rotated-2"
+        assert "workbench_session=rotated-1" in server.cookie_headers[1]
+        assert adapter.verify_seen == [session.verify, session.verify]
+
+    def test_a_worker_session_carries_every_setting_and_owns_its_mutable_state(self):
+        base = requests.Session()
+        base.headers["User-Agent"] = "cis-bench-test"
+        base.cookies.set("auth0", "saved-auth", domain="127.0.0.1", path="/")
+        base.auth = ("user", "secret")
+        base.proxies = {"https": "http://proxy.example:3128"}
+        base.hooks["response"].append(lambda response, *args, **kwargs: response)
+        base.params = {"lang": "en"}
+        base.stream = True
+        base.verify = "/etc/ssl/corporate-ca.pem"
+        base.cert = "/etc/ssl/client.pem"
+        base.max_redirects = 7
+        base.trust_env = False
+        mounted = _VerifyRecordingAdapter()
+        base.mount("https://", mounted)
+
+        worker = _session_for_worker(base)
+
+        for attr in ("auth", "stream", "verify", "cert", "max_redirects", "trust_env"):
+            assert getattr(worker, attr) == getattr(base, attr), attr
+        assert dict(worker.headers) == dict(base.headers)
+        assert worker.cookies.get_dict() == base.cookies.get_dict()
+        assert worker.proxies == base.proxies
+        assert worker.hooks == base.hooks
+        assert worker.params == base.params
+        # One shared, thread-safe connection pool.
+        assert worker.adapters["https://"] is mounted
+        assert list(worker.adapters) == list(base.adapters)
+        # Mutable state is the worker's own.
+        for attr in ("cookies", "headers", "proxies", "hooks", "params"):
+            assert getattr(worker, attr) is not getattr(base, attr), attr
+        assert worker.hooks["response"] is not base.hooks["response"]
+        worker.cookies.set("workbench_session", "rotated", domain="127.0.0.1", path="/")
+        worker.headers["X-Worker"] = "1"
+        assert base.cookies.get("workbench_session") is None
+        assert "X-Worker" not in base.headers

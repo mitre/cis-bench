@@ -4,9 +4,12 @@ This scraper uses the Strategy pattern to adapt to HTML changes.
 It produces validated Pydantic Benchmark models.
 """
 
+import copy
 import logging
 import re
+import threading
 import time
+from collections import OrderedDict
 from collections.abc import Callable
 from datetime import datetime
 from typing import Any
@@ -15,6 +18,7 @@ import requests
 import urllib3
 from bs4 import BeautifulSoup, Tag
 from pydantic import HttpUrl
+from requests.structures import CaseInsensitiveDict
 
 from cis_bench.config import Config
 from cis_bench.exceptions import AuthenticationError, FetchError
@@ -29,11 +33,42 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 logger = logging.getLogger(__name__)
 
 
+def _session_for_worker(base: requests.Session) -> requests.Session:
+    """Return a Session that carries base's login and settings but owns its cookie jar.
+
+    requests does not make Session safe to share between threads, and WorkBench rotates its
+    session cookies on every response, so each worker thread works on its own copy. The copy
+    reuses base's mounted adapters: urllib3 connection pools are thread-safe, so workers share
+    one pool of keep-alive connections. Because the adapters are shared, a worker copy must
+    never be closed; closing it would close base's connections.
+    """
+    worker = requests.Session()
+    for adapter in worker.adapters.values():
+        adapter.close()  # the fresh default adapters are replaced by base's below
+    worker.adapters = OrderedDict(base.adapters)
+    worker.cookies = base.cookies.copy()
+    worker.headers = CaseInsensitiveDict(base.headers)
+    worker.auth = base.auth
+    worker.proxies = dict(base.proxies)
+    worker.hooks = {event: list(hooks) for event, hooks in base.hooks.items()}
+    worker.params = copy.copy(base.params)
+    worker.stream = base.stream
+    worker.verify = base.verify
+    worker.cert = base.cert
+    worker.max_redirects = base.max_redirects
+    worker.trust_env = base.trust_env
+    return worker
+
+
 class WorkbenchScraper:
     """Scraper for CIS WorkBench with auto-adapting HTML strategies.
 
     Uses Strategy pattern to handle HTML structure changes gracefully.
     Produces validated Pydantic models as output.
+
+    Fetch methods may be called from several threads at once. The thread that created the
+    scraper uses ``session`` itself; every other thread gets its own copy of it on first use,
+    so concurrent responses never write to a cookie jar another thread is reading.
     """
 
     def __init__(self, session: requests.Session, strategy: ScraperStrategy | None = None):
@@ -46,7 +81,20 @@ class WorkbenchScraper:
         self.session = session
         self.strategy = strategy
         self._detected_strategy: ScraperStrategy | None = None
+        self._strategy_lock = threading.Lock()
+        self._owner_thread = threading.current_thread()
+        self._worker_sessions = threading.local()
         self.timeout = Config.get_request_timeout()
+
+    def _current_session(self) -> requests.Session:
+        """The session this thread should send requests with."""
+        if threading.current_thread() is self._owner_thread:
+            return self.session
+        worker: requests.Session | None = getattr(self._worker_sessions, "session", None)
+        if worker is None:
+            worker = _session_for_worker(self.session)
+            self._worker_sessions.session = worker
+        return worker
 
     def _get_strategy(self, html: str) -> ScraperStrategy:
         """Get strategy to use (override or auto-detect).
@@ -61,10 +109,14 @@ class WorkbenchScraper:
             logger.debug(f"Using manual strategy: {self.strategy.version}")
             return self.strategy
 
-        if self._detected_strategy is None:
-            self._detected_strategy = StrategyDetector.detect_strategy(html)
+        detected = self._detected_strategy
+        if detected is None:
+            with self._strategy_lock:
+                if self._detected_strategy is None:
+                    self._detected_strategy = StrategyDetector.detect_strategy(html)
+                detected = self._detected_strategy
 
-        return self._detected_strategy
+        return detected
 
     # Pause before each retry, in seconds; one more attempt than there are pauses.
     _RETRY_BACKOFF_SECONDS = (1, 2)
@@ -86,7 +138,7 @@ class WorkbenchScraper:
         """
         for attempt in range(1, self._MAX_ATTEMPTS + 1):
             try:
-                response = self.session.get(url, timeout=self.timeout)
+                response = self._current_session().get(url, timeout=self.timeout)
                 response.raise_for_status()
                 return response
             except requests.HTTPError as e:
@@ -270,7 +322,7 @@ class WorkbenchScraper:
             requests.HTTPError: For a non-retryable HTTP status on those requests
         """
 
-        def log(msg: str, level="info"):
+        def log(msg: str, level: str = "info") -> None:
             # Send to progress callback (for progress bar)
             if progress_callback:
                 progress_callback(msg)
