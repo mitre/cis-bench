@@ -9,6 +9,7 @@ import click
 from rich.console import Console
 from rich.markup import escape
 
+from cis_bench.cli.helpers.download_helper import report_expired_session
 from cis_bench.config import Config
 from cis_bench.exceptions import (
     AuthenticationError,
@@ -159,10 +160,7 @@ def download(
         )
         sys.exit(1)
     except AuthenticationError as e:
-        console.print("\n[bold red]Authentication Failed[/bold red]\n")
-        console.print(f"[yellow]Error: {escape(str(e))}[/yellow]\n")
-        console.print("[bold cyan]Your session may have expired. To refresh:[/bold cyan]")
-        console.print("  cis-bench auth login --browser chrome")
+        report_expired_session(console, e)
         sys.exit(1)
     except Exception as e:
         logger.error(f"Authentication failed: {e}", exc_info=True)
@@ -179,6 +177,7 @@ def download(
     logger.debug(f"Starting download of {len(targets)} benchmark(s)")
     console.print(f"[bold]Downloading {len(targets)} benchmark(s)...[/bold]\n")
 
+    failed: list[str] = []
     for idx, (benchmark_id, url) in enumerate(targets, 1):
         prefix = f"[{idx}/{len(targets)}]"
         logger.debug(f"Processing benchmark {idx}/{len(targets)}: {url}")
@@ -279,18 +278,29 @@ def download(
                     )
 
                 except Exception as e:
-                    logger.error(f"Export failed for format {fmt}: {e}", exc_info=True)
+                    logger.debug(f"Export failed for format {fmt}", exc_info=True)
                     console.print(f"      [red]✗[/red] {fmt} export failed: {e}")
+                    if benchmark_id not in failed:
+                        failed.append(benchmark_id)
 
             console.print()
 
+        except AuthenticationError as e:
+            # Every further request would get the login page too: stop, do not try the rest.
+            logger.debug(f"Session expired while downloading {url}: {e}")
+            report_expired_session(console, e)
+            sys.exit(1)
         except Exception as e:
-            logger.error(f"Benchmark download failed: {e}", exc_info=True)
-            console.print(f"{prefix} [red]✗ Error:[/red] {e}\n")
-            import traceback
-
-            traceback.print_exc()
+            logger.debug(f"Benchmark download failed: {url}", exc_info=True)
+            console.print(f"{prefix} [red]✗ Error:[/red] {escape(str(e))}\n")
+            failed.append(benchmark_id)
             continue
 
     logger.debug("Download command completed")
+    if failed:
+        console.print(
+            f"[bold red]Download finished with errors:[/bold red] {len(failed)} of "
+            f"{len(targets)} benchmark(s) failed ({', '.join(failed)})."
+        )
+        sys.exit(1)
     console.print("[bold green]Download complete![/bold green]")

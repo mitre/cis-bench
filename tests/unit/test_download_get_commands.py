@@ -459,9 +459,9 @@ class TestDownloadExportErrors:
 
                             result = runner.invoke(cli, ["download", "12345"])
 
-                            assert result.exit_code == 0
+                            assert result.exit_code == 1
                             assert "export failed" in result.output
-                            assert "Download complete" in result.output
+                            assert "Download complete!" not in result.output
 
 
 class TestDownloadBenchmarkErrors:
@@ -497,14 +497,56 @@ class TestDownloadBenchmarkErrors:
                             mock_exporter = Mock()
                             mock_exporter.format_name.return_value = "JSON"
                             mock_exporter.get_file_extension.return_value = "json"
+                            # A real exporter writes the file; the command then reports its size.
+                            mock_exporter.export.side_effect = lambda _benchmark, path: open(
+                                path, "w"
+                            ).close()
                             mock_factory.create.return_value = mock_exporter
 
                             result = runner.invoke(cli, ["download", "12345", "67890"])
 
-                            assert result.exit_code == 0
+                            # The second benchmark is still downloaded, but the run reports failure.
+                            assert mock_scraper.download_benchmark.call_count == 2
+                            assert result.exit_code == 1
                             assert "Error" in result.output
                             assert "Network error" in result.output
-                            assert "Download complete" in result.output
+                            assert "Download complete!" not in result.output
+                            assert "1 of 2" in result.output
+                            # A failed benchmark is reported in one line; the traceback is debug detail.
+                            assert "Traceback" not in result.output
+
+    def test_download_stops_at_an_expired_session_and_exits_1(
+        self, runner, sample_benchmark, tmp_path
+    ):
+        from cis_bench.exceptions import AuthenticationError
+
+        with runner.isolated_filesystem():
+            with patch("cis_bench.cli.commands.download.Config") as mock_config:
+                mock_config.get_catalog_db_path.return_value = tmp_path / "nonexistent.db"
+                with (
+                    patch(
+                        "cis_bench.cli.commands.download.AuthManager.get_or_create_session",
+                        return_value=Mock(),
+                    ),
+                    patch("cis_bench.cli.commands.download.WorkbenchScraper") as mock_scraper_class,
+                ):
+                    mock_scraper = Mock()
+                    mock_scraper_class.return_value = mock_scraper
+                    mock_scraper.download_benchmark.side_effect = [
+                        AuthenticationError(
+                            "WorkBench returned the login page for https://workbench.cisecurity.org/"
+                            "benchmarks/12345; the saved session has expired"
+                        ),
+                        sample_benchmark,
+                    ]
+
+                    result = runner.invoke(cli, ["download", "12345", "67890"])
+
+        assert result.exit_code == 1
+        assert mock_scraper.download_benchmark.call_count == 1  # 67890 never attempted
+        assert "cis-bench auth login" in result.output
+        assert "Traceback" not in result.output
+        assert "Download complete!" not in result.output
 
 
 # ============================================================================
@@ -827,6 +869,34 @@ class TestGetDownloadErrors:
 
                             assert result.exit_code == 1
                             assert "Download failed" in result.output
+
+    def test_get_download_expired_session_shows_the_relogin_message(self, runner, tmp_path):
+        from cis_bench.exceptions import AuthenticationError
+
+        catalog_path = tmp_path / "catalog.db"
+        catalog_path.touch()
+        with (
+            patch("cis_bench.cli.commands.get.Config") as mock_config,
+            patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class,
+            patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class,
+            patch("cis_bench.cli.commands.get.AuthManager") as mock_auth,
+            patch("cis_bench.cli.helpers.download_helper.download_with_progress") as mock_dl,
+        ):
+            mock_config.get_catalog_db_path.return_value = catalog_path
+            mock_db_class.return_value.get_downloaded.return_value = None
+            mock_search_class.return_value.search.return_value = [
+                {"benchmark_id": "12345", "title": "Test", "version": "v1", "status": "Published"}
+            ]
+            mock_auth.get_or_create_session.return_value = Mock()
+            mock_dl.side_effect = AuthenticationError(
+                "WorkBench returned the login page; the saved session has expired"
+            )
+
+            result = runner.invoke(cli, ["get", "test", "--non-interactive"])
+
+        assert result.exit_code == 1
+        assert "cis-bench auth login" in result.output
+        assert "Download failed" not in result.output
 
     def test_get_forwards_configured_verify_ssl_and_surfaces_invalid_workbench_url(
         self, runner, sample_benchmark, tmp_path

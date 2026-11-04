@@ -8,8 +8,14 @@ import questionary
 from rich.console import Console
 from rich.markup import escape
 
+from cis_bench.cli.helpers.download_helper import report_expired_session
 from cis_bench.config import Config
-from cis_bench.exceptions import ConfigurationError, NoSavedSessionError, TLSVerificationError
+from cis_bench.exceptions import (
+    AuthenticationError,
+    ConfigurationError,
+    NoSavedSessionError,
+    TLSVerificationError,
+)
 from cis_bench.exporters import ExporterFactory
 from cis_bench.exporters.xccdf_unified_exporter import XCCDFExporter
 from cis_bench.fetcher.auth import AuthManager
@@ -265,6 +271,9 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
         except TLSVerificationError as e:
             # The server could not be trusted; the message carries the remediation.
             console.print(f"\n[red]✗ {escape(str(e))}[/red]")
+            sys.exit(1)
+        except AuthenticationError as e:
+            report_expired_session(console, e)
             sys.exit(1)
         except Exception as e:
             logger.error(f"Download failed: {e}", exc_info=True)

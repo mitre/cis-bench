@@ -220,6 +220,29 @@ class TestDownloadWithProgress:
 
     @patch("cis_bench.cli.helpers.download_helper.Progress")
     @patch("cis_bench.cli.helpers.download_helper.Console")
+    def test_progress_bar_is_stopped_when_the_download_raises(
+        self, mock_console_class, mock_progress_class
+    ):
+        from cis_bench.cli.helpers.download_helper import download_with_progress
+        from cis_bench.exceptions import AuthenticationError
+
+        mock_progress = MagicMock()
+        mock_progress_class.return_value = mock_progress
+        mock_scraper = MagicMock()
+
+        def expire_mid_download(url, progress_callback=None):
+            progress_callback("Found 10 recommendations to download")
+            raise AuthenticationError("the saved session has expired")
+
+        mock_scraper.download_benchmark.side_effect = expire_mid_download
+
+        with pytest.raises(AuthenticationError):
+            download_with_progress(mock_scraper, "https://example.com/benchmarks/12345")
+
+        mock_progress.stop.assert_called_once()
+
+    @patch("cis_bench.cli.helpers.download_helper.Progress")
+    @patch("cis_bench.cli.helpers.download_helper.Console")
     def test_progress_bar_stopped_after_download(
         self, mock_console_class, mock_progress_class, sample_benchmark
     ):

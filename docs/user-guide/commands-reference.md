@@ -330,6 +330,8 @@ cis-bench download --file urls.txt
 - Each request has a timeout and up to three attempts (see [`CIS_BENCH_REQUEST_TIMEOUT`](configuration.md#cis_bench_request_timeout)). A page that still fails is logged with its URL and the error, and the download continues without it.
 - If WorkBench answers with its login page, the saved session has expired: no further batch starts and the download stops with an authentication error. Run `cis-bench auth login` again.
 
+**Exit code:** `0` when every requested benchmark downloaded and exported. `1` when any benchmark or export failed (the others are still downloaded and the summary names the failed IDs), or when the session expired (the run stops at once and later benchmarks are not attempted). `cis-bench get` exits `1` with the same login message when the session expires during its download.
+
 **Requirements:**
 
 - Must be authenticated first: `cis-bench auth login --browser chrome`
@@ -775,6 +777,7 @@ cis-bench list --output-format csv > inventory.csv
 
 - `0` - Success
 - `1` - Error (authentication failed, file not found, etc.)
+- `cis-bench download` exits `1` if any requested benchmark or export failed, even when others succeeded
 
 ---
 

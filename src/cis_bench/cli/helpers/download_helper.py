@@ -4,9 +4,18 @@ import logging
 import re
 
 from rich.console import Console
+from rich.markup import escape
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeRemainingColumn
 
 logger = logging.getLogger(__name__)
+
+
+def report_expired_session(console: Console, error: Exception) -> None:
+    """Tell the user WorkBench no longer accepts the saved session, and how to log in again."""
+    console.print("\n[bold red]Authentication Failed[/bold red]\n")
+    console.print(f"[yellow]Error: {escape(str(error))}[/yellow]\n")
+    console.print("[bold cyan]Your session may have expired. To refresh:[/bold cyan]")
+    console.print("  cis-bench auth login --browser chrome")
 
 
 def download_with_progress(scraper, url, prefix=""):
@@ -63,11 +72,12 @@ def download_with_progress(scraper, url, prefix=""):
 
     # Download with progress callback
     logger.debug(f"Starting download: {url}")
-    benchmark = scraper.download_benchmark(url, progress_callback=progress_callback)
-
-    # Stop progress bar if created
-    if progress_bar:
-        progress_bar.stop()
+    try:
+        benchmark = scraper.download_benchmark(url, progress_callback=progress_callback)
+    finally:
+        # Stop the live progress display whether the download finished or raised
+        if progress_bar:
+            progress_bar.stop()
 
     logger.debug(f"Download complete: {benchmark.title}")
     return benchmark
