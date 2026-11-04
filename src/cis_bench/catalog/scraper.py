@@ -17,7 +17,7 @@ from cis_bench.config import Config
 from cis_bench.exceptions import AuthenticationError, FetchError
 from cis_bench.fetcher.auth import is_workbench_login_page
 from cis_bench.fetcher.http import ThreadSessions, get_with_retry
-from cis_bench.utils.parallel import DEFAULT_BATCH_DELAY_SECONDS, iter_batches
+from cis_bench.utils.parallel import DEFAULT_BATCH_DELAY_SECONDS, check_batch_delay, iter_batches
 from cis_bench.utils.workbench_urls import resolve_benchmark_reference
 
 logger = logging.getLogger(__name__)
@@ -75,6 +75,8 @@ class CatalogScraper:
             stats = scraper.scrape_full_catalog(max_pages=5)
             print(f"Scraped {stats['total_benchmarks']} benchmarks")
         """
+        # Refuse a bad pause before any request is sent or anything is written.
+        check_batch_delay(rate_limit_seconds, "rate_limit_seconds")
         logger.info(
             f"Starting full catalog scrape (max_pages={max_pages}, rate_limit={rate_limit_seconds}s)"
         )

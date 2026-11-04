@@ -440,6 +440,20 @@ class TestIterBatches:
             iter_batches([1, 2], lambda x: x, **kwargs)
 
 
+class TestBatchDelayValidation:
+    """A batch pause must be a finite, non-negative number of seconds."""
+
+    @pytest.mark.parametrize("delay", [float("nan"), float("inf"), float("-inf"), -0.5])
+    def test_iter_batches_rejects_a_non_finite_or_negative_delay(self, delay):
+        with pytest.raises(ValueError, match="batch_delay"):
+            iter_batches([1, 2], lambda x: x, batch_delay=delay)
+
+    @pytest.mark.parametrize("delay", [float("nan"), float("inf")])
+    def test_parallel_execute_batched_rejects_a_non_finite_delay(self, delay):
+        with pytest.raises(ValueError, match="batch_delay"):
+            parallel_execute_batched([1, 2], lambda x: x, batch_delay=delay)
+
+
 class TestParallelResult:
     """Tests for ParallelResult dataclass."""
 

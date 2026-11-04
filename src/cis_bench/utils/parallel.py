@@ -6,6 +6,7 @@ caller instead of being raised or dropped.
 """
 
 import logging
+import math
 import time
 from collections.abc import Callable, Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -92,11 +93,20 @@ def parallel_execute[T, R](
     )
 
 
+def check_batch_delay(batch_delay: float, name: str = "batch_delay") -> None:
+    """Raise ValueError unless batch_delay is a finite number of seconds, zero or more.
+
+    NaN would silently skip every pause and infinity would sleep forever, so both are refused
+    along with negative values. ``name`` is the caller's parameter name for the message.
+    """
+    if not math.isfinite(batch_delay) or batch_delay < 0:
+        raise ValueError(f"{name} must be a finite number of seconds >= 0, got {batch_delay}")
+
+
 def _check_batch_arguments(batch_size: int, max_workers: int, batch_delay: float) -> None:
     _require_at_least_one("batch_size", batch_size)
     _require_at_least_one("max_workers", max_workers)
-    if batch_delay < 0:
-        raise ValueError(f"batch_delay must not be negative, got {batch_delay}")
+    check_batch_delay(batch_delay)
 
 
 def iter_batches[T, R](

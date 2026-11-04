@@ -412,3 +412,16 @@ class TestCatalogRefreshSharedFetch:
         assert refreshed == 1
         assert len(attempts) == 2
         assert temp_db.get_downloaded("401")["workbench_last_modified"] == "2025-08-28"
+
+    @pytest.mark.parametrize("rate", [float("nan"), float("inf"), -1.0])
+    def test_a_bad_rate_limit_is_rejected_before_any_page_is_fetched(
+        self, temp_db, stub_session, rate
+    ):
+        session, transport = stub_session(self._rotating_pages(delay=0))
+        scraper = CatalogScraper(temp_db, session)
+
+        with pytest.raises(ValueError, match="rate"):
+            scraper.scrape_full_catalog(max_pages=self.PAGES, rate_limit_seconds=rate)
+
+        assert transport.urls == []
+        assert temp_db.get_catalog_stats()["total_benchmarks"] == 0

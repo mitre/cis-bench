@@ -1568,3 +1568,16 @@ class TestCatalogRequestTimeoutSetting:
         assert result.exit_code != 0
         assert "Configuration Error" in result.output
         assert "CIS_BENCH_WORKBENCH_URL must use https" in result.output
+
+    @pytest.mark.parametrize("rate", ["nan", "inf", "-1"])
+    def test_refresh_rejects_a_bad_rate_limit_before_any_network_call(self, runner, rate):
+        with (
+            patch("cis_bench.cli.commands.catalog.get_catalog_db") as mock_get_db,
+            patch.object(AuthManager, "get_or_create_session") as mock_auth,
+        ):
+            result = runner.invoke(cli, ["catalog", "refresh", "--rate-limit", rate])
+
+        assert result.exit_code == 2  # Click usage error
+        assert "--rate-limit" in result.output
+        mock_auth.assert_not_called()
+        mock_get_db.assert_not_called()
