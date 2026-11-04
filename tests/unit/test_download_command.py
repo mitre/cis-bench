@@ -182,7 +182,7 @@ class TestDownloadDatabaseCaching:
                         with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                             mock_db = Mock()
                             mock_db_class.return_value = mock_db
-                            mock_db.save_downloaded.side_effect = Exception("Database error")
+                            mock_db.save_downloaded.side_effect = Exception("Database error [/x]")
 
                             result = runner.invoke(
                                 cli,
@@ -193,7 +193,13 @@ class TestDownloadDatabaseCaching:
                             assert result.exit_code == 0, f"Download failed: {result.output}"
 
                             # Should show warning
-                            assert "Could not cache in database" in result.output
+                            assert (
+                                result.output.count(
+                                    "Could not cache in database: Database error [/x]"
+                                )
+                                == 1
+                            )
+                            assert "Traceback" not in result.output
 
                             # Should still create JSON file
                             assert Path("benchmarks").exists()

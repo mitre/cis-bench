@@ -14,6 +14,7 @@ DOES NOT duplicate tests from:
 - test_cli_structure.py - Flag presence verification
 """
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -135,26 +136,30 @@ class TestAuthLoginCommand:
         mock_auth_manager.load_cookies_from_browser.return_value = mock_session
         mock_auth_manager.validate_session.return_value = True
         mock_auth_manager._is_windows_permission_error.return_value = False
+        mock_auth_manager.get_session_file_path.return_value = "s[/p]/session.cookies"
 
         result = runner.invoke(cli, ["auth", "login", "--browser", "firefox"])
 
         # Should have saved session
         mock_auth_manager.save_session.assert_called_once_with(mock_session)
+        assert "Session saved to s[/p]/session.cookies" in result.output
 
     @patch("cis_bench.cli.commands.auth.AuthManager")
     def test_login_windows_permission_error_shows_help(self, mock_auth_manager, runner):
         """auth login should show helpful message on Windows permission error."""
         mock_auth_manager.load_cookies_from_browser.side_effect = Exception(
-            "This operation requires admin"
+            "This operation requires admin [/e]"
         )
         mock_auth_manager._is_windows_permission_error.return_value = True
         mock_auth_manager._format_windows_cookie_error.return_value = (
-            "Use Firefox or --cookies option"
+            "Use Firefox [/f] or --cookies option"
         )
 
         result = runner.invoke(cli, ["auth", "login", "--browser", "chrome"])
 
         assert result.exit_code == 1
+        assert result.output.count("This operation requires admin [/e]") == 1
+        assert result.output.count("Use Firefox [/f] or --cookies option") == 1
         # Should show Windows-specific help
         assert "firefox" in result.output.lower() or "cookie" in result.output.lower()
 
@@ -401,7 +406,7 @@ class TestAuthLoginOpenFlag:
         """Should handle subprocess failure gracefully."""
         mock_platform.return_value = "Darwin"
         mock_which.return_value = "/usr/bin/open"
-        mock_subprocess.side_effect = Exception("Browser launch failed")
+        mock_subprocess.side_effect = Exception("Browser launch failed [/e]")
 
         mock_session = MagicMock()
         mock_session.cookies = [MagicMock()]
@@ -414,7 +419,7 @@ class TestAuthLoginOpenFlag:
         result = runner.invoke(cli, ["auth", "login", "--browser", "chrome", "--open"], input="\n")
 
         # Should continue after browser open failure
-        assert "Could not open browser" in result.output
+        assert result.output.count("Could not open browser: Browser launch failed [/e]") == 1
 
     @patch("cis_bench.cli.commands.auth.AuthManager")
     @patch("platform.system", return_value="Windows")
@@ -443,15 +448,18 @@ class TestAuthLoginCookieFileErrors:
     @patch("cis_bench.cli.commands.auth.AuthManager")
     def test_login_cookie_file_load_failure(self, mock_auth, runner, tmp_path):
         """Should handle cookie file loading errors gracefully."""
-        cookie_file = tmp_path / "cookies.txt"
-        cookie_file.write_text("invalid content\n")
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            cookie_file = Path("c[/p]") / "cookies.txt"
+            cookie_file.parent.mkdir(parents=True)  # "c[" / "p]"
+            cookie_file.write_text("invalid content\n")
 
-        mock_auth.load_cookies_from_file.side_effect = Exception("Invalid cookie format")
+            mock_auth.load_cookies_from_file.side_effect = Exception("Invalid cookie format [/e]")
 
-        result = runner.invoke(cli, ["auth", "login", "--cookies", str(cookie_file)])
+            result = runner.invoke(cli, ["auth", "login", "--cookies", str(cookie_file)])
 
         assert result.exit_code == 1
-        assert "Failed to load cookies" in result.output
+        assert "Loading cookies from c[/p]/cookies.txt" in result.output
+        assert result.output.count("Failed to load cookies: Invalid cookie format [/e]") == 1
 
     @patch("cis_bench.cli.commands.auth.AuthManager")
     def test_login_cookie_file_permission_error(self, mock_auth, runner, tmp_path):
@@ -523,25 +531,35 @@ class TestAuthLoginExceptionHandlers:
     @patch("cis_bench.cli.commands.auth.AuthManager")
     def test_login_value_error_handling(self, mock_auth, runner):
         """Should handle ValueError gracefully (line 224-225)."""
-        mock_auth.load_cookies_from_browser.side_effect = ValueError("Invalid browser type")
+        mock_auth.load_cookies_from_browser.side_effect = ValueError("Invalid browser type [/e]")
         mock_auth._is_windows_permission_error.return_value = False
 
         result = runner.invoke(cli, ["auth", "login", "--browser", "chrome"])
 
         assert result.exit_code == 1
-        assert "Invalid browser type" in result.output
+        assert result.output.count("Invalid browser type [/e]") == 1
 
     @patch("cis_bench.cli.commands.auth.AuthManager")
     def test_login_generic_exception_handling(self, mock_auth, runner):
-        """Should handle unexpected exceptions gracefully (lines 227-229)."""
-        mock_auth.load_cookies_from_browser.side_effect = RuntimeError("Unexpected error")
+        """An unexpected login failure prints one line, verbatim, without a traceback."""
+        mock_auth.load_cookies_from_browser.side_effect = RuntimeError("Unexpected error [/e]")
         mock_auth._is_windows_permission_error.return_value = False
 
         result = runner.invoke(cli, ["auth", "login", "--browser", "chrome"])
 
         assert result.exit_code == 1
-        assert "Login failed" in result.output
-        assert "Unexpected error" in result.output
+        assert result.output.count("Login failed: Unexpected error [/e]") == 1
+        assert "Traceback" not in result.output
+
+    @patch("cis_bench.cli.commands.auth.AuthManager")
+    def test_login_failure_traceback_is_written_with_verbose(self, mock_auth, runner):
+        mock_auth.load_cookies_from_browser.side_effect = RuntimeError("Unexpected error")
+        mock_auth._is_windows_permission_error.return_value = False
+
+        result = runner.invoke(cli, ["--verbose", "auth", "login", "--browser", "chrome"])
+
+        assert result.exit_code == 1
+        assert "Traceback" in result.output
 
 
 class TestAuthLoginWindowsPermissionReRaise:
@@ -567,25 +585,29 @@ class TestAuthStatusExceptionHandler:
     @patch("cis_bench.cli.commands.auth.AuthManager")
     def test_status_exception_handling(self, mock_auth, runner):
         """Should handle unexpected exceptions gracefully."""
-        mock_auth.get_session_file_path.side_effect = RuntimeError("Unexpected filesystem error")
+        mock_auth.get_session_file_path.side_effect = RuntimeError(
+            "Unexpected filesystem error [/e]"
+        )
 
         result = runner.invoke(cli, ["auth", "status"])
 
         assert result.exit_code == 1
-        assert "Status check failed" in result.output
-        assert "Unexpected filesystem error" in result.output
+        assert result.output.count("Status check failed: Unexpected filesystem error [/e]") == 1
+        assert "Traceback" not in result.output
 
     @patch("cis_bench.cli.commands.auth.AuthManager")
     def test_status_no_session_file(self, mock_auth, runner):
         """Should report not logged in when no session file exists."""
         mock_path = MagicMock()
         mock_path.exists.return_value = False
+        mock_path.__str__.return_value = "s[/p]/session.cookies"
         mock_auth.get_session_file_path.return_value = mock_path
 
         result = runner.invoke(cli, ["auth", "status"])
 
         assert result.exit_code == 1
         assert "Not logged in" in result.output
+        assert "No saved session found at s[/p]/session.cookies" in result.output
         assert "cis-bench auth login" in result.output
 
     @patch("cis_bench.cli.commands.auth.AuthManager")
@@ -633,25 +655,27 @@ class TestAuthLogoutExceptionHandler:
         mock_path.touch()
 
         mock_auth.get_session_file_path.return_value = mock_path
-        mock_auth.clear_saved_session.side_effect = RuntimeError("Permission denied")
+        mock_auth.clear_saved_session.side_effect = RuntimeError("Permission denied [/e]")
 
         result = runner.invoke(cli, ["auth", "logout"])
 
         assert result.exit_code == 1
-        assert "Logout failed" in result.output
-        assert "Permission denied" in result.output
+        assert result.output.count("Logout failed: Permission denied [/e]") == 1
+        assert "Traceback" not in result.output
 
     @patch("cis_bench.cli.commands.auth.AuthManager")
     def test_logout_no_session_file(self, mock_auth, runner):
         """Should report no session to clear when none exists."""
         mock_path = MagicMock()
         mock_path.exists.return_value = False
+        mock_path.__str__.return_value = "s[/p]/session.cookies"
         mock_auth.get_session_file_path.return_value = mock_path
 
         result = runner.invoke(cli, ["auth", "logout"])
 
         assert result.exit_code == 0
         assert "No saved session to clear" in result.output
+        assert "No session file at s[/p]/session.cookies" in result.output
 
     @patch("cis_bench.cli.commands.auth.AuthManager")
     def test_logout_clear_returns_false(self, mock_auth, runner, tmp_path):

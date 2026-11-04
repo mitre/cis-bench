@@ -262,7 +262,6 @@ class TestGetCommandMultipleResults:
 
         with patch("cis_bench.cli.commands.get.Config") as mock_config:
             mock_config.get_catalog_db_path.return_value = catalog_path
-            mock_config.get_table_title_width.return_value = 90
 
             with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                 mock_db = Mock()

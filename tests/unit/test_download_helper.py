@@ -269,6 +269,29 @@ class TestDownloadWithProgress:
         # Verify stop was called
         mock_progress.stop.assert_called_once()
 
+    def test_callback_prints_the_benchmark_title_verbatim(self, sample_benchmark):
+        from io import StringIO
+
+        from rich.console import Console
+
+        from cis_bench.cli.helpers.download_helper import download_with_progress
+
+        buffer = StringIO()
+
+        def report_title(url, progress_callback=None):
+            progress_callback("Benchmark title: CIS T [/t]")
+            return sample_benchmark
+
+        scraper = MagicMock()
+        scraper.download_benchmark.side_effect = report_title
+        with patch(
+            "cis_bench.cli.helpers.download_helper.Console",
+            return_value=Console(file=buffer, width=120),
+        ):
+            download_with_progress(scraper, "https://example.com/benchmarks/1", prefix="[1/1] ")
+
+        assert "[1/1] CIS T [/t]" in buffer.getvalue()
+
     @patch("cis_bench.cli.helpers.download_helper.Console")
     def test_callback_extracts_title_correctly(self, mock_console_class, sample_benchmark):
         """Progress callback should correctly extract title after colon."""

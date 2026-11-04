@@ -1,5 +1,6 @@
 """Tests for `cis-bench remove`: deleting a downloaded benchmark's cached copy."""
 
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -113,3 +114,13 @@ class TestRemoveCommand:
 
         assert result.exit_code == 1
         assert not missing.exists()
+
+    def test_without_a_catalog_database_prints_its_path_verbatim(self):
+        with patch(
+            "cis_bench.cli.commands.remove.Config.get_catalog_db_path",
+            return_value=Path("c[x]") / "catalog.db",
+        ):
+            result = CliRunner().invoke(cli, ["remove", "23598", "--yes"])
+
+        assert result.exit_code == 1
+        assert "No catalog database at c[x]/catalog.db" in result.output

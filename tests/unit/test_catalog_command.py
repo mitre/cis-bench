@@ -460,6 +460,25 @@ class TestCatalogSearchCommand:
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     @patch("cis_bench.cli.commands.catalog.CatalogSearch")
     @patch("cis_bench.cli.commands.catalog.Config")
+    def test_search_prints_result_text_verbatim(
+        self, mock_config, mock_search_class, mock_get_db, runner, mock_db, mock_search
+    ):
+        mock_get_db.return_value = mock_db
+        mock_search.format_result_for_display.return_value = (
+            "[23598] CIS Benchmark [/t] v1\n        Platform: OS [/p]"
+        )
+        mock_search_class.return_value = mock_search
+        mock_config.get_search_default_limit.return_value = 1000
+
+        result = runner.invoke(cli, ["catalog", "search", "ubuntu"])
+
+        assert result.exit_code == 0, result.output
+        assert "[23598] CIS Benchmark [/t] v1" in result.output
+        assert "Platform: OS [/p]" in result.output
+
+    @patch("cis_bench.cli.commands.catalog.get_catalog_db")
+    @patch("cis_bench.cli.commands.catalog.CatalogSearch")
+    @patch("cis_bench.cli.commands.catalog.Config")
     def test_search_with_explicit_limit(
         self, mock_config, mock_search_class, mock_get_db, runner, mock_db, mock_search
     ):
@@ -621,6 +640,20 @@ class TestCatalogListCommand:
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     @patch("cis_bench.cli.commands.catalog.CatalogSearch")
+    def test_list_prints_result_text_verbatim(
+        self, mock_search_class, mock_get_db, runner, mock_db, mock_search
+    ):
+        mock_get_db.return_value = mock_db
+        mock_search.format_result_for_display.return_value = "[23598] CIS Benchmark [/t] v1"
+        mock_search_class.return_value = mock_search
+
+        result = runner.invoke(cli, ["catalog", "list"])
+
+        assert result.exit_code == 0, result.output
+        assert "[23598] CIS Benchmark [/t] v1" in result.output
+
+    @patch("cis_bench.cli.commands.catalog.get_catalog_db")
+    @patch("cis_bench.cli.commands.catalog.CatalogSearch")
     def test_list_failure(self, mock_search_class, mock_get_db, runner, mock_db):
         """Test list failure (lines 269-271)."""
         mock_get_db.return_value = mock_db
@@ -734,6 +767,35 @@ class TestCatalogInfoCommand:
         assert "Security configuration benchmark" in result.output
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
+    def test_info_prints_catalog_fields_verbatim(self, mock_get_db, runner, mock_db):
+        mock_db.get_benchmark.return_value = {
+            **mock_db.get_benchmark.return_value,
+            "title": "CIS Benchmark [/t]",
+            "version": "v1 [/v]",
+            "status": "Published [/s]",
+            "platform": "OS [/p]",
+            "community": "Linux [/c]",
+            "owner": "admin [/o]",
+            "published_date": "2024 [/d]",
+            "url": "https://workbench.cisecurity.org/x[/u]",
+            "description": "About [/x] it",
+        }
+        mock_get_db.return_value = mock_db
+
+        result = runner.invoke(cli, ["catalog", "info", "23598"])
+
+        assert result.exit_code == 0, result.output
+        assert "CIS Benchmark [/t]" in result.output
+        assert "Version: v1 [/v]" in result.output
+        assert "Status: Published [/s]" in result.output
+        assert "Platform: OS [/p]" in result.output
+        assert "Community: Linux [/c]" in result.output
+        assert "Owner: admin [/o]" in result.output
+        assert "Published: 2024 [/d]" in result.output
+        assert "URL: https://workbench.cisecurity.org/x[/u]" in result.output
+        assert "About [/x] it" in result.output
+
+    @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     def test_info_failure(self, mock_get_db, runner, mock_db):
         """Test info failure (lines 337-339)."""
         mock_db.get_benchmark.side_effect = RuntimeError("Database error")
@@ -816,6 +878,16 @@ class TestCatalogPlatformsCommand:
         assert "50" in result.output
         assert "Cloud" in result.output
         assert "30" in result.output
+
+    @patch("cis_bench.cli.commands.catalog.get_catalog_db")
+    def test_platforms_table_prints_names_verbatim(self, mock_get_db, runner, mock_db):
+        mock_db.list_platforms.return_value = [{"name": "Cloud [/n]", "count": 3}]
+        mock_get_db.return_value = mock_db
+
+        result = runner.invoke(cli, ["catalog", "platforms"])
+
+        assert result.exit_code == 0, result.output
+        assert "Cloud [/n]" in result.output
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     def test_platforms_failure(self, mock_get_db, runner, mock_db):
@@ -1142,13 +1214,30 @@ class TestCatalogDownloadCommand:
         mock_auth.get_or_create_session.return_value = mock_session
 
         mock_downloader = Mock()
-        mock_downloader.download_by_id.side_effect = RuntimeError("Network error")
+        mock_downloader.download_by_id.side_effect = RuntimeError("Network error [/e]")
         mock_downloader_class.return_value = mock_downloader
 
         result = runner.invoke(cli, ["catalog", "download", "23598"])
 
         assert result.exit_code == 1
-        assert "Download failed" in result.output
+        assert result.output.count("Download failed: Network error [/e]") == 1
+        assert "Traceback" not in result.output
+
+    @patch("cis_bench.cli.commands.catalog.get_catalog_db")
+    @patch("cis_bench.fetcher.auth.AuthManager")
+    @patch("cis_bench.fetcher.workbench.WorkbenchScraper")
+    @patch("cis_bench.catalog.downloader.CatalogDownloader")
+    def test_download_error_traceback_is_written_with_verbose(
+        self, mock_downloader_class, mock_scraper_class, mock_auth, mock_get_db, runner, mock_db
+    ):
+        mock_get_db.return_value = mock_db
+        mock_auth.get_or_create_session.return_value = Mock()
+        mock_downloader_class.return_value.download_by_id.side_effect = RuntimeError("boom")
+
+        result = runner.invoke(cli, ["--verbose", "catalog", "download", "23598"])
+
+        assert result.exit_code == 1
+        assert "Traceback" in result.output
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     @patch("cis_bench.fetcher.auth.AuthManager")
@@ -1250,6 +1339,39 @@ class TestCatalogCheckUpdatesCommand:
         assert "23598" in flat and "v1.0.0 -> v2.0.1" in flat
         assert "23599" in flat and "published 2024-07-15" in flat
         assert "cis-bench catalog download <id> --force" in flat
+
+    @patch("cis_bench.cli.commands.catalog.get_catalog_db")
+    def test_check_updates_prints_titles_versions_and_dates_verbatim(self, mock_get_db, runner):
+        mock_db = MagicMock()
+        mock_db.db_path.exists.return_value = True
+        mock_db.check_updates_available.return_value = [
+            {
+                "benchmark_id": "23598",
+                "title": "CIS Benchmark [/t]",
+                "downloaded_version": "v1 [/a]",
+                "catalog_version": "v2 [/b]",
+                "downloaded_at": "2024-07-15",
+                "published_date": None,
+                "reason": "newer version in catalog",
+            },
+            {
+                "benchmark_id": "23599",
+                "title": "CIS Other",
+                "downloaded_version": "v1",
+                "catalog_version": "v1",
+                "downloaded_at": "2024-06-01",
+                "published_date": "2024 [/d]",
+                "reason": "published after download",
+            },
+        ]
+        mock_get_db.return_value = mock_db
+
+        result = runner.invoke(cli, ["catalog", "check-updates", "--offline"])
+
+        assert result.exit_code == 0, result.output
+        assert "[23598] CIS Benchmark [/t]" in result.output
+        assert "Version: v1 [/a] -> v2 [/b]" in result.output
+        assert "WorkBench published 2024 [/d]" in result.output
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     def test_check_updates_without_a_session_prints_login_instruction(

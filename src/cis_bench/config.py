@@ -170,10 +170,11 @@ class Config:
 
     @staticmethod
     def get_table_title_width() -> int:
-        """Get table title column width.
+        """Get the widest the Title column of the search and get tables may grow.
 
         Returns:
-            Column width for title (default: 90 for 120+ char terminals)
+            Maximum title column width in characters (default: 90). A narrower
+            terminal wraps the title instead.
         """
         width = os.getenv("CIS_BENCH_TABLE_TITLE_WIDTH")
         if width and width.isdigit():

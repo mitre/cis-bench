@@ -147,11 +147,11 @@ def login(browser, cookies, open, no_verify_ssl):
                     # Fallback to webbrowser module
                     webbrowser.open(login_url)
 
-                console.print(f"[green]✓[/green] Opened {login_url} in {browser}\n")
+                console.print(f"[green]✓[/green] Opened {escape(login_url)} in {browser}\n")
 
             except Exception as e:
-                console.print(f"[yellow]⚠[/yellow] Could not open browser: {e}")
-                console.print(f"[dim]Please open manually: {login_url}[/dim]\n")
+                console.print(f"[yellow]⚠[/yellow] Could not open browser: {escape(str(e))}")
+                console.print(f"[dim]Please open manually: {escape(login_url)}[/dim]\n")
 
             console.print("[yellow]Please log in to CIS WorkBench in your browser...[/yellow]")
             console.print("[dim]Press Enter when you've completed login...[/dim]")
@@ -163,11 +163,11 @@ def login(browser, cookies, open, no_verify_ssl):
         # Load cookies from file or browser
         if cookies:
             # Load from cookie file
-            console.print(f"[cyan]Loading cookies from {cookies}...[/cyan]")
+            console.print(f"[cyan]Loading cookies from {escape(str(cookies))}...[/cyan]")
             try:
                 session = AuthManager.load_cookies_from_file(cookies, verify_ssl=verify_ssl)
             except Exception as e:
-                console.print(f"[red]✗ Failed to load cookies: {e}[/red]")
+                console.print(f"[red]✗ Failed to load cookies: {escape(str(e))}[/red]")
                 sys.exit(1)
 
             cookie_count = len(list(session.cookies))
@@ -184,15 +184,15 @@ def login(browser, cookies, open, no_verify_ssl):
             except Exception as e:
                 # Check if this is a Windows permission error
                 if AuthManager._is_windows_permission_error(e):
-                    console.print(f"[red]✗ {e}[/red]\n")
-                    console.print(AuthManager._format_windows_cookie_error(browser, e))
+                    console.print(f"[red]✗ {escape(str(e))}[/red]\n")
+                    console.print(escape(AuthManager._format_windows_cookie_error(browser, e)))
                     sys.exit(1)
                 raise
 
             if not session or not session.cookies:
                 console.print(f"[red]✗ No cookies found in {browser}[/red]")
                 console.print(
-                    f"\n[yellow]Make sure you are logged into {workbench_host} in your browser[/yellow]"
+                    f"\n[yellow]Make sure you are logged into {escape(workbench_host)} in your browser[/yellow]"
                 )
                 sys.exit(1)
 
@@ -208,7 +208,7 @@ def login(browser, cookies, open, no_verify_ssl):
         if not AuthManager.validate_session(session, verify_ssl=verify_ssl):
             console.print("[red]✗ Session validation failed[/red]")
             console.print(
-                f"\n[yellow]Please ensure you are logged into {workbench_host} in your browser[/yellow]"
+                f"\n[yellow]Please ensure you are logged into {escape(workbench_host)} in your browser[/yellow]"
             )
             sys.exit(1)
 
@@ -219,7 +219,7 @@ def login(browser, cookies, open, no_verify_ssl):
         AuthManager.save_session(session)
 
         session_path = AuthManager.get_session_file_path()
-        console.print(f"[green]✓[/green] Session saved to {session_path}\n")
+        console.print(f"[green]✓[/green] Session saved to {escape(str(session_path))}\n")
 
         console.print("[bold green]Login successful![/bold green]")
         console.print("[dim]You can now run commands without --browser flag[/dim]")
@@ -229,11 +229,11 @@ def login(browser, cookies, open, no_verify_ssl):
         console.print(f"[red]✗ {escape(str(e))}[/red]")
         sys.exit(1)
     except ValueError as e:
-        console.print(f"[red]✗ {e}[/red]")
+        console.print(f"[red]✗ {escape(str(e))}[/red]")
         sys.exit(1)
     except Exception as e:
-        logger.error(f"Login failed: {e}", exc_info=True)
-        console.print(f"[red]✗ Login failed: {e}[/red]")
+        logger.debug("Login failed", exc_info=True)
+        console.print(f"[red]✗ Login failed: {escape(str(e))}[/red]")
         sys.exit(1)
 
 
@@ -260,7 +260,7 @@ def status(output_format):
         # Check if session file exists
         if not session_path.exists():
             console.print("[yellow]Not logged in[/yellow]")
-            console.print(f"\n[dim]No saved session found at {session_path}[/dim]")
+            console.print(f"\n[dim]No saved session found at {escape(str(session_path))}[/dim]")
             console.print("\n[cyan]To log in:[/cyan]")
             console.print("  cis-bench auth login --browser chrome --open")
             sys.exit(1)
@@ -300,7 +300,7 @@ def status(output_format):
         # Display for humans
         if is_valid:
             console.print("[bold green]✓ Logged in[/bold green]")
-            console.print(f"\n[dim]Session file: {session_path}[/dim]")
+            console.print(f"\n[dim]Session file: {escape(str(session_path))}[/dim]")
             console.print("[dim]Session is valid and ready to use[/dim]")
         else:
             console.print("[red]✗ Session expired[/red]")
@@ -310,8 +310,8 @@ def status(output_format):
             sys.exit(1)
 
     except Exception as e:
-        logger.error(f"Status check failed: {e}", exc_info=True)
-        console.print(f"[red]✗ Status check failed: {e}[/red]")
+        logger.debug("Status check failed", exc_info=True)
+        console.print(f"[red]✗ Status check failed: {escape(str(e))}[/red]")
         sys.exit(1)
 
 
@@ -331,7 +331,7 @@ def logout():
 
         if not session_path.exists():
             console.print("[yellow]No saved session to clear[/yellow]")
-            console.print(f"\n[dim]No session file at {session_path}[/dim]")
+            console.print(f"\n[dim]No session file at {escape(str(session_path))}[/dim]")
             return
 
         # Clear session
@@ -340,13 +340,13 @@ def logout():
 
         if cleared:
             console.print("[green]✓ Logged out successfully[/green]")
-            console.print(f"\n[dim]Removed session file: {session_path}[/dim]")
+            console.print(f"\n[dim]Removed session file: {escape(str(session_path))}[/dim]")
             console.print("\n[cyan]To log in again:[/cyan]")
             console.print("  cis-bench auth login --browser chrome --open")
         else:
             console.print("[yellow]No session to clear[/yellow]")
 
     except Exception as e:
-        logger.error(f"Logout failed: {e}", exc_info=True)
-        console.print(f"[red]✗ Logout failed: {e}[/red]")
+        logger.debug("Logout failed", exc_info=True)
+        console.print(f"[red]✗ Logout failed: {escape(str(e))}[/red]")
         sys.exit(1)

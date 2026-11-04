@@ -11,6 +11,10 @@ from typing import Any
 
 import yaml
 from rich.console import Console
+from rich.markup import escape
+from rich.table import Table
+
+from cis_bench.config import Config
 
 console = Console()
 
@@ -28,7 +32,7 @@ def output_json(data: Any) -> None:
     sys.exit(0)
 
 
-def output_csv(data: list[dict], fields: list[str] = None) -> None:
+def output_csv(data: list[dict], fields: list[str] | None = None) -> None:
     """Output data as CSV to stdout.
 
     Args:
@@ -62,7 +66,10 @@ def output_yaml(data: Any) -> None:
 
 
 def output_data(
-    data: Any, format: str = "table", human_formatter_func=None, csv_fields: list[str] = None
+    data: Any,
+    format: str = "table",
+    human_formatter_func=None,
+    csv_fields: list[str] | None = None,
 ) -> None:
     """Output data in specified format.
 
@@ -90,6 +97,33 @@ def output_data(
     else:
         # Fallback
         console.print(data)
+
+
+def benchmark_table(results: list[dict]) -> Table:
+    """Build the ID / Title / Version / Status table that search and get print.
+
+    ID, Version and Status never wrap, so when the terminal is too narrow the
+    title wraps first and gives up the width. The title grows no wider than
+    CIS_BENCH_TABLE_TITLE_WIDTH, and a word wider than the column folds onto the
+    next line instead of being cut.
+    Every cell comes from the catalog and is escaped so Rich prints it as written.
+    """
+    table = Table(show_header=True, header_style="bold cyan")
+    table.add_column("ID", style="yellow", no_wrap=True)
+    table.add_column(
+        "Title", style="white", overflow="fold", max_width=Config.get_table_title_width()
+    )
+    table.add_column("Version", style="cyan", no_wrap=True)
+    table.add_column("Status", style="green", no_wrap=True)
+
+    for result in results:
+        table.add_row(
+            escape(str(result["benchmark_id"])),
+            escape(str(result["title"])),
+            escape(str(result.get("version", "N/A"))),
+            escape(str(result.get("status", "N/A"))),
+        )
+    return table
 
 
 def output_results(results: list[dict], output_json_flag: bool, human_formatter_func=None) -> None:

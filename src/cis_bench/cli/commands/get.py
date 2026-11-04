@@ -100,7 +100,7 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
         console.print("  cis-bench catalog refresh --browser chrome")
         console.print("\n[dim]This is a one-time setup (under a minute)[/dim]\n")
         console.print("[cyan]After initialization, you can use:[/cyan]")
-        console.print(f'  cis-bench get "{query}" --format {export_format}')
+        console.print(f'  cis-bench get "{escape(query)}" --format {export_format}')
         sys.exit(1)
 
     # Step 2: Search catalog
@@ -109,7 +109,7 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
         from cis_bench.catalog.search import CatalogSearch
 
         logger.debug(f"Searching catalog for: {query}")
-        console.print(f"[cyan]Searching for:[/cyan] {query}\n")
+        console.print(f"[cyan]Searching for:[/cyan] {escape(query)}\n")
 
         db = CatalogDatabase(catalog_db_path)
         search = CatalogSearch(db)
@@ -126,39 +126,23 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
         logger.debug(f"Found {len(results)} results")
 
     except Exception as e:
-        logger.error(f"Search failed: {e}", exc_info=True)
-        console.print(f"[red]✗ Search failed: {e}[/red]")
+        logger.debug("Search failed", exc_info=True)
+        console.print(f"[red]✗ Search failed: {escape(str(e))}[/red]")
         sys.exit(1)
 
     # Step 3: Select benchmark
     if len(results) == 1:
         selected = results[0]
-        console.print(f"[green]✓[/green] Found: {selected['title']}\n")
+        console.print(f"[green]✓[/green] Found: {escape(str(selected['title']))}\n")
     else:
         # Multiple results
-        console.print(f"[yellow]Found {len(results)} benchmarks matching '{query}'[/yellow]\n")
+        console.print(
+            f"[yellow]Found {len(results)} benchmarks matching '{escape(query)}'[/yellow]\n"
+        )
 
-        from rich.table import Table
+        from cis_bench.cli.helpers.output import benchmark_table
 
-        table = Table(show_header=True, header_style="bold cyan")
-        table.add_column("ID", style="yellow", width=8)
-        table.add_column("Title", style="white", width=90)
-        table.add_column("Version", style="cyan", width=12)
-        table.add_column("Status", style="green", width=12)
-
-        for r in results:
-            title = r["title"]
-            if len(title) > 87:
-                title = title[:84] + "..."
-
-            table.add_row(
-                str(r["benchmark_id"]),
-                title,
-                r.get("version", "N/A"),
-                r.get("status", "N/A"),
-            )
-
-        console.print(table)
+        console.print(benchmark_table(results))
 
         # Interactive selection (if not disabled)
         if not non_interactive:
@@ -179,7 +163,7 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
                 selected_id = answer.split(":")[0]
                 selected = next(r for r in results if str(r["benchmark_id"]) == selected_id)
 
-                console.print(f"\n[green]✓[/green] Selected: {selected['title']}\n")
+                console.print(f"\n[green]✓[/green] Selected: {escape(str(selected['title']))}\n")
 
             except Exception as e:
                 logger.warning(f"Interactive selection failed: {e}")
@@ -241,7 +225,7 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
 
             benchmark = download_with_progress(scraper, benchmark_url, prefix="  ")
 
-            console.print(f"[green]✓[/green] Downloaded: {benchmark.title}")
+            console.print(f"[green]✓[/green] Downloaded: {escape(benchmark.title)}")
             console.print(f"  Recommendations: {benchmark.total_recommendations}\n")
 
             # Save to database
@@ -279,8 +263,8 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
             report_expired_session(console, e)
             sys.exit(1)
         except Exception as e:
-            logger.error(f"Download failed: {e}", exc_info=True)
-            console.print(f"[red]✗ Download failed: {e}[/red]")
+            logger.debug("Download failed", exc_info=True)
+            console.print(f"[red]✗ Download failed: {escape(str(e))}[/red]")
             sys.exit(1)
 
     # Step 6: Export to requested format
@@ -317,12 +301,12 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
 
         console.print("\n[bold green]✓ Success![/bold green]")
         console.print(f"  Format: {exporter.format_name()}")
-        console.print(f"  Output: [bold]{output}[/bold]")
+        console.print(f"  Output: [bold]{escape(str(output))}[/bold]")
         console.print(f"  Size: {file_size:.1f} KB")
 
         logger.debug(f"Export complete: {output}")
 
     except Exception as e:
-        logger.error(f"Export failed: {e}", exc_info=True)
-        console.print(f"[red]✗ Export failed: {e}[/red]")
+        logger.debug("Export failed", exc_info=True)
+        console.print(f"[red]✗ Export failed: {escape(str(e))}[/red]")
         sys.exit(1)

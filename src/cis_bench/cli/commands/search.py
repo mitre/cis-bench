@@ -6,9 +6,8 @@ import sys
 import click
 from rich.console import Console
 from rich.markup import escape
-from rich.table import Table
 
-from cis_bench.cli.helpers.output import output_data
+from cis_bench.cli.helpers.output import benchmark_table, output_data
 from cis_bench.config import Config
 
 console = Console()
@@ -72,8 +71,6 @@ def search_cmd(query, platform, platform_type, status, latest, limit, output_for
     # Use Config defaults if not provided
     if limit is None:
         limit = Config.get_search_default_limit()
-
-    table_width = Config.get_table_title_width()
 
     # Check if catalog database exists
     catalog_db_path = Config.get_catalog_db_path()
@@ -147,26 +144,7 @@ def search_cmd(query, platform, platform_type, status, latest, limit, output_for
         # Display results (human-friendly table)
         console.print(f"[green]Found {len(results)} benchmark(s)[/green]\n")
 
-        table = Table(show_header=True, header_style="bold cyan")
-        table.add_column("ID", style="yellow", width=8)
-        table.add_column("Title", style="white", width=table_width)
-        table.add_column("Version", style="cyan", width=12)
-        table.add_column("Status", style="green", width=12)
-
-        for result in results:
-            # Truncate title if too long
-            title = result["title"]
-            if len(title) > table_width - 3:
-                title = title[: table_width - 6] + "..."
-
-            table.add_row(
-                str(result["benchmark_id"]),
-                title,
-                result.get("version", "N/A"),
-                result.get("status", "N/A"),
-            )
-
-        console.print(table)
+        console.print(benchmark_table(results))
 
         # Show usage hints
         console.print(f"\n[dim]Showing {len(results)} of {len(results)} results[/dim]")
@@ -178,6 +156,6 @@ def search_cmd(query, platform, platform_type, status, latest, limit, output_for
         )
 
     except Exception as e:
-        logger.error(f"Search failed: {e}", exc_info=True)
+        logger.debug("Search failed", exc_info=True)
         console.print(f"[red]✗ Search failed: {escape(str(e))}[/red]")
         sys.exit(1)

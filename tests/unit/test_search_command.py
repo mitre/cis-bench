@@ -54,7 +54,6 @@ class TestSearchCommand:
             with patch("cis_bench.cli.commands.search.Config") as mock_config:
                 mock_config.get_catalog_db_path.return_value = catalog_path
                 mock_config.get_search_default_limit.return_value = 1000
-                mock_config.get_table_title_width.return_value = 90
 
                 # Mock CatalogDatabase and CatalogSearch
                 with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
@@ -100,7 +99,6 @@ class TestSearchCommand:
             with patch("cis_bench.cli.commands.search.Config") as mock_config:
                 mock_config.get_catalog_db_path.return_value = catalog_path
                 mock_config.get_search_default_limit.return_value = 1000
-                mock_config.get_table_title_width.return_value = 90
 
                 with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                     mock_db = Mock()
@@ -148,7 +146,6 @@ class TestSearchCommand:
             with patch("cis_bench.cli.commands.search.Config") as mock_config:
                 mock_config.get_catalog_db_path.return_value = catalog_path
                 mock_config.get_search_default_limit.return_value = 1000
-                mock_config.get_table_title_width.return_value = 90
 
                 with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                     mock_db = Mock()
@@ -182,7 +179,6 @@ class TestSearchCommand:
             with patch("cis_bench.cli.commands.search.Config") as mock_config:
                 mock_config.get_catalog_db_path.return_value = catalog_path
                 mock_config.get_search_default_limit.return_value = 1000
-                mock_config.get_table_title_width.return_value = 90
 
                 with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                     mock_db = Mock()
@@ -207,7 +203,6 @@ class TestSearchCommand:
             with patch("cis_bench.cli.commands.search.Config") as mock_config:
                 mock_config.get_catalog_db_path.return_value = catalog_path
                 mock_config.get_search_default_limit.return_value = 1000
-                mock_config.get_table_title_width.return_value = 90
 
                 with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                     mock_db = Mock()
@@ -242,7 +237,6 @@ class TestSearchCommand:
             with patch("cis_bench.cli.commands.search.Config") as mock_config:
                 mock_config.get_catalog_db_path.return_value = catalog_path
                 mock_config.get_search_default_limit.return_value = 1000
-                mock_config.get_table_title_width.return_value = 90
 
                 with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                     mock_db = Mock()
@@ -271,12 +265,53 @@ class TestSearchCommand:
                 mock_config.get_catalog_db_path.return_value = catalog_path
 
                 with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
-                    mock_db_class.side_effect = Exception("Database error")
+                    mock_db_class.side_effect = Exception("Database error [/e]")
 
                     result = runner.invoke(cli, ["search", "test"])
 
                     assert result.exit_code == 1
-                    assert "Search failed" in result.output
+                    assert result.output.count("Search failed: Database error [/e]") == 1
+                    assert "Traceback" not in result.output
+
+    def test_search_failure_traceback_is_written_with_verbose(self, runner, tmp_path):
+        catalog_path = tmp_path / "catalog.db"
+        catalog_path.touch()
+        with (
+            patch("cis_bench.cli.commands.search.Config") as mock_config,
+            patch("cis_bench.catalog.database.CatalogDatabase", side_effect=Exception("boom")),
+        ):
+            mock_config.get_catalog_db_path.return_value = catalog_path
+
+            result = runner.invoke(cli, ["--verbose", "search", "test"])
+
+        assert result.exit_code == 1
+        assert "Traceback" in result.output
+
+    def test_search_table_prints_titles_versions_and_statuses_verbatim(self, runner, tmp_path):
+        catalog_path = tmp_path / "catalog.db"
+        catalog_path.touch()
+        with (
+            patch("cis_bench.cli.commands.search.Config") as mock_config,
+            patch("cis_bench.catalog.database.CatalogDatabase"),
+            patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class,
+        ):
+            mock_config.get_catalog_db_path.return_value = catalog_path
+            mock_config.get_search_default_limit.return_value = 1000
+            mock_search_class.return_value.search.return_value = [
+                {
+                    "benchmark_id": "1",
+                    "title": "CIS T [/t]",
+                    "version": "v1 [/v]",
+                    "status": "P [/s]",
+                }
+            ]
+
+            result = runner.invoke(cli, ["search", "linux"])
+
+        assert result.exit_code == 0, result.output
+        assert "CIS T [/t]" in result.output
+        assert "v1 [/v]" in result.output
+        assert "P [/s]" in result.output
 
     def test_search_escapes_rich_markup_in_query(self, runner, tmp_path):
         """Bracketed queries such as [/opt] render literally without raising MarkupError."""
@@ -291,7 +326,6 @@ class TestSearchCommand:
             ):
                 mock_config.get_catalog_db_path.return_value = catalog_path
                 mock_config.get_search_default_limit.return_value = 1000
-                mock_config.get_table_title_width.return_value = 90
                 mock_search = Mock()
                 mock_search.search.return_value = []
                 mock_search_class.return_value = mock_search
@@ -335,7 +369,6 @@ class TestSearchCommand:
         with patch("cis_bench.cli.commands.search.Config") as mock_config:
             mock_config.get_catalog_db_path.return_value = catalog_path
             mock_config.get_search_default_limit.return_value = 1000
-            mock_config.get_table_title_width.return_value = 90
 
             for flag_val in ("all", "ALL", ""):
                 res = runner.invoke(
@@ -369,7 +402,6 @@ class TestStatusFilterPassThrough:
         ):
             mock_config.get_catalog_db_path.return_value = catalog_path
             mock_config.get_search_default_limit.return_value = 1000
-            mock_config.get_table_title_width.return_value = 90
             mock_search = mock_search_class.return_value
             mock_search.search.return_value = []
 

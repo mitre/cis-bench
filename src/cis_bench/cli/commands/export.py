@@ -6,6 +6,7 @@ import sys
 
 import click
 from rich.console import Console
+from rich.markup import escape
 
 from cis_bench.config import Config
 from cis_bench.exporters import ExporterFactory
@@ -116,18 +117,18 @@ def _export_single_benchmark(
         try:
             benchmark, result = _load_benchmark_from_db(identifier, catalog_db_path)
             if benchmark is None:
-                console.print(f"{prefix} [red]Error: {result}[/red]")
+                console.print(f"{prefix} [red]Error: {escape(str(result))}[/red]")
                 console.print(
                     f"[yellow]Hint: Run 'cis-bench download {identifier}' to download it first[/yellow]"
                 )
                 return False, None
 
             benchmark_id_for_filename = result
-            console.print(f"{prefix} [green]✓[/green] Loaded from cache: {benchmark.title}")
+            console.print(f"{prefix} [green]✓[/green] Loaded from cache: {escape(benchmark.title)}")
 
         except Exception as e:
-            logger.error(f"Failed to load benchmark from database: {e}", exc_info=True)
-            console.print(f"{prefix} [red]Error loading from database: {e}[/red]")
+            logger.debug("Failed to load benchmark from database", exc_info=True)
+            console.print(f"{prefix} [red]Error loading from database: {escape(str(e))}[/red]")
             return False, None
 
     else:
@@ -137,14 +138,14 @@ def _export_single_benchmark(
         try:
             benchmark, error = _load_benchmark_from_file(identifier, input_dir)
             if benchmark is None:
-                console.print(f"{prefix} [red]Error: {error}[/red]")
+                console.print(f"{prefix} [red]Error: {escape(str(error))}[/red]")
                 return False, None
 
-            console.print(f"{prefix} [green]✓[/green] Loaded: {benchmark.title}")
+            console.print(f"{prefix} [green]✓[/green] Loaded: {escape(benchmark.title)}")
 
         except Exception as e:
-            logger.error(f"Failed to load benchmark: {e}", exc_info=True)
-            console.print(f"{prefix} [red]Error loading benchmark: {e}[/red]")
+            logger.debug("Failed to load benchmark", exc_info=True)
+            console.print(f"{prefix} [red]Error loading benchmark: {escape(str(e))}[/red]")
             return False, None
 
     # Determine exporter parameters
@@ -180,7 +181,7 @@ def _export_single_benchmark(
 
         console.print(
             f"{prefix} [green]✓[/green] Exported {len(benchmark.recommendations)} "
-            f"recommendations to [bold]{actual_output_file}[/bold]"
+            f"recommendations to [bold]{escape(str(actual_output_file))}[/bold]"
         )
         console.print(f"      Format: [cyan]{exporter.format_name()}[/cyan]")
         console.print(f"      Size: [yellow]{file_size:.1f} KB[/yellow]")
@@ -188,8 +189,8 @@ def _export_single_benchmark(
         return True, actual_output_file
 
     except Exception as e:
-        logger.error(f"Export failed: {e}", exc_info=True)
-        console.print(f"{prefix} [red]✗ Export failed: {e}[/red]")
+        logger.debug("Export failed", exc_info=True)
+        console.print(f"{prefix} [red]✗ Export failed: {escape(str(e))}[/red]")
         return False, None
 
 

@@ -273,7 +273,7 @@ def search(query, platform, status, latest, limit, output_format):
 
         for r in results:
             formatted = search_obj.format_result_for_display(r)
-            console.print(formatted)
+            console.print(escape(formatted))
             console.print()  # Blank line
 
     except click.Abort:
@@ -313,7 +313,7 @@ def list_cmd(platform, latest, limit):
 
         for r in results[:limit]:
             formatted = search_obj.format_result_for_display(r)
-            console.print(formatted)
+            console.print(escape(formatted))
             console.print()
 
     except click.Abort:
@@ -353,30 +353,30 @@ def info(benchmark_id, output_format):
             output_data(bench, output_format)
 
         # Display detailed info (table format)
-        console.print(f"\n[bold]{bench['title']}[/bold]")
+        console.print(f"\n[bold]{escape(str(bench['title']))}[/bold]")
 
         if bench.get("version"):
-            console.print(f"Version: {bench['version']}")
+            console.print(f"Version: {escape(str(bench['version']))}")
 
-        console.print(f"ID: {bench['benchmark_id']}")
-        console.print(f"Status: {bench['status']}")
+        console.print(f"ID: {escape(str(bench['benchmark_id']))}")
+        console.print(f"Status: {escape(str(bench['status']))}")
 
         if bench.get("platform"):
-            console.print(f"Platform: {bench['platform']}")
+            console.print(f"Platform: {escape(str(bench['platform']))}")
 
         if bench.get("community"):
-            console.print(f"Community: {bench['community']}")
+            console.print(f"Community: {escape(str(bench['community']))}")
 
         if bench.get("owner"):
-            console.print(f"Owner: {bench['owner']}")
+            console.print(f"Owner: {escape(str(bench['owner']))}")
 
         if bench.get("published_date"):
-            console.print(f"Published: {bench['published_date']}")
+            console.print(f"Published: {escape(str(bench['published_date']))}")
 
-        console.print(f"\nURL: {bench['url']}")
+        console.print(f"\nURL: {escape(str(bench['url']))}")
 
         if bench.get("description"):
-            console.print(f"\n[dim]{bench['description'][:200]}...[/dim]")
+            console.print(f"\n[dim]{escape(bench['description'][:200])}...[/dim]")
 
         console.print(
             f"\n[cyan]Download:[/cyan] cis-bench catalog download {escape(str(benchmark_id))}"
@@ -427,7 +427,7 @@ def platforms(output_format):
         table.add_column("Benchmarks", justify="right", style="yellow")
 
         for p in platforms:
-            table.add_row(p["name"], str(p["count"]))
+            table.add_row(escape(str(p["name"])), str(p["count"]))
 
         console.print()
         console.print(table)
@@ -562,7 +562,7 @@ def download(benchmark_id_or_name, browser, force, interactive):
         raise click.Abort() from e
     except Exception as e:
         console.print(f"[red]✗ Download failed: {escape(str(e))}[/red]")
-        logger.error(f"Download error: {e}", exc_info=True)
+        logger.debug("Download error", exc_info=True)
         raise click.Abort() from e
 
 
@@ -610,10 +610,10 @@ def check_updates(offline):
             console.print(f"  [{u['benchmark_id']}] {escape(str(u['title']))}")
             if u["reason"] == "newer version in catalog":
                 console.print(
-                    f"      Version: {u['downloaded_version'] or '?'} -> {u['catalog_version']}"
+                    f"      Version: {escape(str(u['downloaded_version'] or '?'))} -> {escape(str(u['catalog_version']))}"
                 )
             else:
-                console.print(f"      WorkBench published {u['published_date']}")
+                console.print(f"      WorkBench published {escape(str(u['published_date']))}")
             console.print(f"      Downloaded: {u['downloaded_at']}")
             console.print()
 

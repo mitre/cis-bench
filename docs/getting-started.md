@@ -324,7 +324,7 @@ export CIS_BENCH_ENV=dev
 # Configure search limit
 export CIS_BENCH_SEARCH_LIMIT=500
 
-# Configure table title width
+# Let the Title column of search results grow up to 120 characters
 export CIS_BENCH_TABLE_TITLE_WIDTH=120
 ```
 

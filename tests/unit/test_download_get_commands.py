@@ -148,11 +148,13 @@ class TestDownloadAuthErrors:
         with patch(
             "cis_bench.cli.commands.download.AuthManager.get_or_create_session"
         ) as mock_auth:
-            mock_auth.side_effect = Exception("Cookie extraction failed")
+            mock_auth.side_effect = Exception("Cookie extraction failed [/x]")
 
             result = runner.invoke(cli, ["download", "12345"])
 
             assert result.exit_code == 1
+            assert result.output.count("Cookie extraction failed [/x]") == 1
+            assert "Traceback" not in result.output
             assert "Authentication Failed" in result.output
             assert "session may have expired" in result.output
             assert "cis-bench auth login" in result.output
@@ -452,7 +454,7 @@ class TestDownloadExportErrors:
                             "cis_bench.cli.commands.download.ExporterFactory"
                         ) as mock_factory:
                             mock_exporter = Mock()
-                            mock_exporter.export.side_effect = Exception("Export failed")
+                            mock_exporter.export.side_effect = Exception("Disk full [/x]")
                             mock_exporter.format_name.return_value = "JSON"
                             mock_exporter.get_file_extension.return_value = "json"
                             mock_factory.create.return_value = mock_exporter
@@ -460,7 +462,8 @@ class TestDownloadExportErrors:
                             result = runner.invoke(cli, ["download", "12345"])
 
                             assert result.exit_code == 1
-                            assert "export failed" in result.output
+                            assert result.output.count("export failed: Disk full [/x]") == 1
+                            assert "Traceback" not in result.output
                             assert "Download complete!" not in result.output
 
 
@@ -487,7 +490,7 @@ class TestDownloadBenchmarkErrors:
 
                         # First fails, second succeeds
                         mock_scraper.download_benchmark.side_effect = [
-                            Exception("Network error"),
+                            Exception("Network error [/x]"),
                             sample_benchmark,
                         ]
 
@@ -509,7 +512,7 @@ class TestDownloadBenchmarkErrors:
                             assert mock_scraper.download_benchmark.call_count == 2
                             assert result.exit_code == 1
                             assert "Error" in result.output
-                            assert "Network error" in result.output
+                            assert result.output.count("Error: Network error [/x]") == 1
                             assert "Download complete!" not in result.output
                             assert "1 of 2" in result.output
                             # A failed benchmark is reported in one line; the traceback is debug detail.
@@ -535,7 +538,7 @@ class TestDownloadBenchmarkErrors:
                     mock_scraper.download_benchmark.side_effect = [
                         AuthenticationError(
                             "WorkBench returned the login page for https://workbench.cisecurity.org/"
-                            "benchmarks/12345; the saved session has expired"
+                            "benchmarks/12345; the saved session has expired [/x]"
                         ),
                         sample_benchmark,
                     ]
@@ -544,6 +547,7 @@ class TestDownloadBenchmarkErrors:
 
         assert result.exit_code == 1
         assert mock_scraper.download_benchmark.call_count == 1  # 67890 never attempted
+        assert result.output.count("[/x]") == 1  # long message wraps; the markup token must survive
         assert "cis-bench auth login" in result.output
         assert "Traceback" not in result.output
         assert "Download complete!" not in result.output
@@ -626,19 +630,20 @@ class TestGetSearchErrors:
                 with patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class:
                     mock_search = Mock()
                     mock_search_class.return_value = mock_search
-                    mock_search.search.side_effect = Exception("Database corrupted")
+                    mock_search.search.side_effect = Exception("Database corrupted [/x]")
 
                     result = runner.invoke(cli, ["get", "test", "--non-interactive"])
 
                     assert result.exit_code == 1
-                    assert "Search failed" in result.output
+                    assert result.output.count("Search failed: Database corrupted [/x]") == 1
+                    assert "Traceback" not in result.output
 
 
-class TestGetTitleTruncation:
-    """Test get command title truncation (line 143)."""
+class TestGetTitleWrapping:
+    """The get results table shows a long title whole instead of cutting it."""
 
-    def test_get_truncates_long_titles_in_table(self, runner, tmp_path):
-        """Get truncates long benchmark titles in table display."""
+    def test_get_shows_a_long_title_whole(self, runner, tmp_path):
+        """A title longer than the column folds onto further lines; no character is dropped."""
         catalog_path = tmp_path / "catalog.db"
         catalog_path.touch()
 
@@ -653,7 +658,7 @@ class TestGetTitleTruncation:
                     mock_search = Mock()
                     mock_search_class.return_value = mock_search
 
-                    # Long title that will be truncated (>87 chars triggers truncation)
+                    # One 100-character word: wider than the title column, so it must fold
                     long_title = "A" * 100
                     mock_search.search.return_value = [
                         {
@@ -672,14 +677,10 @@ class TestGetTitleTruncation:
 
                     result = runner.invoke(cli, ["get", "test", "--non-interactive"])
 
-                    # The code truncates to 84 chars + "..." when title > 87 chars
-                    # Rich console also may use ellipsis character
-                    # Either Python ellipsis "..." or Rich truncation indicator
-                    assert (
-                        "..." in result.output
-                        or "\u2026" in result.output  # Unicode ellipsis
-                        or "A" * 84 in result.output  # Truncated to 84 chars
-                    )
+                    table_rows = [line for line in result.output.splitlines() if "│" in line]
+                    assert sum(line.count("A") for line in table_rows) == 100
+                    assert "\u2026" not in result.output
+                    assert "..." not in result.output
 
 
 class TestGetInteractiveSelection:
@@ -831,44 +832,40 @@ class TestGetDownloadErrors:
                         assert result.exit_code == 1
                         assert "Authentication Required" in result.output
 
-    def test_get_download_generic_error(self, runner, tmp_path):
-        """Get shows error when download fails."""
+    @staticmethod
+    def _invoke_get_with_failing_download(runner, tmp_path, global_flags=()):
         catalog_path = tmp_path / "catalog.db"
         catalog_path.touch()
-
-        with patch("cis_bench.cli.commands.get.Config") as mock_config:
+        with (
+            patch("cis_bench.cli.commands.get.Config") as mock_config,
+            patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class,
+            patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class,
+            patch("cis_bench.cli.commands.get.AuthManager") as mock_auth,
+            patch("cis_bench.cli.helpers.download_helper.download_with_progress") as mock_dl,
+        ):
             mock_config.get_catalog_db_path.return_value = catalog_path
+            mock_db_class.return_value.get_downloaded.return_value = None  # Not cached
+            mock_search_class.return_value.search.return_value = [
+                {"benchmark_id": "12345", "title": "Test", "version": "v1", "status": "Published"}
+            ]
+            mock_auth.get_or_create_session.return_value = Mock()
+            mock_dl.side_effect = Exception("Network timeout [/x]")
 
-            with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
-                mock_db = Mock()
-                mock_db_class.return_value = mock_db
-                mock_db.get_downloaded.return_value = None  # Not cached
+            return runner.invoke(cli, [*global_flags, "get", "test", "--non-interactive"])
 
-                with patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class:
-                    mock_search = Mock()
-                    mock_search_class.return_value = mock_search
-                    mock_search.search.return_value = [
-                        {
-                            "benchmark_id": "12345",
-                            "title": "Test",
-                            "version": "v1",
-                            "status": "Published",
-                        }
-                    ]
+    def test_get_download_generic_error(self, runner, tmp_path):
+        """Get prints a failed download as one line, verbatim, without a traceback."""
+        result = self._invoke_get_with_failing_download(runner, tmp_path)
 
-                    with patch("cis_bench.cli.commands.get.AuthManager") as mock_auth:
-                        mock_session = Mock()
-                        mock_auth.get_or_create_session.return_value = mock_session
+        assert result.exit_code == 1
+        assert result.output.count("Download failed: Network timeout [/x]") == 1
+        assert "Traceback" not in result.output
 
-                        with patch(
-                            "cis_bench.cli.helpers.download_helper.download_with_progress"
-                        ) as mock_dl:
-                            mock_dl.side_effect = Exception("Network timeout")
+    def test_get_download_error_traceback_is_written_with_verbose(self, runner, tmp_path):
+        result = self._invoke_get_with_failing_download(runner, tmp_path, global_flags=["-v"])
 
-                            result = runner.invoke(cli, ["get", "test", "--non-interactive"])
-
-                            assert result.exit_code == 1
-                            assert "Download failed" in result.output
+        assert result.exit_code == 1
+        assert "Traceback" in result.output
 
     def test_get_download_expired_session_shows_the_relogin_message(self, runner, tmp_path):
         from cis_bench.exceptions import AuthenticationError
@@ -889,12 +886,13 @@ class TestGetDownloadErrors:
             ]
             mock_auth.get_or_create_session.return_value = Mock()
             mock_dl.side_effect = AuthenticationError(
-                "WorkBench returned the login page; the saved session has expired"
+                "WorkBench returned the login page; the saved session has expired [/x]"
             )
 
             result = runner.invoke(cli, ["get", "test", "--non-interactive"])
 
         assert result.exit_code == 1
+        assert result.output.count("the saved session has expired [/x]") == 1
         assert "cis-bench auth login" in result.output
         assert "Download failed" not in result.output
 
@@ -1113,7 +1111,9 @@ class TestGetExportErrors:
                             mock_exporter = Mock()
                             mock_exporter.format_name.return_value = "JSON"
                             mock_exporter.get_file_extension.return_value = "json"
-                            mock_exporter.export.side_effect = Exception("Write permission denied")
+                            mock_exporter.export.side_effect = Exception(
+                                "Write permission denied [/x]"
+                            )
                             mock_factory.create.return_value = mock_exporter
 
                             result = runner.invoke(
@@ -1121,7 +1121,140 @@ class TestGetExportErrors:
                             )
 
                             assert result.exit_code == 1
-                            assert "Export failed" in result.output
+                            assert (
+                                result.output.count("Export failed: Write permission denied [/x]")
+                                == 1
+                            )
+                            assert "Traceback" not in result.output
+
+
+class TestOutsideTextIsPrintedVerbatim:
+    """Titles, versions, statuses, the query and paths reach the terminal as written."""
+
+    @staticmethod
+    def _writing_exporter(mock_factory):
+        exporter = mock_factory.create.return_value
+        exporter.format_name.return_value = "JSON"
+        exporter.get_file_extension.return_value = "json"
+        exporter.export.side_effect = lambda _benchmark, path: Path(path).write_text("{}")
+        return exporter
+
+    def test_get_prints_query_title_and_output_path_verbatim(
+        self, runner, sample_benchmark, tmp_path
+    ):
+        catalog_path = tmp_path / "catalog.db"
+        catalog_path.touch()
+        with (
+            runner.isolated_filesystem(temp_dir=tmp_path),
+            patch("cis_bench.cli.commands.get.Config") as mock_config,
+            patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class,
+            patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class,
+            patch("cis_bench.cli.commands.get.ExporterFactory") as mock_factory,
+        ):
+            mock_config.get_catalog_db_path.return_value = catalog_path
+            mock_search_class.return_value.search.return_value = [
+                {"benchmark_id": "12345", "title": "CIS T [/t]", "version": "v1", "status": "P"}
+            ]
+            mock_db_class.return_value.get_downloaded.return_value = {
+                "benchmark_id": "12345",
+                "content_json": sample_benchmark.model_dump_json(),
+                "downloaded_at": datetime.now(),
+            }
+            self._writing_exporter(mock_factory)
+
+            result = runner.invoke(
+                cli, ["get", "web[x]", "-f", "json", "-o", "out[o].json", "--non-interactive"]
+            )
+
+        assert result.exit_code == 0, result.output
+        assert "Searching for: web[x]" in result.output
+        assert "Found: CIS T [/t]" in result.output
+        assert "Output: out[o].json" in result.output
+
+    def test_get_lists_matches_verbatim(self, runner, tmp_path):
+        catalog_path = tmp_path / "catalog.db"
+        catalog_path.touch()
+        with (
+            patch("cis_bench.cli.commands.get.Config") as mock_config,
+            patch("cis_bench.catalog.database.CatalogDatabase"),
+            patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class,
+        ):
+            mock_config.get_catalog_db_path.return_value = catalog_path
+            mock_search_class.return_value.search.return_value = [
+                {
+                    "benchmark_id": "1",
+                    "title": "CIS A [/a]",
+                    "version": "v1 [/v]",
+                    "status": "P [/s]",
+                },
+                {"benchmark_id": "2", "title": "CIS B", "version": "v2", "status": "Published"},
+            ]
+
+            result = runner.invoke(cli, ["get", "web[x]", "--non-interactive"])
+
+        assert "matching 'web[x]'" in result.output
+        assert "CIS A [/a]" in result.output
+        assert "v1 [/v]" in result.output
+        assert "P [/s]" in result.output
+
+    def test_get_without_a_catalog_prints_the_query_verbatim(self, runner, tmp_path):
+        with patch("cis_bench.cli.commands.get.Config") as mock_config:
+            mock_config.get_catalog_db_path.return_value = tmp_path / "missing.db"
+
+            result = runner.invoke(cli, ["get", "web[x]"])
+
+        assert result.exit_code == 1
+        assert 'cis-bench get "web[x]"' in result.output
+
+    def test_get_prints_downloaded_title_verbatim(self, runner, sample_benchmark, tmp_path):
+        sample_benchmark.title = "CIS T [/t]"
+        catalog_path = tmp_path / "catalog.db"
+        catalog_path.touch()
+        with (
+            runner.isolated_filesystem(temp_dir=tmp_path),
+            patch("cis_bench.cli.commands.get.Config") as mock_config,
+            patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class,
+            patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class,
+            patch("cis_bench.cli.commands.get.AuthManager"),
+            patch(
+                "cis_bench.cli.helpers.download_helper.download_with_progress",
+                return_value=sample_benchmark,
+            ),
+            patch("cis_bench.cli.commands.get.ExporterFactory") as mock_factory,
+        ):
+            mock_config.get_catalog_db_path.return_value = catalog_path
+            mock_search_class.return_value.search.return_value = [
+                {"benchmark_id": "23598", "title": "CIS T", "version": "v1", "status": "P"}
+            ]
+            mock_db_class.return_value.get_downloaded.side_effect = [
+                None,
+                {"benchmark_id": "23598", "content_json": sample_benchmark.model_dump_json()},
+            ]
+            self._writing_exporter(mock_factory)
+
+            result = runner.invoke(cli, ["get", "web", "-f", "json", "--non-interactive"])
+
+        assert result.exit_code == 0, result.output
+        assert "Downloaded: CIS T [/t]" in result.output
+
+    def test_download_prints_title_verbatim(self, runner, sample_benchmark, tmp_path):
+        sample_benchmark.title = "CIS T [/t]"
+        with (
+            runner.isolated_filesystem(temp_dir=tmp_path),
+            patch("cis_bench.cli.commands.download.Config") as mock_config,
+            patch("cis_bench.cli.commands.download.AuthManager.get_or_create_session"),
+            patch("cis_bench.cli.commands.download.WorkbenchScraper") as mock_scraper_class,
+            patch("cis_bench.cli.commands.download.ExporterFactory") as mock_factory,
+        ):
+            mock_config.get_catalog_db_path.return_value = tmp_path / "nonexistent.db"
+            mock_scraper_class.return_value.download_benchmark.return_value = sample_benchmark
+            self._writing_exporter(mock_factory)
+
+            result = runner.invoke(cli, ["download", "23598", "-o", "o[x]"])
+
+        assert result.exit_code == 0, result.output
+        assert "Downloaded: CIS T [/t]" in result.output
+        assert "Exported JSON: o[x]/cis_t_t.json" in result.output
 
 
 class TestGetNonInteractiveMode:

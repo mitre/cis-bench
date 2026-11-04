@@ -21,6 +21,8 @@ cis-bench --debug <command> # Same as --verbose
 cis-bench --quiet <command> # Only warnings and errors
 ```
 
+Errors are printed without a Python traceback. Add `--verbose` to also log the full error with its traceback, for example `cis-bench --verbose download <ID>`.
+
 **Per-Command Flags:**
 Most commands also accept `-v, --verbose`, `-d, --debug`, `-q, --quiet` flags at the end.
 
@@ -710,7 +712,7 @@ xargs -I {} cis-bench download {}
 
 **Display:**
 
-- `CIS_BENCH_TABLE_TITLE_WIDTH` - Table title column width (default: 90)
+- `CIS_BENCH_TABLE_TITLE_WIDTH` - Widest the Title column of the `search` and `get` tables grows (default: 90). In a narrower terminal the title wraps first, so ID, Version and Status stay whole.
 - `CIS_BENCH_SEARCH_LIMIT` - Default search limit (default: 1000)
 
 **Environment:**

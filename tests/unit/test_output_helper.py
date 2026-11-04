@@ -1,11 +1,19 @@
 """Unit tests for output formatting helper."""
 
 import json
+from io import StringIO
 
 import pytest
 import yaml
+from rich.console import Console
 
-from cis_bench.cli.helpers.output import output_csv, output_data, output_json, output_yaml
+from cis_bench.cli.helpers.output import (
+    benchmark_table,
+    output_csv,
+    output_data,
+    output_json,
+    output_yaml,
+)
 
 # ============================================================================
 # Tests: JSON Output
@@ -198,3 +206,95 @@ class TestOutputData:
         captured = capsys.readouterr()
         assert "name,id" in captured.out
         assert "test,1" in captured.out
+
+
+# ============================================================================
+# Tests: Benchmark results table
+# ============================================================================
+
+LONG_TITLE = (
+    "CIS Microsoft Windows Server 2022 Benchmark for Domain Controllers "
+    "and Member Servers in Hybrid Azure Environments"
+)
+
+
+def _render(table, width):
+    buffer = StringIO()
+    Console(file=buffer, width=width).print(table)
+    return buffer.getvalue()
+
+
+class TestBenchmarkTable:
+    """The search/get results table fits the terminal without cutting short columns."""
+
+    def test_short_columns_stay_whole_and_the_title_wraps_at_80_columns(self, monkeypatch):
+        monkeypatch.delenv("CIS_BENCH_TABLE_TITLE_WIDTH", raising=False)
+        rows = [
+            {
+                "benchmark_id": "23598",
+                "title": LONG_TITLE,
+                "version": "v4.0.0",
+                "status": "Published",
+            }
+        ]
+
+        output = _render(benchmark_table(rows), width=80)
+
+        assert "23598" in output
+        assert "v4.0.0" in output
+        assert "Published" in output
+        assert "…" not in output
+        for word in LONG_TITLE.split():
+            assert word in output
+
+    @pytest.mark.parametrize(
+        ("benchmark_id", "version", "status"),
+        [
+            ("2359823598", "v1", "P"),
+            ("1", "v4.0.0-draft1", "P"),
+            ("1", "v1", "Published Archive"),
+        ],
+        ids=["widest-id", "widest-version", "widest-status"],
+    )
+    def test_in_a_narrow_pane_only_the_title_gives_up_width(
+        self, monkeypatch, benchmark_id, version, status
+    ):
+        monkeypatch.delenv("CIS_BENCH_TABLE_TITLE_WIDTH", raising=False)
+        rows = [
+            {
+                "benchmark_id": benchmark_id,
+                "title": LONG_TITLE,
+                "version": version,
+                "status": status,
+            }
+        ]
+
+        output = _render(benchmark_table(rows), width=40)
+
+        assert benchmark_id in output
+        assert version in output
+        assert status in output
+        assert "…" not in output  # a word wider than the title column folds, it is not cut
+
+    def test_title_width_setting_is_the_widest_the_title_column_grows(self, monkeypatch):
+        monkeypatch.setenv("CIS_BENCH_TABLE_TITLE_WIDTH", "30")
+        rows = [{"benchmark_id": "1", "title": LONG_TITLE, "version": "v1", "status": "Published"}]
+
+        output = _render(benchmark_table(rows), width=200)
+
+        title_lines = [
+            line for line in output.splitlines() if "Hybrid" in line or "Windows" in line
+        ]
+        assert title_lines
+        assert all(len(line.split("│")[2].strip()) <= 30 for line in title_lines)
+
+    def test_cells_from_the_catalog_are_shown_verbatim(self):
+        rows = [
+            {"benchmark_id": "1", "title": "CIS T [/t]", "version": "v1 [/v]", "status": "P [/s]"}
+        ]
+
+        output = _render(benchmark_table(rows), width=120)
+
+        assert "CIS T [/t]" in output
+        assert "v1 [/v]" in output
+        assert "P [/s]" in output

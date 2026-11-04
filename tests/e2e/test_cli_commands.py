@@ -366,6 +366,28 @@ class TestInfoCommand:
         assert result.exit_code == 1
         assert "File not found" in result.output
 
+    def test_info_prints_benchmark_and_recommendation_text_verbatim(self, runner, sample_benchmark):
+        sample_benchmark.title = "CIS T [/t]"
+        sample_benchmark.version = "v1 [/v]"
+        sample_benchmark.recommendations[0].title = "Rec [/r]"
+        sample_benchmark.recommendations[0].profiles = ["level 1"]
+        with runner.isolated_filesystem():
+            sample_benchmark.to_json_file("b.json")
+
+            result = runner.invoke(cli, ["info", "b.json"])
+
+        assert result.exit_code == 0, result.output
+        assert "CIS T [/t]" in result.output
+        assert "Version: v1 [/v]" in result.output
+        assert "Rec [/r]" in result.output
+        assert "1.1.1 [level 1]" in result.output
+
+    def test_info_missing_file_prints_its_path_verbatim(self, runner):
+        result = runner.invoke(cli, ["info", "missing[x].json"])
+
+        assert result.exit_code == 1
+        assert "missing[x].json" in result.output
+
     def test_info_with_output_dir(self, runner, sample_benchmark_json, tmp_path):
         """Info finds file in specified output directory."""
         benchmarks_dir = tmp_path / "benchmarks"
@@ -388,7 +410,17 @@ class TestInfoCommand:
         result = runner.invoke(cli, ["info", str(bad_json)])
 
         assert result.exit_code == 1
-        assert "Error" in result.output
+        assert result.output.count("Unterminated string starting at") == 1
+        assert "Traceback" not in result.output
+
+    def test_info_error_traceback_is_written_with_verbose(self, runner, tmp_path):
+        bad_json = tmp_path / "bad.json"
+        bad_json.write_text('{"invalid json}')
+
+        result = runner.invoke(cli, ["--verbose", "info", str(bad_json)])
+
+        assert result.exit_code == 1
+        assert "Traceback" in result.output
 
     def test_info_shows_more_indicator(self, runner, tmp_path):
         """Info shows 'and X more' indicator for benchmarks with >5 recommendations."""
@@ -447,10 +479,25 @@ class TestListCommand:
 
     def test_list_nonexistent_directory(self, runner):
         """List shows message when directory doesn't exist."""
-        result = runner.invoke(cli, ["list", "--output-dir", "./nonexistent"])
+        result = runner.invoke(cli, ["list", "--output-dir", "./nonexistent[x]"])
 
         assert result.exit_code == 0
-        assert "Directory not found" in result.output
+        assert "Directory not found: ./nonexistent[x]" in result.output
+
+    def test_list_prints_titles_versions_and_file_names_verbatim(
+        self, runner, sample_benchmark, tmp_path
+    ):
+        sample_benchmark.title = "CIS T [/t]"
+        sample_benchmark.version = "v1 [/v]"
+        sample_benchmark.to_json_file(str(tmp_path / "good.json"))
+        (tmp_path / "bad[x].json").write_text('{"invalid": "data"}')
+
+        result = runner.invoke(cli, ["list", "--output-dir", str(tmp_path)])
+
+        assert result.exit_code == 0, result.output
+        assert "CIS T [/t]" in result.output
+        assert "v1 [/v]" in result.output
+        assert "bad[x].json" in result.output
 
     def test_list_single_benchmark(self, runner, sample_benchmark_json, tmp_path):
         """List displays single benchmark correctly."""

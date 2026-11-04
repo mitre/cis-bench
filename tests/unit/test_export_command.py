@@ -171,6 +171,52 @@ class TestExportFromFile:
             assert result.exit_code == 0
             assert Path("custom.yaml").exists()
 
+    def test_export_prints_title_and_paths_verbatim(self, runner, sample_benchmark):
+        with runner.isolated_filesystem():
+            sample_benchmark.title = "CIS T [/t]"
+            Path("in[x].json").write_text(sample_benchmark.model_dump_json())
+
+            result = runner.invoke(
+                cli, ["export", "in[x].json", "--format", "yaml", "--output", "out[o].yaml"]
+            )
+
+            assert result.exit_code == 0, result.output
+            assert Path("out[o].yaml").exists()
+        assert "Loaded: CIS T [/t]" in result.output
+        assert "recommendations to out[o].yaml" in result.output  # the INFO log line also names it
+
+    def test_export_missing_file_prints_its_path_verbatim(self, runner):
+        result = runner.invoke(cli, ["export", "missing[/p].json", "--format", "yaml"])
+
+        assert result.exit_code == 1
+        assert isinstance(result.exception, SystemExit)  # handled, not a crash in the handler
+        assert "Traceback" not in result.output
+        # the INFO log line also names the file; check the error line itself
+        assert "Error: File not found: ./benchmarks/missing[/p].json" in result.output
+
+    def test_export_failure_prints_one_line_without_a_traceback(
+        self, runner, sample_benchmark_json
+    ):
+        with patch("cis_bench.cli.commands.export.ExporterFactory") as mock_factory:
+            mock_factory.create.return_value.export.side_effect = Exception("Disk full [/e]")
+
+            result = runner.invoke(cli, ["export", str(sample_benchmark_json), "--format", "yaml"])
+
+        assert result.exit_code == 1
+        assert result.output.count("Export failed: Disk full [/e]") == 1
+        assert "Traceback" not in result.output
+
+    def test_export_failure_traceback_is_written_with_verbose(self, runner, sample_benchmark_json):
+        with patch("cis_bench.cli.commands.export.ExporterFactory") as mock_factory:
+            mock_factory.create.return_value.export.side_effect = Exception("Disk full")
+
+            result = runner.invoke(
+                cli, ["--verbose", "export", str(sample_benchmark_json), "--format", "yaml"]
+            )
+
+        assert result.exit_code == 1
+        assert "Traceback" in result.output
+
 
 # ============================================================================
 # Tests: Database-based Export (NEW Functionality)
@@ -321,6 +367,9 @@ class TestExportFromDatabase:
 
                     assert result.exit_code == 1
                     assert "Error loading from database" in result.output
+                    # pydantic's message carries bracketed detail that must not be read as markup
+                    assert "[type=json_invalid" in result.output
+                    assert "Traceback" not in result.output
 
 
 # ============================================================================

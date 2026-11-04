@@ -46,7 +46,7 @@ def remove_cmd(references: tuple[str, ...], yes: bool) -> None:
     catalog_db_path = Config.get_catalog_db_path()
     if not catalog_db_path.exists():
         console.print(
-            f"[yellow]No catalog database at {catalog_db_path}; nothing is downloaded.[/yellow]"
+            f"[yellow]No catalog database at {escape(str(catalog_db_path))}; nothing is downloaded.[/yellow]"
         )
         sys.exit(1)
     db = CatalogDatabase(catalog_db_path)

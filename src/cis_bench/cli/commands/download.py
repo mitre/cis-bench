@@ -163,7 +163,7 @@ def download(
         report_expired_session(console, e)
         sys.exit(1)
     except Exception as e:
-        logger.error(f"Authentication failed: {e}", exc_info=True)
+        logger.debug("Authentication failed", exc_info=True)
         console.print("\n[bold red]Authentication Failed[/bold red]\n")
         console.print(f"[yellow]Error: {escape(str(e))}[/yellow]\n")
         console.print("[bold cyan]Your session may have expired. To refresh:[/bold cyan]")
@@ -214,7 +214,9 @@ def download(
             benchmark = download_with_progress(scraper, url, prefix=prefix)
 
             logger.debug(f"Successfully downloaded benchmark: {benchmark.title}")
-            console.print(f"{prefix} [green]✓[/green] Downloaded: [bold]{benchmark.title}[/bold]")
+            console.print(
+                f"{prefix} [green]✓[/green] Downloaded: [bold]{escape(benchmark.title)}[/bold]"
+            )
             console.print(f"      Recommendations: {benchmark.total_recommendations}")
             console.print(
                 f"      CIS Controls: {sum(len(r.cis_controls) for r in benchmark.recommendations)}"
@@ -250,8 +252,10 @@ def download(
                     logger.debug(f"Saved benchmark {benchmark_id} to catalog database")
                     console.print(f"      [green]✓[/green] Cached in database (ID: {benchmark_id})")
                 except Exception as e:
-                    logger.warning(f"Failed to save to catalog database: {e}", exc_info=True)
-                    console.print(f"      [yellow]⚠[/yellow] Could not cache in database: {e}")
+                    logger.debug("Failed to save to catalog database", exc_info=True)
+                    console.print(
+                        f"      [yellow]⚠[/yellow] Could not cache in database: {escape(str(e))}"
+                    )
 
             # Export to requested formats
             for fmt in export_formats:
@@ -274,12 +278,12 @@ def download(
                     file_size = os.path.getsize(output_file) / 1024
                     logger.debug(f"Exported {fmt} format: {output_file} ({file_size:.1f} KB)")
                     console.print(
-                        f"      [green]✓[/green] Exported {exporter.format_name()}: {output_file} ({file_size:.1f} KB)"
+                        f"      [green]✓[/green] Exported {exporter.format_name()}: {escape(output_file)} ({file_size:.1f} KB)"
                     )
 
                 except Exception as e:
                     logger.debug(f"Export failed for format {fmt}", exc_info=True)
-                    console.print(f"      [red]✗[/red] {fmt} export failed: {e}")
+                    console.print(f"      [red]✗[/red] {fmt} export failed: {escape(str(e))}")
                     if benchmark_id not in failed:
                         failed.append(benchmark_id)
 
