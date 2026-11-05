@@ -75,7 +75,7 @@ class TestDownloadDatabaseCaching:
             catalog_path.touch()
 
             # The test catalog is catalog.db in the data folder
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
 
             # Mock AuthManager to return session
             mock_session = Mock()
@@ -122,7 +122,7 @@ class TestDownloadDatabaseCaching:
             # Point to non-existent catalog
             nonexistent_path = tmp_path / "nonexistent" / "catalog.db"
 
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(nonexistent_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(nonexistent_path.parent))
 
             mock_session = Mock()
             with patch("cis_bench.fetcher.auth.AuthManager.get_or_create_session") as mock_auth:
@@ -155,7 +155,7 @@ class TestDownloadDatabaseCaching:
             catalog_path = tmp_path / "catalog.db"
             catalog_path.touch()
 
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
             monkeypatch.setenv("CIS_BENCH_VERIFY_SSL", "false")
 
             mock_session = Mock()
@@ -199,7 +199,7 @@ class TestDownloadDatabaseCaching:
             catalog_path = tmp_path / "catalog.db"
             catalog_path.touch()
 
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
             monkeypatch.setenv("CIS_BENCH_VERIFY_SSL", "false")
 
             mock_session = Mock()
@@ -247,7 +247,7 @@ class TestDownloadAndExportIntegration:
             catalog_path = tmp_path / "catalog.db"
             catalog_path.touch()
 
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
             monkeypatch.setenv("CIS_BENCH_VERIFY_SSL", "false")
 
             mock_session = Mock()
@@ -281,7 +281,7 @@ class TestDownloadAndExportIntegration:
                         }
 
                         # Step 2: Export by ID from the same data folder
-                        monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+                        monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
 
                         export_result = runner.invoke(
                             cli,
@@ -306,7 +306,7 @@ class TestDownloadAndExportIntegration:
                 ),
                 patch("cis_bench.fetcher.workbench.WorkbenchScraper") as mock_scraper_class,
             ):
-                monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(nonexistent_path.parent))
+                monkeypatch.setenv("CIS_BENCH_HOME", str(nonexistent_path.parent))
                 mock_scraper = Mock()
                 mock_scraper.download_benchmark.return_value = sample_benchmark
                 mock_scraper_class.return_value = mock_scraper

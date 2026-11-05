@@ -33,7 +33,7 @@ def db(tmp_path):
 
 @pytest.fixture
 def run(db, monkeypatch):
-    monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(db.db_path.parent))
+    monkeypatch.setenv("CIS_BENCH_HOME", str(db.db_path.parent))
 
     def invoke(*args, input=None):
         return CliRunner().invoke(cli, ["remove", *args], input=input)
@@ -103,7 +103,7 @@ class TestRemoveCommand:
 
     def test_without_a_catalog_database_nothing_is_created(self, tmp_path, monkeypatch):
         missing = tmp_path / "absent" / "catalog.db"
-        monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(missing.parent))
+        monkeypatch.setenv("CIS_BENCH_HOME", str(missing.parent))
         result = CliRunner().invoke(cli, ["remove", "23598", "--yes"])
 
         assert result.exit_code == 1
@@ -111,7 +111,7 @@ class TestRemoveCommand:
 
     def test_without_a_catalog_database_prints_its_path_verbatim(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("CIS_BENCH_DATA_DIR", "c[x]")
+        monkeypatch.setenv("CIS_BENCH_HOME", "c[x]")
         result = CliRunner().invoke(cli, ["remove", "23598", "--yes"])
 
         assert result.exit_code == 1

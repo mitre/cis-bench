@@ -144,7 +144,7 @@ class TestAuthLoginCommand:
     def test_login_saves_session_on_success(self, mock_auth_manager, runner, tmp_path, monkeypatch):
         """auth login should save session after successful validation."""
         monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("CIS_BENCH_DATA_DIR", "s[/p]")
+        monkeypatch.setenv("CIS_BENCH_HOME", "s[/p]")
         mock_session = MagicMock()
         mock_session.cookies = [MagicMock()]
         mock_auth_manager.load_cookies_from_browser.return_value = mock_session
@@ -581,7 +581,7 @@ class TestAuthStatusExceptionHandler:
     def test_status_no_session_file(self, mock_auth, runner, tmp_path, monkeypatch):
         """Should report not logged in when no session file exists."""
         monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("CIS_BENCH_DATA_DIR", "s[/p]")
+        monkeypatch.setenv("CIS_BENCH_HOME", "s[/p]")
 
         result = runner.invoke(cli, ["auth", "status"])
 
@@ -636,7 +636,7 @@ class TestAuthLogoutExceptionHandler:
     def test_logout_no_session_file(self, mock_auth, runner, tmp_path, monkeypatch):
         """Should report no session to clear when none exists."""
         monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("CIS_BENCH_DATA_DIR", "s[/p]")
+        monkeypatch.setenv("CIS_BENCH_HOME", "s[/p]")
 
         result = runner.invoke(cli, ["auth", "logout"])
 

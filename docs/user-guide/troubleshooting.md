@@ -121,7 +121,7 @@ export REQUESTS_CA_BUNDLE=/etc/ssl/corporate-ca-bundle.crt
 # Last resort: disable verification for one login
 cis-bench auth login --browser chrome --no-verify-ssl
 
-# Or for every command, via environment / ~/.cis-bench/.env
+# Or for every command, via the environment or config.toml
 export CIS_BENCH_VERIFY_SSL=false
 ```
 
@@ -280,10 +280,10 @@ cis-bench catalog download 23598 --force
 **Solution:**
 ```bash
 # Backup first
-cp ~/.cis-bench/catalog.db ~/.cis-bench/catalog.db.backup
+cp ~/.local/share/cis-bench/catalog.db ~/.local/share/cis-bench/catalog.db.backup
 
 # Rebuild
-rm ~/.cis-bench/catalog.db
+rm ~/.local/share/cis-bench/catalog.db
 cis-bench catalog refresh
 ```
 
@@ -297,11 +297,11 @@ cis-bench catalog refresh
 
 **Check:**
 ```bash
-# Which data folder is in use (unset means ~/.cis-bench)
-echo "$CIS_BENCH_DATA_DIR"
+# Which folders are in use (unset means the XDG folders)
+echo "$CIS_BENCH_HOME"
 ```
 
-pytest sets `CIS_BENCH_DATA_DIR` to a temporary folder for each run (`tests/conftest.py`).
+pytest sets `CIS_BENCH_HOME` to a temporary folder for each run (`tests/conftest.py`).
 
 **If tests use production DB:**
 
@@ -337,7 +337,7 @@ pytest sets `CIS_BENCH_DATA_DIR` to a temporary folder for each run (`tests/conf
 - Run `VACUUM` on SQLite
 - Rebuild FTS5 index:
 ```bash
-sqlite3 ~/.cis-bench/catalog.db "DELETE FROM benchmarks_fts"
+sqlite3 ~/.local/share/cis-bench/catalog.db "DELETE FROM benchmarks_fts"
 # Then refresh catalog
 ```
 

@@ -39,17 +39,19 @@ from cis_bench.models.benchmark import Benchmark, Recommendation
 
 @pytest.fixture(scope="session", autouse=True)
 def test_environment(tmp_path_factory):
-    """Point every test at its own data folder, never the developer's ~/.cis-bench.
+    """Point every test at its own folder, never the developer's XDG folders or ~/.cis-bench.
 
-    CIS_BENCH_DATA_DIR places catalog.db, session.cookies, .env and config.toml. A
-    CIS_BENCH_ENV left in the developer's shell is removed: the settings refuse it.
+    CIS_BENCH_HOME places config.toml, catalog.db, benchmarks/ and session.cookies in one
+    folder. A retired CIS_BENCH_ENV or CIS_BENCH_DATA_DIR left in the developer's shell is
+    removed: the settings refuse them.
     """
     previous = {
-        name: os.environ.pop(name, None) for name in ("CIS_BENCH_ENV", "CIS_BENCH_DATA_DIR")
+        name: os.environ.pop(name, None)
+        for name in ("CIS_BENCH_ENV", "CIS_BENCH_DATA_DIR", "CIS_BENCH_HOME")
     }
-    os.environ["CIS_BENCH_DATA_DIR"] = str(tmp_path_factory.mktemp("cis-bench-data"))
+    os.environ["CIS_BENCH_HOME"] = str(tmp_path_factory.mktemp("cis-bench-data"))
     yield
-    os.environ.pop("CIS_BENCH_DATA_DIR", None)
+    os.environ.pop("CIS_BENCH_HOME", None)
     for name, value in previous.items():
         if value is not None:
             os.environ[name] = value
@@ -278,8 +280,8 @@ def mock_browser_cookies(mocker):
 
 @pytest.fixture
 def data_dir(tmp_path, monkeypatch):
-    """This test's own data folder (CIS_BENCH_DATA_DIR): catalog.db and session.cookies live here."""
-    monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(tmp_path))
+    """This test's own data folder (CIS_BENCH_HOME): catalog.db and session.cookies live here."""
+    monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path))
     return tmp_path
 
 

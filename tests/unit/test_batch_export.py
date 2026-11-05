@@ -166,7 +166,7 @@ class TestSingleExportBackwardCompatibility:
             catalog_path = tmp_path / "catalog.db"
             catalog_path.touch()
 
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
 
             with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                 mock_db_class.return_value = mock_db_with_benchmarks(sample_benchmark_1)
@@ -207,7 +207,7 @@ class TestBatchExportMultipleIds:
             catalog_path = tmp_path / "catalog.db"
             catalog_path.touch()
 
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
 
             with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                 mock_db_class.return_value = mock_db_with_benchmarks(
@@ -238,7 +238,7 @@ class TestBatchExportMultipleIds:
             catalog_path = tmp_path / "catalog.db"
             catalog_path.touch()
 
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
 
             with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                 mock_db_class.return_value = mock_db_with_benchmarks(
@@ -262,7 +262,7 @@ class TestBatchExportMultipleIds:
             catalog_path = tmp_path / "catalog.db"
             catalog_path.touch()
 
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
 
             with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                 mock_db_class.return_value = mock_db_with_benchmarks(
@@ -294,7 +294,7 @@ class TestBatchExportOutputDirectory:
             catalog_path = tmp_path / "catalog.db"
             catalog_path.touch()
 
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
 
             with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                 mock_db_class.return_value = mock_db_with_benchmarks(
@@ -318,7 +318,7 @@ class TestBatchExportOutputDirectory:
             catalog_path = tmp_path / "catalog.db"
             catalog_path.touch()
 
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
 
             with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                 mock_db_class.return_value = mock_db_with_benchmarks(sample_benchmark_1)
@@ -348,7 +348,7 @@ class TestBatchExportErrorHandling:
             catalog_path = tmp_path / "catalog.db"
             catalog_path.touch()
 
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
 
             with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                 # Only benchmark 1 and 2 exist, 99999 does not
@@ -375,7 +375,7 @@ class TestBatchExportErrorHandling:
             catalog_path = tmp_path / "catalog.db"
             catalog_path.touch()
 
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
 
             with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                 mock_db = Mock()
@@ -411,7 +411,7 @@ class TestBatchExportProgress:
             catalog_path = tmp_path / "catalog.db"
             catalog_path.touch()
 
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
 
             with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                 mock_db_class.return_value = mock_db_with_benchmarks(
@@ -432,7 +432,7 @@ class TestBatchExportProgress:
             catalog_path = tmp_path / "catalog.db"
             catalog_path.touch()
 
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
 
             with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                 mock_db_class.return_value = mock_db_with_benchmarks(
@@ -464,7 +464,7 @@ class TestBatchExportMixedIdentifiers:
             catalog_path = tmp_path / "catalog.db"
             catalog_path.touch()
 
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
 
             with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                 mock_db_class.return_value = mock_db_with_benchmarks(sample_benchmark_1)
@@ -501,7 +501,7 @@ class TestBatchExportIntegration:
             catalog_path = tmp_path / "catalog.db"
             catalog_path.touch()
 
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
 
             with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                 mock_db_class.return_value = mock_db_with_benchmarks(
@@ -545,7 +545,7 @@ class TestBatchExportIntegration:
             catalog_path = tmp_path / "catalog.db"
             catalog_path.touch()
 
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
 
             with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                 mock_db_class.return_value = mock_db_with_benchmarks(sample_benchmark_1)

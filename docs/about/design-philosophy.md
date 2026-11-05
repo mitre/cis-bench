@@ -328,7 +328,7 @@ exporter.export(benchmark, output_path)
 
 **Implementation:**
 
-- `cis-bench auth login` saves to `~/.cis-bench/session.cookies`
+- `cis-bench auth login` saves to `~/.local/state/cis-bench/session.cookies`
 - All commands auto-load saved session
 - Validates on use, prompts to re-auth if expired
 
@@ -351,7 +351,7 @@ exporter.export(benchmark, output_path)
 
 **Implementation:**
 
-- SQLite database at `~/.cis-bench/catalog.db`
+- SQLite database at `~/.local/share/cis-bench/catalog.db`
 - `downloaded_benchmarks` table with full JSON
 - Export command checks database first
 

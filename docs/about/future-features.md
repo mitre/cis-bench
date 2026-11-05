@@ -17,7 +17,7 @@
 The following features were originally planned as "future" but are now complete:
 
 - **Catalog System** - SQLite database with FTS5 search (`catalog refresh`, `search` command)
-- **Session Persistence** - Login once with `auth login`, session saved to `~/.cis-bench/session.cookies`
+- **Session Persistence** - Login once with `auth login`, session saved to `~/.local/state/cis-bench/session.cookies`
 - **Search and Discovery** - `search` command with platform filtering
 - **Get Command** - Unified `get` command (search + download + export in one)
 - **Interactive Mode** - questionary-based selection in `get` command
@@ -76,7 +76,7 @@ cis-bench search "ubuntu" # Works immediately
 **Implementation**:
 
 - Use multiprocessing for true background
-- Store PID in ~/.cis-bench/refresh.pid
+- Store PID in the state folder (~/.local/state/cis-bench/refresh.pid)
 - Show progress when user checks status
 - Atomic database updates (don't corrupt active catalog)
 

@@ -260,9 +260,9 @@ cis-bench export benchmark.json \
 3. Downloaded benchmarks (permanent, user manages)
 
 Cache locations:
-~/.cis-bench/cache/catalog.json
-~/.cis-bench/cache/http_cache.sqlite
-~/.cis-bench/cache/benchmark_metadata.json
+~/.cache/cis-bench/catalog.json
+~/.cache/cis-bench/http_cache.sqlite
+~/.cache/cis-bench/benchmark_metadata.json
 ```
 
 ### Platform Detection

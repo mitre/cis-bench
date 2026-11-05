@@ -15,53 +15,67 @@ When the same setting is given in more than one, the first in this list wins:
 
 1. A command-line flag, where the command has one (for example `catalog refresh --rate-limit`)
 2. The environment: `export CIS_BENCH_SEARCH_LIMIT=50`
-3. `<data folder>/.env`: a line `CIS_BENCH_SEARCH_LIMIT=50`
-4. `<data folder>/config.toml`: a line `search_limit = 50` (the name without `CIS_BENCH_`, in lower case)
-5. The default
+3. `<config folder>/config.toml`: a line `search_limit = 50` (the name without `CIS_BENCH_`, in lower case)
+4. The default
 
 A blank value counts as not set. An invalid value, wherever it comes from, stops every
 command before it does anything, with one `Configuration Error` that names the setting,
 the value and what is accepted. `--help` still works.
 
-Neither file is copied into the environment: `.env` and `config.toml` hold cis-bench
-settings only, and an unknown `CIS_BENCH_*` name or `config.toml` key is an error (a typo
-is never ignored). Other lines in `.env` are left alone.
+`config.toml` is not copied into the environment, and an unknown key in it is an error (a
+typo is never ignored).
 
-### The data folder
+### The folders
 
-`CIS_BENCH_DATA_DIR` sets the folder that holds the catalog, the saved session, `.env`
-and `config.toml`. Default: `~/.cis-bench`.
+cis-bench keeps its files in the XDG base directories, resolved the way the GitHub CLI
+resolves its own, on Linux and macOS alike:
 
-Because it locates `.env` and `config.toml`, it can only be set in the environment.
-Use a second folder to keep test or development data apart from your own:
+| File | Folder | Default |
+|---|---|---|
+| `config.toml` (settings) | config: `$XDG_CONFIG_HOME/cis-bench` | `~/.config/cis-bench` |
+| `catalog.db`, `benchmarks/` (data) | data: `$XDG_DATA_HOME/cis-bench` | `~/.local/share/cis-bench` |
+| `session.cookies` (state) | state: `$XDG_STATE_HOME/cis-bench` | `~/.local/state/cis-bench` |
 
-```bash
-export CIS_BENCH_DATA_DIR=~/.cis-bench-dev
-cis-bench catalog refresh
+On Windows, when the XDG variables are not set, config is `%AppData%\cis-bench` and data
+and state are `%LocalAppData%\cis-bench`.
+
+Two cis-bench variables move the folders; both are read from the environment only, because
+they locate `config.toml`:
+
+- `CIS_BENCH_HOME`: one flat folder for all four files, for containers, CI and tests
+  (`docker run -v ./cis-bench:/data -e CIS_BENCH_HOME=/data ...`).
+
+- `CIS_BENCH_CONFIG_DIR`: the config folder alone; it beats `CIS_BENCH_HOME` for `config.toml`.
+
+A blank or relative XDG value is ignored, as the specification requires. A relative
+`CIS_BENCH_*` path is taken from the working directory, and `~` is your home folder.
+
 ```
-
-`CIS_BENCH_ENV` (production/dev/test) is no longer used. If it is set, cis-bench stops and
-asks for `CIS_BENCH_DATA_DIR` instead, so an old `CIS_BENCH_ENV=dev` never writes to
-`~/.cis-bench` by surprise.
-
-```
-~/.cis-bench/          # the data folder (CIS_BENCH_DATA_DIR)
+~/cis-bench/           # CIS_BENCH_HOME=~/cis-bench
+├── config.toml        # optional: settings by key
 ├── catalog.db         # catalog database, including downloaded benchmarks
-├── session.cookies    # saved WorkBench session (cis-bench auth login)
 ├── benchmarks/        # download writes benchmark files here; export, list and info read them
-├── .env               # optional: CIS_BENCH_* settings
-└── config.toml        # optional: settings by key
+└── session.cookies    # saved WorkBench session (cis-bench auth login)
 ```
 
-### Example files
+### Upgrading from `~/.cis-bench`
 
-`~/.cis-bench/.env`:
+Earlier versions kept everything in `~/.cis-bench`. A run that finds that folder, with no
+`CIS_BENCH_HOME` or `CIS_BENCH_CONFIG_DIR` set and no `catalog.db` in the new data folder
+yet, keeps using it and prints one line on stderr saying so. To move on, either:
+
 ```bash
-CIS_BENCH_REQUEST_TIMEOUT=90
-CIS_BENCH_SEARCH_LIMIT=50
+cis-bench config migrate          # moves the files into the folders above, once
+export CIS_BENCH_HOME=~/.cis-bench   # or keep the one folder, without the notice
 ```
 
-`~/.cis-bench/config.toml`:
+`CIS_BENCH_DATA_DIR` and `CIS_BENCH_ENV` are no longer used; a run that still sets one
+stops and names `CIS_BENCH_HOME`. Support for an unmigrated `~/.cis-bench` ends in the
+next major version.
+
+### Example file
+
+`~/.config/cis-bench/config.toml`:
 ```toml
 request_timeout = 90
 search_limit = 50
@@ -73,15 +87,15 @@ verify_ssl = true
 cis-bench uses `requests`, which reads the standard variables itself:
 `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY`, `REQUESTS_CA_BUNDLE` and `SSL_CERT_FILE`.
 Set them in the environment as for any other tool; they are not cis-bench settings and
-are not read from `.env` or `config.toml`.
+are not read from `config.toml`.
 
 ---
 
 ## Settings
 
-### `CIS_BENCH_DATA_DIR`
+### `CIS_BENCH_HOME` and `CIS_BENCH_CONFIG_DIR`
 
-The data folder (see above). Environment only. **Default:** `~/.cis-bench`.
+The folders (see [above](#the-folders)). Environment only. **Default:** the XDG folders.
 
 ### `CIS_BENCH_WORKBENCH_URL`
 
@@ -248,8 +262,8 @@ See: [How to Add XCCDF Style](../developer-guide/how-to-add-xccdf-style.md)
 Enabled by default. Every WorkBench request verifies the server certificate.
 
 To disable (not recommended; session cookies travel on these requests), set
-`CIS_BENCH_VERIFY_SSL=false` in the environment or `<data folder>/.env`, or
-`verify_ssl = false` in `<data folder>/config.toml`.
+`CIS_BENCH_VERIFY_SSL=false` in the environment, or `verify_ssl = false` in
+`<config folder>/config.toml`.
 
 ---
 
@@ -257,8 +271,10 @@ To disable (not recommended; session cookies travel on these requests), set
 
 **Paths:**
 
-- Data: `~/.cis-bench/` (`CIS_BENCH_DATA_DIR`)
-- Catalog: `<data folder>/catalog.db`
+- Config: `~/.config/cis-bench/config.toml`
+- Data: `~/.local/share/cis-bench/` (`catalog.db`, `benchmarks/`)
+- State: `~/.local/state/cis-bench/session.cookies`
+- Or one folder for all of them: `CIS_BENCH_HOME`
 - Benchmarks: Stored in catalog DB
 
 **Catalog:**

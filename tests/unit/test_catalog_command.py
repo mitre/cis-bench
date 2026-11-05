@@ -1438,7 +1438,7 @@ class TestGetCatalogDb:
         from cis_bench.cli.commands.catalog import get_catalog_db
 
         data_dir = tmp_path / "data"
-        monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(data_dir))
+        monkeypatch.setenv("CIS_BENCH_HOME", str(data_dir))
         mock_db = Mock()
         mock_db_class.return_value = mock_db
 
@@ -1743,7 +1743,7 @@ class TestCatalogListingsShowWhatTheLimitCutOff:
         ids=["catalog-search", "catalog-list"],
     )
     def test_a_cut_off_list_says_how_many_matched(self, runner, small_catalog, args, monkeypatch):
-        monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(small_catalog.parent))
+        monkeypatch.setenv("CIS_BENCH_HOME", str(small_catalog.parent))
         result = runner.invoke(cli, args)
 
         assert result.exit_code == 0, result.output
@@ -1753,7 +1753,7 @@ class TestCatalogListingsShowWhatTheLimitCutOff:
         self, runner, small_catalog, monkeypatch
     ):
         monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "3")
-        monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(small_catalog.parent))
+        monkeypatch.setenv("CIS_BENCH_HOME", str(small_catalog.parent))
         result = runner.invoke(cli, ["catalog", "list"])
 
         assert result.exit_code == 0, result.output

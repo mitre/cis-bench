@@ -1,15 +1,17 @@
-"""cis-bench settings: one typed, validated Settings class and the fixed request policy.
+"""cis-bench settings: one typed, validated Settings class, the folders, and the fixed request policy.
 
 Every user setting is a field of ``Settings``. A value comes from, highest first:
 
 1. a value passed in (``load_settings(search_limit=...)``, how a CLI flag overrides);
 2. the environment (``CIS_BENCH_SEARCH_LIMIT``);
-3. ``<data dir>/.env`` (the same ``CIS_BENCH_*`` names);
-4. ``<data dir>/config.toml`` (the field names: ``search_limit = 100``);
-5. the default.
+3. ``<config folder>/config.toml`` (the field names: ``search_limit = 100``);
+4. the default.
 
-``CIS_BENCH_DATA_DIR`` (default ``~/.cis-bench``) locates the data folder, and with it both
-files, so it is read from the environment (or a passed-in value) only.
+The folders follow the XDG Base Directory specification the way the GitHub CLI resolves
+it (``xdg_folders``): config.toml in the config folder, catalog.db and benchmarks/ in the
+data folder, session.cookies in the state folder. ``CIS_BENCH_HOME`` puts all of them in
+one flat folder, for containers, CI and tests; ``CIS_BENCH_CONFIG_DIR`` moves config.toml
+alone. The folders are located, never set: they are not settings and no file can change them.
 
 Nothing is copied into the process environment. Variables that belong to the HTTP stack,
 such as HTTPS_PROXY, NO_PROXY, REQUESTS_CA_BUNDLE and SSL_CERT_FILE, stay with requests.
@@ -17,7 +19,9 @@ such as HTTPS_PROXY, NO_PROXY, REQUESTS_CA_BUNDLE and SSL_CERT_FILE, stay with r
 
 import os
 import tomllib
-from pathlib import Path
+from collections.abc import Mapping
+from dataclasses import dataclass
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 from urllib.parse import urlparse
 
@@ -25,7 +29,7 @@ from pydantic import Field, ValidationError, field_validator
 from pydantic_core import ErrorDetails
 from pydantic_settings import (
     BaseSettings,
-    DotEnvSettingsSource,
+    EnvSettingsSource,
     InitSettingsSource,
     PydanticBaseSettingsSource,
     SettingsConfigDict,
@@ -36,9 +40,19 @@ from cis_bench import __version__
 from cis_bench.exceptions import ConfigurationError
 
 ENV_PREFIX = "CIS_BENCH_"
-DATA_DIR_VARIABLE = f"{ENV_PREFIX}DATA_DIR"
-DOTENV_FILE_NAME = ".env"
+APP_FOLDER_NAME = "cis-bench"
+HOME_VARIABLE = f"{ENV_PREFIX}HOME"
+CONFIG_DIR_VARIABLE = f"{ENV_PREFIX}CONFIG_DIR"
 CONFIG_FILE_NAME = "config.toml"
+CATALOG_DB_FILE_NAME = "catalog.db"
+SESSION_FILE_NAME = "session.cookies"
+BENCHMARKS_FOLDER_NAME = "benchmarks"
+# The one folder earlier versions used; still read, with a notice, until it is migrated.
+LEGACY_FOLDER_NAME = ".cis-bench"
+# Variables earlier versions read; a run that still sets one stops and names the replacement.
+_RETIRED_VARIABLES = (f"{ENV_PREFIX}DATA_DIR", f"{ENV_PREFIX}ENV")
+_FOLDERS_FIELD = "folders"
+
 CIS_ROOT_DOMAIN = "cisecurity.org"
 DEFAULT_WORKBENCH_URL = f"https://workbench.{CIS_ROOT_DOMAIN}"
 # The connect timeout of every WorkBench request; never longer than the read timeout.
@@ -82,36 +96,122 @@ def is_cis_domain(host: str) -> bool:
     return normalized == CIS_ROOT_DOMAIN or normalized.endswith(f".{CIS_ROOT_DOMAIN}")
 
 
-def _default_data_dir() -> Path:
-    return Path.home() / ".cis-bench"
+@dataclass(frozen=True)
+class Folders:
+    """Where cis-bench keeps its files.
 
-
-def _normalize_data_dir(value: Any) -> Path:
-    """One reading of a data folder value: surrounding spaces dropped, ~ expanded."""
-    return Path(str(value).strip()).expanduser()
-
-
-def _data_dir_for(init_kwargs: dict[str, Any], env_values: dict[str, Any]) -> Path:
-    """The data folder a load reads its files from: passed in, else the environment, else the default.
-
-    env_values comes from pydantic-settings' own environment source, so the variable is found
-    exactly as the Settings field finds it.
+    config holds config.toml; data holds catalog.db and benchmarks/; state holds
+    session.cookies. legacy is the ~/.cis-bench of an earlier version when this run uses
+    it (all three then point there), else None.
     """
-    if any(name.upper() == "CIS_BENCH_ENV" for name in os.environ):
-        raise ConfigurationError(
-            "CIS_BENCH_ENV is no longer used; set CIS_BENCH_DATA_DIR to the folder that holds "
-            "catalog.db, session.cookies, .env and config.toml (default ~/.cis-bench)"
-        )
-    for value in (init_kwargs.get("data_dir"), env_values.get("data_dir")):
-        if value is not None and str(value).strip():
-            return _normalize_data_dir(value)
-    return _default_data_dir()
+
+    config: Path
+    data: Path
+    state: Path
+    legacy: Path | None = None
+
+
+def _given(environ: Mapping[str, str], name: str) -> str | None:
+    """The variable's value without surrounding spaces, or None when unset or blank."""
+    value = environ.get(name)
+    if value is None:
+        return None
+    stripped = value.strip()
+    return stripped or None
+
+
+def _own_folder(environ: Mapping[str, str], name: str, home: Path) -> Path | None:
+    """A CIS_BENCH_* folder: ``~`` is the home folder; a relative path is from the working directory."""
+    value = _given(environ, name)
+    if value is None:
+        return None
+    if value == "~":
+        return home
+    if value[:2] in ("~/", "~\\"):
+        return home / value[2:]
+    return Path(value)
+
+
+def xdg_folders(environ: Mapping[str, str], *, home: Path, windows: bool) -> Folders:
+    """The folders for this environment, resolved as the GitHub CLI resolves its own.
+
+    Config: CIS_BENCH_CONFIG_DIR > CIS_BENCH_HOME > XDG_CONFIG_HOME/cis-bench >
+    %AppData%/cis-bench (Windows only) > ~/.config/cis-bench.
+    Data: CIS_BENCH_HOME > XDG_DATA_HOME/cis-bench > %LocalAppData%/cis-bench (Windows only) >
+    ~/.local/share/cis-bench. State: the same with XDG_STATE_HOME and ~/.local/state.
+    A blank or relative XDG value is ignored, as the specification requires. macOS follows
+    the Unix rows. Nothing here touches the file system.
+    """
+    pure = PureWindowsPath if windows else PurePosixPath
+
+    def base(xdg_name: str, windows_name: str, default: Path) -> Path:
+        xdg = _given(environ, xdg_name)
+        if xdg is not None and pure(xdg).is_absolute():
+            return Path(xdg) / APP_FOLDER_NAME
+        if windows:
+            app_data = _given(environ, windows_name)
+            if app_data is not None:
+                return Path(app_data) / APP_FOLDER_NAME
+        return home / default / APP_FOLDER_NAME
+
+    own_home = _own_folder(environ, HOME_VARIABLE, home)
+    own_config = _own_folder(environ, CONFIG_DIR_VARIABLE, home)
+    return Folders(
+        config=own_config or own_home or base("XDG_CONFIG_HOME", "AppData", Path(".config")),
+        data=own_home or base("XDG_DATA_HOME", "LocalAppData", Path(".local/share")),
+        state=own_home or base("XDG_STATE_HOME", "LocalAppData", Path(".local/state")),
+    )
+
+
+def _refuse_retired_variables() -> None:
+    for name in _RETIRED_VARIABLES:
+        if any(variable.upper() == name for variable in os.environ):
+            raise ConfigurationError(
+                f"{name} is no longer used; set {HOME_VARIABLE} to one folder for config.toml, "
+                "catalog.db, benchmarks/ and session.cookies, or unset it to use the XDG folders "
+                "(~/.config, ~/.local/share and ~/.local/state)"
+            )
+
+
+def resolve_folders(*, use_legacy: bool = True) -> Folders:
+    """The folders of this run, from the environment; an earlier version's ~/.cis-bench while it lasts.
+
+    ~/.cis-bench is used, and reported through ``Folders.legacy``, only when neither
+    CIS_BENCH_HOME nor CIS_BENCH_CONFIG_DIR is set and the data folder has no catalog.db yet
+    (a migrated install is never pulled back). ``use_legacy=False`` gives the folders this
+    environment resolves to on its own: where ``config migrate`` moves the files.
+
+    Raises:
+        ConfigurationError: If a retired variable (CIS_BENCH_DATA_DIR, CIS_BENCH_ENV) is set.
+    """
+    _refuse_retired_variables()
+    home = Path.home()
+    folders = xdg_folders(os.environ, home=home, windows=os.name == "nt")
+    if not use_legacy:
+        return folders
+    legacy = home / LEGACY_FOLDER_NAME
+    overridden = (
+        _given(os.environ, HOME_VARIABLE) is not None
+        or _given(os.environ, CONFIG_DIR_VARIABLE) is not None
+    )
+    if not overridden and legacy.is_dir() and not (folders.data / CATALOG_DB_FILE_NAME).exists():
+        return Folders(config=legacy, data=legacy, state=legacy, legacy=legacy)
+    return folders
+
+
+class _EnvSource(EnvSettingsSource):
+    """The environment, without the folders: those are located by resolve_folders, not set."""
+
+    def get_field_value(self, field, field_name):
+        if field_name == _FOLDERS_FIELD:
+            return None, field_name, False
+        return super().get_field_value(field, field_name)
 
 
 class _Source(PydanticBaseSettingsSource):
-    """The environment, .env or config.toml, with blank values left to the next source.
+    """The environment or config.toml, with blank values left to the next source.
 
-    A file source may not set the data folder: the data folder locates the file.
+    A file may not set the folders: the folders locate the file.
     """
 
     def __init__(self, source: PydanticBaseSettingsSource, file_name: str | None = None):
@@ -129,26 +229,25 @@ class _Source(PydanticBaseSettingsSource):
             for name, value in self._source().items()
             if not (isinstance(value, str) and not value.strip())
         }
-        if self._file_name is not None and "data_dir" in values:
+        if self._file_name is not None and _FOLDERS_FIELD in values:
             raise ConfigurationError(
-                f"{DATA_DIR_VARIABLE} cannot be set in {self._file_name}: it locates that file; "
-                "set it in the environment"
+                f"{_FOLDERS_FIELD} cannot be set in {self._file_name}: the folders locate that "
+                f"file; set {HOME_VARIABLE}, {CONFIG_DIR_VARIABLE} or the XDG variables instead"
             )
         return values
 
 
 class Settings(BaseSettings):
-    """Every cis-bench setting, with its type, default and accepted values."""
+    """Every cis-bench setting, with its type, default and accepted values, and the folders."""
 
     model_config = SettingsConfigDict(
         env_prefix=ENV_PREFIX,
-        extra="forbid",  # an unknown CIS_BENCH_* name in .env or config.toml is a typo
+        extra="forbid",  # an unknown name in config.toml is a typo
     )
 
-    data_dir: Path = Field(
-        default_factory=_default_data_dir,
-        description="Folder for catalog.db, session.cookies, benchmarks/, .env and config.toml",
-        json_schema_extra={"accepted": "a folder path, set in the environment only"},
+    folders: Folders = Field(
+        description="Where config.toml, catalog.db, benchmarks/ and session.cookies live",
+        exclude=True,  # located from the environment by resolve_folders, never a setting
     )
     workbench_url: str = Field(
         default=DEFAULT_WORKBENCH_URL,
@@ -179,11 +278,6 @@ class Settings(BaseSettings):
         description="Widest the Title column of the search and get tables may grow, in characters",
         json_schema_extra={"accepted": "an integer of 1 or more"},
     )
-
-    @field_validator("data_dir", mode="before")
-    @classmethod
-    def _read_data_dir(cls, value: Any) -> Path:
-        return _normalize_data_dir(value)
 
     @field_validator("workbench_url")
     @classmethod
@@ -227,17 +321,26 @@ class Settings(BaseSettings):
         return (min(CONNECT_TIMEOUT_SECONDS, self.request_timeout), self.request_timeout)
 
     @property
+    def data_dir(self) -> Path:
+        """The data folder: catalog.db and benchmarks/."""
+        return self.folders.data
+
+    @property
+    def config_file_path(self) -> Path:
+        return self.folders.config / CONFIG_FILE_NAME
+
+    @property
     def catalog_db_path(self) -> Path:
-        return self.data_dir / "catalog.db"
+        return self.folders.data / CATALOG_DB_FILE_NAME
 
     @property
     def session_file_path(self) -> Path:
-        return self.data_dir / "session.cookies"
+        return self.folders.state / SESSION_FILE_NAME
 
     @property
     def benchmarks_dir(self) -> Path:
         """Where download writes benchmark files and export, list and info look for them."""
-        return self.data_dir / "benchmarks"
+        return self.folders.data / BENCHMARKS_FOLDER_NAME
 
     @classmethod
     def settings_customise_sources(
@@ -249,26 +352,27 @@ class Settings(BaseSettings):
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
         init_kwargs = (
-            init_settings.init_kwargs if isinstance(init_settings, InitSettingsSource) else {}
+            dict(init_settings.init_kwargs) if isinstance(init_settings, InitSettingsSource) else {}
         )
-        data_dir = _data_dir_for(init_kwargs, env_settings())
-        dotenv = DotEnvSettingsSource(
-            settings_cls,
-            env_file=data_dir / DOTENV_FILE_NAME,
-            # Only CIS_BENCH_* lines are cis-bench's; other tools' variables are left alone.
-            dotenv_filtering="match_prefix",
-        )
-        config_file = data_dir / CONFIG_FILE_NAME
+        folders = init_kwargs.get(_FOLDERS_FIELD)
+        if not isinstance(folders, Folders):
+            folders = resolve_folders()
+            init_kwargs[_FOLDERS_FIELD] = folders
+        config_file = folders.config / CONFIG_FILE_NAME
         try:
             toml = TomlConfigSettingsSource(settings_cls, toml_file=config_file)
         except tomllib.TOMLDecodeError as error:
             raise ConfigurationError(f"{config_file} is not valid TOML: {error}") from None
         return (
-            init_settings,
-            _Source(env_settings),
-            _Source(dotenv, DOTENV_FILE_NAME),
+            InitSettingsSource(settings_cls, init_kwargs=init_kwargs),
+            _Source(_EnvSource(settings_cls)),
             _Source(toml, CONFIG_FILE_NAME),
         )
+
+
+def setting_names() -> list[str]:
+    """The settings' field names, in declaration order; the folders are not one."""
+    return [name for name in Settings.model_fields if name != _FOLDERS_FIELD]
 
 
 def _describe(error: ErrorDetails) -> str:
@@ -277,8 +381,8 @@ def _describe(error: ErrorDetails) -> str:
     message = str(error["msg"]).removeprefix("Value error, ")
     if error["type"] == "extra_forbidden":
         return (
-            f"unknown setting {field!r} in {DOTENV_FILE_NAME} or {CONFIG_FILE_NAME} "
-            f"(cis-bench settings are {', '.join(ENV_PREFIX + n.upper() for n in Settings.model_fields)})"
+            f"unknown setting {field!r} in {CONFIG_FILE_NAME} "
+            f"(cis-bench settings are {', '.join(ENV_PREFIX + n.upper() for n in setting_names())})"
         )
     variable = f"{ENV_PREFIX}{field.upper()}"
     if error["type"] != "value_error":

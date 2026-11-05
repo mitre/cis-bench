@@ -53,7 +53,7 @@ cis-bench catalog refresh
 - Builds searchable database
 - Infers platform taxonomy automatically
 - Takes under a minute
-- Stored in: `~/.cis-bench/catalog.db`
+- Stored in: `~/.local/share/cis-bench/catalog.db`
 
 ### 2. Search and Use
 
@@ -413,16 +413,16 @@ xargs -I {} cis-bench export {} --format xccdf --style cis
 
 **Production:**
 
-- `~/.cis-bench/catalog.db`
+- `~/.local/share/cis-bench/catalog.db` (the XDG data folder)
 
-**Another data folder (for example for development):**
+**One folder for everything (for example for development):**
 ```bash
-export CIS_BENCH_DATA_DIR=~/.cis-bench-dev
+export CIS_BENCH_HOME=~/cis-bench-dev
 cis-bench catalog refresh
-# Stored in: ~/.cis-bench-dev/catalog.db
+# Stored in: ~/cis-bench-dev/catalog.db
 ```
 
-**Tests:** pytest uses a temporary data folder for each run.
+**Tests:** pytest uses a temporary folder for each run.
 
 ---
 

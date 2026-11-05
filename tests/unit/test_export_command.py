@@ -188,7 +188,7 @@ class TestExportFromFile:
     def test_export_missing_file_prints_its_path_verbatim(self, runner, tmp_path, monkeypatch):
         # A short relative data folder keeps the printed path on one line.
         monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("CIS_BENCH_DATA_DIR", "data")
+        monkeypatch.setenv("CIS_BENCH_HOME", "data")
         result = runner.invoke(cli, ["export", "missing[/p].json", "--format", "yaml"])
 
         assert result.exit_code == 1
@@ -236,7 +236,7 @@ class TestExportFromDatabase:
             catalog_path = tmp_path / "catalog.db"
             catalog_path.touch()
 
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
 
             # Mock CatalogDatabase (imported inside function, so patch at source)
             with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
@@ -264,7 +264,7 @@ class TestExportFromDatabase:
             catalog_path = tmp_path / "catalog.db"
             catalog_path.touch()
 
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
 
             with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                 mock_db = Mock()
@@ -283,7 +283,7 @@ class TestExportFromDatabase:
             # Point to non-existent catalog
             nonexistent_path = tmp_path / "nonexistent" / "catalog.db"
 
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(nonexistent_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(nonexistent_path.parent))
 
             result = runner.invoke(cli, ["export", "23598", "--format", "yaml"])
 
@@ -297,7 +297,7 @@ class TestExportFromDatabase:
             catalog_path = tmp_path / "catalog.db"
             catalog_path.touch()
 
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
 
             with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                 mock_db = Mock()
@@ -324,7 +324,7 @@ class TestExportFromDatabase:
             catalog_path = tmp_path / "catalog.db"
             catalog_path.touch()
 
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
 
             with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                 mock_db = Mock()
@@ -350,7 +350,7 @@ class TestExportFromDatabase:
             catalog_path = tmp_path / "catalog.db"
             catalog_path.touch()
 
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
 
             with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                 mock_db = Mock()
@@ -388,7 +388,7 @@ class TestIdentifierDetection:
             catalog_path = tmp_path / "catalog.db"
             catalog_path.touch()
 
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
 
             with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                 mock_db = Mock()
@@ -467,7 +467,7 @@ class TestRealDatabaseCanonicalDeserialize:
                         wraps=Benchmark.model_validate_json,
                     ) as validate_spy,
                 ):
-                    monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(db.db_path.parent))
+                    monkeypatch.setenv("CIS_BENCH_HOME", str(db.db_path.parent))
                     res = runner.invoke(cli, ["export", "23598", "--format", "yaml"])
 
                 assert res.exit_code == 0, res.output

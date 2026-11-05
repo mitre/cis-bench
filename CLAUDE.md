@@ -106,9 +106,9 @@ XCCDF 1.2/1.1.4 Output
 ## Testing
 
 ### Test Isolation
-Tests automatically use an isolated data folder (`tests/conftest.py` sets `CIS_BENCH_DATA_DIR` to a temporary folder per run):
-- Default data folder: `~/.cis-bench/` (catalog.db, session.cookies, .env, config.toml)
-- Development: set `CIS_BENCH_DATA_DIR=~/.cis-bench-dev`
+Tests automatically use an isolated folder (`tests/conftest.py` sets `CIS_BENCH_HOME` to a temporary folder per run):
+- Default folders: XDG (`~/.config/cis-bench/config.toml`, `~/.local/share/cis-bench/` for catalog.db and benchmarks/, `~/.local/state/cis-bench/session.cookies`)
+- Development: set `CIS_BENCH_HOME=~/cis-bench-dev` for one folder
 
 ### Test Fixtures
 All test data via fixtures in `tests/conftest.py`. NO hardcoded paths.
@@ -120,14 +120,15 @@ All test data via fixtures in `tests/conftest.py`. NO hardcoded paths.
 ## Configuration
 
 ### Environment Variables
-- One pydantic-settings `Settings` class in `src/cis_bench/config.py`; precedence: CLI flag > environment > `<data dir>/.env` > `<data dir>/config.toml` > default
-- `CIS_BENCH_DATA_DIR` - Data folder (default `~/.cis-bench`; environment only; replaces `CIS_BENCH_ENV`, which is refused)
+- One pydantic-settings `Settings` class in `src/cis_bench/config.py`; precedence: CLI flag > environment > `<config folder>/config.toml` > default
+- `CIS_BENCH_HOME` - One flat folder for everything; `CIS_BENCH_CONFIG_DIR` - the config folder alone (both environment only; `CIS_BENCH_DATA_DIR` and `CIS_BENCH_ENV` are refused)
 - `CIS_BENCH_BROWSER` - Default browser for auth
 
 ### Config Paths
-- Session storage: `~/.cis-bench/session.cookies`
-- Catalog database: `~/.cis-bench/catalog.db`
-- Downloaded benchmarks: inside `catalog.db`; their files go to `~/.cis-bench/benchmarks/` (`<data dir>/benchmarks`, unless `--output-dir` says otherwise)
+- Session storage: `~/.local/state/cis-bench/session.cookies`
+- Catalog database: `~/.local/share/cis-bench/catalog.db`
+- Downloaded benchmarks: inside `catalog.db`; their files go to `~/.local/share/cis-bench/benchmarks/` (`<data folder>/benchmarks`, unless `--output-dir` says otherwise)
+- `cis-bench config migrate` moves an earlier version's `~/.cis-bench` into these folders
 
 ## Key Files
 

@@ -52,7 +52,7 @@ cis-bench catalog refresh
 **Expected:**
 ```
 Logged in
-Session saved to ~/.cis-bench/session.cookies
+Session saved to ~/.local/state/cis-bench/session.cookies
 
 Catalog refresh complete!
 Benchmarks: 1,343

@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """CIS Benchmark CLI - Main application."""
 
+from pathlib import Path
+
 import click
 from rich.console import Console
+from rich.markup import escape
 
 from cis_bench import __version__
 from cis_bench.cli.helpers.errors import report_configuration_error
 from cis_bench.cli.lazy_group import LazyGroup
-from cis_bench.config import load_settings
+from cis_bench.config import HOME_VARIABLE, load_settings, resolve_folders
 from cis_bench.exceptions import ConfigurationError
 from cis_bench.utils.logging_config import LoggingConfig
 
@@ -19,6 +22,7 @@ console = Console()
 LAZY_SUBCOMMANDS = {
     "auth": "cis_bench.cli.commands.auth.auth",
     "catalog": "cis_bench.cli.commands.catalog.catalog",
+    "config": "cis_bench.cli.commands.config.config",
     "download": "cis_bench.cli.commands.download.download",
     "export": "cis_bench.cli.commands.export.export_cmd",
     "get": "cis_bench.cli.commands.get.get_cmd",
@@ -120,10 +124,31 @@ def cli(ctx, verbose, debug, quiet):
     # Every setting is checked once, before any command touches a file or the network.
     if not ctx.meta.get("cis_bench.asks_for_help"):
         try:
-            ctx.obj["settings"] = load_settings()
+            settings = load_settings()
         except ConfigurationError as error:
             report_configuration_error(console, error)
             ctx.exit(1)
+        ctx.obj["settings"] = settings
+        if settings.folders.legacy is not None:
+            _report_legacy_folder(settings.folders.legacy)
+
+
+def _report_legacy_folder(legacy: Path) -> None:
+    """One stderr line: this run still uses an earlier version's folder, and how to move on.
+
+    stderr keeps stdout machine-readable (``--output-format json``). Support for the old
+    folder ends in the next major version.
+    """
+    current = resolve_folders(use_legacy=False)
+    Console(stderr=True).print(
+        f"Note: cis-bench now keeps its files in {escape(str(current.config))}, "
+        f"{escape(str(current.data))} and {escape(str(current.state))}; this run uses "
+        f"{escape(str(legacy))} from an earlier version. Run `cis-bench config migrate` to "
+        f"move them, or set {HOME_VARIABLE}={escape(str(legacy))} to keep one folder. "
+        f"Support for {escape(str(legacy))} ends in the next major version.",
+        soft_wrap=True,
+        highlight=False,
+    )
 
 
 if __name__ == "__main__":

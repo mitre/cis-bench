@@ -484,24 +484,19 @@ type, default and accepted values. `load_settings()` builds it from, highest fir
 ```mermaid
 graph TD
 A[CLI flag, passed in] --> B[Environment CIS_BENCH_*]
-B --> C[data folder/.env]
-C --> D[data folder/config.toml]
+B --> D[config folder/config.toml]
 D --> E[Default in Settings]
 ```
 
-- **Data folder:** `CIS_BENCH_DATA_DIR` (default `~/.cis-bench`), environment only, because it locates `.env` and `config.toml`. `CIS_BENCH_ENV` is refused.
+- **Folders:** `xdg_folders()` in `config.py` is a pure function of the environment, the home folder and the platform, resolving config, data and state the way the GitHub CLI does (`CIS_BENCH_CONFIG_DIR` > `CIS_BENCH_HOME` > `XDG_*_HOME` > AppData on Windows > `~/.config`, `~/.local/share`, `~/.local/state`). `resolve_folders()` applies it to the real environment and keeps an earlier version's `~/.cis-bench` in use, reported through `Folders.legacy`, until `config migrate` moves it. The folders ride on `Settings.folders`, fed only through the init source: the environment source skips the field and `config.toml` may not set it. `CIS_BENCH_DATA_DIR` and `CIS_BENCH_ENV` are refused.
 - **Startup check:** the root command (`cli/app.py`) builds the settings once per run and keeps them on the Click context (`ctx.obj["settings"]`). An invalid value prints one Configuration Error and exits 1 before any command runs; `--help` still works.
 - **Settings stay at the edge:** only the CLI reads `Settings`. `cli/helpers/services.py` turns them into the objects commands use (`auth_manager`, `workbench_scraper`, `catalog_scraper`); library code takes plain values (`base_url`, `timeout`, `verify_ssl`, `session_file`, `limit`) and never loads settings itself.
-- **Nothing else reads the environment:** ruff's banned-API rule (TID251) refuses `os.getenv`, `os.environ` and `dotenv` outside `config.py`. `.env` and `config.toml` never reach `os.environ`.
+- **Nothing else reads the environment:** ruff's banned-API rule (TID251) refuses `os.getenv`, `os.environ` and `dotenv` outside `config.py`. `config.toml` never reaches `os.environ`; there is no `.env` source.
 - **Not cis-bench settings:** `HTTPS_PROXY`, `NO_PROXY`, `REQUESTS_CA_BUNDLE`, `SSL_CERT_FILE` stay with requests.
 
-**Optional files:**
-```bash
-# ~/.cis-bench/.env
-CIS_BENCH_VERIFY_SSL=false
-```
+**Optional file:**
 ```toml
-# ~/.cis-bench/config.toml
+# ~/.config/cis-bench/config.toml
 verify_ssl = false
 ```
 
@@ -731,21 +726,21 @@ tests/
 ```mermaid
 graph TD
 A[pytest] --> B[test_environment fixture]
-B --> C[Set CIS_BENCH_DATA_DIR to a temporary folder]
-C --> D[Settings.data_dir]
+B --> C[Set CIS_BENCH_HOME to a temporary folder]
+C --> D[Settings.folders]
 
-F[Developer] --> G[export CIS_BENCH_DATA_DIR=~/.cis-bench-dev]
+F[Developer] --> G[export CIS_BENCH_HOME=~/cis-bench-dev]
 G --> D
 
 I[User] --> J[Not set]
 J --> D
-D --> K[~/.cis-bench/ by default]
+D --> K[XDG folders by default]
 ```
 
 **Automatic isolation:**
 
-- pytest sets `CIS_BENCH_DATA_DIR` to a new temporary folder per run
-- `~/.cis-bench` is never touched by tests
+- pytest sets `CIS_BENCH_HOME` to a new temporary folder per run
+- the developer's own folders are never touched by tests
 
 **405 tests** across all layers, all properly isolated.
 

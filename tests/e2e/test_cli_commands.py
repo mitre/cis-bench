@@ -116,7 +116,7 @@ class TestBenchmarksFolderIsInTheDataDir:
         data_dir = tmp_path / "data"
         elsewhere = tmp_path / "elsewhere"
         elsewhere.mkdir()
-        monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(data_dir))
+        monkeypatch.setenv("CIS_BENCH_HOME", str(data_dir))
         monkeypatch.chdir(elsewhere)
         return data_dir / "benchmarks", elsewhere
 
@@ -200,7 +200,7 @@ class TestDownloadCommand:
     ):
         """Download single benchmark using saved session."""
         # A data folder with no catalog.db (skip cache check)
-        monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(tmp_path / "nonexistent"))
+        monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path / "nonexistent"))
         monkeypatch.setenv("CIS_BENCH_VERIFY_SSL", "false")
 
         with patch("cis_bench.fetcher.auth.AuthManager.get_or_create_session") as mock_auth:
@@ -669,7 +669,7 @@ class TestListCommand:
     def test_list_default_directory(self, runner, tmp_path, monkeypatch):
         """Before the first download, list names the data folder's benchmarks folder it looked in."""
         monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("CIS_BENCH_DATA_DIR", "data")
+        monkeypatch.setenv("CIS_BENCH_HOME", "data")
 
         result = runner.invoke(cli, ["list"])
 

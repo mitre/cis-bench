@@ -16,7 +16,7 @@ def runner():
 
 @pytest.fixture
 def session_path(data_dir):
-    """The saved session's file in this test's data folder (CIS_BENCH_DATA_DIR)."""
+    """The saved session's file in this test's data folder (CIS_BENCH_HOME)."""
     return data_dir / "session.cookies"
 
 
@@ -112,7 +112,7 @@ class TestAuthStatus:
 
     def test_status_shows_not_logged_in(self, runner, mock_auth, tmp_path, monkeypatch):
         """Status shows not logged in when no session file."""
-        monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(tmp_path / "nonexistent"))
+        monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path / "nonexistent"))
 
         result = runner.invoke(cli, ["auth", "status"])
 

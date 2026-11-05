@@ -74,7 +74,7 @@ cis-bench auth login --browser chrome --no-verify-ssl
 1. Optionally opens browser to CIS WorkBench
 2. Extracts session cookies from your browser (or loads from file)
 3. Validates the session
-4. Saves to `~/.cis-bench/session.cookies`
+4. Saves to `~/.local/state/cis-bench/session.cookies` (the state folder)
 5. All future commands use this saved session
 
 !!! tip "Windows Users"
@@ -113,7 +113,7 @@ cis-bench auth status --output-format json
 ```json
 {
 "logged_in": true,
-"session_file": "/Users/username/.cis-bench/session.cookies",
+"session_file": "/Users/username/.local/state/cis-bench/session.cookies",
 "cookie_count": 5,
 "ssl_verify": false
 }
@@ -137,7 +137,7 @@ cis-bench auth logout
 
 **What it does:**
 
-- Deletes `~/.cis-bench/session.cookies`
+- Deletes `~/.local/state/cis-bench/session.cookies`
 - You'll need to run `auth login` again to use commands
 
 ---
@@ -289,7 +289,7 @@ cis-bench download <BENCHMARK_ID> [BENCHMARK_ID...] [OPTIONS]
 
 **Output Options:**
 
-- `-o, --output-dir PATH` - Output directory (default: `<data folder>/benchmarks`, for example `~/.cis-bench/benchmarks`)
+- `-o, --output-dir PATH` - Output directory (default: `<data folder>/benchmarks`, for example `~/.local/share/cis-bench/benchmarks`)
 - `-fmt, --format` - Export formats (json|yaml|csv|markdown|xccdf) - can specify multiple
 
 **Behavior Options:**
@@ -661,6 +661,27 @@ cis-bench catalog stats --output-format json
 
 ---
 
+## Configuration Commands
+
+### `cis-bench config migrate`
+
+Move an earlier version's `~/.cis-bench` files into the folders this version uses (see
+[Configuration](configuration.md#the-folders)): `config.toml` to the config folder,
+`catalog.db` and `benchmarks/` to the data folder, `session.cookies` to the state folder.
+
+```bash
+cis-bench config migrate
+```
+
+**Behavior:**
+
+1. Does nothing, exit 0, when the run is not using an earlier version's folder
+2. Stops with exit 1 before moving anything if a destination file already exists
+3. Prints each move; leaves any other file in `~/.cis-bench` in place and names it
+4. Removes `~/.cis-bench` once it is empty
+
+---
+
 ## Output Formats
 
 All query commands support `--output-format` for scripting:
@@ -716,11 +737,13 @@ xargs -I {} cis-bench download {}
 - `CIS_BENCH_TABLE_TITLE_WIDTH` - Widest the Title column of the `search` and `get` tables grows (default: 90). In a narrower terminal the title wraps first, so ID, Version and Status stay whole.
 - `CIS_BENCH_SEARCH_LIMIT` - Most results `search`, `catalog search`, `catalog list` and `get` show (default: 100); a cut-off list says how many matched
 
-**Data folder:**
+**Folders:**
 
-- `CIS_BENCH_DATA_DIR` - Folder for `catalog.db`, `session.cookies`, `.env` and `config.toml` (default: `~/.cis-bench`; environment only)
+- `CIS_BENCH_HOME` - One flat folder for `config.toml`, `catalog.db`, `benchmarks/` and `session.cookies` (environment only)
+- `CIS_BENCH_CONFIG_DIR` - The config folder alone (environment only)
+- Otherwise the XDG folders: `$XDG_CONFIG_HOME/cis-bench`, `$XDG_DATA_HOME/cis-bench`, `$XDG_STATE_HOME/cis-bench`
 
-Settings can also be set in `<data folder>/.env` or `<data folder>/config.toml`; see [Configuration](configuration.md#where-settings-come-from).
+Settings can also be set in `<config folder>/config.toml`; see [Configuration](configuration.md#where-settings-come-from).
 
 **SSL/TLS (automatically respected):**
 
@@ -790,18 +813,18 @@ cis-bench list --output-format csv > inventory.csv
 
 **Session:**
 
-- `~/.cis-bench/session.cookies` - Saved authentication session
+- `~/.local/state/cis-bench/session.cookies` - Saved authentication session (the state folder)
 
 **Catalog Database:**
 
-- `~/.cis-bench/catalog.db` - SQLite database with FTS5 search
+- `~/.local/share/cis-bench/catalog.db` - SQLite database with FTS5 search (the data folder)
 
 **Downloaded Benchmarks:**
 
-- Stored in: `~/.cis-bench/catalog.db` (downloaded_benchmarks table). This cached copy is what `download` checks, `get` and `export <ID>` read, and `catalog stats` counts; `cis-bench remove <ID>` deletes it and `cis-bench download <ID> --force` replaces it.
+- Stored in: `~/.local/share/cis-bench/catalog.db` (downloaded_benchmarks table). This cached copy is what `download` checks, `get` and `export <ID>` read, and `catalog stats` counts; `cis-bench remove <ID>` deletes it and `cis-bench download <ID> --force` replaces it.
 - Also saved as: `<data folder>/benchmarks/*.json` files. These are your exported copies; `cis-bench list` and `cis-bench info` read them, and `remove` does not delete them.
 
-**Another data folder:** set `CIS_BENCH_DATA_DIR` (for example `~/.cis-bench-dev`); `~/.cis-bench` above is the default.
+**The folders:** the defaults above are the XDG folders; `CIS_BENCH_HOME` puts everything in one folder. See [Configuration](configuration.md#the-folders).
 
 ---
 

@@ -12,18 +12,18 @@ This project uses environment-based configuration to ensure tests never pollute 
 
 ### Environments
 
-**Production (default):**
+**Default:**
 ```bash
 # No environment variable set
 cis-bench catalog refresh
-# Uses: ~/.cis-bench/catalog.db
+# Uses: ~/.local/share/cis-bench/catalog.db
 ```
 
-**Development:**
+**Development (one folder for everything):**
 ```bash
-export CIS_BENCH_DATA_DIR=~/.cis-bench-dev
+export CIS_BENCH_HOME=~/cis-bench-dev
 cis-bench catalog refresh
-# Uses: ~/.cis-bench-dev/catalog.db
+# Uses: ~/cis-bench-dev/catalog.db
 ```
 
 **Test (automatic in pytest):**
@@ -37,20 +37,20 @@ pytest tests/
 **Config Module:**
 
 - `src/cis_bench/config.py` has one `Settings` class (pydantic-settings)
-- `CIS_BENCH_DATA_DIR` (default `~/.cis-bench`) locates `catalog.db`, `session.cookies`, `.env` and `config.toml`
-- `CIS_BENCH_ENV` is no longer read; a set `CIS_BENCH_ENV` is a configuration error
+- The folders are the XDG base directories (`config.toml` in `~/.config/cis-bench`, `catalog.db` and `benchmarks/` in `~/.local/share/cis-bench`, `session.cookies` in `~/.local/state/cis-bench`); `CIS_BENCH_HOME` puts them all in one folder
+- `CIS_BENCH_DATA_DIR` and `CIS_BENCH_ENV` are no longer read; a set one is a configuration error
 
 **Pytest Fixture:**
 
 - `tests/conftest.py` has the `test_environment` fixture
 - `autouse=True`, `scope="session"`: applies to every test, set once at start
-- Sets `CIS_BENCH_DATA_DIR` to a temporary folder and removes any `CIS_BENCH_ENV` from your shell
+- Sets `CIS_BENCH_HOME` to a temporary folder and removes any `CIS_BENCH_ENV` or `CIS_BENCH_DATA_DIR` from your shell
 
 **Result:**
 
 - Tests use a temporary folder
-- Dev work uses whatever `CIS_BENCH_DATA_DIR` you set
-- `~/.cis-bench/` is never touched by tests
+- Dev work uses whatever `CIS_BENCH_HOME` you set, or the XDG folders
+- Your own folders are never touched by tests
 
 ---
 

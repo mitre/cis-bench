@@ -14,7 +14,7 @@ from cis_bench.cli.helpers.services import (
     settings_with_flags,
     workbench_scraper,
 )
-from cis_bench.config import Settings, load_settings
+from cis_bench.config import Folders, Settings, load_settings
 from cis_bench.exceptions import ConfigurationError
 from cis_bench.fetcher.auth import AuthManager
 from cis_bench.fetcher.workbench import WorkbenchScraper
@@ -25,7 +25,7 @@ STAGING = "https://workbench-staging.cisecurity.org"
 @pytest.fixture
 def settings(tmp_path) -> Settings:
     return load_settings(
-        data_dir=tmp_path,
+        folders=Folders(config=tmp_path, data=tmp_path, state=tmp_path),
         workbench_url=STAGING,
         verify_ssl=False,
         request_timeout=45,

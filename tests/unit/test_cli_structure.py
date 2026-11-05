@@ -7,6 +7,11 @@ These tests enforce the simplified CLI structure where:
 This prevents flag duplication and user confusion (Issue #3).
 """
 
+import json
+import os
+
+import pytest
+
 
 class TestAuthCommandStructure:
     """Verify auth commands have correct flags."""
@@ -290,7 +295,7 @@ class TestLazyStartup:
             "res = CliRunner().invoke(cli, ['remove', '23598', '--yes'])\n"
             f"print(json.dumps({{'exit': res.exit_code, 'loaded': [m for m in {scraper_stack!r} if m in sys.modules],"
             " 'left': db.get_downloaded('23598') is not None}))",
-            env={"CIS_BENCH_DATA_DIR": str(tmp_path / "data"), "TMPDIR": str(tmp_path)},
+            env={"CIS_BENCH_HOME": str(tmp_path / "data"), "TMPDIR": str(tmp_path)},
         )
         assert result["exit"] == 0
         assert result["loaded"] == []
@@ -313,7 +318,7 @@ class TestLazyStartup:
             "from cis_bench.cli.app import cli\n"
             "res = CliRunner().invoke(cli, ['catalog', 'stats'])\n"
             f"print(json.dumps({{'exit': res.exit_code, 'loaded': [m for m in {scraper_stack!r} if m in sys.modules]}}))",
-            env={"CIS_BENCH_DATA_DIR": str(tmp_path / "data"), "TMPDIR": str(tmp_path)},
+            env={"CIS_BENCH_HOME": str(tmp_path / "data"), "TMPDIR": str(tmp_path)},
         )
         assert result["exit"] == 0
         assert result["loaded"] == []
@@ -383,3 +388,52 @@ class TestSettingsCheckedAtStartup:
         result = cli_runner.invoke(self._cli(), ["search", "--help", "--bad-opt"])
         assert result.exit_code == 1, result.output
         assert result.output.lstrip().startswith("Configuration Error"), result.output
+
+
+class TestAnEarlierInstallsFolderIsReportedOnStderr:
+    """A run that still uses ~/.cis-bench says so once, on stderr, and names the way out."""
+
+    @staticmethod
+    def _cli():
+        from cis_bench.cli.app import cli
+
+        return cli
+
+    @pytest.fixture
+    def legacy_home(self, tmp_path, monkeypatch, small_catalog):
+        import shutil
+
+        for name in list(os.environ):
+            if name.startswith(("CIS_BENCH_", "XDG_")):
+                monkeypatch.delenv(name)
+        monkeypatch.setenv("HOME", str(tmp_path))
+        legacy = tmp_path / ".cis-bench"
+        legacy.mkdir()
+        shutil.copy(small_catalog, legacy / "catalog.db")
+        return tmp_path
+
+    def test_the_notice_is_one_stderr_line_and_stdout_stays_machine_readable(
+        self, cli_runner, legacy_home
+    ):
+        result = cli_runner.invoke(
+            self._cli(), ["search", "sample", "--output-format", "json"], catch_exceptions=False
+        )
+
+        assert result.exit_code == 0, result.output
+        assert len(json.loads(result.stdout)) == 5  # stdout is only the JSON
+        assert result.stderr.count("cis-bench config migrate") == 1
+        assert str(legacy_home / ".cis-bench") in result.stderr
+        assert f"CIS_BENCH_HOME={legacy_home / '.cis-bench'}" in result.stderr
+        assert "next major" in result.stderr
+        # one line, among the log lines stderr also carries
+        assert sum("config migrate" in line for line in result.stderr.splitlines()) == 1
+
+    def test_no_notice_when_a_folder_is_chosen_explicitly(
+        self, cli_runner, legacy_home, monkeypatch
+    ):
+        monkeypatch.setenv("CIS_BENCH_HOME", str(legacy_home / ".cis-bench"))
+        result = cli_runner.invoke(self._cli(), ["search", "sample", "--output-format", "json"])
+
+        assert result.exit_code == 0, result.output
+        assert "config migrate" not in result.stderr
+        assert "earlier version" not in result.stderr

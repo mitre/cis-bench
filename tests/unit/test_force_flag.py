@@ -62,7 +62,7 @@ class TestForceFlag:
         catalog_path = tmp_path / "catalog.db"
         catalog_path.touch()
 
-        monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+        monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
         monkeypatch.setenv("CIS_BENCH_VERIFY_SSL", "false")
 
         with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
@@ -93,7 +93,7 @@ class TestForceFlag:
         catalog_path = tmp_path / "catalog.db"
         catalog_path.touch()
 
-        monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+        monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
         monkeypatch.setenv("CIS_BENCH_VERIFY_SSL", "false")
 
         with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
@@ -132,7 +132,7 @@ class TestForceFlag:
         catalog_path = tmp_path / "catalog.db"
         catalog_path.touch()
 
-        monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+        monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
         monkeypatch.setenv("CIS_BENCH_VERIFY_SSL", "false")
 
         with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
@@ -163,7 +163,7 @@ class TestForceFlag:
         """Cache check is skipped when catalog database doesn't exist."""
         catalog_path = tmp_path / "nonexistent" / "catalog.db"
 
-        monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+        monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
         monkeypatch.setenv("CIS_BENCH_VERIFY_SSL", "false")
 
         with patch("cis_bench.fetcher.auth.AuthManager.get_or_create_session") as mock_auth:

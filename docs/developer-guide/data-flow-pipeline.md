@@ -45,7 +45,7 @@ Each stage performs specific transformations, validates data, and handles errors
 
 When you run `cis-bench download 23598`, the system:
 
-1. **Authenticates** using saved [session](../about/glossary.md#session) from `~/.cis-bench/session.cookies`
+1. **Authenticates** using saved [session](../about/glossary.md#session) from `~/.local/state/cis-bench/session.cookies`
 2. **Fetches HTML** from `https://workbench.cisecurity.org/benchmarks/23598`
 3. **Detects HTML version** using `StrategyDetector`
 4. **Applies [strategy](../about/glossary.md#strategy)** (currently `v1_current.py`) to parse HTML

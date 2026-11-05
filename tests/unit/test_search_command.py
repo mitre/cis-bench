@@ -35,7 +35,7 @@ class TestSearchCommand:
             # Point to non-existent catalog
             nonexistent_path = tmp_path / "nonexistent" / "catalog.db"
 
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(nonexistent_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(nonexistent_path.parent))
 
             result = runner.invoke(cli, ["search", "ubuntu"])
 
@@ -50,7 +50,7 @@ class TestSearchCommand:
             catalog_path = tmp_path / "catalog.db"
             catalog_path.touch()
 
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
             monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "1000")
 
             # Mock CatalogDatabase and CatalogSearch
@@ -94,7 +94,7 @@ class TestSearchCommand:
             catalog_path = tmp_path / "catalog.db"
             catalog_path.touch()
 
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
             monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "1000")
 
             with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
@@ -140,7 +140,7 @@ class TestSearchCommand:
             catalog_path = tmp_path / "catalog.db"
             catalog_path.touch()
 
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
             monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "1000")
 
             with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
@@ -172,7 +172,7 @@ class TestSearchCommand:
             catalog_path = tmp_path / "catalog.db"
             catalog_path.touch()
 
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
             monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "1000")
 
             with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
@@ -195,7 +195,7 @@ class TestSearchCommand:
             catalog_path = tmp_path / "catalog.db"
             catalog_path.touch()
 
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
             monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "1000")
 
             with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
@@ -228,7 +228,7 @@ class TestSearchCommand:
             catalog_path = tmp_path / "catalog.db"
             catalog_path.touch()
 
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
             monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "1000")
 
             with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
@@ -254,7 +254,7 @@ class TestSearchCommand:
             catalog_path = tmp_path / "catalog.db"
             catalog_path.touch()
 
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
 
             with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                 mock_db_class.side_effect = Exception("Database error [/e]")
@@ -271,7 +271,7 @@ class TestSearchCommand:
         with (
             patch("cis_bench.catalog.database.CatalogDatabase", side_effect=Exception("boom")),
         ):
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
 
             result = runner.invoke(cli, ["--verbose", "search", "test"])
 
@@ -287,7 +287,7 @@ class TestSearchCommand:
             patch("cis_bench.catalog.database.CatalogDatabase"),
             patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class,
         ):
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
             monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "1000")
             mock_search_class.return_value.search.return_value = [
                 {
@@ -315,7 +315,7 @@ class TestSearchCommand:
                 patch("cis_bench.catalog.database.CatalogDatabase"),
                 patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class,
             ):
-                monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+                monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
                 monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "1000")
                 mock_search = Mock()
                 mock_search.search.return_value = []
@@ -357,7 +357,7 @@ class TestSearchCommand:
         finally:
             db.engine.dispose()
 
-        monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+        monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
         monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "1000")
 
         for flag_val in ("all", "ALL", ""):
@@ -387,7 +387,7 @@ class TestStatusFilterPassThrough:
             patch("cis_bench.catalog.database.CatalogDatabase"),
             patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class,
         ):
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
             monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "1000")
             mock_search = mock_search_class.return_value
             mock_search.search.return_value = []
@@ -402,14 +402,14 @@ class TestSearchShowsWhatTheLimitCutOff:
     def test_a_cut_off_list_says_how_many_matched_and_how_to_see_more(
         self, runner, small_catalog, monkeypatch
     ):
-        monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(small_catalog.parent))
+        monkeypatch.setenv("CIS_BENCH_HOME", str(small_catalog.parent))
         result = runner.invoke(cli, ["search", "sample", "--limit", "2"])
 
         assert result.exit_code == 0, result.output
         assert "Showing 2 of 5 results; use --limit to see more" in result.output
 
     def test_a_whole_list_says_so(self, runner, small_catalog, monkeypatch):
-        monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(small_catalog.parent))
+        monkeypatch.setenv("CIS_BENCH_HOME", str(small_catalog.parent))
         result = runner.invoke(cli, ["search", "sample"])
 
         assert result.exit_code == 0, result.output
@@ -419,7 +419,7 @@ class TestSearchShowsWhatTheLimitCutOff:
     def test_the_search_limit_setting_is_the_limit_when_no_flag_is_given(
         self, runner, small_catalog, monkeypatch
     ):
-        monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(small_catalog.parent))
+        monkeypatch.setenv("CIS_BENCH_HOME", str(small_catalog.parent))
         monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "2")
         result = runner.invoke(cli, ["search", "sample"])
 
@@ -454,7 +454,7 @@ class TestSearchTitleWidthSetting:
             db.mark_latest_versions()
         finally:
             db.engine.dispose()
-        monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(tmp_path))
+        monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path))
 
         monkeypatch.delenv("CIS_BENCH_TABLE_TITLE_WIDTH", raising=False)
         default = runner.invoke(cli, ["search", "sample"])

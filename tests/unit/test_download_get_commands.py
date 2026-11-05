@@ -157,7 +157,7 @@ class TestDownloadAuthErrors:
         with runner.isolated_filesystem():
             with patch("cis_bench.fetcher.workbench.WorkbenchScraper") as mock_scraper_cls:
                 monkeypatch.setenv("CIS_BENCH_VERIFY_SSL", "false")
-                monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(tmp_path / "missing"))
+                monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path / "missing"))
                 auth.get_or_create_session.return_value = Mock()
                 mock_scraper = Mock()
                 mock_scraper.download_benchmark.return_value = sample_benchmark
@@ -186,7 +186,7 @@ class TestDownloadRequestTimeoutSetting:
             with (
                 patch("cis_bench.fetcher.auth.AuthManager.get_or_create_session") as mock_auth,
             ):
-                monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(tmp_path / "missing"))
+                monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path / "missing"))
                 result = runner.invoke(cli, ["download", "12345"])
 
         assert result.exit_code == 1
@@ -218,7 +218,7 @@ class TestDownloadFileInput:
                     mock_scraper.download_benchmark.return_value = sample_benchmark
 
                     # A data folder with no catalog.db: no cache check
-                    monkeypatch.setenv("CIS_BENCH_DATA_DIR", "no-catalog")
+                    monkeypatch.setenv("CIS_BENCH_HOME", "no-catalog")
 
                     result = runner.invoke(cli, ["download", "--file", str(url_file)])
 
@@ -243,7 +243,7 @@ class TestDownloadFileInput:
                     mock_scraper.download_benchmark.return_value = sample_benchmark
 
                     # A data folder with no catalog.db: no cache check
-                    monkeypatch.setenv("CIS_BENCH_DATA_DIR", "no-catalog")
+                    monkeypatch.setenv("CIS_BENCH_HOME", "no-catalog")
 
                     result = runner.invoke(cli, ["download", "--file", str(id_file)])
 
@@ -264,7 +264,7 @@ class TestDownloadFileInput:
                     mock_scraper.download_benchmark.return_value = sample_benchmark
 
                     # A data folder with no catalog.db: no cache check
-                    monkeypatch.setenv("CIS_BENCH_DATA_DIR", "no-catalog")
+                    monkeypatch.setenv("CIS_BENCH_HOME", "no-catalog")
 
                     result = runner.invoke(
                         cli,
@@ -318,7 +318,7 @@ class TestDownloadCacheSkip:
         catalog_path = tmp_path / "catalog.db"
         catalog_path.touch()
 
-        monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+        monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
 
         with patch("cis_bench.fetcher.auth.AuthManager.get_or_create_session") as mock_auth:
             mock_session = Mock()
@@ -352,7 +352,7 @@ class TestDownloadCacheSkip:
         catalog_path.touch()
 
         with runner.isolated_filesystem():
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
 
             with patch("cis_bench.fetcher.auth.AuthManager.get_or_create_session") as mock_auth:
                 mock_session = Mock()
@@ -382,7 +382,7 @@ class TestDownloadExportErrors:
     ):
         """Download continues after export failure for a format."""
         with runner.isolated_filesystem():
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(tmp_path / "nonexistent"))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path / "nonexistent"))
 
             with patch("cis_bench.fetcher.auth.AuthManager.get_or_create_session") as mock_auth:
                 mock_session = Mock()
@@ -416,7 +416,7 @@ class TestDownloadBenchmarkErrors:
     ):
         """Download continues to next benchmark after failure."""
         with runner.isolated_filesystem():
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(tmp_path / "nonexistent"))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path / "nonexistent"))
 
             with patch("cis_bench.fetcher.auth.AuthManager.get_or_create_session") as mock_auth:
                 mock_session = Mock()
@@ -460,7 +460,7 @@ class TestDownloadBenchmarkErrors:
         from cis_bench.exceptions import AuthenticationError
 
         with runner.isolated_filesystem():
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(tmp_path / "nonexistent"))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path / "nonexistent"))
             with (
                 patch(
                     "cis_bench.fetcher.auth.AuthManager.get_or_create_session",
@@ -501,7 +501,7 @@ class TestGetLoggingConfig:
         catalog_path = tmp_path / "catalog.db"
         catalog_path.touch()
 
-        monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+        monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
         monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "100")
 
         with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
@@ -523,7 +523,7 @@ class TestGetLoggingConfig:
         catalog_path = tmp_path / "catalog.db"
         catalog_path.touch()
 
-        monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+        monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
         monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "100")
 
         with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
@@ -549,7 +549,7 @@ class TestGetSearchErrors:
         catalog_path = tmp_path / "catalog.db"
         catalog_path.touch()
 
-        monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+        monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
         monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "100")
 
         with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
@@ -576,7 +576,7 @@ class TestGetTitleWrapping:
         catalog_path = tmp_path / "catalog.db"
         catalog_path.touch()
 
-        monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+        monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
         monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "100")
 
         with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
@@ -620,7 +620,7 @@ class TestGetInteractiveSelection:
         catalog_path = tmp_path / "catalog.db"
         catalog_path.touch()
 
-        monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+        monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
         monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "100")
 
         with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
@@ -650,7 +650,7 @@ class TestGetInteractiveSelection:
         catalog_path = tmp_path / "catalog.db"
         catalog_path.touch()
 
-        monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+        monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
         monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "100")
 
         with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
@@ -682,7 +682,7 @@ class TestGetInteractiveSelection:
         catalog_path.touch()
 
         with runner.isolated_filesystem():
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
             monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "100")
 
             with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
@@ -733,7 +733,7 @@ class TestGetDownloadErrors:
         catalog_path = tmp_path / "catalog.db"
         catalog_path.touch()
 
-        monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+        monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
         monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "100")
 
         with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
@@ -773,7 +773,7 @@ class TestGetDownloadErrors:
             patch("cis_bench.fetcher.auth.AuthManager") as mock_auth,
             patch("cis_bench.cli.helpers.download_helper.download_with_progress") as mock_dl,
         ):
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
             monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "100")
             mock_db_class.return_value.get_downloaded.return_value = None  # Not cached
             mock_search_class.return_value.search.return_value = [
@@ -815,7 +815,7 @@ class TestGetDownloadErrors:
             patch("cis_bench.fetcher.auth.AuthManager") as mock_auth,
             patch("cis_bench.cli.helpers.download_helper.download_with_progress") as mock_dl,
         ):
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
             monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "100")
             mock_db_class.return_value.get_downloaded.return_value = None
             mock_search_class.return_value.search.return_value = [
@@ -846,7 +846,7 @@ class TestGetDownloadErrors:
             patch("cis_bench.fetcher.auth.AuthManager") as mock_auth,
             patch("cis_bench.cli.helpers.download_helper.download_with_progress") as mock_dl,
         ):
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
             monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "100")
             monkeypatch.setenv("CIS_BENCH_VERIFY_SSL", "false")
             mock_db = Mock()
@@ -908,7 +908,7 @@ class TestGetXccdfExport:
         catalog_path.touch()
 
         with runner.isolated_filesystem():
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
             monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "100")
 
             with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
@@ -964,7 +964,7 @@ class TestGetXccdfExport:
         catalog_path.touch()
 
         with runner.isolated_filesystem():
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
             monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "100")
 
             with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
@@ -1021,7 +1021,7 @@ class TestGetExportErrors:
         catalog_path.touch()
 
         with runner.isolated_filesystem():
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
             monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "100")
 
             with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
@@ -1086,7 +1086,7 @@ class TestOutsideTextIsPrintedVerbatim:
             patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class,
             patch("cis_bench.cli.commands.get.ExporterFactory") as mock_factory,
         ):
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
             monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "100")
             mock_search_class.return_value.search.return_value = [
                 {"benchmark_id": "12345", "title": "CIS T [/t]", "version": "v1", "status": "P"}
@@ -1114,7 +1114,7 @@ class TestOutsideTextIsPrintedVerbatim:
             patch("cis_bench.catalog.database.CatalogDatabase"),
             patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class,
         ):
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
             monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "100")
             mock_search_class.return_value.search.return_value = [
                 {
@@ -1134,7 +1134,7 @@ class TestOutsideTextIsPrintedVerbatim:
         assert "P [/s]" in result.output
 
     def test_get_without_a_catalog_prints_the_query_verbatim(self, runner, tmp_path, monkeypatch):
-        monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(tmp_path / "missing"))
+        monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path / "missing"))
         monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "100")
 
         result = runner.invoke(cli, ["get", "web[x]"])
@@ -1159,7 +1159,7 @@ class TestOutsideTextIsPrintedVerbatim:
             ),
             patch("cis_bench.cli.commands.get.ExporterFactory") as mock_factory,
         ):
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
             monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "100")
             mock_search_class.return_value.search.return_value = [
                 {"benchmark_id": "23598", "title": "CIS T", "version": "v1", "status": "P"}
@@ -1183,7 +1183,7 @@ class TestOutsideTextIsPrintedVerbatim:
             patch("cis_bench.fetcher.workbench.WorkbenchScraper") as mock_scraper_class,
             patch("cis_bench.cli.commands.download.ExporterFactory") as mock_factory,
         ):
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(tmp_path / "nonexistent"))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path / "nonexistent"))
             mock_scraper_class.return_value.download_benchmark.return_value = sample_benchmark
             self._writing_exporter(mock_factory)
 
@@ -1202,7 +1202,7 @@ class TestGetNonInteractiveMode:
         catalog_path = tmp_path / "catalog.db"
         catalog_path.touch()
 
-        monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+        monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
         monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "100")
 
         with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
@@ -1288,7 +1288,7 @@ class TestCanonicalContentHashConsistency:
                         return_value=scraper,
                     ),
                 ):
-                    monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(db_download.db_path.parent))
+                    monkeypatch.setenv("CIS_BENCH_HOME", str(db_download.db_path.parent))
                     dl_res = runner.invoke(cli, ["download", "12345", "--force"])
                 assert dl_res.exit_code == 0, dl_res.output
 
@@ -1308,7 +1308,7 @@ class TestCanonicalContentHashConsistency:
                         wraps=Benchmark.model_validate_json,
                     ) as validate_spy,
                 ):
-                    monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(db_get.db_path.parent))
+                    monkeypatch.setenv("CIS_BENCH_HOME", str(db_get.db_path.parent))
                     monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "100")
                     get_res = runner.invoke(
                         cli,
@@ -1352,7 +1352,7 @@ class TestVerifiedTLSByDefault:
         auth = auth_manager_class.return_value
         with runner.isolated_filesystem():
             with patch("cis_bench.fetcher.workbench.WorkbenchScraper") as mock_scraper_cls:
-                monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(tmp_path / "missing"))
+                monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path / "missing"))
                 auth.get_or_create_session.return_value = Mock()
                 mock_scraper = Mock()
                 mock_scraper.download_benchmark.return_value = sample_benchmark
@@ -1379,7 +1379,7 @@ class TestVerifiedTLSByDefault:
                     ),
                 ),
             ):
-                monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(tmp_path / "missing"))
+                monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path / "missing"))
                 result = runner.invoke(cli, ["download", "12345"])
 
         assert result.exit_code == 1
@@ -1399,7 +1399,7 @@ class TestVerifiedTLSByDefault:
             patch("cis_bench.fetcher.auth.AuthManager") as mock_auth,
             patch("cis_bench.cli.helpers.download_helper.download_with_progress") as mock_dl,
         ):
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
             mock_db = Mock()
             mock_db_class.return_value = mock_db
             mock_db.get_downloaded.side_effect = [
@@ -1444,7 +1444,7 @@ class TestVerifiedTLSByDefault:
             patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class,
             patch("cis_bench.fetcher.auth.AuthManager") as mock_auth,
         ):
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
             mock_db = Mock()
             mock_db_class.return_value = mock_db
             mock_db.get_downloaded.return_value = None
@@ -1517,7 +1517,7 @@ class TestDownloadReferenceValidation:
                 ),
                 patch("cis_bench.fetcher.workbench.WorkbenchScraper") as mock_scraper_cls,
             ):
-                monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(tmp_path / "missing"))
+                monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path / "missing"))
                 mock_scraper = Mock()
                 mock_scraper.download_benchmark.return_value = sample_benchmark
                 mock_scraper_cls.return_value = mock_scraper
@@ -1613,7 +1613,7 @@ class TestTypedAuthErrors:
             patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class,
             patch("cis_bench.fetcher.auth.AuthManager") as mock_auth,
         ):
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
             mock_db_class.return_value.get_downloaded.return_value = None
             mock_search_class.return_value.search.return_value = [
                 {"benchmark_id": "23598", "title": "Test", "version": "v1", "status": "Published"}
@@ -1636,7 +1636,7 @@ class TestTypedAuthErrors:
             patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class,
             patch("cis_bench.fetcher.auth.AuthManager") as mock_auth,
         ):
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
             mock_db_class.return_value.get_downloaded.return_value = None
             mock_search_class.return_value.search.return_value = [
                 {"benchmark_id": "../etc", "title": "Test", "version": "v1", "status": "Published"}
@@ -1656,7 +1656,7 @@ class TestTypedAuthErrors:
             patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class,
             patch("cis_bench.fetcher.auth.AuthManager") as mock_auth,
         ):
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
             mock_db_class.return_value.get_downloaded.return_value = None
             mock_search_class.return_value.search.return_value = [
                 {"benchmark_id": "23598", "title": "Test", "version": "v1", "status": "Published"}

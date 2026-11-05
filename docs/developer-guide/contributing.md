@@ -146,7 +146,7 @@ tests/unit/test_catalog_database.py
 **All tests must use isolated databases:**
 
 - Unit tests: `tmp_path` fixtures
-- All tests: `CIS_BENCH_DATA_DIR` points at a temporary folder (automatic, `tests/conftest.py`)
+- All tests: `CIS_BENCH_HOME` points at a temporary folder (automatic, `tests/conftest.py`)
 - NO touching production data
 
 **See:** [Testing Guide](testing.md)
@@ -384,9 +384,9 @@ Include:
 
 ```bash
 # Keep development data in its own folder
-export CIS_BENCH_DATA_DIR=~/.cis-bench-dev
+export CIS_BENCH_HOME=~/cis-bench-dev
 
-# Your work goes to ~/.cis-bench-dev/; ~/.cis-bench stays clean
+# Your work goes to ~/cis-bench-dev/; your own XDG folders stay clean
 ```
 
 ### Running Tests

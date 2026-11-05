@@ -91,7 +91,7 @@ cis-bench auth login --browser firefox
 1. Optionally opens CIS WorkBench in your browser
 2. Extracts session cookies from your browser
 3. Validates the session
-4. Saves to `~/.cis-bench/session.cookies`
+4. Saves to `~/.local/state/cis-bench/session.cookies`
 5. All future commands use this saved session automatically
 
 **Supported browsers:** Chrome, Firefox, Edge, Safari
@@ -290,22 +290,24 @@ cis-bench download 23598 --format xccdf --format yaml
 
 ### Data Storage Locations
 
-All data lives in one folder, `CIS_BENCH_DATA_DIR` (default `~/.cis-bench`); see [Configuration](user-guide/configuration.md#the-data-folder).
+cis-bench uses the XDG folders, as the GitHub CLI does: `~/.config/cis-bench/config.toml`,
+`~/.local/share/cis-bench/` for `catalog.db` and `benchmarks/`, and
+`~/.local/state/cis-bench/session.cookies`; see [Configuration](user-guide/configuration.md#the-folders).
 
 **Default:**
 ```bash
-# Data stored in: ~/.cis-bench/
+# catalog.db stored in: ~/.local/share/cis-bench/
 cis-bench catalog refresh
 ```
 
-**A separate data folder (for example for development):**
+**One folder for everything (for example for development or a container):**
 ```bash
-# Data stored in: ~/.cis-bench-dev/
-export CIS_BENCH_DATA_DIR=~/.cis-bench-dev
+# Everything stored in: ~/cis-bench-dev/
+export CIS_BENCH_HOME=~/cis-bench-dev
 cis-bench catalog refresh
 ```
 
-**Tests:** pytest points `CIS_BENCH_DATA_DIR` at a temporary folder for every run, so tests never touch `~/.cis-bench`.
+**Tests:** pytest points `CIS_BENCH_HOME` at a temporary folder for every run, so tests never touch your folders.
 
 ### Environment Variables
 
@@ -313,8 +315,8 @@ cis-bench catalog refresh
 # Disable SSL verification (for corporate proxies)
 export CIS_BENCH_VERIFY_SSL=false
 
-# Use another data folder
-export CIS_BENCH_DATA_DIR=~/.cis-bench-dev
+# Keep everything in one folder
+export CIS_BENCH_HOME=~/cis-bench-dev
 
 # Configure search limit
 export CIS_BENCH_SEARCH_LIMIT=500

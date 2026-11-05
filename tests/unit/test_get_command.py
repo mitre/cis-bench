@@ -68,7 +68,7 @@ class TestGetCommandNoCatalog:
         """Get command shows helpful message when catalog missing."""
         catalog_path = tmp_path / "nonexistent" / "catalog.db"
 
-        monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+        monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
         monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "100")
 
         result = runner.invoke(cli, ["get", "ubuntu", "--format", "json"])
@@ -93,7 +93,7 @@ class TestGetCommandSingleResult:
         catalog_path = tmp_path / "catalog.db"
         catalog_path.touch()
 
-        monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+        monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
         monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "100")
         monkeypatch.setenv("CIS_BENCH_VERIFY_SSL", "false")
 
@@ -164,7 +164,7 @@ class TestGetCommandSingleResult:
             patch("cis_bench.fetcher.auth.AuthManager") as mock_auth,
             patch("cis_bench.cli.helpers.download_helper.download_with_progress") as mock_download,
         ):
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
             monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "100")
             mock_db = Mock()
             mock_db_class.return_value = mock_db
@@ -215,7 +215,7 @@ class TestGetCommandSingleResult:
         catalog_path = tmp_path / "catalog.db"
         catalog_path.touch()
 
-        monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+        monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
         monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "100")
 
         with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
@@ -266,7 +266,7 @@ class TestGetCommandMultipleResults:
         catalog_path = tmp_path / "catalog.db"
         catalog_path.touch()
 
-        monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+        monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
         monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "100")
 
         with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
@@ -316,7 +316,7 @@ class TestGetCommandNoResults:
         catalog_path = tmp_path / "catalog.db"
         catalog_path.touch()
 
-        monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+        monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
         monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "100")
 
         with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
@@ -357,7 +357,7 @@ class TestGetRequestTimeoutSetting:
             patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class,
             patch("cis_bench.fetcher.auth.AuthManager") as mock_auth,
         ):
-            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
             self._one_match(mock_search_class, mock_db_class, cached=None)
             result = runner.invoke(cli, ["get", "ubuntu 22", "--non-interactive"])
 
@@ -384,7 +384,7 @@ class TestGetRequestTimeoutSetting:
                 patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class,
                 patch("cis_bench.fetcher.auth.AuthManager") as mock_auth,
             ):
-                monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
+                monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
                 self._one_match(mock_search_class, mock_db_class, cached=cached)
                 result = runner.invoke(
                     cli, ["get", "ubuntu 22", "--format", "json", "--non-interactive"]
@@ -402,7 +402,7 @@ class TestGetCandidateLimit:
         self, runner, small_catalog, monkeypatch
     ):
         monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "3")
-        monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(small_catalog.parent))
+        monkeypatch.setenv("CIS_BENCH_HOME", str(small_catalog.parent))
         result = runner.invoke(cli, ["get", "sample", "--non-interactive"])
 
         assert "Found 5 benchmarks matching 'sample' (showing the first 3)" in result.output
@@ -437,7 +437,7 @@ class TestGetTitleWidthSetting:
             db.mark_latest_versions()
         finally:
             db.engine.dispose()
-        monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(tmp_path))
+        monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path))
 
         monkeypatch.delenv("CIS_BENCH_TABLE_TITLE_WIDTH", raising=False)
         default = runner.invoke(cli, ["get", "sample", "--non-interactive"])
