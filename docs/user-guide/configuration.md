@@ -48,7 +48,7 @@ asks for `CIS_BENCH_DATA_DIR` instead, so an old `CIS_BENCH_ENV=dev` never write
 ~/.cis-bench/          # the data folder (CIS_BENCH_DATA_DIR)
 ├── catalog.db         # catalog database, including downloaded benchmarks
 ├── session.cookies    # saved WorkBench session (cis-bench auth login)
-├── benchmarks/        # created empty; exports go to ./benchmarks in the current folder
+├── benchmarks/        # download writes benchmark files here; export, list and info read them
 ├── .env               # optional: CIS_BENCH_* settings
 └── config.toml        # optional: settings by key
 ```

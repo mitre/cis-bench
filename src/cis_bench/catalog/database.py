@@ -46,7 +46,6 @@ from cis_bench.catalog.models import (
     utcnow,
 )
 from cis_bench.catalog.versions import VersionSortKey, is_newer_version, version_sort_key
-from cis_bench.config import Config
 from cis_bench.models.benchmark import Benchmark
 
 logger = logging.getLogger(__name__)
@@ -581,7 +580,8 @@ class CatalogDatabase:
         platform_type: str | None = None,
         status: str | None = "Published",
         latest_only: bool = False,
-        limit: int | None = None,
+        *,
+        limit: int | None,
     ) -> list[dict]:
         """Search catalog using FTS5 fuzzy matching or list benchmarks when query is blank.
 
@@ -591,13 +591,12 @@ class CatalogDatabase:
             platform_type: Filter by platform category (cloud, os, database, container, application)
             status: Filter by status (default: Published; None or 'all' returns all statuses)
             latest_only: Only latest versions
-            limit: Max results (default: CIS_BENCH_SEARCH_LIMIT)
+            limit: Max results; None returns every match (the caller decides, the CLI from
+                CIS_BENCH_SEARCH_LIMIT)
 
         Returns:
             List of benchmark dictionaries with all joined data
         """
-        if limit is None:
-            limit = Config.get_search_default_limit()
         stmt = self._search_statement(query, platform, platform_type, status, latest_only, limit)
         if stmt is None:
             return []

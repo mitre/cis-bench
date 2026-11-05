@@ -146,7 +146,7 @@ return {
 
 ## Best Practices
 
-1. **Never hardcode paths** - Use fixtures or Config
+1. **Never hardcode paths** - Use fixtures and `tmp_path`; library tests pass values such as `base_url` and `timeout` directly, CLI tests set `CIS_BENCH_*` with `monkeypatch.setenv`
 2. **Use tmp_path** - Pytest's built-in temp directory fixture
 3. **Mock external APIs** - Do not hit real CIS WorkBench in tests
 4. **Test isolation** - Each test independent

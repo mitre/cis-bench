@@ -8,7 +8,7 @@ from rich.console import Console
 from rich.markup import escape
 
 from cis_bench.cli.helpers.output import benchmark_table, output_data, showing_line
-from cis_bench.config import Config
+from cis_bench.cli.helpers.services import settings_from
 
 console = Console()
 logger = logging.getLogger(__name__)
@@ -68,12 +68,12 @@ def search_cmd(query, platform, platform_type, status, latest, limit, output_for
     """
     logger.info(f"Search command: query={query}, platform={platform}, status={status}")
 
-    # Use Config defaults if not provided
+    settings = settings_from()
     if limit is None:
-        limit = Config.get_search_default_limit()
+        limit = settings.search_limit
 
     # Check if catalog database exists
-    catalog_db_path = Config.get_catalog_db_path()
+    catalog_db_path = settings.catalog_db_path
 
     if not catalog_db_path.exists():
         console.print("[yellow]⚠ Local catalog not found[/yellow]\n")
@@ -144,7 +144,7 @@ def search_cmd(query, platform, platform_type, status, latest, limit, output_for
         # Display results (human-friendly table)
         console.print(f"[green]Found {len(results)} benchmark(s)[/green]\n")
 
-        console.print(benchmark_table(results))
+        console.print(benchmark_table(results, title_width=settings.table_title_width))
 
         # Show usage hints
         # A list shorter than the limit is complete; only a full one may have been cut off.

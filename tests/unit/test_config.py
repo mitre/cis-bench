@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
-from cis_bench.config import Config, load_settings
+from cis_bench.config import load_settings
 from cis_bench.exceptions import ConfigurationError
 
 
@@ -28,20 +28,21 @@ class TestDataDir:
     """CIS_BENCH_DATA_DIR places catalog.db, session.cookies, benchmarks/, .env and config.toml."""
 
     def test_every_path_is_in_the_data_dir(self, data_dir):
-        assert Config.get_data_dir() == data_dir
-        assert Config.get_catalog_db_path() == data_dir / "catalog.db"
-        assert Config.get_session_file_path() == data_dir / "session.cookies"
-        assert Config.get_benchmarks_dir() == data_dir / "benchmarks"
+        settings = load_settings()
+        assert settings.data_dir == data_dir
+        assert settings.catalog_db_path == data_dir / "catalog.db"
+        assert settings.session_file_path == data_dir / "session.cookies"
+        assert settings.benchmarks_dir == data_dir / "benchmarks"
 
     def test_the_default_is_dot_cis_bench_in_the_home_folder(self, data_dir, monkeypatch, tmp_path):
         monkeypatch.delenv("CIS_BENCH_DATA_DIR")
         monkeypatch.setenv("HOME", str(tmp_path / "home"))
-        assert Config.get_data_dir() == tmp_path / "home" / ".cis-bench"
+        assert load_settings().data_dir == tmp_path / "home" / ".cis-bench"
 
     def test_a_tilde_is_expanded(self, data_dir, monkeypatch, tmp_path):
         monkeypatch.setenv("HOME", str(tmp_path / "home"))
         monkeypatch.setenv("CIS_BENCH_DATA_DIR", "~/cis-data")
-        assert Config.get_data_dir() == tmp_path / "home" / "cis-data"
+        assert load_settings().data_dir == tmp_path / "home" / "cis-data"
 
     def test_cis_bench_env_is_refused_and_names_the_replacement(self, data_dir, monkeypatch):
         # A leftover CIS_BENCH_ENV=dev must never silently write to ~/.cis-bench.
@@ -67,13 +68,6 @@ class TestDataDir:
         settings = load_settings()
         assert settings.data_dir == data_dir
         assert settings.search_limit == 5
-
-    def test_ensure_directories_creates_the_data_and_benchmarks_dirs(self, data_dir):
-        target = data_dir / "new"
-        with patch.dict(os.environ, {"CIS_BENCH_DATA_DIR": str(target)}):
-            Config.ensure_directories()
-            Config.ensure_directories()  # a second call is harmless
-        assert (target / "benchmarks").is_dir()
 
 
 class TestPrecedence:
@@ -104,9 +98,9 @@ class TestPrecedence:
 
     def test_a_change_to_the_environment_is_seen_by_the_next_read(self, data_dir, monkeypatch):
         monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "9")
-        assert Config.get_search_default_limit() == 9
+        assert load_settings().search_limit == 9
         monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "11")
-        assert Config.get_search_default_limit() == 11
+        assert load_settings().search_limit == 11
 
     def test_files_do_not_change_the_process_environment(self, data_dir):
         (data_dir / ".env").write_text("CIS_BENCH_SEARCH_LIMIT=7\nREQUESTS_CA_BUNDLE=/x.pem\n")
@@ -168,21 +162,21 @@ class TestConfigTableTitleWidth:
     """CIS_BENCH_TABLE_TITLE_WIDTH: an integer of 1 or more, default 90."""
 
     def test_default(self, data_dir):
-        assert Config.get_table_title_width() == 90
+        assert load_settings().table_title_width == 90
 
     def test_from_env(self, data_dir, monkeypatch):
         monkeypatch.setenv("CIS_BENCH_TABLE_TITLE_WIDTH", "120")
-        assert Config.get_table_title_width() == 120
+        assert load_settings().table_title_width == 120
 
     def test_blank_means_the_default(self, data_dir, monkeypatch):
         monkeypatch.setenv("CIS_BENCH_TABLE_TITLE_WIDTH", "")
-        assert Config.get_table_title_width() == 90
+        assert load_settings().table_title_width == 90
 
     @pytest.mark.parametrize("value", ["abc", "0", "-3", "1.5"])
     def test_a_value_that_is_not_a_positive_integer_is_refused(self, data_dir, monkeypatch, value):
         monkeypatch.setenv("CIS_BENCH_TABLE_TITLE_WIDTH", value)
         with pytest.raises(ConfigurationError, match="CIS_BENCH_TABLE_TITLE_WIDTH") as caught:
-            Config.get_table_title_width()
+            load_settings()
         assert repr(value) in str(caught.value)
 
 
@@ -190,81 +184,72 @@ class TestConfigSearchLimit:
     """CIS_BENCH_SEARCH_LIMIT: an integer of 1 or more, default 100."""
 
     def test_default(self, data_dir):
-        assert Config.get_search_default_limit() == 100
+        assert load_settings().search_limit == 100
 
     def test_from_env(self, data_dir, monkeypatch):
         monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "500")
-        assert Config.get_search_default_limit() == 500
+        assert load_settings().search_limit == 500
 
     def test_blank_means_the_default(self, data_dir, monkeypatch):
         monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "")
-        assert Config.get_search_default_limit() == 100
+        assert load_settings().search_limit == 100
 
     @pytest.mark.parametrize("value", ["abc", "many", "0", "-1", "2.5"])
     def test_a_value_that_is_not_a_positive_integer_is_refused(self, data_dir, monkeypatch, value):
         monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", value)
         with pytest.raises(ConfigurationError, match="CIS_BENCH_SEARCH_LIMIT") as caught:
-            Config.get_search_default_limit()
+            load_settings()
         assert repr(value) in str(caught.value)
 
 
 class TestConfigVerifySSL:
     """Tests for SSL verification configuration."""
 
-    def test_get_verify_ssl_default_true(self):
+    def test_verify_ssl_default_true(self):
         """Certificate verification is on when CIS_BENCH_VERIFY_SSL is unset or blank."""
         env = os.environ.copy()
         env.pop("CIS_BENCH_VERIFY_SSL", None)
         with patch.dict(os.environ, env, clear=True):
-            from cis_bench.config import Config
-
-            assert Config.get_verify_ssl() is True
+            assert load_settings().verify_ssl is True
 
         with patch.dict(os.environ, {"CIS_BENCH_VERIFY_SSL": "   "}):
-            assert Config.get_verify_ssl() is True
+            assert load_settings().verify_ssl is True
 
-    def test_get_verify_ssl_true_values(self):
+    def test_verify_ssl_true_values(self):
         """Should return True for 'true', '1', 'yes' values."""
-        from cis_bench.config import Config
-
         for value in ["true", "True", "TRUE", "1", "yes", "Yes", "YES", " true "]:
             with patch.dict(os.environ, {"CIS_BENCH_VERIFY_SSL": value}):
-                assert Config.get_verify_ssl() is True, f"Failed for value: {value}"
+                assert load_settings().verify_ssl is True, f"Failed for value: {value}"
 
-    def test_get_verify_ssl_false_values(self):
+    def test_verify_ssl_false_values(self):
         """Should return False only for the explicit opt-out values 'false', '0', 'no'."""
-        from cis_bench.config import Config
 
         for value in ["false", "False", "FALSE", "0", "no", "No", "NO", " false "]:
             with patch.dict(os.environ, {"CIS_BENCH_VERIFY_SSL": value}):
-                assert Config.get_verify_ssl() is False, f"Failed for value: {value}"
+                assert load_settings().verify_ssl is False, f"Failed for value: {value}"
 
-    def test_get_verify_ssl_rejects_unrecognized_value(self):
+    def test_verify_ssl_rejects_unrecognized_value(self):
         """A typo in a security setting is a configuration error, never a silent opt-out."""
-        from cis_bench.config import Config
-
         for value in ["anything", "off", "disable", "f"]:
             with patch.dict(os.environ, {"CIS_BENCH_VERIFY_SSL": value}):
                 with pytest.raises(ValueError, match="CIS_BENCH_VERIFY_SSL") as exc_info:
-                    Config.get_verify_ssl()
+                    load_settings()
                 assert value in str(exc_info.value)
 
 
 class TestConfigWorkbenchBaseUrl:
     """Tests for configurable CIS WorkBench base URL validation."""
 
-    def test_get_workbench_base_url_defaults_to_production(self):
+    def test_workbench_url_defaults_to_production(self):
         """Should return https://workbench.cisecurity.org when CIS_BENCH_WORKBENCH_URL is unset or blank."""
-        from cis_bench import config
 
         env = os.environ.copy()
         env.pop("CIS_BENCH_WORKBENCH_URL", None)
         with patch.dict(os.environ, env, clear=True):
-            assert config.Config.get_workbench_base_url() == "https://workbench.cisecurity.org"
-            assert config.get_workbench_base_url() == "https://workbench.cisecurity.org"
+            assert load_settings().workbench_url == "https://workbench.cisecurity.org"
 
         with patch.dict(os.environ, {"CIS_BENCH_WORKBENCH_URL": "   "}):
-            assert config.Config.get_workbench_base_url() == "https://workbench.cisecurity.org"
+            assert load_settings().workbench_url == "https://workbench.cisecurity.org"
 
     @pytest.mark.parametrize(
         "raw_url,expected",
@@ -283,14 +268,11 @@ class TestConfigWorkbenchBaseUrl:
             ),
         ],
     )
-    def test_get_workbench_base_url_accepts_valid_cisecurity_origins(
-        self, raw_url: str, expected: str
-    ):
+    def test_workbench_url_accepts_valid_cisecurity_origins(self, raw_url: str, expected: str):
         """Should normalize valid https://*.cisecurity.org origins."""
-        from cis_bench.config import Config
 
         with patch.dict(os.environ, {"CIS_BENCH_WORKBENCH_URL": raw_url}):
-            assert Config.get_workbench_base_url() == expected
+            assert load_settings().workbench_url == expected
 
     @pytest.mark.parametrize(
         "invalid_url",
@@ -306,24 +288,19 @@ class TestConfigWorkbenchBaseUrl:
             "https://workbench.cisecurity.org#frag",
         ],
     )
-    def test_get_workbench_base_url_rejects_untrusted_insecure_or_non_origin_urls(
-        self, invalid_url: str
-    ):
+    def test_workbench_url_rejects_untrusted_insecure_or_non_origin_urls(self, invalid_url: str):
         """Should raise ValueError for non-HTTPS, non-cisecurity.org, credentialed, or path/query URLs."""
-        from cis_bench.config import Config
 
         with patch.dict(os.environ, {"CIS_BENCH_WORKBENCH_URL": invalid_url}):
             with pytest.raises(ValueError, match="CIS_BENCH_WORKBENCH_URL"):
-                Config.get_workbench_base_url()
+                load_settings()
 
 
-class TestConvenienceFunctions:
-    """Module-level shortcuts that callers use until they read the settings object."""
+class TestCatalogDbPath:
+    """The catalog database is catalog.db in the data folder."""
 
-    def test_get_catalog_db_path_function(self, data_dir):
-        from cis_bench.config import get_catalog_db_path
-
-        assert get_catalog_db_path() == data_dir / "catalog.db"
+    def test_catalog_db_path_is_catalog_db_in_the_data_dir(self, data_dir):
+        assert load_settings().catalog_db_path == data_dir / "catalog.db"
 
 
 class TestConfigurationErrorType:
@@ -333,20 +310,16 @@ class TestConfigurationErrorType:
         from cis_bench.exceptions import ConfigurationError
 
         with patch.dict(os.environ, {"CIS_BENCH_WORKBENCH_URL": "http://evil.example"}):
-            from cis_bench.config import Config
-
             with pytest.raises(ConfigurationError, match="CIS_BENCH_WORKBENCH_URL") as exc_info:
-                Config.get_workbench_base_url()
+                load_settings()
         assert isinstance(exc_info.value, ValueError)
 
     def test_invalid_verify_ssl_raises_configuration_error(self):
         from cis_bench.exceptions import ConfigurationError
 
         with patch.dict(os.environ, {"CIS_BENCH_VERIFY_SSL": "bogus"}):
-            from cis_bench.config import Config
-
             with pytest.raises(ConfigurationError, match="CIS_BENCH_VERIFY_SSL") as exc_info:
-                Config.get_verify_ssl()
+                load_settings()
         assert isinstance(exc_info.value, ValueError)
 
 
@@ -357,28 +330,21 @@ class TestConfigRequestTimeout:
         env = os.environ.copy()
         env.pop("CIS_BENCH_REQUEST_TIMEOUT", None)
         with patch.dict(os.environ, env, clear=True):
-            from cis_bench.config import Config
-
-            assert Config.get_request_timeout() == (10.0, 30.0)
+            assert load_settings().request_timeouts == (10.0, 30.0)
         with patch.dict(os.environ, {"CIS_BENCH_REQUEST_TIMEOUT": "  "}):
-            assert Config.get_request_timeout() == (10.0, 30.0)
+            assert load_settings().request_timeouts == (10.0, 30.0)
 
     def test_value_sets_the_read_timeout(self):
-        from cis_bench.config import Config
-
         with patch.dict(os.environ, {"CIS_BENCH_REQUEST_TIMEOUT": "60"}):
-            assert Config.get_request_timeout() == (10.0, 60.0)
+            assert load_settings().request_timeouts == (10.0, 60.0)
         with patch.dict(os.environ, {"CIS_BENCH_REQUEST_TIMEOUT": " 45.5 "}):
-            assert Config.get_request_timeout() == (10.0, 45.5)
+            assert load_settings().request_timeouts == (10.0, 45.5)
 
     def test_connect_timeout_never_exceeds_read_timeout(self):
-        from cis_bench.config import Config
-
         with patch.dict(os.environ, {"CIS_BENCH_REQUEST_TIMEOUT": "5"}):
-            assert Config.get_request_timeout() == (5.0, 5.0)
+            assert load_settings().request_timeouts == (5.0, 5.0)
 
     def test_rejects_non_positive_or_non_numeric_values(self):
-        from cis_bench.config import Config
         from cis_bench.exceptions import ConfigurationError
 
         # inf would turn the timeout off again and nan is accepted by float() but
@@ -388,5 +354,5 @@ class TestConfigRequestTimeout:
                 with pytest.raises(
                     ConfigurationError, match="CIS_BENCH_REQUEST_TIMEOUT"
                 ) as exc_info:
-                    Config.get_request_timeout()
+                    load_settings()
                 assert value in str(exc_info.value)

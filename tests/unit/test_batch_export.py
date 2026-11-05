@@ -160,24 +160,23 @@ def mock_db_with_benchmarks(*benchmarks):
 class TestSingleExportBackwardCompatibility:
     """Ensure single ID export still works after batch changes."""
 
-    def test_single_id_still_works(self, runner, sample_benchmark_1, tmp_path):
+    def test_single_id_still_works(self, runner, sample_benchmark_1, tmp_path, monkeypatch):
         """Single ID export should work exactly as before."""
         with runner.isolated_filesystem():
             catalog_path = tmp_path / "catalog.db"
             catalog_path.touch()
 
-            with patch("cis_bench.cli.commands.export.Config") as mock_config:
-                mock_config.get_catalog_db_path.return_value = catalog_path
+            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
 
-                with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
-                    mock_db_class.return_value = mock_db_with_benchmarks(sample_benchmark_1)
+            with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
+                mock_db_class.return_value = mock_db_with_benchmarks(sample_benchmark_1)
 
-                    result = runner.invoke(cli, ["export", "23598", "--format", "yaml"])
+                result = runner.invoke(cli, ["export", "23598", "--format", "yaml"])
 
-                    assert result.exit_code == 0, f"Single export failed: {result.output}"
-                    assert "Exported 2 recommendations" in result.output
-                    # Output file should still use old naming for single ID
-                    assert Path("benchmark_23598.yaml").exists()
+                assert result.exit_code == 0, f"Single export failed: {result.output}"
+                assert "Exported 2 recommendations" in result.output
+                # Output file should still use old naming for single ID
+                assert Path("benchmark_23598.yaml").exists()
 
     def test_single_file_still_works(self, runner, sample_benchmark_1):
         """Single file export should work exactly as before."""
@@ -200,78 +199,83 @@ class TestSingleExportBackwardCompatibility:
 class TestBatchExportMultipleIds:
     """Test exporting multiple benchmark IDs in a single command."""
 
-    def test_export_two_benchmarks(self, runner, sample_benchmark_1, sample_benchmark_2, tmp_path):
+    def test_export_two_benchmarks(
+        self, runner, sample_benchmark_1, sample_benchmark_2, tmp_path, monkeypatch
+    ):
         """Export two benchmarks in single command."""
         with runner.isolated_filesystem():
             catalog_path = tmp_path / "catalog.db"
             catalog_path.touch()
 
-            with patch("cis_bench.cli.commands.export.Config") as mock_config:
-                mock_config.get_catalog_db_path.return_value = catalog_path
+            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
 
-                with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
-                    mock_db_class.return_value = mock_db_with_benchmarks(
-                        sample_benchmark_1, sample_benchmark_2
-                    )
+            with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
+                mock_db_class.return_value = mock_db_with_benchmarks(
+                    sample_benchmark_1, sample_benchmark_2
+                )
 
-                    result = runner.invoke(cli, ["export", "23598", "22605", "--format", "yaml"])
+                result = runner.invoke(cli, ["export", "23598", "22605", "--format", "yaml"])
 
-                    assert result.exit_code == 0, f"Batch export failed: {result.output}"
-                    # Both benchmarks should be exported
-                    assert "Ubuntu" in result.output
-                    assert "RHEL" in result.output
-                    # Check files exist
-                    assert Path("benchmark_23598.yaml").exists()
-                    assert Path("benchmark_22605.yaml").exists()
+                assert result.exit_code == 0, f"Batch export failed: {result.output}"
+                # Both benchmarks should be exported
+                assert "Ubuntu" in result.output
+                assert "RHEL" in result.output
+                # Check files exist
+                assert Path("benchmark_23598.yaml").exists()
+                assert Path("benchmark_22605.yaml").exists()
 
     def test_export_three_benchmarks(
-        self, runner, sample_benchmark_1, sample_benchmark_2, sample_benchmark_3, tmp_path
+        self,
+        runner,
+        sample_benchmark_1,
+        sample_benchmark_2,
+        sample_benchmark_3,
+        tmp_path,
+        monkeypatch,
     ):
         """Export three benchmarks in single command."""
         with runner.isolated_filesystem():
             catalog_path = tmp_path / "catalog.db"
             catalog_path.touch()
 
-            with patch("cis_bench.cli.commands.export.Config") as mock_config:
-                mock_config.get_catalog_db_path.return_value = catalog_path
+            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
 
-                with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
-                    mock_db_class.return_value = mock_db_with_benchmarks(
-                        sample_benchmark_1, sample_benchmark_2, sample_benchmark_3
-                    )
+            with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
+                mock_db_class.return_value = mock_db_with_benchmarks(
+                    sample_benchmark_1, sample_benchmark_2, sample_benchmark_3
+                )
 
-                    result = runner.invoke(
-                        cli, ["export", "23598", "22605", "18208", "--format", "yaml"]
-                    )
+                result = runner.invoke(
+                    cli, ["export", "23598", "22605", "18208", "--format", "yaml"]
+                )
 
-                    assert result.exit_code == 0
-                    assert Path("benchmark_23598.yaml").exists()
-                    assert Path("benchmark_22605.yaml").exists()
-                    assert Path("benchmark_18208.yaml").exists()
+                assert result.exit_code == 0
+                assert Path("benchmark_23598.yaml").exists()
+                assert Path("benchmark_22605.yaml").exists()
+                assert Path("benchmark_18208.yaml").exists()
 
     def test_export_multiple_with_xccdf(
-        self, runner, sample_benchmark_1, sample_benchmark_2, tmp_path
+        self, runner, sample_benchmark_1, sample_benchmark_2, tmp_path, monkeypatch
     ):
         """Export multiple benchmarks to XCCDF format."""
         with runner.isolated_filesystem():
             catalog_path = tmp_path / "catalog.db"
             catalog_path.touch()
 
-            with patch("cis_bench.cli.commands.export.Config") as mock_config:
-                mock_config.get_catalog_db_path.return_value = catalog_path
+            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
 
-                with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
-                    mock_db_class.return_value = mock_db_with_benchmarks(
-                        sample_benchmark_1, sample_benchmark_2
-                    )
+            with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
+                mock_db_class.return_value = mock_db_with_benchmarks(
+                    sample_benchmark_1, sample_benchmark_2
+                )
 
-                    result = runner.invoke(
-                        cli, ["export", "23598", "22605", "--format", "xccdf", "--style", "disa"]
-                    )
+                result = runner.invoke(
+                    cli, ["export", "23598", "22605", "--format", "xccdf", "--style", "disa"]
+                )
 
-                    assert result.exit_code == 0
-                    assert Path("benchmark_23598.xml").exists()
-                    assert Path("benchmark_22605.xml").exists()
+                assert result.exit_code == 0
+                assert Path("benchmark_23598.xml").exists()
+                assert Path("benchmark_22605.xml").exists()
 
 
 # ============================================================================
@@ -282,48 +286,50 @@ class TestBatchExportMultipleIds:
 class TestBatchExportOutputDirectory:
     """Test output directory option for batch exports."""
 
-    def test_export_to_output_dir(self, runner, sample_benchmark_1, sample_benchmark_2, tmp_path):
+    def test_export_to_output_dir(
+        self, runner, sample_benchmark_1, sample_benchmark_2, tmp_path, monkeypatch
+    ):
         """Export multiple benchmarks to specified output directory."""
         with runner.isolated_filesystem():
             catalog_path = tmp_path / "catalog.db"
             catalog_path.touch()
 
-            with patch("cis_bench.cli.commands.export.Config") as mock_config:
-                mock_config.get_catalog_db_path.return_value = catalog_path
+            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
 
-                with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
-                    mock_db_class.return_value = mock_db_with_benchmarks(
-                        sample_benchmark_1, sample_benchmark_2
-                    )
+            with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
+                mock_db_class.return_value = mock_db_with_benchmarks(
+                    sample_benchmark_1, sample_benchmark_2
+                )
 
-                    result = runner.invoke(
-                        cli,
-                        ["export", "23598", "22605", "--format", "yaml", "--output-dir", "exports"],
-                    )
+                result = runner.invoke(
+                    cli,
+                    ["export", "23598", "22605", "--format", "yaml", "--output-dir", "exports"],
+                )
 
-                    assert result.exit_code == 0
-                    assert Path("exports/benchmark_23598.yaml").exists()
-                    assert Path("exports/benchmark_22605.yaml").exists()
+                assert result.exit_code == 0
+                assert Path("exports/benchmark_23598.yaml").exists()
+                assert Path("exports/benchmark_22605.yaml").exists()
 
-    def test_output_dir_created_if_not_exists(self, runner, sample_benchmark_1, tmp_path):
+    def test_output_dir_created_if_not_exists(
+        self, runner, sample_benchmark_1, tmp_path, monkeypatch
+    ):
         """Output directory is created if it doesn't exist."""
         with runner.isolated_filesystem():
             catalog_path = tmp_path / "catalog.db"
             catalog_path.touch()
 
-            with patch("cis_bench.cli.commands.export.Config") as mock_config:
-                mock_config.get_catalog_db_path.return_value = catalog_path
+            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
 
-                with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
-                    mock_db_class.return_value = mock_db_with_benchmarks(sample_benchmark_1)
+            with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
+                mock_db_class.return_value = mock_db_with_benchmarks(sample_benchmark_1)
 
-                    result = runner.invoke(
-                        cli,
-                        ["export", "23598", "--format", "yaml", "--output-dir", "new/nested/dir"],
-                    )
+                result = runner.invoke(
+                    cli,
+                    ["export", "23598", "--format", "yaml", "--output-dir", "new/nested/dir"],
+                )
 
-                    assert result.exit_code == 0
-                    assert Path("new/nested/dir/benchmark_23598.yaml").exists()
+                assert result.exit_code == 0
+                assert Path("new/nested/dir/benchmark_23598.yaml").exists()
 
 
 # ============================================================================
@@ -335,53 +341,50 @@ class TestBatchExportErrorHandling:
     """Test error handling for batch exports."""
 
     def test_continue_on_missing_benchmark(
-        self, runner, sample_benchmark_1, sample_benchmark_2, tmp_path
+        self, runner, sample_benchmark_1, sample_benchmark_2, tmp_path, monkeypatch
     ):
         """Continue exporting even if one benchmark is missing."""
         with runner.isolated_filesystem():
             catalog_path = tmp_path / "catalog.db"
             catalog_path.touch()
 
-            with patch("cis_bench.cli.commands.export.Config") as mock_config:
-                mock_config.get_catalog_db_path.return_value = catalog_path
+            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
 
-                with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
-                    # Only benchmark 1 and 2 exist, 99999 does not
-                    mock_db_class.return_value = mock_db_with_benchmarks(
-                        sample_benchmark_1, sample_benchmark_2
-                    )
+            with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
+                # Only benchmark 1 and 2 exist, 99999 does not
+                mock_db_class.return_value = mock_db_with_benchmarks(
+                    sample_benchmark_1, sample_benchmark_2
+                )
 
-                    result = runner.invoke(
-                        cli, ["export", "23598", "99999", "22605", "--format", "yaml"]
-                    )
+                result = runner.invoke(
+                    cli, ["export", "23598", "99999", "22605", "--format", "yaml"]
+                )
 
-                    # Should continue despite missing benchmark
-                    # Exit code should be non-zero to indicate partial failure
-                    assert (
-                        "99999 not downloaded" in result.output
-                        or "not found" in result.output.lower()
-                    )
-                    # But other benchmarks should still be exported
-                    assert Path("benchmark_23598.yaml").exists()
-                    assert Path("benchmark_22605.yaml").exists()
+                # Should continue despite missing benchmark
+                # Exit code should be non-zero to indicate partial failure
+                assert (
+                    "99999 not downloaded" in result.output or "not found" in result.output.lower()
+                )
+                # But other benchmarks should still be exported
+                assert Path("benchmark_23598.yaml").exists()
+                assert Path("benchmark_22605.yaml").exists()
 
-    def test_all_missing_benchmarks_exits_with_error(self, runner, tmp_path):
+    def test_all_missing_benchmarks_exits_with_error(self, runner, tmp_path, monkeypatch):
         """Exit with error if all benchmarks are missing."""
         with runner.isolated_filesystem():
             catalog_path = tmp_path / "catalog.db"
             catalog_path.touch()
 
-            with patch("cis_bench.cli.commands.export.Config") as mock_config:
-                mock_config.get_catalog_db_path.return_value = catalog_path
+            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
 
-                with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
-                    mock_db = Mock()
-                    mock_db.get_downloaded.return_value = None  # Nothing found
-                    mock_db_class.return_value = mock_db
+            with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
+                mock_db = Mock()
+                mock_db.get_downloaded.return_value = None  # Nothing found
+                mock_db_class.return_value = mock_db
 
-                    result = runner.invoke(cli, ["export", "99998", "99999", "--format", "yaml"])
+                result = runner.invoke(cli, ["export", "99998", "99999", "--format", "yaml"])
 
-                    assert result.exit_code != 0
+                assert result.exit_code != 0
 
     def test_no_identifiers_shows_error(self, runner):
         """Show error when no identifiers provided."""
@@ -401,49 +404,45 @@ class TestBatchExportProgress:
     """Test progress tracking for batch exports."""
 
     def test_shows_progress_for_multiple_exports(
-        self, runner, sample_benchmark_1, sample_benchmark_2, tmp_path
+        self, runner, sample_benchmark_1, sample_benchmark_2, tmp_path, monkeypatch
     ):
         """Show progress indicator for each benchmark."""
         with runner.isolated_filesystem():
             catalog_path = tmp_path / "catalog.db"
             catalog_path.touch()
 
-            with patch("cis_bench.cli.commands.export.Config") as mock_config:
-                mock_config.get_catalog_db_path.return_value = catalog_path
+            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
 
-                with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
-                    mock_db_class.return_value = mock_db_with_benchmarks(
-                        sample_benchmark_1, sample_benchmark_2
-                    )
+            with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
+                mock_db_class.return_value = mock_db_with_benchmarks(
+                    sample_benchmark_1, sample_benchmark_2
+                )
 
-                    result = runner.invoke(cli, ["export", "23598", "22605", "--format", "yaml"])
+                result = runner.invoke(cli, ["export", "23598", "22605", "--format", "yaml"])
 
-                    # Should show progress like [1/2] and [2/2]
-                    assert "[1/2]" in result.output or "1 of 2" in result.output.lower()
-                    assert "[2/2]" in result.output or "2 of 2" in result.output.lower()
+                # Should show progress like [1/2] and [2/2]
+                assert "[1/2]" in result.output or "1 of 2" in result.output.lower()
+                assert "[2/2]" in result.output or "2 of 2" in result.output.lower()
 
     def test_shows_summary_after_batch_export(
-        self, runner, sample_benchmark_1, sample_benchmark_2, tmp_path
+        self, runner, sample_benchmark_1, sample_benchmark_2, tmp_path, monkeypatch
     ):
         """Show summary after batch export completes."""
         with runner.isolated_filesystem():
             catalog_path = tmp_path / "catalog.db"
             catalog_path.touch()
 
-            with patch("cis_bench.cli.commands.export.Config") as mock_config:
-                mock_config.get_catalog_db_path.return_value = catalog_path
+            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
 
-                with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
-                    mock_db_class.return_value = mock_db_with_benchmarks(
-                        sample_benchmark_1, sample_benchmark_2
-                    )
+            with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
+                mock_db_class.return_value = mock_db_with_benchmarks(
+                    sample_benchmark_1, sample_benchmark_2
+                )
 
-                    result = runner.invoke(cli, ["export", "23598", "22605", "--format", "yaml"])
+                result = runner.invoke(cli, ["export", "23598", "22605", "--format", "yaml"])
 
-                    # Should show completion summary
-                    assert (
-                        "complete" in result.output.lower() or "exported" in result.output.lower()
-                    )
+                # Should show completion summary
+                assert "complete" in result.output.lower() or "exported" in result.output.lower()
 
 
 # ============================================================================
@@ -455,7 +454,7 @@ class TestBatchExportMixedIdentifiers:
     """Test batch export with mix of IDs and file paths."""
 
     def test_export_id_and_file_together(
-        self, runner, sample_benchmark_1, sample_benchmark_2, tmp_path
+        self, runner, sample_benchmark_1, sample_benchmark_2, tmp_path, monkeypatch
     ):
         """Export both database IDs and file paths in same command."""
         with runner.isolated_filesystem():
@@ -465,20 +464,19 @@ class TestBatchExportMixedIdentifiers:
             catalog_path = tmp_path / "catalog.db"
             catalog_path.touch()
 
-            with patch("cis_bench.cli.commands.export.Config") as mock_config:
-                mock_config.get_catalog_db_path.return_value = catalog_path
+            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
 
-                with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
-                    mock_db_class.return_value = mock_db_with_benchmarks(sample_benchmark_1)
+            with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
+                mock_db_class.return_value = mock_db_with_benchmarks(sample_benchmark_1)
 
-                    result = runner.invoke(
-                        cli, ["export", "23598", "local_benchmark.json", "--format", "yaml"]
-                    )
+                result = runner.invoke(
+                    cli, ["export", "23598", "local_benchmark.json", "--format", "yaml"]
+                )
 
-                    assert result.exit_code == 0
-                    # Both should be exported
-                    assert Path("benchmark_23598.yaml").exists()
-                    assert Path("local_benchmark.yaml").exists()
+                assert result.exit_code == 0
+                # Both should be exported
+                assert Path("benchmark_23598.yaml").exists()
+                assert Path("local_benchmark.yaml").exists()
 
 
 # ============================================================================
@@ -490,67 +488,71 @@ class TestBatchExportIntegration:
     """Integration tests for complete batch export workflows."""
 
     def test_batch_export_xccdf_disa_workflow(
-        self, runner, sample_benchmark_1, sample_benchmark_2, sample_benchmark_3, tmp_path
+        self,
+        runner,
+        sample_benchmark_1,
+        sample_benchmark_2,
+        sample_benchmark_3,
+        tmp_path,
+        monkeypatch,
     ):
         """Full workflow: Export 3 benchmarks to XCCDF DISA format."""
         with runner.isolated_filesystem():
             catalog_path = tmp_path / "catalog.db"
             catalog_path.touch()
 
-            with patch("cis_bench.cli.commands.export.Config") as mock_config:
-                mock_config.get_catalog_db_path.return_value = catalog_path
+            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
 
-                with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
-                    mock_db_class.return_value = mock_db_with_benchmarks(
-                        sample_benchmark_1, sample_benchmark_2, sample_benchmark_3
-                    )
+            with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
+                mock_db_class.return_value = mock_db_with_benchmarks(
+                    sample_benchmark_1, sample_benchmark_2, sample_benchmark_3
+                )
 
-                    result = runner.invoke(
-                        cli,
-                        [
-                            "export",
-                            "23598",
-                            "22605",
-                            "18208",
-                            "--format",
-                            "xccdf",
-                            "--style",
-                            "disa",
-                            "--output-dir",
-                            "stig_exports",
-                        ],
-                    )
+                result = runner.invoke(
+                    cli,
+                    [
+                        "export",
+                        "23598",
+                        "22605",
+                        "18208",
+                        "--format",
+                        "xccdf",
+                        "--style",
+                        "disa",
+                        "--output-dir",
+                        "stig_exports",
+                    ],
+                )
 
-                    assert result.exit_code == 0
+                assert result.exit_code == 0
 
-                    # All XCCDF files should exist
-                    assert Path("stig_exports/benchmark_23598.xml").exists()
-                    assert Path("stig_exports/benchmark_22605.xml").exists()
-                    assert Path("stig_exports/benchmark_18208.xml").exists()
+                # All XCCDF files should exist
+                assert Path("stig_exports/benchmark_23598.xml").exists()
+                assert Path("stig_exports/benchmark_22605.xml").exists()
+                assert Path("stig_exports/benchmark_18208.xml").exists()
 
-                    # Verify XML content is valid
-                    for xml_file in Path("stig_exports").glob("*.xml"):
-                        content = xml_file.read_text()
-                        assert "<?xml" in content
-                        assert "Benchmark" in content
+                # Verify XML content is valid
+                for xml_file in Path("stig_exports").glob("*.xml"):
+                    content = xml_file.read_text()
+                    assert "<?xml" in content
+                    assert "Benchmark" in content
 
     def test_batch_export_multiple_formats_not_supported(
-        self, runner, sample_benchmark_1, tmp_path
+        self, runner, sample_benchmark_1, tmp_path, monkeypatch
     ):
         """Batch export with single format (multiple formats handled by download)."""
         with runner.isolated_filesystem():
             catalog_path = tmp_path / "catalog.db"
             catalog_path.touch()
 
-            with patch("cis_bench.cli.commands.export.Config") as mock_config:
-                mock_config.get_catalog_db_path.return_value = catalog_path
+            monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(catalog_path.parent))
 
-                with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
-                    mock_db_class.return_value = mock_db_with_benchmarks(sample_benchmark_1)
+            with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
+                mock_db_class.return_value = mock_db_with_benchmarks(sample_benchmark_1)
 
-                    # Export command takes single format, not multiple
-                    # This is by design - use download for multiple formats
-                    result = runner.invoke(cli, ["export", "23598", "--format", "yaml"])
+                # Export command takes single format, not multiple
+                # This is by design - use download for multiple formats
+                result = runner.invoke(cli, ["export", "23598", "--format", "yaml"])
 
-                    assert result.exit_code == 0
-                    assert Path("benchmark_23598.yaml").exists()
+                assert result.exit_code == 0
+                assert Path("benchmark_23598.yaml").exists()

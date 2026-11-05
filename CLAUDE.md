@@ -127,7 +127,7 @@ All test data via fixtures in `tests/conftest.py`. NO hardcoded paths.
 ### Config Paths
 - Session storage: `~/.cis-bench/session.cookies`
 - Catalog database: `~/.cis-bench/catalog.db`
-- Downloaded benchmarks: inside `catalog.db`; exported files go to `./benchmarks/`
+- Downloaded benchmarks: inside `catalog.db`; their files go to `~/.cis-bench/benchmarks/` (`<data dir>/benchmarks`, unless `--output-dir` says otherwise)
 
 ## Key Files
 

@@ -26,8 +26,8 @@ class DISAConventionsValidator:
         logger.debug(f"Detected XCCDF namespace: {self.xccdf_ns}")
 
         self.dc_ns = "http://purl.org/dc/elements/1.1/"
-        self.errors = []
-        self.warnings = []
+        self.errors: list[str] = []
+        self.warnings: list[str] = []
 
     def validate(self) -> tuple[bool, list[str], list[str]]:
         """Run all validation checks.

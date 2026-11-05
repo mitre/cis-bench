@@ -10,10 +10,15 @@ from rich.table import Table
 
 from cis_bench.catalog.database import CatalogDatabase
 from cis_bench.catalog.search import CatalogSearch
-from cis_bench.cli.helpers.errors import report_configuration_error
 from cis_bench.cli.helpers.output import output_data, showing_line
-from cis_bench.config import Config
-from cis_bench.exceptions import AuthenticationError, ConfigurationError
+from cis_bench.cli.helpers.services import (
+    auth_manager,
+    catalog_scraper,
+    settings_from,
+    workbench_scraper,
+)
+from cis_bench.config import WORKBENCH_REQUESTS_PER_SECOND
+from cis_bench.exceptions import AuthenticationError
 
 console = Console()
 logger = logging.getLogger(__name__)
@@ -28,19 +33,11 @@ def _validate_rate_limit(
     return value
 
 
-def _validate_request_timeout() -> None:
-    """Refuse a bad CIS_BENCH_REQUEST_TIMEOUT before authenticating, as download does."""
-    try:
-        Config.get_request_timeout()
-    except ConfigurationError as e:
-        report_configuration_error(console, e)
-        raise click.Abort() from e
-
-
 def get_catalog_db() -> CatalogDatabase:
-    """Get catalog database instance (environment-aware)."""
-    Config.ensure_directories()
-    return CatalogDatabase(Config.get_catalog_db_path())
+    """The catalog database in the data folder, creating the folder if needed."""
+    settings = settings_from()
+    settings.data_dir.mkdir(parents=True, exist_ok=True)
+    return CatalogDatabase(settings.catalog_db_path)
 
 
 def require_catalog_db(
@@ -81,8 +78,8 @@ def catalog():
     metavar="SECONDS",
     help=(
         "Seconds between requests to WorkBench for this run "
-        f"(default: {1 / Config.WORKBENCH_REQUESTS_PER_SECOND:.2f}, "
-        f"{Config.WORKBENCH_REQUESTS_PER_SECOND:g} requests per second)"
+        f"(default: {1 / WORKBENCH_REQUESTS_PER_SECOND:.2f}, "
+        f"{WORKBENCH_REQUESTS_PER_SECOND:g} requests per second)"
     ),
 )
 def refresh(browser, max_pages, rate_limit):
@@ -99,7 +96,6 @@ def refresh(browser, max_pages, rate_limit):
         cis-bench catalog refresh --max-pages 5  # Test with 5 pages
         cis-bench catalog refresh --rate-limit 1  # One request per second (gentler)
     """
-    _validate_request_timeout()
     try:
         # Get database
         db = get_catalog_db()
@@ -107,21 +103,18 @@ def refresh(browser, max_pages, rate_limit):
 
         # The session helper validates the saved or freshly extracted session itself
         # and raises AuthenticationError when neither is accepted by WorkBench.
-        from cis_bench.catalog.scraper import CatalogScraper
-        from cis_bench.fetcher.auth import AuthManager
-
+        settings = settings_from()
         console.print("[cyan]Validating session...[/cyan]")
         # Pace every request of this run at the requested gap, from the session check on;
         # the scraper's worker threads share the session's adapter, so they all follow it.
-        session = AuthManager.get_or_create_session(
-            browser=browser,
-            verify_ssl=Config.get_verify_ssl(),
-            requests_per_second=None if rate_limit is None else 1 / rate_limit,
+        auth = auth_manager(
+            settings, requests_per_second=None if rate_limit is None else 1 / rate_limit
         )
+        session = auth.get_or_create_session(browser=browser)
         console.print("[green]✓[/green] Session valid\n")
 
         # Create scraper
-        scraper = CatalogScraper(db, session)
+        scraper = catalog_scraper(settings, db, session)
 
         # Test connection
         console.print("[cyan]Testing connection...[/cyan]")
@@ -175,7 +168,6 @@ def update(browser):
     Example:
         cis-bench catalog update
     """
-    _validate_request_timeout()
     try:
         db = require_catalog_db(
             missing_message="Catalog not initialized. Run 'cis-bench catalog refresh' first."
@@ -183,13 +175,9 @@ def update(browser):
 
         db.initialize_schema()
 
-        from cis_bench.catalog.scraper import CatalogScraper
-        from cis_bench.fetcher.auth import AuthManager
-
-        session = AuthManager.get_or_create_session(
-            browser=browser, verify_ssl=Config.get_verify_ssl()
-        )
-        scraper = CatalogScraper(db, session)
+        settings = settings_from()
+        session = auth_manager(settings).get_or_create_session(browser=browser)
+        scraper = catalog_scraper(settings, db, session)
 
         console.print("[cyan]Updating catalog (page 1)...[/cyan]")
 
@@ -242,9 +230,8 @@ def search(query, platform, status, latest, limit, output_format):
 
         search_obj = CatalogSearch(db)
 
-        # Use Config default if limit not provided
         if limit is None:
-            limit = Config.get_search_default_limit()
+            limit = settings_from().search_limit
 
         results = search_obj.search(
             query=query or "",
@@ -318,7 +305,7 @@ def list_cmd(platform, latest, limit):
 
         search_obj = CatalogSearch(db)
         if limit is None:
-            limit = Config.get_search_default_limit()
+            limit = settings_from().search_limit
 
         filters = {"platform": platform, "status": "Published", "latest_only": latest}
         results = search_obj.search(query="", limit=limit, **filters)
@@ -523,21 +510,17 @@ def download(benchmark_id_or_name, browser, force, interactive):
         cis-bench catalog download 23598
         cis-bench catalog download "ubuntu 20.04" --interactive
     """
-    _validate_request_timeout()
     try:
         db = require_catalog_db()
 
         from cis_bench.catalog.downloader import CatalogDownloader
-        from cis_bench.fetcher.auth import AuthManager
-        from cis_bench.fetcher.workbench import WorkbenchScraper
 
+        settings = settings_from()
         # Get authenticated session (reuses saved session or authenticates via browser)
-        session = AuthManager.get_or_create_session(
-            browser=browser, verify_ssl=Config.get_verify_ssl()
-        )
+        session = auth_manager(settings).get_or_create_session(browser=browser)
 
         # Create downloader
-        scraper = WorkbenchScraper(session)
+        scraper = workbench_scraper(settings, session)
         downloader = CatalogDownloader(db, scraper)
 
         # Determine if ID or name
@@ -573,9 +556,6 @@ def download(benchmark_id_or_name, browser, force, interactive):
         console.print(f"[yellow]{escape(str(e))}[/yellow]")
         console.print("[yellow]Please run: cis-bench auth login --browser chrome[/yellow]")
         raise click.Abort() from e
-    except ConfigurationError as e:
-        report_configuration_error(console, e)
-        raise click.Abort() from e
     except ValueError as e:
         console.print(f"[red]✗ {escape(str(e))}[/red]")
         raise click.Abort() from e
@@ -603,18 +583,14 @@ def check_updates(offline):
         cis-bench catalog check-updates
         cis-bench catalog check-updates --offline
     """
-    if not offline:
-        _validate_request_timeout()
     try:
         db = require_catalog_db()
 
         if not offline:
-            from cis_bench.catalog.scraper import CatalogScraper
-            from cis_bench.fetcher.auth import AuthManager
-
-            session = AuthManager.get_or_create_session(verify_ssl=Config.get_verify_ssl())
+            settings = settings_from()
+            session = auth_manager(settings).get_or_create_session()
             console.print("[cyan]Checking WorkBench publication dates...[/cyan]")
-            refreshed = CatalogScraper(db, session).refresh_downloaded_revision_dates()
+            refreshed = catalog_scraper(settings, db, session).refresh_downloaded_revision_dates()
             console.print(f"[green]✓[/green] Checked {refreshed} downloaded benchmark(s)\n")
 
         updates = db.check_updates_available()

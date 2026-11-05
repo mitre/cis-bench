@@ -44,6 +44,27 @@ DEFAULT_WORKBENCH_URL = f"https://workbench.{CIS_ROOT_DOMAIN}"
 # The connect timeout of every WorkBench request; never longer than the read timeout.
 CONNECT_TIMEOUT_SECONDS = 10.0
 
+# WorkBench request policy: fixed values, not settings. The code that sends requests
+# (fetcher.http, the scrapers) imports these; none of them keeps a copy.
+# Politeness: the most requests cis-bench sends to one WorkBench host per second.
+WORKBENCH_REQUESTS_PER_SECOND = 3.0
+# Concurrent requests, and how many items one batch of parallel work holds.
+WORKBENCH_MAX_CONCURRENT_REQUESTS = 5
+WORKBENCH_BATCH_SIZE = 10
+# Retries after the first attempt, and the statuses worth retrying; every other status is
+# final. urllib3's backoff: the first retry is immediate, then factor * 2 seconds plus up to
+# the jitter. A server's Retry-After is honored up to the cap.
+REQUEST_RETRIES = 2
+RETRYABLE_STATUS_CODES = frozenset({429, 502, 503, 504})
+RETRY_BACKOFF_FACTOR = 1.0
+RETRY_JITTER_SECONDS = 0.5
+RETRY_AFTER_MAX_SECONDS = 60
+# Sent on every WorkBench request so CIS can tell who is calling.
+USER_AGENT = f"cis-bench-cli/{__version__} (github.com/mitre/cis-bench)"
+# CIS's single sign-on hosts a login may pass through, and how many hops are followed.
+TRUSTED_SSO_HOSTS = frozenset({"auth.portal.cisecurity.org", "auth.portal.qa.cisecurity.org"})
+MAX_SSO_REDIRECTS = 8
+
 _VERIFY_SSL_TRUE_VALUES = frozenset({"true", "1", "yes"})
 _VERIFY_SSL_FALSE_VALUES = frozenset({"false", "0", "no"})
 _VERIFY_SSL_ACCEPTED = (
@@ -215,6 +236,7 @@ class Settings(BaseSettings):
 
     @property
     def benchmarks_dir(self) -> Path:
+        """Where download writes benchmark files and export, list and info look for them."""
         return self.data_dir / "benchmarks"
 
     @classmethod
@@ -282,97 +304,3 @@ def load_settings(**overrides: Any) -> Settings:
         raise ConfigurationError(
             "; ".join(_describe(detail) for detail in error.errors(include_url=False))
         ) from None
-
-
-class Config:
-    """The fixed request policy, and read access to the settings for code not yet given them."""
-
-    CIS_ROOT_DOMAIN = CIS_ROOT_DOMAIN
-    DEFAULT_WORKBENCH_URL = DEFAULT_WORKBENCH_URL
-
-    # WorkBench request policy. The code that sends requests (fetcher.http, the scrapers)
-    # reads these; none of them keeps a copy.
-    # Politeness: the most requests cis-bench sends to one WorkBench host per second.
-    WORKBENCH_REQUESTS_PER_SECOND = 3.0
-    # Concurrent requests, and how many items one batch of parallel work holds.
-    WORKBENCH_MAX_CONCURRENT_REQUESTS = 5
-    WORKBENCH_BATCH_SIZE = 10
-    # Retries after the first attempt, and the statuses worth retrying; every other status
-    # is final. urllib3's backoff: the first retry is immediate, then factor * 2 seconds plus
-    # up to the jitter. A server's Retry-After is honored up to the cap.
-    REQUEST_RETRIES = 2
-    RETRYABLE_STATUS_CODES = frozenset({429, 502, 503, 504})
-    RETRY_BACKOFF_FACTOR = 1.0
-    RETRY_JITTER_SECONDS = 0.5
-    RETRY_AFTER_MAX_SECONDS = 60
-    # Sent on every WorkBench request so CIS can tell who is calling.
-    USER_AGENT = f"cis-bench-cli/{__version__} (github.com/mitre/cis-bench)"
-    # CIS's single sign-on hosts a login may pass through, and how many hops are followed.
-    TRUSTED_SSO_HOSTS = frozenset({"auth.portal.cisecurity.org", "auth.portal.qa.cisecurity.org"})
-    MAX_SSO_REDIRECTS = 8
-
-    @staticmethod
-    def is_cis_domain(host: str) -> bool:
-        """Return True when host belongs to cisecurity.org or one of its subdomains."""
-        return is_cis_domain(host)
-
-    @staticmethod
-    def get_workbench_base_url() -> str:
-        """The validated CIS WorkBench origin (CIS_BENCH_WORKBENCH_URL)."""
-        return load_settings().workbench_url
-
-    @staticmethod
-    def get_data_dir() -> Path:
-        """The data folder (CIS_BENCH_DATA_DIR, default ~/.cis-bench)."""
-        return load_settings().data_dir
-
-    @staticmethod
-    def get_catalog_db_path() -> Path:
-        return load_settings().catalog_db_path
-
-    @staticmethod
-    def get_session_file_path() -> Path:
-        """The saved WorkBench session's cookie file."""
-        return load_settings().session_file_path
-
-    @staticmethod
-    def get_benchmarks_dir() -> Path:
-        return load_settings().benchmarks_dir
-
-    @staticmethod
-    def ensure_directories() -> None:
-        """Create the data folder and its benchmarks/ folder if they do not exist."""
-        settings = load_settings()
-        settings.data_dir.mkdir(parents=True, exist_ok=True)
-        settings.benchmarks_dir.mkdir(parents=True, exist_ok=True)
-
-    @staticmethod
-    def get_table_title_width() -> int:
-        """The widest the Title column of the search and get tables may grow (default 90)."""
-        return load_settings().table_title_width
-
-    @staticmethod
-    def get_search_default_limit() -> int:
-        """Default limit for search, catalog search, catalog list and get (default 100)."""
-        return load_settings().search_limit
-
-    @staticmethod
-    def get_request_timeout() -> tuple[float, float]:
-        """The (connect, read) timeout of every WorkBench request (CIS_BENCH_REQUEST_TIMEOUT)."""
-        return load_settings().request_timeouts
-
-    @staticmethod
-    def get_verify_ssl() -> bool:
-        """Whether WorkBench TLS certificates are verified (CIS_BENCH_VERIFY_SSL, default on)."""
-        return load_settings().verify_ssl
-
-
-# Convenience functions
-def get_catalog_db_path() -> Path:
-    """Get catalog database path."""
-    return Config.get_catalog_db_path()
-
-
-def get_workbench_base_url() -> str:
-    """Get validated CIS WorkBench base URL."""
-    return Config.get_workbench_base_url()

@@ -9,17 +9,14 @@ import click
 from rich.console import Console
 from rich.markup import escape
 
-from cis_bench.cli.helpers.errors import report_configuration_error, report_expired_session
-from cis_bench.config import Config
+from cis_bench.cli.helpers.errors import report_expired_session
+from cis_bench.cli.helpers.services import auth_manager, settings_from, workbench_scraper
 from cis_bench.exceptions import (
     AuthenticationError,
-    ConfigurationError,
     NoSavedSessionError,
     TLSVerificationError,
 )
 from cis_bench.exporters import ExporterFactory
-from cis_bench.fetcher.auth import AuthManager
-from cis_bench.fetcher.workbench import WorkbenchScraper
 from cis_bench.utils.workbench_urls import resolve_benchmark_reference
 
 console = Console()
@@ -27,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 def _collect_targets(
-    benchmark_ids: tuple[str, ...], urls_file: str | None
+    benchmark_ids: tuple[str, ...], urls_file: str | None, base_url: str
 ) -> list[tuple[str, str]]:
     """Turn CLI arguments or an input file into validated (benchmark_id, canonical_url) pairs.
 
@@ -42,14 +39,12 @@ def _collect_targets(
                 if not line or line.startswith("#"):
                     continue
                 try:
-                    targets.append(resolve_benchmark_reference(line))
-                except ConfigurationError:
-                    raise  # the environment is wrong, not this line
+                    targets.append(resolve_benchmark_reference(line, base_url=base_url))
                 except ValueError as e:
                     raise ValueError(f"line {line_no} of {urls_file}: {e}") from e
         return targets
     if benchmark_ids:
-        return [resolve_benchmark_reference(item) for item in benchmark_ids]
+        return [resolve_benchmark_reference(item, base_url=base_url) for item in benchmark_ids]
     console.print("[red]Error: Must specify benchmark IDs or --file[/red]")
     sys.exit(1)
 
@@ -64,7 +59,9 @@ def _collect_targets(
     help="File containing benchmark URLs or IDs (one per line)",
 )
 @click.option(
-    "--output-dir", "-o", default="./benchmarks", help="Output directory for downloaded benchmarks"
+    "--output-dir",
+    "-o",
+    help="Output directory for downloaded benchmarks (default: <data dir>/benchmarks)",
 )
 @click.option(
     "--format",
@@ -113,14 +110,11 @@ def download(
 
     # Resolve and validate every benchmark reference before touching the network, so a bad
     # ID, an off-origin URL or a cleartext URL can never be sent with the session cookies.
+    settings = settings_from()
+    if output_dir is None:
+        output_dir = settings.benchmarks_dir
     try:
-        targets = _collect_targets(benchmark_ids, urls_file)
-        # A bad request timeout is a configuration error too; surface it here,
-        # before authenticating, rather than when the scraper is built.
-        Config.get_request_timeout()
-    except ConfigurationError as e:
-        report_configuration_error(console, e)
-        sys.exit(1)
+        targets = _collect_targets(benchmark_ids, urls_file, settings.workbench_url)
     except ValueError as e:
         console.print(f"[red]✗ {escape(str(e))}[/red]")
         sys.exit(1)
@@ -133,7 +127,7 @@ def download(
     try:
         logger.debug("Getting authenticated session")
         with console.status("[bold green]Authenticating..."):
-            session = AuthManager.get_or_create_session(verify_ssl=Config.get_verify_ssl())
+            session = auth_manager(settings).get_or_create_session()
 
         console.print("[green]✓[/green] Authenticated successfully\n")
         logger.debug("Authentication successful")
@@ -151,10 +145,6 @@ def download(
         # The server could not be trusted; the message carries the remediation.
         console.print(f"\n[red]✗ {escape(str(e))}[/red]")
         sys.exit(1)
-    except ValueError as e:
-        # Only configuration can raise ValueError here (e.g. CIS_BENCH_WORKBENCH_URL)
-        report_configuration_error(console, e)
-        sys.exit(1)
     except AuthenticationError as e:
         report_expired_session(console, e)
         sys.exit(1)
@@ -167,7 +157,7 @@ def download(
         sys.exit(1)
 
     # Create scraper
-    scraper = WorkbenchScraper(session)
+    scraper = workbench_scraper(settings, session)
 
     # Download benchmarks
     logger.debug(f"Starting download of {len(targets)} benchmark(s)")
@@ -180,7 +170,7 @@ def download(
 
         # Check if already cached (unless --force)
         if not force:
-            catalog_db_path = Config.get_catalog_db_path()
+            catalog_db_path = settings.catalog_db_path
             if catalog_db_path.exists():
                 try:
                     from cis_bench.catalog.database import CatalogDatabase
@@ -225,7 +215,7 @@ def download(
             )
 
             # Save to catalog database if it exists
-            catalog_db_path = Config.get_catalog_db_path()
+            catalog_db_path = settings.catalog_db_path
             if catalog_db_path.exists():
                 try:
                     from cis_bench.catalog.database import (

@@ -269,10 +269,12 @@ class TestBenchmarkOperations:
         assert bench["url"] == "https://workbench.cisecurity.org/benchmarks/7001"
         assert bench["platform_type"] == "cloud"
         assert bench["is_vnext"] is True
-        assert [r["benchmark_id"] for r in temp_db.search("amazon", platform_type="cloud")] == [
-            "7001"
-        ]
-        assert [r["benchmark_id"] for r in temp_db.search("", platform_type="cloud")] == ["7001"]
+        assert [
+            r["benchmark_id"] for r in temp_db.search("amazon", platform_type="cloud", limit=None)
+        ] == ["7001"]
+        assert [
+            r["benchmark_id"] for r in temp_db.search("", platform_type="cloud", limit=None)
+        ] == ["7001"]
 
         with sqlite3.connect(temp_db.db_path) as conn:
             linked = [
@@ -360,43 +362,43 @@ class TestFTS5Search:
 
     def test_search_basic(self, populated_db):
         """Test basic search."""
-        results = populated_db.search("ubuntu")
+        results = populated_db.search("ubuntu", limit=None)
         assert len(results) == 1
         assert "Ubuntu" in results[0]["title"]
 
     def test_search_fuzzy(self, populated_db):
         """Test fuzzy search (missing letter)."""
-        results = populated_db.search("ubunt")  # Missing 'u'
+        results = populated_db.search("ubunt", limit=None)  # Missing 'u'
         assert len(results) == 1
         assert "Ubuntu" in results[0]["title"]
 
     def test_search_multi_word(self, populated_db):
         """Test multi-word search."""
-        results = populated_db.search("linux")
+        results = populated_db.search("linux", limit=None)
         assert len(results) >= 2  # Ubuntu and RHEL
 
     def test_search_case_insensitive(self, populated_db):
         """Test search is case-insensitive."""
-        results_lower = populated_db.search("ubuntu")
-        results_upper = populated_db.search("UBUNTU")
-        results_mixed = populated_db.search("Ubuntu")
+        results_lower = populated_db.search("ubuntu", limit=None)
+        results_upper = populated_db.search("UBUNTU", limit=None)
+        results_mixed = populated_db.search("Ubuntu", limit=None)
 
         assert len(results_lower) == len(results_upper) == len(results_mixed)
 
     def test_search_with_platform_filter(self, populated_db):
         """Test search with platform filter."""
-        results = populated_db.search("benchmark", platform="Cloud")
+        results = populated_db.search("benchmark", platform="Cloud", limit=None)
         assert len(results) == 1
         assert "AWS" in results[0]["title"]
 
     def test_search_with_status_filter(self, populated_db):
         """Test search with status filter."""
         # Default is Published
-        results = populated_db.search("benchmark")
+        results = populated_db.search("benchmark", limit=None)
         assert all(r["status"] == "Published" for r in results)
 
         # Search archived
-        results = populated_db.search("windows", status="Archived")
+        results = populated_db.search("windows", status="Archived", limit=None)
         assert len(results) == 1
         assert results[0]["status"] == "Archived"
 
@@ -415,22 +417,22 @@ class TestFTS5Search:
         )
 
         # Search without filter
-        all_results = populated_db.search("ubuntu", latest_only=False)
+        all_results = populated_db.search("ubuntu", latest_only=False, limit=None)
 
         # Search with latest_only
-        latest_results = populated_db.search("ubuntu", latest_only=True)
+        latest_results = populated_db.search("ubuntu", latest_only=True, limit=None)
 
         assert len(latest_results) < len(all_results)
 
     def test_search_empty_query(self, populated_db):
         """Test search with empty query returns all."""
-        results = populated_db.search("")
+        results = populated_db.search("", limit=None)
         assert len(results) > 0
 
-    def test_search_without_a_limit_takes_the_search_limit_setting(self, populated_db, monkeypatch):
-        # 3 Published benchmarks; CIS_BENCH_SEARCH_LIMIT is the only default limit.
-        monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "2")
-        assert len(populated_db.search("")) == 2
+    def test_no_limit_returns_every_match_whatever_the_settings(self, populated_db, monkeypatch):
+        # The library takes its limit from the caller; CIS_BENCH_SEARCH_LIMIT is the CLI's.
+        monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "1")
+        assert len(populated_db.search("", limit=None)) == 3
 
     def test_count_search_counts_every_match_whatever_the_limit(self, populated_db):
         # 3 Published benchmarks; a limit of 1 shows one but the count is the whole set.
@@ -444,15 +446,15 @@ class TestFTS5Search:
 
     def test_search_no_matches(self, populated_db):
         """Test search with no matches returns empty list."""
-        results = populated_db.search("nonexistent")
+        results = populated_db.search("nonexistent", limit=None)
         assert len(results) == 0
 
     def test_search_dotted_version_and_hyphenated_queries(self, populated_db):
         """Test dotted versions and hyphenated terms match cleanly against SQLite FTS5."""
-        ubuntu_results = populated_db.search("ubuntu 20.04")
+        ubuntu_results = populated_db.search("ubuntu 20.04", limit=None)
         assert [row["benchmark_id"] for row in ubuntu_results] == ["1"]
 
-        rhel_results = populated_db.search("red-hat")
+        rhel_results = populated_db.search("red-hat", limit=None)
         assert [row["benchmark_id"] for row in rhel_results] == ["2"]
 
     def test_search_fts5_boolean_keywords_treated_as_literal_prefixes(self, populated_db):
@@ -468,23 +470,23 @@ class TestFTS5Search:
             }
         )
 
-        oracle_results = populated_db.search("OR")
+        oracle_results = populated_db.search("OR", limit=None)
         assert [row["benchmark_id"] for row in oracle_results] == ["6"]
 
-        combined_results = populated_db.search("ubuntu AND")
+        combined_results = populated_db.search("ubuntu AND", limit=None)
         assert [row["benchmark_id"] for row in combined_results] == ["6"]
 
-        assert populated_db.search("NOT") == []
-        assert populated_db.search("NEAR") == []
+        assert populated_db.search("NOT", limit=None) == []
+        assert populated_db.search("NEAR", limit=None) == []
 
     def test_search_punctuation_only_returns_empty_without_listing_all(self, populated_db):
         """Test punctuation-only queries return empty list while whitespace lists all published."""
-        assert populated_db.search("...") == []
-        assert populated_db.search("!!!") == []
-        assert populated_db.search("***") == []
-        assert populated_db.search("___") == []
+        assert populated_db.search("...", limit=None) == []
+        assert populated_db.search("!!!", limit=None) == []
+        assert populated_db.search("***", limit=None) == []
+        assert populated_db.search("___", limit=None) == []
 
-        whitespace_results = populated_db.search("   ")
+        whitespace_results = populated_db.search("   ", limit=None)
         assert sorted(row["benchmark_id"] for row in whitespace_results) == ["1", "2", "3"]
 
     def test_search_status_all_or_none_returns_all_statuses_for_fts_and_empty_query(
@@ -520,22 +522,26 @@ class TestFTS5Search:
 
         for status_arg in (None, "all", "ALL", " all "):
             empty_ids = sorted(
-                row["benchmark_id"] for row in populated_db.search("", status=status_arg)
+                row["benchmark_id"]
+                for row in populated_db.search("", status=status_arg, limit=None)
             )
             fts_ids = sorted(
-                row["benchmark_id"] for row in populated_db.search("benchmark", status=status_arg)
+                row["benchmark_id"]
+                for row in populated_db.search("benchmark", status=status_arg, limit=None)
             )
             assert empty_ids == expected_all_ids
             assert fts_ids == expected_all_ids
 
         catalog_search = CatalogSearch(populated_db)
         assert (
-            sorted(row["benchmark_id"] for row in catalog_search.search("", status="all"))
+            sorted(
+                row["benchmark_id"] for row in catalog_search.search("", status="all", limit=None)
+            )
             == expected_all_ids
         )
         assert sorted(
             row["benchmark_id"]
-            for row in catalog_search.search("linux", status=None, platform_type="os")
+            for row in catalog_search.search("linux", status=None, platform_type="os", limit=None)
         ) == ["7", "8"]
 
 
@@ -653,10 +659,10 @@ class TestLookupTables:
         assert sunset_bench is not None
         assert sunset_bench["status"] == "Sunset"
 
-        final_results = temp_db.search("CentOS", status="Final Update")
+        final_results = temp_db.search("CentOS", status="Final Update", limit=None)
         assert [row["benchmark_id"] for row in final_results] == ["9001"]
 
-        sunset_results = temp_db.search("Appliance", status="Sunset")
+        sunset_results = temp_db.search("Appliance", status="Sunset", limit=None)
         assert [row["benchmark_id"] for row in sunset_results] == ["9002"]
 
     def test_get_or_create_lookup_helpers_recover_via_savepoint_preserving_outer_work(
@@ -872,7 +878,7 @@ class TestDownloadedBenchmarks:
         catalog_row = temp_db.get_benchmark("23598")
         assert catalog_row is not None
         assert sorted(catalog_row["collections"]) == ["Linux", "Operating System"]
-        assert [r["benchmark_id"] for r in temp_db.search("ubuntu")] == ["23598"]
+        assert [r["benchmark_id"] for r in temp_db.search("ubuntu", limit=None)] == ["23598"]
         assert temp_db.get_catalog_stats()["downloaded_benchmarks"] == 0
 
     def test_delete_downloaded_reports_a_benchmark_that_was_not_downloaded(
@@ -1385,7 +1391,7 @@ class TestEdgeCases:
             }
         )
 
-        results = temp_db.search("benchmark")
+        results = temp_db.search("benchmark", limit=None)
         assert len(results) >= 1
 
     def test_empty_database_stats(self, temp_db):

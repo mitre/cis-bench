@@ -11,6 +11,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from cis_bench.cli.helpers.output import output_data
+from cis_bench.cli.helpers.services import settings_from
 from cis_bench.models.benchmark import Benchmark
 
 console = Console()
@@ -19,7 +20,9 @@ logger = logging.getLogger(__name__)
 
 @click.command()
 @click.argument("filename")
-@click.option("--output-dir", default="./benchmarks", help="Directory containing benchmarks")
+@click.option(
+    "--output-dir", help="Directory containing benchmarks (default: <data dir>/benchmarks)"
+)
 @click.option(
     "--output-format",
     "-o",
@@ -34,6 +37,9 @@ def info(filename, output_dir, output_format):
     Example:
         cis-bench info cis_almalinux_os_8_benchmark_v400.json
     """
+    if output_dir is None:
+        output_dir = settings_from().benchmarks_dir
+
     # Find file
     if os.path.exists(filename):
         filepath = filename
@@ -41,7 +47,7 @@ def info(filename, output_dir, output_format):
         filepath = os.path.join(output_dir, filename)
 
     if not os.path.exists(filepath):
-        console.print(f"[red]Error: File not found: {escape(filepath)}[/red]")
+        console.print(f"[red]Error: File not found: {escape(str(filepath))}[/red]")
         sys.exit(1)
 
     try:

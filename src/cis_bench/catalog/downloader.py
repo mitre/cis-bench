@@ -77,9 +77,10 @@ class CatalogDownloader:
                     "message": "Already up-to-date. Use --force to re-download.",
                 }
 
-        # Validate and canonicalize benchmark URL against configured WorkBench origin
+        # Validate and canonicalize the URL against the origin the scraper fetches from
         _, benchmark_url = normalize_benchmark_url(
             catalog_entry["url"],
+            base_url=self.scraper.base_url,
             expected_benchmark_id=str(benchmark_id),
         )
 

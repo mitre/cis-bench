@@ -9,7 +9,6 @@ Tests all CLI commands including:
 Uses Click's CliRunner for isolated testing and mocks for external dependencies.
 """
 
-import os
 from datetime import datetime
 from unittest.mock import Mock, patch
 
@@ -108,6 +107,70 @@ def sample_benchmark_json(tmp_path, sample_benchmark):
     return json_file
 
 
+class TestBenchmarksFolderIsInTheDataDir:
+    """Without a folder flag, benchmark JSON files are written and read in <data dir>/benchmarks."""
+
+    @pytest.fixture
+    def folders(self, tmp_path, monkeypatch):
+        """A data folder, and a different current folder that must stay empty."""
+        data_dir = tmp_path / "data"
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.mkdir()
+        monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(data_dir))
+        monkeypatch.chdir(elsewhere)
+        return data_dir / "benchmarks", elsewhere
+
+    @staticmethod
+    def _place(sample_benchmark_json, benchmarks_dir):
+        import shutil
+
+        benchmarks_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy(str(sample_benchmark_json), benchmarks_dir / "benchmark.json")
+
+    def test_download_writes_into_the_data_dir(self, runner, sample_benchmark, folders):
+        benchmarks_dir, elsewhere = folders
+        with (
+            patch("cis_bench.fetcher.auth.AuthManager.get_or_create_session") as mock_auth,
+            patch("cis_bench.cli.helpers.download_helper.download_with_progress") as mock_dl,
+        ):
+            mock_auth.return_value = Mock()
+            mock_dl.return_value = sample_benchmark
+            result = runner.invoke(cli, ["download", "23598", "--force"])
+
+        assert result.exit_code == 0, result.output
+        assert [f.suffix for f in benchmarks_dir.iterdir()] == [".json"]
+        assert list(elsewhere.iterdir()) == []
+
+    def test_export_reads_a_file_name_from_the_data_dir(
+        self, runner, sample_benchmark_json, folders
+    ):
+        benchmarks_dir, _ = folders
+        self._place(sample_benchmark_json, benchmarks_dir)
+
+        result = runner.invoke(cli, ["export", "benchmark.json", "--format", "yaml"])
+
+        assert result.exit_code == 0, result.output
+        assert "Loaded:" in result.output
+
+    def test_list_reads_the_data_dir(self, runner, sample_benchmark_json, folders):
+        benchmarks_dir, _ = folders
+        self._place(sample_benchmark_json, benchmarks_dir)
+
+        result = runner.invoke(cli, ["list"])
+
+        assert result.exit_code == 0, result.output
+        assert "CIS AlmaLinux OS 8 Benchmark" in result.output
+
+    def test_info_reads_the_data_dir(self, runner, sample_benchmark_json, folders):
+        benchmarks_dir, _ = folders
+        self._place(sample_benchmark_json, benchmarks_dir)
+
+        result = runner.invoke(cli, ["info", "benchmark.json"])
+
+        assert result.exit_code == 0, result.output
+        assert "CIS AlmaLinux OS 8 Benchmark" in result.output
+
+
 # ============================================================================
 # Download Command Tests
 # ============================================================================
@@ -119,9 +182,7 @@ class TestDownloadCommand:
     def test_download_requires_authentication(self, runner, tmp_path):
         """Download command requires authentication (saved session or --browser)."""
         # Clear any saved session and mock to ensure no session exists
-        with patch(
-            "cis_bench.cli.commands.download.AuthManager.get_or_create_session"
-        ) as mock_auth:
+        with patch("cis_bench.fetcher.auth.AuthManager.get_or_create_session") as mock_auth:
             from cis_bench.exceptions import NoSavedSessionError
 
             mock_auth.side_effect = NoSavedSessionError(
@@ -134,47 +195,46 @@ class TestDownloadCommand:
             assert "Authentication Required" in result.output
             assert "auth login" in result.output
 
-    def test_download_single_benchmark_with_saved_session(self, runner, sample_benchmark, tmp_path):
+    def test_download_single_benchmark_with_saved_session(
+        self, runner, sample_benchmark, tmp_path, monkeypatch
+    ):
         """Download single benchmark using saved session."""
-        # Mock Config to ensure no catalog exists (skip cache check)
-        with patch("cis_bench.cli.commands.download.Config") as mock_config:
-            mock_config.get_catalog_db_path.return_value = tmp_path / "nonexistent.db"
-            mock_config.get_verify_ssl.return_value = False
+        # A data folder with no catalog.db (skip cache check)
+        monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(tmp_path / "nonexistent"))
+        monkeypatch.setenv("CIS_BENCH_VERIFY_SSL", "false")
 
+        with patch("cis_bench.fetcher.auth.AuthManager.get_or_create_session") as mock_auth:
+            # Mock the download helper (imported into download.py)
             with patch(
-                "cis_bench.cli.commands.download.AuthManager.get_or_create_session"
-            ) as mock_auth:
-                # Mock the download helper (imported into download.py)
-                with patch(
-                    "cis_bench.cli.helpers.download_helper.download_with_progress"
-                ) as mock_download:
-                    # Set up mock session
-                    mock_session = Mock()
-                    mock_auth.return_value = mock_session
+                "cis_bench.cli.helpers.download_helper.download_with_progress"
+            ) as mock_download:
+                # Set up mock session
+                mock_session = Mock()
+                mock_auth.return_value = mock_session
 
-                    # Mock download helper to return our sample benchmark
-                    mock_download.return_value = sample_benchmark
+                # Mock download helper to return our sample benchmark
+                mock_download.return_value = sample_benchmark
 
-                    # Run download command with --force to skip cache check
-                    result = runner.invoke(
-                        cli,
-                        [
-                            "download",
-                            "23598",
-                            "--output-dir",
-                            str(tmp_path),
-                            "--force",
-                        ],
-                    )
+                # Run download command with --force to skip cache check
+                result = runner.invoke(
+                    cli,
+                    [
+                        "download",
+                        "23598",
+                        "--output-dir",
+                        str(tmp_path),
+                        "--force",
+                    ],
+                )
 
-                    # Verify success
-                    assert result.exit_code == 0, f"Download failed: {result.output}"
-                    assert "Downloaded:" in result.output
-                    assert "CIS AlmaLinux OS 8 Benchmark" in result.output
+                # Verify success
+                assert result.exit_code == 0, f"Download failed: {result.output}"
+                assert "Downloaded:" in result.output
+                assert "CIS AlmaLinux OS 8 Benchmark" in result.output
 
-                    # Verify mocks were called correctly
-                    mock_auth.assert_called_once()
-                    mock_download.assert_called_once()
+                # Verify mocks were called correctly
+                mock_auth.assert_called_once()
+                mock_download.assert_called_once()
 
     def test_export_to_markdown(self, runner, sample_benchmark_json):
         """Export benchmark to Markdown format (real export, no mocks)."""
@@ -606,15 +666,15 @@ class TestListCommand:
         # Bad file should show error indicator
         assert "Error" in result.output or "?" in result.output
 
-    def test_list_default_directory(self, runner):
-        """List uses ./benchmarks as default directory."""
-        with runner.isolated_filesystem():
-            os.makedirs("./benchmarks", exist_ok=True)
+    def test_list_default_directory(self, runner, tmp_path, monkeypatch):
+        """Before the first download, list names the data folder's benchmarks folder it looked in."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("CIS_BENCH_DATA_DIR", "data")
 
-            result = runner.invoke(cli, ["list"])
+        result = runner.invoke(cli, ["list"])
 
         assert result.exit_code == 0
-        # Should check ./benchmarks by default
+        assert "Directory not found: data/benchmarks" in result.output
 
     def test_list_sorting(self, runner, tmp_path):
         """List sorts benchmarks alphabetically."""

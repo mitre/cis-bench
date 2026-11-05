@@ -60,7 +60,7 @@ class TestCatalogRefresh:
         """Test refresh command with mocked dependencies."""
         # Mock auth
         mock_session = Mock()
-        mock_auth.load_cookies_from_browser.return_value = mock_session
+        mock_auth.return_value.load_cookies_from_browser.return_value = mock_session
 
         # Mock scraper
         mock_scraper = Mock()

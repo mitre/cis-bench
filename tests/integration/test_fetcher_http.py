@@ -13,13 +13,15 @@ from unittest.mock import patch
 import pytest
 import requests
 
-from cis_bench.config import Config
+from cis_bench.config import USER_AGENT
 from cis_bench.exceptions import FetchError
+from cis_bench.fetcher import http
 from cis_bench.fetcher.auth import AuthManager
 from cis_bench.fetcher.http import ThreadSessions, get_with_retry, new_workbench_session
 from tests.conftest import LocalHTTPServer
 
 TIMEOUT = (5, 5)
+WORKBENCH_URL = "https://workbench.cisecurity.org"
 
 
 class _ScriptedServer(LocalHTTPServer):
@@ -51,8 +53,8 @@ class _ScriptedServer(LocalHTTPServer):
 @pytest.fixture
 def quick_backoff(monkeypatch):
     """Shrink urllib3's backoff for tests about how many attempts run, not how long they wait."""
-    monkeypatch.setattr(Config, "RETRY_BACKOFF_FACTOR", 0.01)
-    monkeypatch.setattr(Config, "RETRY_JITTER_SECONDS", 0.0)
+    monkeypatch.setattr(http, "RETRY_BACKOFF_FACTOR", 0.01)
+    monkeypatch.setattr(http, "RETRY_JITTER_SECONDS", 0.0)
 
 
 class TestRetries:
@@ -128,7 +130,7 @@ class TestRetries:
         assert "retrying in 1.0s" in message
 
     def test_a_long_retry_after_is_capped(self, monkeypatch):
-        monkeypatch.setattr(Config, "RETRY_AFTER_MAX_SECONDS", 1)
+        monkeypatch.setattr(http, "RETRY_AFTER_MAX_SECONDS", 1)
         with _ScriptedServer([(503, {"Retry-After": "3600"}, 0), (200, {}, 0)]) as server:
             started = time.monotonic()
             response = get_with_retry(
@@ -141,7 +143,7 @@ class TestRetries:
 
 class TestRateLimit:
     def test_threads_sharing_a_session_stay_within_the_per_host_rate(self, monkeypatch):
-        monkeypatch.setattr(Config, "WORKBENCH_REQUESTS_PER_SECOND", 3)
+        monkeypatch.setattr(http, "WORKBENCH_REQUESTS_PER_SECOND", 3)
         sessions = ThreadSessions(new_workbench_session())
         with _ScriptedServer([]) as server:
 
@@ -172,7 +174,7 @@ class TestRateLimit:
 
 
 class TestALoweredRateCoversTheSessionCheck:
-    """A rate given to get_or_create_session paces the session check and every later request."""
+    """A rate given to AuthManager paces the session check and every later request."""
 
     @pytest.mark.parametrize("source", ["saved-session", "browser"])
     def test_the_session_check_and_later_requests_follow_the_rate(self, tmp_path, source):
@@ -186,26 +188,17 @@ class TestALoweredRateCoversTheSessionCheck:
             requests.cookies.create_cookie("workbench_session", "fresh", domain=".cisecurity.org")
         ]
         with _ScriptedServer([]) as server:
-            with (
-                patch.object(AuthManager, "get_session_file_path", return_value=session_file),
-                patch(
-                    "cis_bench.fetcher.auth.catalog_listing_url",
-                    return_value=server.base_url + "/benchmarks",
-                ),
-                patch.object(
-                    AuthManager,
-                    "_workbench_host",
-                    return_value=server.base_url.removeprefix("http://"),
-                ),
-                patch(
-                    "cis_bench.fetcher.auth.browser_cookie3.firefox", return_value=browser_cookies
-                ),
+            auth = AuthManager(
+                workbench_url=server.base_url,
+                verify_ssl=True,
+                session_file=session_file,
+                requests_per_second=1,
+            )
+            with patch(
+                "cis_bench.fetcher.auth.browser_cookie3.firefox", return_value=browser_cookies
             ):
-                session = AuthManager.get_or_create_session(
-                    browser="firefox",
-                    force_refresh=source == "browser",
-                    verify_ssl=True,
-                    requests_per_second=1,
+                session = auth.get_or_create_session(
+                    browser="firefox", force_refresh=source == "browser"
                 )
             for _ in range(2):
                 get_with_retry(session, server.base_url + "/p", timeout=TIMEOUT)
@@ -214,7 +207,13 @@ class TestALoweredRateCoversTheSessionCheck:
         assert len(server.arrivals) == 3
         assert server.arrivals[2] - server.arrivals[0] >= 1.9
 
-    def test_the_windows_browser_fallback_keeps_the_rate(self):
+    def test_the_windows_browser_fallback_keeps_the_rate(self, tmp_path):
+        auth = AuthManager(
+            workbench_url=WORKBENCH_URL,
+            verify_ssl=True,
+            session_file=tmp_path / "session.cookies",
+            requests_per_second=1,
+        )
         with (
             patch("platform.system", return_value="Windows"),
             patch(
@@ -223,9 +222,7 @@ class TestALoweredRateCoversTheSessionCheck:
             ),
             patch("cis_bench.fetcher.auth.browser_cookie3.firefox", return_value=[]),
         ):
-            session = AuthManager.load_cookies_from_browser(
-                "chrome", verify_ssl=True, try_fallback=True, requests_per_second=1
-            )
+            session = auth.load_cookies_from_browser("chrome", try_fallback=True)
         with _ScriptedServer([]) as server:
             started = time.monotonic()
             for _ in range(3):
@@ -234,19 +231,21 @@ class TestALoweredRateCoversTheSessionCheck:
         assert time.monotonic() - started >= 1.9
 
 
+def _auth(tmp_path):
+    return AuthManager(
+        workbench_url=WORKBENCH_URL, verify_ssl=True, session_file=tmp_path / "session.cookies"
+    )
+
+
 def _session_from_browser(tmp_path):
     with patch("cis_bench.fetcher.auth.browser_cookie3.firefox", return_value=[]):
-        return AuthManager.load_cookies_from_browser("firefox", verify_ssl=True)
+        return _auth(tmp_path).load_cookies_from_browser("firefox")
 
 
 def _session_from_cookie_file(tmp_path):
     cookie_file = tmp_path / "cookies.txt"
     cookie_file.write_text("# Netscape HTTP Cookie File\n")
-    return AuthManager.load_cookies_from_file(str(cookie_file), verify_ssl=True)
-
-
-def _session_from_cookie_dict(tmp_path):
-    return AuthManager.create_session_with_cookies({"workbench_session": "x"})
+    return _auth(tmp_path).load_cookies_from_file(str(cookie_file))
 
 
 class TestSessionsAuthManagerCreates:
@@ -254,8 +253,8 @@ class TestSessionsAuthManagerCreates:
 
     @pytest.mark.parametrize(
         "make_session",
-        [_session_from_browser, _session_from_cookie_file, _session_from_cookie_dict],
-        ids=["browser", "cookie-file", "cookie-dict"],
+        [_session_from_browser, _session_from_cookie_file],
+        ids=["browser", "cookie-file"],
     )
     def test_the_session_retries_a_503(self, tmp_path, make_session):
         session = make_session(tmp_path)
@@ -271,4 +270,4 @@ class TestUserAgent:
         with _ScriptedServer([(503, {"Retry-After": "0"}, 0), (200, {}, 0)]) as server:
             get_with_retry(new_workbench_session(), server.base_url + "/p", timeout=TIMEOUT)
 
-        assert server.user_agents == [Config.USER_AGENT, Config.USER_AGENT]
+        assert server.user_agents == [USER_AGENT, USER_AGENT]

@@ -16,7 +16,7 @@ import urllib3
 from bs4 import BeautifulSoup, Tag
 from pydantic import HttpUrl
 
-from cis_bench.config import Config
+from cis_bench.config import WORKBENCH_BATCH_SIZE, WORKBENCH_MAX_CONCURRENT_REQUESTS
 from cis_bench.exceptions import AuthenticationError
 from cis_bench.fetcher.auth import is_workbench_login_page
 from cis_bench.fetcher.http import ThreadSessions, get_with_retry
@@ -43,11 +43,20 @@ class WorkbenchScraper:
     so concurrent responses never write to a cookie jar another thread is reading.
     """
 
-    def __init__(self, session: requests.Session, strategy: ScraperStrategy | None = None):
+    def __init__(
+        self,
+        session: requests.Session,
+        *,
+        base_url: str,
+        timeout: tuple[float, float],
+        strategy: ScraperStrategy | None = None,
+    ):
         """Initialize scraper.
 
         Args:
             session: Authenticated requests session
+            base_url: The WorkBench origin (already validated) every URL is built on
+            timeout: (connect, read) seconds for every request
             strategy: Optional specific strategy (auto-detected if not provided)
         """
         self.session = session
@@ -55,7 +64,8 @@ class WorkbenchScraper:
         self._detected_strategy: ScraperStrategy | None = None
         self._strategy_lock = threading.Lock()
         self._sessions = ThreadSessions(session)
-        self.timeout = Config.get_request_timeout()
+        self.base_url = base_url
+        self.timeout = timeout
 
     def _get_strategy(self, html: str) -> ScraperStrategy:
         """Get strategy to use (override or auto-detect).
@@ -175,7 +185,7 @@ class WorkbenchScraper:
         Returns:
             Navigation tree JSON data
         """
-        url = navtree_url(benchmark_id)
+        url = navtree_url(benchmark_id, base_url=self.base_url)
         return self.fetch_json(url)
 
     def parse_navtree(self, navtree_data: dict[str, Any]) -> list[dict[str, str]]:
@@ -193,7 +203,7 @@ class WorkbenchScraper:
             for rec in recommendations:
                 rec_id = rec["id"]
                 section_id = rec["section_id"]
-                url = recommendation_url(section_id, rec_id)
+                url = recommendation_url(section_id, rec_id, base_url=self.base_url)
                 output.append(
                     {"url": url, "title": str(rec["title"]), "ref": str(rec["view_level"])}
                 )
@@ -300,8 +310,8 @@ class WorkbenchScraper:
         fetched = parallel_execute_batched(
             recommendations_list,
             build_recommendation,
-            batch_size=Config.WORKBENCH_BATCH_SIZE,
-            max_workers=Config.WORKBENCH_MAX_CONCURRENT_REQUESTS,
+            batch_size=WORKBENCH_BATCH_SIZE,
+            max_workers=WORKBENCH_MAX_CONCURRENT_REQUESTS,
             progress_callback=report_completion,
             stop_on=(AuthenticationError,),
         )

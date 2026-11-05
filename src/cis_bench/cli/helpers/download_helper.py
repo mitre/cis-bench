@@ -22,7 +22,7 @@ def download_with_progress(scraper, url, prefix=""):
         Benchmark object
 
     Example:
-        scraper = WorkbenchScraper(session)
+        scraper = workbench_scraper(settings, session)
         benchmark = download_with_progress(scraper, url, prefix="[1/1]")
     """
     console = Console()

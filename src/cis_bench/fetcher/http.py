@@ -4,8 +4,8 @@ Retries and pacing come from established libraries instead of hand-written loops
 urllib3's Retry (exponential backoff with jitter, Retry-After) and requests-ratelimiter's
 per-host limiter, both on one adapter that new_workbench_session mounts. Per-thread copies of
 a session share that adapter, so one limiter covers every worker thread. The policy values
-(rate, retries, statuses, backoff, User-Agent) live in cis_bench.config.Config and are read
-when a session is built, never copied here.
+(rate, retries, statuses, backoff, User-Agent) are constants in cis_bench.config, imported
+here and never copied.
 """
 
 import copy
@@ -18,14 +18,22 @@ from requests.structures import CaseInsensitiveDict
 from requests_ratelimiter import LimiterAdapter
 from urllib3.util.retry import Retry
 
-from cis_bench.config import Config
+from cis_bench.config import (
+    REQUEST_RETRIES,
+    RETRY_AFTER_MAX_SECONDS,
+    RETRY_BACKOFF_FACTOR,
+    RETRY_JITTER_SECONDS,
+    RETRYABLE_STATUS_CODES,
+    USER_AGENT,
+    WORKBENCH_REQUESTS_PER_SECOND,
+)
 from cis_bench.exceptions import FetchError
 
 logger = logging.getLogger(__name__)
 
 
 def _max_attempts() -> int:
-    return Config.REQUEST_RETRIES + 1
+    return REQUEST_RETRIES + 1
 
 
 class WorkBenchRetry(Retry):
@@ -44,7 +52,7 @@ class WorkBenchRetry(Retry):
 
     def get_retry_after(self, response):
         seconds = super().get_retry_after(response)
-        return None if seconds is None else min(seconds, Config.RETRY_AFTER_MAX_SECONDS)
+        return None if seconds is None else min(seconds, RETRY_AFTER_MAX_SECONDS)
 
     def increment(
         self, method=None, url=None, response=None, error=None, _pool=None, _stacktrace=None
@@ -68,11 +76,11 @@ class WorkBenchRetry(Retry):
 def workbench_retry() -> WorkBenchRetry:
     """The retry policy for WorkBench GETs: connect, read and 429/502/503/504 failures."""
     return WorkBenchRetry(
-        total=Config.REQUEST_RETRIES,
-        status_forcelist=Config.RETRYABLE_STATUS_CODES,
+        total=REQUEST_RETRIES,
+        status_forcelist=RETRYABLE_STATUS_CODES,
         allowed_methods=frozenset({"GET", "HEAD"}),
-        backoff_factor=Config.RETRY_BACKOFF_FACTOR,
-        backoff_jitter=Config.RETRY_JITTER_SECONDS,
+        backoff_factor=RETRY_BACKOFF_FACTOR,
+        backoff_jitter=RETRY_JITTER_SECONDS,
         respect_retry_after_header=True,
         raise_on_status=False,
     )
@@ -83,11 +91,9 @@ def mount_workbench_adapter(
 ) -> None:
     """Mount the WorkBench adapter (rate limit per host, then retries) on session.
 
-    requests_per_second defaults to Config.WORKBENCH_REQUESTS_PER_SECOND.
+    requests_per_second defaults to WORKBENCH_REQUESTS_PER_SECOND.
     """
-    rate = (
-        Config.WORKBENCH_REQUESTS_PER_SECOND if requests_per_second is None else requests_per_second
-    )
+    rate = WORKBENCH_REQUESTS_PER_SECOND if requests_per_second is None else requests_per_second
     adapter = LimiterAdapter(per_second=rate, burst=1, per_host=True, max_retries=workbench_retry())
     for prefix in ("https://", "http://"):
         session.mount(prefix, adapter)
@@ -97,7 +103,7 @@ def new_workbench_session(requests_per_second: float | None = None) -> requests.
     """A requests.Session for WorkBench: the shared rate limit and retry policy mounted, and the
     cis-bench User-Agent on every request."""
     session = requests.Session()
-    session.headers["User-Agent"] = Config.USER_AGENT
+    session.headers["User-Agent"] = USER_AGENT
     mount_workbench_adapter(session, requests_per_second)
     return session
 
@@ -174,7 +180,7 @@ def get_with_retry(
         response = session.get(url, timeout=timeout)
     except (requests.Timeout, requests.ConnectionError) as e:
         raise FetchError(url, _max_attempts(), str(e)) from e
-    if response.status_code in Config.RETRYABLE_STATUS_CODES:
+    if response.status_code in RETRYABLE_STATUS_CODES:
         raise FetchError(url, _max_attempts(), f"HTTP {response.status_code}")
     response.raise_for_status()
     return response

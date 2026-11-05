@@ -36,11 +36,12 @@ class WorkBenchCatalogParser:
         return is_workbench_login_page(html)
 
     @staticmethod
-    def parse_catalog_page(html: str) -> list[dict]:
+    def parse_catalog_page(html: str, *, base_url: str) -> list[dict]:
         """Extract benchmark list from catalog page.
 
         Args:
             html: HTML content from WorkBench catalog page
+            base_url: The WorkBench origin the page came from; row links must be on it
 
         Returns:
             List of dictionaries with benchmark data
@@ -49,7 +50,7 @@ class WorkBenchCatalogParser:
             AuthenticationError: If HTML is the login page (not authenticated)
 
         Example:
-            benchmarks = WorkBenchCatalogParser.parse_catalog_page(html)
+            benchmarks = WorkBenchCatalogParser.parse_catalog_page(html, base_url=origin)
             for b in benchmarks:
                 print(f"{b['benchmark_id']}: {b['title']}")
         """
@@ -76,7 +77,7 @@ class WorkBenchCatalogParser:
 
         for row in rows:
             try:
-                benchmark = WorkBenchCatalogParser._parse_table_row(row)
+                benchmark = WorkBenchCatalogParser._parse_table_row(row, base_url)
                 if benchmark:
                     benchmarks.append(benchmark)
             except Exception as e:
@@ -87,7 +88,7 @@ class WorkBenchCatalogParser:
         return benchmarks
 
     @staticmethod
-    def _parse_table_row(row) -> dict | None:
+    def _parse_table_row(row, base_url: str) -> dict | None:
         """Parse single table row.
 
         Table columns:
@@ -115,7 +116,7 @@ class WorkBenchCatalogParser:
         title = link.get_text(strip=True)
 
         try:
-            benchmark_id, url = normalize_benchmark_url(href)
+            benchmark_id, url = normalize_benchmark_url(href, base_url=base_url)
         except ValueError:
             return None
 

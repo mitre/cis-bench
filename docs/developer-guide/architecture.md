@@ -111,10 +111,10 @@ J --> L[Recommendation]
 **Components:**
 
 - `WorkbenchScraper` - Main scraper class
-- `AuthManager` - Cookie extraction; `get_or_create_session(requests_per_second=...)` creates the session at that rate, so the session check is paced too (`catalog refresh --rate-limit` uses it)
+- `AuthManager` - Cookie extraction and the saved session. Built with the WorkBench URL, the TLS setting, the session file and an optional `requests_per_second`; every session it makes is paced at that rate from the session check on (`catalog refresh --rate-limit` uses it)
 - `fetcher/http.py` - the request mechanism: `new_workbench_session` (every WorkBench session; mounts one requests-ratelimiter `LimiterAdapter` carrying a urllib3 `Retry` subclass at the configured or given rate, and sets the User-Agent), `ThreadSessions` (per-thread copies that share that adapter, so one limiter covers all threads) and `get_with_retry` (timeout; turns a failure left after the retries into `FetchError`)
 - `config.py` - the request policy values the mechanism reads: requests per second, concurrency, batch size, retries, retryable statuses, backoff, jitter, `Retry-After` cap, User-Agent, SSO hosts
-- `utils/workbench_urls.py` - every WorkBench URL (benchmark page, catalog listing, navtree, recommendation page), on the configured origin with numeric ids only
+- `utils/workbench_urls.py` - every WorkBench URL (benchmark page, catalog listing, navtree, recommendation page), on the origin the caller passes as `base_url`, with numeric ids only
 - `utils/parallel.py` - `parallel_execute_batched` runs the recommendation fetches in batches with the given worker count and batch size, results returned in input (navtree) order, and `stop_on` to end the run after a batch that hit an expired session; `iter_batches` yields each batch to the caller before the next one starts. It does no pacing.
 - `Strategy Pattern` - Adapts to HTML changes
 - `HTMLParser` - Extract data from HTML
@@ -491,6 +491,7 @@ D --> E[Default in Settings]
 
 - **Data folder:** `CIS_BENCH_DATA_DIR` (default `~/.cis-bench`), environment only, because it locates `.env` and `config.toml`. `CIS_BENCH_ENV` is refused.
 - **Startup check:** the root command (`cli/app.py`) builds the settings once per run and keeps them on the Click context (`ctx.obj["settings"]`). An invalid value prints one Configuration Error and exits 1 before any command runs; `--help` still works.
+- **Settings stay at the edge:** only the CLI reads `Settings`. `cli/helpers/services.py` turns them into the objects commands use (`auth_manager`, `workbench_scraper`, `catalog_scraper`); library code takes plain values (`base_url`, `timeout`, `verify_ssl`, `session_file`, `limit`) and never loads settings itself.
 - **Nothing else reads the environment:** ruff's banned-API rule (TID251) refuses `os.getenv`, `os.environ` and `dotenv` outside `config.py`. `.env` and `config.toml` never reach `os.environ`.
 - **Not cis-bench settings:** `HTTPS_PROXY`, `NO_PROXY`, `REQUESTS_CA_BUNDLE`, `SSL_CERT_FILE` stay with requests.
 

@@ -38,6 +38,7 @@ def temp_db(tmp_path):
 def mock_scraper(sample_recommendation_minimal):
     """Mock WorkbenchScraper."""
     scraper = create_autospec(WorkbenchScraper, instance=True)
+    scraper.base_url = "https://workbench.cisecurity.org"
 
     # Create real Benchmark object using conftest fixture
     recs = [sample_recommendation_minimal] * 10
@@ -159,7 +160,7 @@ class TestDownloadByID:
     def test_download_by_id_rejects_off_origin_or_mismatched_catalog_url(
         self, temp_db, mock_scraper, tampered_url
     ):
-        """download_by_id validates stored URL against Config.get_workbench_base_url() and benchmark_id."""
+        """download_by_id validates the stored URL against the scraper's base_url and the benchmark_id."""
         temp_db.insert_benchmark(
             {
                 "benchmark_id": "23598",
@@ -361,7 +362,7 @@ class TestIntegration:
         downloader = CatalogDownloader(temp_db, mock_scraper)
 
         # Search
-        search_results = downloader.search.search("ubuntu")
+        search_results = downloader.search.search("ubuntu", limit=None)
         assert len(search_results) > 0
 
         # Download
@@ -427,7 +428,7 @@ class TestIntegration:
 class TestCatalogPackageExportsAndBoundaries:
     """Verify cis_bench.catalog public exports and one-way catalog -> fetcher dependency boundary."""
 
-    def test_fetcher_auth_does_not_load_catalog_and_validates_login_html(self):
+    def test_fetcher_auth_does_not_load_catalog_and_validates_login_html(self, tmp_path):
         """Importing cis_bench.fetcher.auth in a fresh interpreter does not import cis_bench.catalog."""
         import subprocess
         import sys
@@ -459,14 +460,19 @@ class TestCatalogPackageExportsAndBoundaries:
         login_resp = Mock(
             status_code=200, headers={}, text='<form action="/login"><input name="login"></form>'
         )
+        auth = AuthManager(
+            workbench_url="https://workbench.cisecurity.org",
+            verify_ssl=True,
+            session_file=tmp_path / "session.cookies",
+        )
         session.get.return_value = login_resp
-        assert AuthManager.validate_session(session) is False
+        assert auth.validate_session(session) is False
 
         catalog_resp = Mock(
             status_code=200, headers={}, text="<html><body><table></table></body></html>"
         )
         session.get.return_value = catalog_resp
-        assert AuthManager.validate_session(session) is True
+        assert auth.validate_session(session) is True
 
     def test_catalog_package_exports_public_api_in_any_import_order(self):
         """cis_bench.catalog exports public classes and helpers cleanly regardless of import order."""

@@ -218,6 +218,10 @@ LONG_TITLE = (
 )
 
 
+# The Title column width a run uses when CIS_BENCH_TABLE_TITLE_WIDTH is not set.
+TITLE_WIDTH = 90
+
+
 def _render(table, width):
     buffer = StringIO()
     Console(file=buffer, width=width).print(table)
@@ -227,8 +231,7 @@ def _render(table, width):
 class TestBenchmarkTable:
     """The search/get results table fits the terminal without cutting short columns."""
 
-    def test_short_columns_stay_whole_and_the_title_wraps_at_80_columns(self, monkeypatch):
-        monkeypatch.delenv("CIS_BENCH_TABLE_TITLE_WIDTH", raising=False)
+    def test_short_columns_stay_whole_and_the_title_wraps_at_80_columns(self):
         rows = [
             {
                 "benchmark_id": "23598",
@@ -238,7 +241,7 @@ class TestBenchmarkTable:
             }
         ]
 
-        output = _render(benchmark_table(rows), width=80)
+        output = _render(benchmark_table(rows, title_width=TITLE_WIDTH), width=80)
 
         assert "23598" in output
         assert "v4.0.0" in output
@@ -256,10 +259,7 @@ class TestBenchmarkTable:
         ],
         ids=["widest-id", "widest-version", "widest-status"],
     )
-    def test_in_a_narrow_pane_only_the_title_gives_up_width(
-        self, monkeypatch, benchmark_id, version, status
-    ):
-        monkeypatch.delenv("CIS_BENCH_TABLE_TITLE_WIDTH", raising=False)
+    def test_in_a_narrow_pane_only_the_title_gives_up_width(self, benchmark_id, version, status):
         rows = [
             {
                 "benchmark_id": benchmark_id,
@@ -269,18 +269,17 @@ class TestBenchmarkTable:
             }
         ]
 
-        output = _render(benchmark_table(rows), width=40)
+        output = _render(benchmark_table(rows, title_width=TITLE_WIDTH), width=40)
 
         assert benchmark_id in output
         assert version in output
         assert status in output
         assert "…" not in output  # a word wider than the title column folds, it is not cut
 
-    def test_title_width_setting_is_the_widest_the_title_column_grows(self, monkeypatch):
-        monkeypatch.setenv("CIS_BENCH_TABLE_TITLE_WIDTH", "30")
+    def test_title_width_is_the_widest_the_title_column_grows(self):
         rows = [{"benchmark_id": "1", "title": LONG_TITLE, "version": "v1", "status": "Published"}]
 
-        output = _render(benchmark_table(rows), width=200)
+        output = _render(benchmark_table(rows, title_width=30), width=200)
 
         title_lines = [
             line for line in output.splitlines() if "Hybrid" in line or "Windows" in line
@@ -293,7 +292,7 @@ class TestBenchmarkTable:
             {"benchmark_id": "1", "title": "CIS T [/t]", "version": "v1 [/v]", "status": "P [/s]"}
         ]
 
-        output = _render(benchmark_table(rows), width=120)
+        output = _render(benchmark_table(rows, title_width=TITLE_WIDTH), width=120)
 
         assert "CIS T [/t]" in output
         assert "v1 [/v]" in output

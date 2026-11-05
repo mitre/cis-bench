@@ -28,7 +28,8 @@ class CatalogSearch:
         platform_type: str | None = None,
         status: str | None = "Published",
         latest_only: bool = False,
-        limit: int | None = None,
+        *,
+        limit: int | None,
     ) -> list[dict]:
         """Search catalog with filters.
 
@@ -38,14 +39,16 @@ class CatalogSearch:
             platform_type: Filter by platform category (cloud, os, database, container, application)
             status: Filter by status (default: Published; None or 'all' returns all statuses)
             latest_only: Only latest versions
-            limit: Max results (default: CIS_BENCH_SEARCH_LIMIT, applied by the database)
+            limit: Max results; None returns every match
 
         Returns:
             List of matching benchmarks with all metadata
 
         Example:
             search = CatalogSearch(db)
-            results = search.search("ubuntu", platform="Operating System", latest_only=True)
+            results = search.search(
+                "ubuntu", platform="Operating System", latest_only=True, limit=20
+            )
         """
         logger.debug(
             f"Search: query='{query}', platform={platform}, platform_type={platform_type}, status={status!r}, latest={latest_only}"

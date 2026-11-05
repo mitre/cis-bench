@@ -8,7 +8,7 @@ import click
 from rich.console import Console
 from rich.markup import escape
 
-from cis_bench.config import Config
+from cis_bench.cli.helpers.services import settings_from
 from cis_bench.exporters import ExporterFactory
 from cis_bench.exporters.xccdf_unified_exporter import XCCDFExporter
 from cis_bench.models.benchmark import Benchmark
@@ -105,7 +105,7 @@ def _export_single_benchmark(
     if identifier.isdigit():
         logger.info(f"Loading benchmark {identifier} from database")
 
-        catalog_db_path = Config.get_catalog_db_path()
+        catalog_db_path = settings_from().catalog_db_path
 
         if not catalog_db_path.exists():
             console.print(f"{prefix} [red]Error: Catalog database not found[/red]")
@@ -223,8 +223,7 @@ def _export_single_benchmark(
 )
 @click.option(
     "--input-dir",
-    default="./benchmarks",
-    help="Input directory where benchmark JSON files are stored",
+    help="Input directory where benchmark JSON files are stored (default: <data dir>/benchmarks)",
 )
 def export_cmd(identifiers, export_format, style, output_file, output_dir, input_dir):
     """Export benchmarks to different formats.
@@ -255,6 +254,9 @@ def export_cmd(identifiers, export_format, style, output_file, output_dir, input
         console.print("[red]Error: --output cannot be used with multiple identifiers[/red]")
         console.print("[yellow]Hint: Use --output-dir for batch exports[/yellow]")
         sys.exit(1)
+
+    if input_dir is None:
+        input_dir = settings_from().benchmarks_dir
 
     total = len(identifiers)
     success_count = 0

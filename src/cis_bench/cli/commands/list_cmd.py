@@ -9,6 +9,7 @@ from rich.markup import escape
 from rich.table import Table
 
 from cis_bench.cli.helpers.output import output_data
+from cis_bench.cli.helpers.services import settings_from
 from cis_bench.models.benchmark import Benchmark
 
 console = Console()
@@ -17,7 +18,8 @@ logger = logging.getLogger(__name__)
 
 @click.command(name="list")
 @click.option(
-    "--output-dir", default="./benchmarks", help="Directory containing downloaded benchmarks"
+    "--output-dir",
+    help="Directory containing downloaded benchmarks (default: <data dir>/benchmarks)",
 )
 @click.option(
     "--output-format",
@@ -34,6 +36,9 @@ def list_benchmarks(output_dir, output_format):
         cis-bench list
         cis-bench list --output-dir ./my_benchmarks
     """
+    if output_dir is None:
+        output_dir = settings_from().benchmarks_dir
+
     if not os.path.exists(output_dir):
         if output_format == "table":
             console.print(f"[yellow]Directory not found: {escape(str(output_dir))}[/yellow]")

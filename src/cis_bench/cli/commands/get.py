@@ -8,18 +8,15 @@ import questionary
 from rich.console import Console
 from rich.markup import escape
 
-from cis_bench.cli.helpers.errors import report_configuration_error, report_expired_session
-from cis_bench.config import Config
+from cis_bench.cli.helpers.errors import report_expired_session
+from cis_bench.cli.helpers.services import auth_manager, settings_from, workbench_scraper
 from cis_bench.exceptions import (
     AuthenticationError,
-    ConfigurationError,
     NoSavedSessionError,
     TLSVerificationError,
 )
 from cis_bench.exporters import ExporterFactory
 from cis_bench.exporters.xccdf_unified_exporter import XCCDFExporter
-from cis_bench.fetcher.auth import AuthManager
-from cis_bench.fetcher.workbench import WorkbenchScraper
 from cis_bench.utils.workbench_urls import resolve_benchmark_reference
 
 console = Console()
@@ -90,8 +87,10 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
 
     logger.debug(f"Get command: query='{query}', format={export_format}, style={style}")
 
+    settings = settings_from()
+
     # Step 1: Check catalog exists
-    catalog_db_path = Config.get_catalog_db_path()
+    catalog_db_path = settings.catalog_db_path
 
     if not catalog_db_path.exists():
         console.print("[bold red]Catalog not found[/bold red]\n")
@@ -116,7 +115,7 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
 
         # Search with Published filter by default; CIS_BENCH_SEARCH_LIMIT caps the candidates
         filters = {"status": "Published", "latest_only": True}
-        limit = Config.get_search_default_limit()
+        limit = settings.search_limit
         results = search.search(query, limit=limit, **filters)
         # A list shorter than the limit is complete; only a full one may have been cut off.
         total = search.count(query, **filters) if len(results) >= limit else len(results)
@@ -147,7 +146,7 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
 
         from cis_bench.cli.helpers.output import benchmark_table
 
-        console.print(benchmark_table(results))
+        console.print(benchmark_table(results, title_width=settings.table_title_width))
 
         # Interactive selection (if not disabled)
         if not non_interactive:
@@ -204,13 +203,9 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
 
         try:
             # The catalog row's ID becomes a canonical WorkBench URL on the configured origin
-            _, benchmark_url = resolve_benchmark_reference(str(benchmark_id))
-            # A bad request timeout is a configuration error too; surface it here,
-            # before authenticating, rather than when the scraper is built.
-            Config.get_request_timeout()
-        except ConfigurationError as e:
-            report_configuration_error(console, e)
-            sys.exit(1)
+            _, benchmark_url = resolve_benchmark_reference(
+                str(benchmark_id), base_url=settings.workbench_url
+            )
         except ValueError as e:
             console.print(f"[red]✗ {escape(str(e))}[/red]")
             sys.exit(1)
@@ -218,13 +213,13 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
         try:
             # Get authenticated session (uses saved session only)
             logger.debug("Getting authenticated session for download")
-            session = AuthManager.get_or_create_session(verify_ssl=Config.get_verify_ssl())
+            session = auth_manager(settings).get_or_create_session()
 
             # Download with progress bar
             from cis_bench.catalog.database import serialize_benchmark_json
             from cis_bench.cli.helpers.download_helper import download_with_progress
 
-            scraper = WorkbenchScraper(session)
+            scraper = workbench_scraper(settings, session)
 
             benchmark = download_with_progress(scraper, benchmark_url, prefix="  ")
 
@@ -252,9 +247,6 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
             console.print(
                 "\n[dim]Windows users: If Chrome fails, try Firefox or --cookies option.[/dim]"
             )
-            sys.exit(1)
-        except ConfigurationError as e:
-            report_configuration_error(console, e)
             sys.exit(1)
         except TLSVerificationError as e:
             # The server could not be trusted; the message carries the remediation.

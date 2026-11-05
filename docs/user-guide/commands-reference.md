@@ -289,7 +289,7 @@ cis-bench download <BENCHMARK_ID> [BENCHMARK_ID...] [OPTIONS]
 
 **Output Options:**
 
-- `-o, --output-dir PATH` - Output directory (default: ./benchmarks)
+- `-o, --output-dir PATH` - Output directory (default: `<data folder>/benchmarks`, for example `~/.cis-bench/benchmarks`)
 - `-fmt, --format` - Export formats (json|yaml|csv|markdown|xccdf) - can specify multiple
 
 **Behavior Options:**
@@ -363,7 +363,7 @@ cis-bench export <IDENTIFIER> [IDENTIFIER...] [OPTIONS]
 
 **Input Options:**
 
-- `--input-dir PATH` - Input directory for file paths (default: ./benchmarks)
+- `--input-dir PATH` - Input directory for file paths (default: `<data folder>/benchmarks`)
 
 **Examples:**
 ```bash
@@ -411,7 +411,7 @@ cis-bench list [OPTIONS]
 
 **Options:**
 
-- `--output-dir PATH` - Directory to scan (default: ./benchmarks)
+- `--output-dir PATH` - Directory to scan (default: `<data folder>/benchmarks`)
 - `-o, --output-format` - Format (table|json|csv|yaml) - default: table
 
 **Examples:**
@@ -453,7 +453,7 @@ cis-bench info <FILENAME> [OPTIONS]
 
 **Options:**
 
-- `--output-dir PATH` - Directory containing benchmark (default: ./benchmarks)
+- `--output-dir PATH` - Directory containing benchmark (default: `<data folder>/benchmarks`)
 - `-o, --output-format` - Format (table|json|yaml) - default: table
 
 **Examples:**
@@ -512,7 +512,7 @@ cis-bench remove 23598 22605 --yes
 2. Lists each cached benchmark it will remove (ID, title, version, download date) and asks for confirmation unless `--yes`
 3. Deletes the cached copy that `download`, `get` and `export <ID>` use
 4. Keeps the benchmark in the catalog, so `cis-bench search` still finds it and it can be downloaded again
-5. Leaves exported files such as `./benchmarks/*.json` untouched
+5. Leaves exported files such as `<data folder>/benchmarks/*.json` untouched
 
 **Exit code:** `0` when every requested benchmark was removed; `1` when a reference is invalid, a benchmark was not downloaded, or you declined the prompt.
 
@@ -799,7 +799,7 @@ cis-bench list --output-format csv > inventory.csv
 **Downloaded Benchmarks:**
 
 - Stored in: `~/.cis-bench/catalog.db` (downloaded_benchmarks table). This cached copy is what `download` checks, `get` and `export <ID>` read, and `catalog stats` counts; `cis-bench remove <ID>` deletes it and `cis-bench download <ID> --force` replaces it.
-- Also saved as: `./benchmarks/*.json` files. These are your exported copies; `cis-bench list` and `cis-bench info` read them, and `remove` does not delete them.
+- Also saved as: `<data folder>/benchmarks/*.json` files. These are your exported copies; `cis-bench list` and `cis-bench info` read them, and `remove` does not delete them.
 
 **Another data folder:** set `CIS_BENCH_DATA_DIR` (for example `~/.cis-bench-dev`); `~/.cis-bench` above is the default.
 

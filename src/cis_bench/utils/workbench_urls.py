@@ -1,16 +1,15 @@
 """Validation of CIS WorkBench benchmark URLs and references.
 
-Every benchmark URL the tool fetches must sit on the configured WorkBench origin
-and name a numeric benchmark, so a value from a catalog page, a user argument or
-an input file can never send the session cookies somewhere else.
+Every benchmark URL the tool fetches must sit on the WorkBench origin the caller
+gives (the CLI passes the validated CIS_BENCH_WORKBENCH_URL) and name a numeric
+benchmark, so a value from a catalog page, a user argument or an input file can
+never send the session cookies somewhere else.
 """
 
 from __future__ import annotations
 
 import re
 from urllib.parse import unquote, urljoin, urlsplit
-
-from cis_bench.config import Config
 
 _BENCHMARK_PATH_RE = re.compile(r"^/benchmarks/([0-9]+)(?:/.*)?$")
 
@@ -21,12 +20,13 @@ def _has_dot_segment(path: str) -> bool:
 
 
 def normalize_benchmark_url(
-    raw_url: str, *, expected_benchmark_id: str | None = None
+    raw_url: str, *, base_url: str, expected_benchmark_id: str | None = None
 ) -> tuple[str, str]:
     """Resolve, validate, and canonicalize a CIS WorkBench benchmark URL.
 
     Args:
         raw_url: Relative or absolute benchmark href/URL
+        base_url: The WorkBench origin (already validated), e.g. https://workbench.cisecurity.org
         expected_benchmark_id: Optional catalog benchmark ID that the URL must match
 
     Returns:
@@ -37,7 +37,6 @@ def normalize_benchmark_url(
         ValueError: If raw_url is off-origin, uses another scheme, contains userinfo, control
             characters or a ``..`` segment (in any encoding), lacks a numeric ``/benchmarks/<digits>``
             path, or mismatches expected_benchmark_id
-        ConfigurationError: If CIS_BENCH_WORKBENCH_URL itself is invalid
     """
     if not isinstance(raw_url, str):
         raise ValueError("Invalid benchmark URL: expected string")
@@ -49,7 +48,6 @@ def normalize_benchmark_url(
     if any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in cleaned):
         raise ValueError(f"Invalid benchmark URL '{raw_url}': control characters are not allowed")
 
-    base_url = Config.get_workbench_base_url()
     base_parsed = urlsplit(base_url)
 
     raw_parsed = urlsplit(cleaned)
@@ -91,7 +89,7 @@ def normalize_benchmark_url(
     return benchmark_id, f"{base_url}/benchmarks/{benchmark_id}"
 
 
-def resolve_benchmark_reference(reference: str) -> tuple[str, str]:
+def resolve_benchmark_reference(reference: str, *, base_url: str) -> tuple[str, str]:
     """Resolve a user-supplied benchmark reference, a numeric ID or a URL, to a canonical URL.
 
     Returns:
@@ -103,8 +101,8 @@ def resolve_benchmark_reference(reference: str) -> tuple[str, str]:
     cleaned = reference.strip()
     # str.isdigit accepts non-ASCII digits; a benchmark ID is ASCII digits only
     if cleaned.isascii() and cleaned.isdigit():
-        return normalize_benchmark_url(f"/benchmarks/{cleaned}")
-    return normalize_benchmark_url(cleaned)
+        return normalize_benchmark_url(f"/benchmarks/{cleaned}", base_url=base_url)
+    return normalize_benchmark_url(cleaned, base_url=base_url)
 
 
 def _workbench_id(value: object, what: str) -> str:
@@ -121,19 +119,19 @@ def _workbench_id(value: object, what: str) -> str:
     return text
 
 
-def catalog_listing_url() -> str:
-    """The catalog listing page on the configured WorkBench origin."""
-    return f"{Config.get_workbench_base_url()}/benchmarks"
+def catalog_listing_url(*, base_url: str) -> str:
+    """The catalog listing page on the given WorkBench origin."""
+    return f"{base_url}/benchmarks"
 
 
-def navtree_url(benchmark_id: object) -> str:
+def navtree_url(benchmark_id: object, *, base_url: str) -> str:
     """The navigation-tree API for one benchmark."""
     benchmark = _workbench_id(benchmark_id, "benchmark id")
-    return f"{Config.get_workbench_base_url()}/api/v1/benchmarks/{benchmark}/navtree"
+    return f"{base_url}/api/v1/benchmarks/{benchmark}/navtree"
 
 
-def recommendation_url(section_id: object, recommendation_id: object) -> str:
+def recommendation_url(section_id: object, recommendation_id: object, *, base_url: str) -> str:
     """One recommendation's page, from the section and recommendation ids in the navtree."""
     section = _workbench_id(section_id, "section id")
     recommendation = _workbench_id(recommendation_id, "recommendation id")
-    return f"{Config.get_workbench_base_url()}/sections/{section}/recommendations/{recommendation}"
+    return f"{base_url}/sections/{section}/recommendations/{recommendation}"

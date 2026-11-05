@@ -9,6 +9,9 @@ from cis_bench.catalog.database import CatalogDatabase
 from cis_bench.catalog.scraper import CatalogScraper
 from cis_bench.exceptions import AuthenticationError
 
+BASE = "https://workbench.cisecurity.org"
+TIMEOUT = (10.0, 30.0)
+
 
 @pytest.fixture
 def temp_db(tmp_path):
@@ -45,7 +48,7 @@ class TestScraperInitialization:
 
     def test_scraper_creation(self, temp_db, mock_session):
         """Test scraper can be created."""
-        scraper = CatalogScraper(temp_db, mock_session)
+        scraper = CatalogScraper(temp_db, mock_session, base_url=BASE, timeout=TIMEOUT)
 
         assert scraper.db == temp_db
         assert scraper.session == mock_session
@@ -61,12 +64,12 @@ class TestScraperInitialization:
         session = requests.Session()
         session.verify = verify_setting
 
-        scraper = CatalogScraper(temp_db, session)
+        scraper = CatalogScraper(temp_db, session, base_url=BASE, timeout=TIMEOUT)
 
         assert scraper.session.verify == verify_setting
 
     def test_scraper_does_not_expose_unused_base_url_constant(self):
-        """CatalogScraper resolves WorkBench URLs dynamically via Config without a dead BASE_URL attribute."""
+        """CatalogScraper builds WorkBench URLs from the base_url it is given; there is no BASE_URL class constant."""
         assert not hasattr(CatalogScraper, "BASE_URL")
 
 
@@ -75,7 +78,7 @@ class TestConnectionTesting:
 
     def test_connection_success(self, temp_db, mock_session):
         """Test successful connection test."""
-        scraper = CatalogScraper(temp_db, mock_session)
+        scraper = CatalogScraper(temp_db, mock_session, base_url=BASE, timeout=TIMEOUT)
 
         result = scraper.test_connection()
 
@@ -91,7 +94,7 @@ class TestConnectionTesting:
         response.raise_for_status = Mock()
         session.get = Mock(return_value=response)
 
-        scraper = CatalogScraper(temp_db, session)
+        scraper = CatalogScraper(temp_db, session, base_url=BASE, timeout=TIMEOUT)
 
         with pytest.raises(AuthenticationError, match="Not authenticated"):
             scraper.test_connection()
@@ -105,7 +108,7 @@ class TestConnectionTesting:
         response.raise_for_status = Mock()
         session.get = Mock(return_value=response)
 
-        scraper = CatalogScraper(temp_db, session)
+        scraper = CatalogScraper(temp_db, session, base_url=BASE, timeout=TIMEOUT)
 
         with pytest.raises(ValueError, match="no benchmarks found"):
             scraper.test_connection()
@@ -117,7 +120,7 @@ class TestConnectionTesting:
         session = Mock()
         session.get = Mock(side_effect=requests.ConnectionError("Network error"))
 
-        scraper = CatalogScraper(temp_db, session)
+        scraper = CatalogScraper(temp_db, session, base_url=BASE, timeout=TIMEOUT)
 
         with (
             pytest.raises(Exception, match="Connection failed"),
@@ -130,7 +133,7 @@ class TestPageFetching:
 
     def test_fetch_page(self, temp_db, mock_session, sample_html):
         """Test fetching single page."""
-        scraper = CatalogScraper(temp_db, mock_session)
+        scraper = CatalogScraper(temp_db, mock_session, base_url=BASE, timeout=TIMEOUT)
 
         html = scraper._fetch_page(1)
 
@@ -139,7 +142,7 @@ class TestPageFetching:
 
     def test_fetch_page_url_format(self, temp_db, mock_session):
         """Test page URL is formatted correctly."""
-        scraper = CatalogScraper(temp_db, mock_session)
+        scraper = CatalogScraper(temp_db, mock_session, base_url=BASE, timeout=TIMEOUT)
 
         scraper._fetch_page(5)
 
@@ -148,12 +151,14 @@ class TestPageFetching:
         url = call_args[0][0]
         assert "?page=5" in url
 
-    def test_fetch_page_honors_configured_workbench_base_url(
-        self, temp_db, mock_session, monkeypatch
-    ):
-        """_fetch_page uses CIS_BENCH_WORKBENCH_URL when configured."""
-        monkeypatch.setenv("CIS_BENCH_WORKBENCH_URL", "https://workbench-staging.cisecurity.org")
-        scraper = CatalogScraper(temp_db, mock_session)
+    def test_fetch_page_uses_the_given_origin(self, temp_db, mock_session):
+        """_fetch_page builds the listing URL on the origin the scraper is given."""
+        scraper = CatalogScraper(
+            temp_db,
+            mock_session,
+            base_url="https://workbench-staging.cisecurity.org",
+            timeout=TIMEOUT,
+        )
 
         scraper._fetch_page(2)
 
@@ -169,7 +174,7 @@ class TestFullCatalogScrape:
     def test_scrape_full_catalog(self, temp_db, sample_html, stub_session):
         """Test scraping multiple pages."""
         session, _ = stub_session(lambda url: sample_html)
-        scraper = CatalogScraper(temp_db, session)
+        scraper = CatalogScraper(temp_db, session, base_url=BASE, timeout=TIMEOUT)
 
         stats = scraper.scrape_full_catalog(max_pages=2)
 
@@ -180,7 +185,7 @@ class TestFullCatalogScrape:
     def test_scrape_respects_max_pages(self, temp_db, sample_html, stub_session):
         """Test max_pages parameter limits scraping."""
         session, _ = stub_session(lambda url: sample_html)
-        scraper = CatalogScraper(temp_db, session)
+        scraper = CatalogScraper(temp_db, session, base_url=BASE, timeout=TIMEOUT)
 
         stats = scraper.scrape_full_catalog(max_pages=3)
 
@@ -189,7 +194,7 @@ class TestFullCatalogScrape:
 
     def test_scrape_saves_to_database(self, temp_db, mock_session):
         """Test scraped benchmarks are saved to database across all status types."""
-        scraper = CatalogScraper(temp_db, mock_session)
+        scraper = CatalogScraper(temp_db, mock_session, base_url=BASE, timeout=TIMEOUT)
 
         stats = scraper.scrape_full_catalog(max_pages=1)
 
@@ -211,7 +216,7 @@ class TestFullCatalogScrape:
 
     def test_scrape_marks_latest_versions(self, temp_db, mock_session):
         """Test scraper marks latest versions."""
-        scraper = CatalogScraper(temp_db, mock_session)
+        scraper = CatalogScraper(temp_db, mock_session, base_url=BASE, timeout=TIMEOUT)
 
         scraper.scrape_full_catalog(max_pages=1)
 
@@ -222,7 +227,7 @@ class TestFullCatalogScrape:
 
     def test_scrape_saves_metadata(self, temp_db, mock_session):
         """Test scraper saves scrape metadata."""
-        scraper = CatalogScraper(temp_db, mock_session)
+        scraper = CatalogScraper(temp_db, mock_session, base_url=BASE, timeout=TIMEOUT)
 
         scraper.scrape_full_catalog(max_pages=1)
 
@@ -236,7 +241,7 @@ class TestQuickUpdate:
 
     def test_page_one_update(self, temp_db, mock_session):
         """Test quick update scrapes page 1 only."""
-        scraper = CatalogScraper(temp_db, mock_session)
+        scraper = CatalogScraper(temp_db, mock_session, base_url=BASE, timeout=TIMEOUT)
 
         stats = scraper.scrape_page_one_update()
 
@@ -246,7 +251,7 @@ class TestQuickUpdate:
 
     def test_update_detects_new_benchmarks(self, temp_db, mock_session):
         """Test update detects new benchmarks."""
-        scraper = CatalogScraper(temp_db, mock_session)
+        scraper = CatalogScraper(temp_db, mock_session, base_url=BASE, timeout=TIMEOUT)
 
         # First update - all new
         stats1 = scraper.scrape_page_one_update()
@@ -375,14 +380,21 @@ def _stub_scraper_pages(
     """Create a CatalogScraper with stubbed HTML fetching and parsed catalog rows."""
     from cis_bench.catalog.parser import WorkBenchCatalogParser
 
-    scraper = CatalogScraper(temp_db, mock_session)
+    scraper = CatalogScraper(temp_db, mock_session, base_url=BASE, timeout=TIMEOUT)
     monkeypatch.setattr(scraper, "_fetch_page", lambda page_num: f"page-{page_num}")
     monkeypatch.setattr(
         WorkBenchCatalogParser,
         "extract_pagination_info",
         staticmethod(lambda _html: {"total_pages": total_pages}),
     )
-    monkeypatch.setattr(WorkBenchCatalogParser, "parse_catalog_page", staticmethod(parse_page))
+
+    def parse_on_the_scrapers_origin(html: str, *, base_url: str) -> list[dict]:
+        assert base_url == BASE  # the scraper parses rows against its own origin
+        return parse_page(html)
+
+    monkeypatch.setattr(
+        WorkBenchCatalogParser, "parse_catalog_page", staticmethod(parse_on_the_scrapers_origin)
+    )
     return scraper
 
 
@@ -401,7 +413,7 @@ class TestErrorHandling:
 
         session, _ = stub_session(handler)
 
-        scraper = CatalogScraper(temp_db, session)
+        scraper = CatalogScraper(temp_db, session, base_url=BASE, timeout=TIMEOUT)
 
         # This should not crash even if one page fails (19 succeed, 1 fails = 5% failure)
         stats = scraper.scrape_full_catalog(max_pages=20)
@@ -603,13 +615,13 @@ class TestErrorHandling:
 
         fetch_calls: list[int] = []
 
-        scraper = CatalogScraper(temp_db, mock_session)
+        scraper = CatalogScraper(temp_db, mock_session, base_url=BASE, timeout=TIMEOUT)
 
         def fake_fetch(page_num: int) -> str:
             fetch_calls.append(page_num)
             return "login-html"
 
-        def raise_auth(_html: str) -> list[dict]:
+        def raise_auth(_html: str, *, base_url: str) -> list[dict]:
             raise AuthenticationError("Not authenticated")
 
         monkeypatch.setattr(scraper, "_fetch_page", fake_fetch)
@@ -725,7 +737,7 @@ class TestRefreshDownloadedRevisionDates:
                 "<html><body><span>Published 2 months ago on Aug 28th 2025</span></body></html>"
             )
         )
-        scraper = CatalogScraper(temp_db, session)
+        scraper = CatalogScraper(temp_db, session, base_url=BASE, timeout=TIMEOUT)
 
         refreshed = scraper.refresh_downloaded_revision_dates()
 
@@ -750,7 +762,9 @@ class TestRefreshDownloadedRevisionDates:
         )
 
         with caplog.at_level("WARNING"):
-            refreshed = CatalogScraper(temp_db, session).refresh_downloaded_revision_dates()
+            refreshed = CatalogScraper(
+                temp_db, session, base_url=BASE, timeout=TIMEOUT
+            ).refresh_downloaded_revision_dates()
 
         assert refreshed == 1
         assert [c.args[0] for c in session.get.call_args_list] == [
@@ -763,7 +777,9 @@ class TestRefreshDownloadedRevisionDates:
         session = Mock()
         session.get = Mock(return_value=self._response("<html><body>No date here</body></html>"))
 
-        refreshed = CatalogScraper(temp_db, session).refresh_downloaded_revision_dates()
+        refreshed = CatalogScraper(
+            temp_db, session, base_url=BASE, timeout=TIMEOUT
+        ).refresh_downloaded_revision_dates()
 
         assert refreshed == 0
         assert temp_db.get_downloaded("404")["workbench_last_modified"] is None
@@ -779,6 +795,8 @@ class TestRefreshDownloadedRevisionDates:
         )
 
         with pytest.raises(AuthenticationError):
-            CatalogScraper(temp_db, session).refresh_downloaded_revision_dates()
+            CatalogScraper(
+                temp_db, session, base_url=BASE, timeout=TIMEOUT
+            ).refresh_downloaded_revision_dates()
 
         assert session.get.call_count == 1

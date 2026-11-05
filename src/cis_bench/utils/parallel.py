@@ -13,7 +13,8 @@ from dataclasses import dataclass
 logger = logging.getLogger(__name__)
 
 # No default concurrency or batch size: callers pass the ones they mean (WorkBench callers
-# pass cis_bench.config.Config's). Request pacing is not done here either: WorkBench requests
+# pass WORKBENCH_MAX_CONCURRENT_REQUESTS and WORKBENCH_BATCH_SIZE from cis_bench.config).
+# Request pacing is not done here either: WorkBench requests
 # are rate limited by the session's adapter (see cis_bench.fetcher.http).
 
 type ProgressCallback[T] = Callable[[int, int, T], None]

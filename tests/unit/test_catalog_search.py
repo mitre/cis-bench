@@ -83,33 +83,33 @@ class TestBasicSearch:
     def test_search_forwards_status_unchanged_to_database(self, search):
         """Normalizing the status filter is the database's job; the search layer passes it through."""
         with patch.object(search.db, "search", return_value=[]) as db_search:
-            search.search("ubuntu", status=" ALL ")
+            search.search("ubuntu", status=" ALL ", limit=None)
 
         assert db_search.call_args.kwargs["status"] == " ALL "
 
     def test_search_by_name(self, search):
         """Test searching by benchmark name."""
-        results = search.search("ubuntu")
+        results = search.search("ubuntu", limit=None)
 
         assert len(results) > 0
         assert all("Ubuntu" in r["title"] for r in results)
 
     def test_search_empty_query_returns_all(self, search):
         """Test empty query returns all benchmarks."""
-        results = search.search("")
+        results = search.search("", limit=None)
 
         assert len(results) > 0
 
     def test_search_no_matches(self, search):
         """Test search with no matches returns empty list."""
-        results = search.search("nonexistent")
+        results = search.search("nonexistent", limit=None)
 
         assert results == []
 
-    def test_search_without_a_limit_takes_the_search_limit_setting(self, search, monkeypatch):
-        # 3 Published benchmarks; CIS_BENCH_SEARCH_LIMIT is the only default limit.
-        monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "2")
-        assert len(search.search("")) == 2
+    def test_no_limit_returns_every_match_whatever_the_settings(self, search, monkeypatch):
+        # The library takes its limit from the caller; CIS_BENCH_SEARCH_LIMIT is the CLI's.
+        monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "1")
+        assert len(search.search("", limit=None)) == 3
 
 
 class TestFiltering:
@@ -117,7 +117,7 @@ class TestFiltering:
 
     def test_filter_by_platform(self, search):
         """Test filtering by platform."""
-        results = search.search("", platform="Cloud")
+        results = search.search("", platform="Cloud", limit=None)
 
         assert len(results) == 1
         assert results[0]["platform"] == "Cloud"
@@ -125,18 +125,18 @@ class TestFiltering:
     def test_filter_by_status(self, search):
         """Test filtering by status."""
         # Default is Published
-        published = search.search("")
+        published = search.search("", limit=None)
         assert all(r["status"] == "Published" for r in published)
 
         # Archived
-        archived = search.search("ubuntu", status="Archived")
+        archived = search.search("ubuntu", status="Archived", limit=None)
         assert len(archived) == 1
         assert archived[0]["status"] == "Archived"
 
     def test_filter_latest_only(self, search):
         """Test latest_only filter."""
         # Latest only
-        latest = search.search("ubuntu", latest_only=True)
+        latest = search.search("ubuntu", latest_only=True, limit=None)
 
         # Latest should only include benchmarks with is_latest=True
         assert all(r["is_latest"] for r in latest)
@@ -146,7 +146,7 @@ class TestFiltering:
     def test_combined_filters(self, search):
         """Test combining multiple filters."""
         results = search.search(
-            "linux", platform="Operating System", status="Published", latest_only=True
+            "linux", platform="Operating System", status="Published", latest_only=True, limit=None
         )
 
         assert all(r["platform"] == "Operating System" for r in results)
@@ -215,7 +215,7 @@ class TestFormatting:
 
     def test_format_results_table(self, search):
         """Test formatting multiple results."""
-        results = search.search("benchmark")
+        results = search.search("benchmark", limit=None)
 
         formatted = search.format_results_table(results)
 
@@ -230,7 +230,7 @@ class TestFormatting:
 
     def test_format_with_description(self, search):
         """Test formatting with description snippets."""
-        results = search.search("ubuntu")
+        results = search.search("ubuntu", limit=None)
 
         formatted = search.format_results_table(results, show_description=True)
 

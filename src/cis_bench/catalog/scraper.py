@@ -11,7 +11,7 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 
 from cis_bench.catalog.database import CatalogDatabase
 from cis_bench.catalog.parser import WorkBenchCatalogParser
-from cis_bench.config import Config
+from cis_bench.config import WORKBENCH_BATCH_SIZE, WORKBENCH_MAX_CONCURRENT_REQUESTS
 from cis_bench.exceptions import AuthenticationError, FetchError
 from cis_bench.fetcher.auth import is_workbench_login_page
 from cis_bench.fetcher.http import ThreadSessions, get_with_retry
@@ -40,16 +40,26 @@ class CatalogScraper:
         "owner",
     )
 
-    def __init__(self, database: CatalogDatabase, session: requests.Session):
+    def __init__(
+        self,
+        database: CatalogDatabase,
+        session: requests.Session,
+        *,
+        base_url: str,
+        timeout: tuple[float, float],
+    ):
         """Initialize scraper.
 
         Args:
             database: CatalogDatabase instance
             session: Authenticated requests session (from AuthManager)
+            base_url: The WorkBench origin (already validated) every URL is built on
+            timeout: (connect, read) seconds for every request
         """
         self.db = database
         self.session = session
-        self.timeout = Config.get_request_timeout()
+        self.base_url = base_url
+        self.timeout = timeout
         self._sessions = ThreadSessions(session)
 
     def scrape_full_catalog(
@@ -65,7 +75,7 @@ class CatalogScraper:
             Dictionary with scrape statistics
 
         Example:
-            scraper = CatalogScraper(db, session)
+            scraper = CatalogScraper(db, session, base_url=origin, timeout=(10.0, 30.0))
             stats = scraper.scrape_full_catalog(max_pages=5)
             print(f"Scraped {stats['total_benchmarks']} benchmarks")
         """
@@ -73,7 +83,9 @@ class CatalogScraper:
 
         # Detect total pages by scraping page 1 first
         first_page_html = self._fetch_page(1)
-        first_page_benchmarks = WorkBenchCatalogParser.parse_catalog_page(first_page_html)
+        first_page_benchmarks = WorkBenchCatalogParser.parse_catalog_page(
+            first_page_html, base_url=self.base_url
+        )
         if not first_page_benchmarks:
             raise ValueError(
                 "No benchmarks found on catalog page 1; HTML structure may have changed."
@@ -123,8 +135,8 @@ class CatalogScraper:
             for batch in iter_batches(
                 range(2, total_pages + 1),
                 fetch_page,
-                batch_size=Config.WORKBENCH_BATCH_SIZE,
-                max_workers=Config.WORKBENCH_MAX_CONCURRENT_REQUESTS,
+                batch_size=WORKBENCH_BATCH_SIZE,
+                max_workers=WORKBENCH_MAX_CONCURRENT_REQUESTS,
                 progress_callback=page_finished,
             ):
                 for _, error in batch.failed:
@@ -199,7 +211,7 @@ class CatalogScraper:
         logger.info("Starting quick catalog update (page 1 only)")
 
         html = self._fetch_page(1)
-        benchmarks = WorkBenchCatalogParser.parse_catalog_page(html)
+        benchmarks = WorkBenchCatalogParser.parse_catalog_page(html, base_url=self.base_url)
 
         new_count = 0
         updated_count = 0
@@ -312,7 +324,7 @@ class CatalogScraper:
         refreshed = 0
         for benchmark_id in self.db.list_downloaded_benchmark_ids():
             try:
-                _, url = resolve_benchmark_reference(str(benchmark_id))
+                _, url = resolve_benchmark_reference(str(benchmark_id), base_url=self.base_url)
             except ValueError as e:
                 logger.warning(
                     f"Skipping downloaded benchmark with invalid id {benchmark_id!r}: {e}"
@@ -346,7 +358,7 @@ class CatalogScraper:
             FetchError: If the request still fails after every retry
             requests.HTTPError: For a non-retryable HTTP status
         """
-        url = f"{catalog_listing_url()}?page={page_num}"
+        url = f"{catalog_listing_url(base_url=self.base_url)}?page={page_num}"
 
         logger.debug(f"Fetching page {page_num}: {url}")
 
@@ -362,7 +374,9 @@ class CatalogScraper:
         Retries happen inside the shared GET; a login page raises AuthenticationError from the
         parser, which the full refresh treats as the end of the run.
         """
-        return WorkBenchCatalogParser.parse_catalog_page(self._fetch_page(page_num))
+        return WorkBenchCatalogParser.parse_catalog_page(
+            self._fetch_page(page_num), base_url=self.base_url
+        )
 
     def test_connection(self) -> bool:
         """Test if we can connect and are authenticated.
@@ -377,13 +391,13 @@ class CatalogScraper:
         """
         try:
             html = self._fetch_page(1)
-            benchmarks = WorkBenchCatalogParser.parse_catalog_page(html)
+            benchmarks = WorkBenchCatalogParser.parse_catalog_page(html, base_url=self.base_url)
 
             # Catch minimal login redirect pages without full WorkBench form markup
             if not benchmarks and "login" in html.lower() and len(html) < 5000:
                 raise AuthenticationError(
                     "Not authenticated. Page redirected to login.\n"
-                    f"Please log into {Config.get_workbench_base_url()} in your browser first."
+                    f"Please log into {self.base_url} in your browser first."
                 )
 
             if len(benchmarks) == 0:

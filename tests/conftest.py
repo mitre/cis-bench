@@ -276,6 +276,44 @@ def mock_browser_cookies(mocker):
     }
 
 
+@pytest.fixture
+def data_dir(tmp_path, monkeypatch):
+    """This test's own data folder (CIS_BENCH_DATA_DIR): catalog.db and session.cookies live here."""
+    monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(tmp_path))
+    return tmp_path
+
+
+@pytest.fixture
+def auth_manager_class():
+    """AuthManager replaced by a mock class, for CLI tests that must not touch browsers or WorkBench.
+
+    The CLI builds its AuthManager from the run's settings. The instance this mock class builds
+    keeps the values it was built with (workbench_url, verify_ssl, session_file,
+    requests_per_second, workbench_host), so a command prints and checks real ones; every
+    method is a mock the test configures on ``auth_manager_class.return_value``. The constructor
+    arguments are on ``auth_manager_class.call_args``.
+    """
+    from unittest.mock import MagicMock, patch
+    from urllib.parse import urlparse
+
+    from cis_bench.fetcher.auth import AuthManager
+
+    instance = MagicMock(spec=AuthManager)
+
+    def build(*, workbench_url, verify_ssl, session_file, requests_per_second=None):
+        instance.workbench_url = workbench_url
+        instance.verify_ssl = verify_ssl
+        instance.session_file = session_file
+        instance.requests_per_second = requests_per_second
+        instance.workbench_host = urlparse(workbench_url).netloc
+        return instance
+
+    with patch("cis_bench.fetcher.auth.AuthManager") as cls:
+        cls.return_value = instance
+        cls.side_effect = build
+        yield cls
+
+
 # ============================================================================
 # Helper Functions (not fixtures, but shared utilities)
 # ============================================================================

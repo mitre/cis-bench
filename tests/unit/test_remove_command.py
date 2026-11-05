@@ -1,8 +1,5 @@
 """Tests for `cis-bench remove`: deleting a downloaded benchmark's cached copy."""
 
-from pathlib import Path
-from unittest.mock import patch
-
 import pytest
 from click.testing import CliRunner
 
@@ -35,12 +32,11 @@ def db(tmp_path):
 
 
 @pytest.fixture
-def run(db):
+def run(db, monkeypatch):
+    monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(db.db_path.parent))
+
     def invoke(*args, input=None):
-        with patch(
-            "cis_bench.cli.commands.remove.Config.get_catalog_db_path", return_value=db.db_path
-        ):
-            return CliRunner().invoke(cli, ["remove", *args], input=input)
+        return CliRunner().invoke(cli, ["remove", *args], input=input)
 
     return invoke
 
@@ -99,28 +95,24 @@ class TestRemoveCommand:
         assert result.exit_code == 0, result.output
         assert result.output.count("Removed") == 1
 
-    def test_says_exported_files_are_kept_and_how_to_refresh_instead(self, run):
+    def test_says_exported_files_are_kept_and_how_to_refresh_instead(self, db, run):
         result = run("23598", "--yes")
 
-        assert "./benchmarks" in result.output or "output directory" in result.output
+        assert f"Exported files in {db.db_path.parent / 'benchmarks'}" in result.output
         assert "download 23598 --force" in result.output
 
-    def test_without_a_catalog_database_nothing_is_created(self, tmp_path):
+    def test_without_a_catalog_database_nothing_is_created(self, tmp_path, monkeypatch):
         missing = tmp_path / "absent" / "catalog.db"
-        with patch(
-            "cis_bench.cli.commands.remove.Config.get_catalog_db_path", return_value=missing
-        ):
-            result = CliRunner().invoke(cli, ["remove", "23598", "--yes"])
+        monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(missing.parent))
+        result = CliRunner().invoke(cli, ["remove", "23598", "--yes"])
 
         assert result.exit_code == 1
         assert not missing.exists()
 
-    def test_without_a_catalog_database_prints_its_path_verbatim(self):
-        with patch(
-            "cis_bench.cli.commands.remove.Config.get_catalog_db_path",
-            return_value=Path("c[x]") / "catalog.db",
-        ):
-            result = CliRunner().invoke(cli, ["remove", "23598", "--yes"])
+    def test_without_a_catalog_database_prints_its_path_verbatim(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("CIS_BENCH_DATA_DIR", "c[x]")
+        result = CliRunner().invoke(cli, ["remove", "23598", "--yes"])
 
         assert result.exit_code == 1
         assert "No catalog database at c[x]/catalog.db" in result.output
