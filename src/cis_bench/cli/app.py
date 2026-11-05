@@ -5,7 +5,10 @@ import click
 from rich.console import Console
 
 from cis_bench import __version__
+from cis_bench.cli.helpers.errors import report_configuration_error
 from cis_bench.cli.lazy_group import LazyGroup
+from cis_bench.config import load_settings
+from cis_bench.exceptions import ConfigurationError
 from cis_bench.utils.logging_config import LoggingConfig
 
 console = Console()
@@ -26,7 +29,46 @@ LAZY_SUBCOMMANDS = {
 }
 
 
-@click.group(cls=LazyGroup, lazy_subcommands=LAZY_SUBCOMMANDS)
+def _asks_for_help(command: click.Command, ctx: click.Context, args: list[str]) -> bool:
+    """Whether Click will show help for this command line, judged by Click's own parser.
+
+    Each command's parser reads the arguments the way Click will, so a value such as the
+    "--help" in ``--platform --help`` is the option's value, not a help request. Nothing
+    is acted on: no callback runs and no context is entered.
+
+    Command.make_parser is public, but the parser class it returns is marked for removal
+    in Click 9.0; pyproject.toml caps click below 9 so that upgrade is a deliberate step.
+    """
+    if not args and isinstance(command, click.Group):
+        return command.no_args_is_help  # a group named alone shows its help
+    try:
+        options, rest, _ = command.make_parser(ctx).parse_args(list(args))
+    except click.UsageError:
+        return False  # Click reports the usage error itself, not help
+    if options.get("help"):
+        return True
+    if not isinstance(command, click.Group) or not rest:
+        return False
+    subcommand = command.get_command(ctx, rest[0])
+    if subcommand is None:
+        return False
+    sub_ctx = click.Context(subcommand, info_name=rest[0], parent=ctx)
+    return _asks_for_help(subcommand, sub_ctx, rest[1:])
+
+
+class RootGroup(LazyGroup):
+    """The cis-bench command: notes whether the command line asks for help.
+
+    The root callback checks the settings before any command runs, but Click handles a
+    subcommand's --help only after that callback; help must work even with a bad setting.
+    """
+
+    def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
+        ctx.meta["cis_bench.asks_for_help"] = _asks_for_help(self, ctx, args)
+        return super().parse_args(ctx, args)
+
+
+@click.group(cls=RootGroup, lazy_subcommands=LAZY_SUBCOMMANDS)
 @click.version_option(version=__version__, prog_name="cis-bench")
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose (DEBUG level) logging")
 @click.option(
@@ -74,6 +116,14 @@ def cli(ctx, verbose, debug, quiet):
     ctx.ensure_object(dict)
     ctx.obj["verbose"] = verbose
     ctx.obj["quiet"] = quiet
+
+    # Every setting is checked once, before any command touches a file or the network.
+    if not ctx.meta.get("cis_bench.asks_for_help"):
+        try:
+            ctx.obj["settings"] = load_settings()
+        except ConfigurationError as error:
+            report_configuration_error(console, error)
+            ctx.exit(1)
 
 
 if __name__ == "__main__":

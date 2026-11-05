@@ -1687,7 +1687,8 @@ class TestCatalogRequestTimeoutSetting:
         assert "CIS_BENCH_REQUEST_TIMEOUT" in result.output
         mock_auth.assert_not_called()
 
-    def test_check_updates_offline_needs_no_timeout(self, runner, mock_db, monkeypatch):
+    def test_check_updates_offline_still_refuses_a_bad_timeout(self, runner, mock_db, monkeypatch):
+        # Every setting is checked at startup, whether or not the command uses it.
         monkeypatch.setenv("CIS_BENCH_REQUEST_TIMEOUT", "inf")
         mock_db.check_updates_available.return_value = []
         with (
@@ -1696,8 +1697,10 @@ class TestCatalogRequestTimeoutSetting:
         ):
             result = runner.invoke(cli, ["catalog", "check-updates", "--offline"])
 
-        assert result.exit_code == 0, result.output
-        assert "up-to-date" in result.output
+        assert result.exit_code == 1, result.output
+        assert "Configuration Error" in result.output
+        assert "CIS_BENCH_REQUEST_TIMEOUT" in result.output
+        mock_db.check_updates_available.assert_not_called()
         mock_auth.assert_not_called()
 
     def test_catalog_download_reports_a_configuration_error_with_its_heading(

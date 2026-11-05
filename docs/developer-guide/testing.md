@@ -21,38 +21,36 @@ cis-bench catalog refresh
 
 **Development:**
 ```bash
-export CIS_BENCH_ENV=dev
+export CIS_BENCH_DATA_DIR=~/.cis-bench-dev
 cis-bench catalog refresh
 # Uses: ~/.cis-bench-dev/catalog.db
 ```
 
 **Test (automatic in pytest):**
 ```bash
-# Set automatically by pytest fixture
 pytest tests/
-# Uses: /tmp/cis-bench-test/catalog.db
+# Uses: a new temporary folder per run
 ```
 
 ### How It Works
 
 **Config Module:**
 
-- `src/cis_bench/config.py` provides environment-aware paths
-- Checks `CIS_BENCH_ENV` environment variable
-- Returns appropriate paths based on environment
+- `src/cis_bench/config.py` has one `Settings` class (pydantic-settings)
+- `CIS_BENCH_DATA_DIR` (default `~/.cis-bench`) locates `catalog.db`, `session.cookies`, `.env` and `config.toml`
+- `CIS_BENCH_ENV` is no longer read; a set `CIS_BENCH_ENV` is a configuration error
 
 **Pytest Fixture:**
 
-- `tests/conftest.py` has `test_environment` fixture
-- `autouse=True` - applies to all tests automatically
-- `scope="session"` - sets once at start
-- Sets `CIS_BENCH_ENV=test` for entire test run
+- `tests/conftest.py` has the `test_environment` fixture
+- `autouse=True`, `scope="session"`: applies to every test, set once at start
+- Sets `CIS_BENCH_DATA_DIR` to a temporary folder and removes any `CIS_BENCH_ENV` from your shell
 
 **Result:**
 
-- Tests use `/tmp/cis-bench-test/` (ephemeral)
-- Dev work uses `~/.cis-bench-dev/` (isolated)
-- Production uses `~/.cis-bench/` (safe)
+- Tests use a temporary folder
+- Dev work uses whatever `CIS_BENCH_DATA_DIR` you set
+- `~/.cis-bench/` is never touched by tests
 
 ---
 
@@ -126,9 +124,9 @@ return db
 
 **E2E tests:**
 
-- Automatically use `/tmp/cis-bench-test/catalog.db`
+- Automatically use `<temporary data folder>/catalog.db`
 - No manual setup needed
-- Cleaned between test runs
+- A new folder each test run
 
 ### Test Data Factories
 

@@ -146,7 +146,7 @@ tests/unit/test_catalog_database.py
 **All tests must use isolated databases:**
 
 - Unit tests: `tmp_path` fixtures
-- E2E tests: `CIS_BENCH_ENV=test` (automatic)
+- All tests: `CIS_BENCH_DATA_DIR` points at a temporary folder (automatic, `tests/conftest.py`)
 - NO touching production data
 
 **See:** [Testing Guide](testing.md)
@@ -383,11 +383,10 @@ Include:
 ### Recommended Setup
 
 ```bash
-# Use dev environment
-export CIS_BENCH_ENV=dev
+# Keep development data in its own folder
+export CIS_BENCH_DATA_DIR=~/.cis-bench-dev
 
-# Your work goes to ~/.cis-bench-dev/
-# Production stays clean
+# Your work goes to ~/.cis-bench-dev/; ~/.cis-bench stays clean
 ```
 
 ### Running Tests

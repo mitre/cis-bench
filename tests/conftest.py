@@ -38,16 +38,21 @@ from cis_bench.models.benchmark import Benchmark, Recommendation
 
 
 @pytest.fixture(scope="session", autouse=True)
-def test_environment():
-    """Set test environment for all tests.
+def test_environment(tmp_path_factory):
+    """Point every test at its own data folder, never the developer's ~/.cis-bench.
 
-    This ensures tests use test databases/paths, not production.
-    Sets CIS_BENCH_ENV=test for all test runs.
+    CIS_BENCH_DATA_DIR places catalog.db, session.cookies, .env and config.toml. A
+    CIS_BENCH_ENV left in the developer's shell is removed: the settings refuse it.
     """
-    os.environ["CIS_BENCH_ENV"] = "test"
+    previous = {
+        name: os.environ.pop(name, None) for name in ("CIS_BENCH_ENV", "CIS_BENCH_DATA_DIR")
+    }
+    os.environ["CIS_BENCH_DATA_DIR"] = str(tmp_path_factory.mktemp("cis-bench-data"))
     yield
-    # Cleanup
-    os.environ.pop("CIS_BENCH_ENV", None)
+    os.environ.pop("CIS_BENCH_DATA_DIR", None)
+    for name, value in previous.items():
+        if value is not None:
+            os.environ[name] = value
 
 
 # ============================================================================

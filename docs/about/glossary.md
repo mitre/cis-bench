@@ -685,13 +685,9 @@ SQLite feature enabling fast fuzzy text search.
 ### Data Directory
 Where CIS Benchmark CLI stores its data.
 
-**Locations:**
+**Location:** `~/.cis-bench/` by default; holds `catalog.db`, `session.cookies`, `.env` and `config.toml`.
 
-- Production: `~/.cis-bench/`
-- Development: `~/.cis-bench-dev/`
-- Test: `/tmp/cis-bench-test/`
-
-**Controlled by:** `CIS_BENCH_ENV` environment variable
+**Controlled by:** `CIS_BENCH_DATA_DIR` environment variable
 
 ### Session File
 MozillaCookieJar file containing authentication cookies.

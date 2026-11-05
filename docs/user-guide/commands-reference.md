@@ -716,9 +716,11 @@ xargs -I {} cis-bench download {}
 - `CIS_BENCH_TABLE_TITLE_WIDTH` - Widest the Title column of the `search` and `get` tables grows (default: 90). In a narrower terminal the title wraps first, so ID, Version and Status stay whole.
 - `CIS_BENCH_SEARCH_LIMIT` - Most results `search`, `catalog search`, `catalog list` and `get` show (default: 100); a cut-off list says how many matched
 
-**Environment:**
+**Data folder:**
 
-- `CIS_BENCH_ENV` - Environment (production|dev|test)
+- `CIS_BENCH_DATA_DIR` - Folder for `catalog.db`, `session.cookies`, `.env` and `config.toml` (default: `~/.cis-bench`; environment only)
+
+Settings can also be set in `<data folder>/.env` or `<data folder>/config.toml`; see [Configuration](configuration.md#where-settings-come-from).
 
 **SSL/TLS (automatically respected):**
 
@@ -799,10 +801,7 @@ cis-bench list --output-format csv > inventory.csv
 - Stored in: `~/.cis-bench/catalog.db` (downloaded_benchmarks table). This cached copy is what `download` checks, `get` and `export <ID>` read, and `catalog stats` counts; `cis-bench remove <ID>` deletes it and `cis-bench download <ID> --force` replaces it.
 - Also saved as: `./benchmarks/*.json` files. These are your exported copies; `cis-bench list` and `cis-bench info` read them, and `remove` does not delete them.
 
-**Development/Test:**
-
-- Dev: `~/.cis-bench-dev/`
-- Test: `/tmp/cis-bench-test/`
+**Another data folder:** set `CIS_BENCH_DATA_DIR` (for example `~/.cis-bench-dev`); `~/.cis-bench` above is the default.
 
 ---
 

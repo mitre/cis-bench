@@ -290,27 +290,22 @@ cis-bench download 23598 --format xccdf --format yaml
 
 ### Data Storage Locations
 
-The CLI supports three environments:
+All data lives in one folder, `CIS_BENCH_DATA_DIR` (default `~/.cis-bench`); see [Configuration](user-guide/configuration.md#the-data-folder).
 
-**Production (default):**
+**Default:**
 ```bash
 # Data stored in: ~/.cis-bench/
 cis-bench catalog refresh
 ```
 
-**Development:**
+**A separate data folder (for example for development):**
 ```bash
 # Data stored in: ~/.cis-bench-dev/
-export CIS_BENCH_ENV=dev
+export CIS_BENCH_DATA_DIR=~/.cis-bench-dev
 cis-bench catalog refresh
 ```
 
-**Test (automatic):**
-```bash
-# Data stored in: /tmp/cis-bench-test/
-# Used by pytest automatically
-# Keeps tests isolated
-```
+**Tests:** pytest points `CIS_BENCH_DATA_DIR` at a temporary folder for every run, so tests never touch `~/.cis-bench`.
 
 ### Environment Variables
 
@@ -318,8 +313,8 @@ cis-bench catalog refresh
 # Disable SSL verification (for corporate proxies)
 export CIS_BENCH_VERIFY_SSL=false
 
-# Change data directory environment
-export CIS_BENCH_ENV=dev
+# Use another data folder
+export CIS_BENCH_DATA_DIR=~/.cis-bench-dev
 
 # Configure search limit
 export CIS_BENCH_SEARCH_LIMIT=500

@@ -291,7 +291,7 @@ class TestLazyStartup:
             "res = CliRunner().invoke(cli, ['remove', '23598', '--yes'])\n"
             f"print(json.dumps({{'exit': res.exit_code, 'loaded': [m for m in {scraper_stack!r} if m in sys.modules],"
             " 'left': db.get_downloaded('23598') is not None}))",
-            env={"CIS_BENCH_ENV": "test", "TMPDIR": str(tmp_path)},
+            env={"CIS_BENCH_DATA_DIR": str(tmp_path / "data"), "TMPDIR": str(tmp_path)},
         )
         assert result["exit"] == 0
         assert result["loaded"] == []
@@ -315,7 +315,73 @@ class TestLazyStartup:
             "from cis_bench.cli.app import cli\n"
             "res = CliRunner().invoke(cli, ['catalog', 'stats'])\n"
             f"print(json.dumps({{'exit': res.exit_code, 'loaded': [m for m in {scraper_stack!r} if m in sys.modules]}}))",
-            env={"CIS_BENCH_ENV": "test", "TMPDIR": str(tmp_path)},
+            env={"CIS_BENCH_DATA_DIR": str(tmp_path / "data"), "TMPDIR": str(tmp_path)},
         )
         assert result["exit"] == 0
         assert result["loaded"] == []
+
+
+class TestSettingsCheckedAtStartup:
+    """The root command builds the settings once; a bad value stops every command before it runs."""
+
+    @staticmethod
+    def _cli():
+        from cis_bench.cli.app import cli
+
+        return cli
+
+    def test_a_bad_setting_is_one_configuration_error_and_exit_1(self, cli_runner, monkeypatch):
+        monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "abc")
+        for args in (["search", "ubuntu"], ["catalog", "stats"], ["list"]):
+            result = cli_runner.invoke(self._cli(), args)
+            assert result.exit_code == 1, f"{args}: {result.output}"
+            assert result.output.lstrip().startswith("Configuration Error"), result.output
+            assert "CIS_BENCH_SEARCH_LIMIT" in result.output
+            assert "'abc'" in result.output
+
+    def test_no_login_or_network_use_happens_first(self, cli_runner, monkeypatch, mocker):
+        monkeypatch.setenv("CIS_BENCH_REQUEST_TIMEOUT", "0")
+        login = mocker.patch("cis_bench.fetcher.auth.AuthManager.get_or_create_session")
+        result = cli_runner.invoke(self._cli(), ["download", "23598"])
+        assert result.exit_code == 1, result.output
+        assert "CIS_BENCH_REQUEST_TIMEOUT" in result.output
+        login.assert_not_called()
+
+    def test_help_still_works_with_a_bad_setting(self, cli_runner, monkeypatch):
+        monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "abc")
+        for args in (["--help"], ["search", "--help"], ["catalog", "refresh", "--help"]):
+            result = cli_runner.invoke(self._cli(), args)
+            assert result.exit_code == 0, f"{args}: {result.output}"
+            assert "Usage:" in result.output
+
+    def test_an_option_value_that_looks_like_help_is_not_a_help_request(
+        self, cli_runner, monkeypatch
+    ):
+        # --help here is the value of --platform, so the command runs and the bad setting stops it.
+        monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "abc")
+        result = cli_runner.invoke(self._cli(), ["search", "--platform", "--help", "ubuntu"])
+        assert result.exit_code == 1, result.output
+        assert result.output.lstrip().startswith("Configuration Error"), result.output
+
+    def test_a_group_named_without_a_subcommand_shows_its_help(self, cli_runner, monkeypatch):
+        monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "abc")
+        result = cli_runner.invoke(self._cli(), ["catalog"])
+        assert "Usage:" in result.output
+        assert "Configuration Error" not in result.output
+
+    def test_the_checked_settings_are_kept_for_the_commands(self, cli_runner, monkeypatch):
+        from cis_bench.config import Settings
+
+        monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "7")
+        obj: dict = {}
+        result = cli_runner.invoke(self._cli(), ["list"], obj=obj)
+        assert result.exit_code == 0, result.output
+        assert isinstance(obj["settings"], Settings)
+        assert obj["settings"].search_limit == 7
+
+    def test_help_before_a_bad_option_is_not_a_help_request(self, cli_runner, monkeypatch):
+        # Click reports the bad option instead of showing help, so the bad setting comes first.
+        monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "abc")
+        result = cli_runner.invoke(self._cli(), ["search", "--help", "--bad-opt"])
+        assert result.exit_code == 1, result.output
+        assert result.output.lstrip().startswith("Configuration Error"), result.output

@@ -476,34 +476,33 @@ src/cis_bench/
 
 ## Configuration System
 
-### Environment-Based Config
+### One Settings Class
+
+`src/cis_bench/config.py` declares every setting once in `Settings` (pydantic-settings): its
+type, default and accepted values. `load_settings()` builds it from, highest first:
 
 ```mermaid
 graph TD
-A[Config.py] --> B{Environment?}
-B -->|test| C[/tmp/cis-bench-test/]
-B -->|dev| D[~/.cis-bench-dev/]
-B -->|production| E[~/.cis-bench/]
-
-F[pytest] --> G[Set CIS_BENCH_ENV=test]
-H[Developer] --> I[export CIS_BENCH_ENV=dev]
-J[User] --> K[Default production]
+A[CLI flag, passed in] --> B[Environment CIS_BENCH_*]
+B --> C[data folder/.env]
+C --> D[data folder/config.toml]
+D --> E[Default in Settings]
 ```
 
-**Environment variable:** `CIS_BENCH_ENV`
+- **Data folder:** `CIS_BENCH_DATA_DIR` (default `~/.cis-bench`), environment only, because it locates `.env` and `config.toml`. `CIS_BENCH_ENV` is refused.
+- **Startup check:** the root command (`cli/app.py`) builds the settings once per run and keeps them on the Click context (`ctx.obj["settings"]`). An invalid value prints one Configuration Error and exits 1 before any command runs; `--help` still works.
+- **Nothing else reads the environment:** ruff's banned-API rule (TID251) refuses `os.getenv`, `os.environ` and `dotenv` outside `config.py`. `.env` and `config.toml` never reach `os.environ`.
+- **Not cis-bench settings:** `HTTPS_PROXY`, `NO_PROXY`, `REQUESTS_CA_BUNDLE`, `SSL_CERT_FILE` stay with requests.
 
-- `test` - Pytest (automatic)
-- `dev` - Development work
-- `production` - Default
-
-**Optional .env file:**
+**Optional files:**
 ```bash
 # ~/.cis-bench/.env
-CIS_BENCH_ENV=dev
-CIS_BENCH_SSL_VERIFY=false
+CIS_BENCH_VERIFY_SSL=false
 ```
-
-Loaded automatically via python-dotenv.
+```toml
+# ~/.cis-bench/config.toml
+verify_ssl = false
+```
 
 ---
 
@@ -731,24 +730,21 @@ tests/
 ```mermaid
 graph TD
 A[pytest] --> B[test_environment fixture]
-B --> C[Set CIS_BENCH_ENV=test]
-C --> D[Config.get_data_dir]
-D --> E[/tmp/cis-bench-test/]
+B --> C[Set CIS_BENCH_DATA_DIR to a temporary folder]
+C --> D[Settings.data_dir]
 
-F[Developer] --> G[export CIS_BENCH_ENV=dev]
+F[Developer] --> G[export CIS_BENCH_DATA_DIR=~/.cis-bench-dev]
 G --> D
-D --> H[~/.cis-bench-dev/]
 
-I[Production] --> J[No env var]
+I[User] --> J[Not set]
 J --> D
-D --> K[~/.cis-bench/]
+D --> K[~/.cis-bench/ by default]
 ```
 
 **Automatic isolation:**
 
-- pytest sets `CIS_BENCH_ENV=test`
-- All tests use `/tmp/cis-bench-test/`
-- Production data never touched
+- pytest sets `CIS_BENCH_DATA_DIR` to a new temporary folder per run
+- `~/.cis-bench` is never touched by tests
 
 **405 tests** across all layers, all properly isolated.
 

@@ -368,9 +368,10 @@ class TestGetRequestTimeoutSetting:
         assert "CIS_BENCH_REQUEST_TIMEOUT" in result.output
         mock_auth.get_or_create_session.assert_not_called()
 
-    def test_get_serving_a_cached_benchmark_needs_no_timeout(
+    def test_get_serving_a_cached_benchmark_still_refuses_a_bad_timeout(
         self, runner, sample_benchmark, tmp_path, monkeypatch
     ):
+        # Every setting is checked at startup, whether or not the command uses it.
         monkeypatch.setenv("CIS_BENCH_REQUEST_TIMEOUT", "inf")
         catalog_path = tmp_path / "catalog.db"
         catalog_path.touch()
@@ -394,7 +395,10 @@ class TestGetRequestTimeoutSetting:
                     cli, ["get", "ubuntu 22", "--format", "json", "--non-interactive"]
                 )
 
-        assert result.exit_code == 0, result.output
+        assert result.exit_code == 1, result.output
+        assert "Configuration Error" in result.output
+        assert "CIS_BENCH_REQUEST_TIMEOUT" in result.output
+        mock_search_class.assert_not_called()
         mock_auth.get_or_create_session.assert_not_called()
 
 

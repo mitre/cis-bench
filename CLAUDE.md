@@ -106,10 +106,9 @@ XCCDF 1.2/1.1.4 Output
 ## Testing
 
 ### Test Isolation
-Tests automatically use isolated environment (`CIS_BENCH_ENV=test`):
-- Test database: `/tmp/cis-bench-test/catalog.db`
-- Production: `~/.cis-bench/catalog.db`
-- Development: `~/.cis-bench-dev/catalog.db` (set `CIS_BENCH_ENV=dev`)
+Tests automatically use an isolated data folder (`tests/conftest.py` sets `CIS_BENCH_DATA_DIR` to a temporary folder per run):
+- Default data folder: `~/.cis-bench/` (catalog.db, session.cookies, .env, config.toml)
+- Development: set `CIS_BENCH_DATA_DIR=~/.cis-bench-dev`
 
 ### Test Fixtures
 All test data via fixtures in `tests/conftest.py`. NO hardcoded paths.
@@ -121,13 +120,14 @@ All test data via fixtures in `tests/conftest.py`. NO hardcoded paths.
 ## Configuration
 
 ### Environment Variables
-- `CIS_BENCH_ENV` - Environment (test/dev/production)
+- One pydantic-settings `Settings` class in `src/cis_bench/config.py`; precedence: CLI flag > environment > `<data dir>/.env` > `<data dir>/config.toml` > default
+- `CIS_BENCH_DATA_DIR` - Data folder (default `~/.cis-bench`; environment only; replaces `CIS_BENCH_ENV`, which is refused)
 - `CIS_BENCH_BROWSER` - Default browser for auth
 
 ### Config Paths
 - Session storage: `~/.cis-bench/session.cookies`
 - Catalog database: `~/.cis-bench/catalog.db`
-- Downloaded benchmarks: `~/.cis-bench/benchmarks/`
+- Downloaded benchmarks: inside `catalog.db`; exported files go to `./benchmarks/`
 
 ## Key Files
 

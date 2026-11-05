@@ -1,295 +1,211 @@
-"""Tests for cis_bench.config module.
+"""Tests for cis_bench.config: the Settings class, where its values come from, and the paths.
 
-Tests configuration management including:
-- Environment detection (test, dev, production)
-- Path resolution for different environments
-- Environment variable parsing
-- dotenv file loading
+Settings come from, highest first: a value passed in (a CLI flag), the environment,
+<data dir>/.env, <data dir>/config.toml, then the default. CIS_BENCH_DATA_DIR, read from
+the environment only, locates the data folder and both files.
 """
 
 import os
-import sys
-import tempfile
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
-
-class TestConfigEnvironment:
-    """Tests for environment detection methods."""
-
-    def test_get_environment_returns_test_when_set(self):
-        """Should return 'test' when CIS_BENCH_ENV=test."""
-        with patch.dict(os.environ, {"CIS_BENCH_ENV": "test"}):
-            from cis_bench.config import Config
-
-            assert Config.get_environment() == "test"
-
-    def test_get_environment_returns_dev_when_set(self):
-        """Should return 'dev' when CIS_BENCH_ENV=dev."""
-        with patch.dict(os.environ, {"CIS_BENCH_ENV": "dev"}):
-            from cis_bench.config import Config
-
-            assert Config.get_environment() == "dev"
-
-    def test_get_environment_returns_production_by_default(self):
-        """Should return 'production' when CIS_BENCH_ENV not set."""
-        env = os.environ.copy()
-        env.pop("CIS_BENCH_ENV", None)
-        with patch.dict(os.environ, env, clear=True):
-            from cis_bench.config import Config
-
-            assert Config.get_environment() == "production"
-
-    def test_get_environment_normalizes_to_lowercase(self):
-        """Should normalize environment to lowercase."""
-        with patch.dict(os.environ, {"CIS_BENCH_ENV": "TEST"}):
-            from cis_bench.config import Config
-
-            assert Config.get_environment() == "test"
-
-        with patch.dict(os.environ, {"CIS_BENCH_ENV": "Dev"}):
-            from cis_bench.config import Config
-
-            assert Config.get_environment() == "dev"
-
-    def test_is_test_environment_returns_true(self):
-        """Should return True when in test environment."""
-        with patch.dict(os.environ, {"CIS_BENCH_ENV": "test"}):
-            from cis_bench.config import Config
-
-            assert Config.is_test_environment() is True
-
-    def test_is_test_environment_returns_false_for_other_envs(self):
-        """Should return False when not in test environment."""
-        with patch.dict(os.environ, {"CIS_BENCH_ENV": "dev"}):
-            from cis_bench.config import Config
-
-            assert Config.is_test_environment() is False
-
-        with patch.dict(os.environ, {"CIS_BENCH_ENV": "production"}):
-            from cis_bench.config import Config
-
-            assert Config.is_test_environment() is False
-
-    def test_is_dev_environment_returns_true(self):
-        """Should return True when in dev environment."""
-        with patch.dict(os.environ, {"CIS_BENCH_ENV": "dev"}):
-            from cis_bench.config import Config
-
-            assert Config.is_dev_environment() is True
-
-    def test_is_dev_environment_returns_false_for_other_envs(self):
-        """Should return False when not in dev environment."""
-        with patch.dict(os.environ, {"CIS_BENCH_ENV": "test"}):
-            from cis_bench.config import Config
-
-            assert Config.is_dev_environment() is False
-
-        with patch.dict(os.environ, {"CIS_BENCH_ENV": "production"}):
-            from cis_bench.config import Config
-
-            assert Config.is_dev_environment() is False
+from cis_bench.config import Config, load_settings
+from cis_bench.exceptions import ConfigurationError
 
 
-class TestConfigDataDir:
-    """Tests for data directory path resolution."""
-
-    def test_get_data_dir_returns_temp_for_test_env(self):
-        """Should return temp directory path for test environment."""
-        with patch.dict(os.environ, {"CIS_BENCH_ENV": "test"}):
-            from cis_bench.config import Config
-
-            data_dir = Config.get_data_dir()
-            expected = Path(tempfile.gettempdir()) / "cis-bench-test"
-            assert data_dir == expected
-
-    def test_get_data_dir_returns_dev_dir_for_dev_env(self):
-        """Should return ~/.cis-bench-dev for dev environment."""
-        with patch.dict(os.environ, {"CIS_BENCH_ENV": "dev"}):
-            from cis_bench.config import Config
-
-            data_dir = Config.get_data_dir()
-            expected = Path.home() / ".cis-bench-dev"
-            assert data_dir == expected
-
-    def test_get_data_dir_returns_production_dir_by_default(self):
-        """Should return ~/.cis-bench for production environment."""
-        with patch.dict(os.environ, {"CIS_BENCH_ENV": "production"}):
-            from cis_bench.config import Config
-
-            data_dir = Config.get_data_dir()
-            expected = Path.home() / ".cis-bench"
-            assert data_dir == expected
-
-    def test_get_data_dir_returns_production_for_unknown_env(self):
-        """Should return production path for unknown environment values."""
-        with patch.dict(os.environ, {"CIS_BENCH_ENV": "staging"}):
-            from cis_bench.config import Config
-
-            data_dir = Config.get_data_dir()
-            expected = Path.home() / ".cis-bench"
-            assert data_dir == expected
+@pytest.fixture
+def data_dir(tmp_path, monkeypatch):
+    """An empty data folder, set as CIS_BENCH_DATA_DIR, with no CIS_BENCH_* setting in the environment."""
+    for name in list(os.environ):
+        if name.startswith("CIS_BENCH_"):
+            monkeypatch.delenv(name)
+    monkeypatch.setenv("CIS_BENCH_DATA_DIR", str(tmp_path))
+    return tmp_path
 
 
-class TestConfigPaths:
-    """Tests for derived path methods."""
+class TestDataDir:
+    """CIS_BENCH_DATA_DIR places catalog.db, session.cookies, benchmarks/, .env and config.toml."""
 
-    def test_get_session_file_path_is_in_the_environment_data_dir(self):
-        with patch.dict(os.environ, {"CIS_BENCH_ENV": "test"}):
-            from cis_bench.config import Config
+    def test_every_path_is_in_the_data_dir(self, data_dir):
+        assert Config.get_data_dir() == data_dir
+        assert Config.get_catalog_db_path() == data_dir / "catalog.db"
+        assert Config.get_session_file_path() == data_dir / "session.cookies"
+        assert Config.get_benchmarks_dir() == data_dir / "benchmarks"
 
-            assert (
-                Config.get_session_file_path()
-                == Path(tempfile.gettempdir()) / "cis-bench-test" / "session.cookies"
-            )
+    def test_the_default_is_dot_cis_bench_in_the_home_folder(self, data_dir, monkeypatch, tmp_path):
+        monkeypatch.delenv("CIS_BENCH_DATA_DIR")
+        monkeypatch.setenv("HOME", str(tmp_path / "home"))
+        assert Config.get_data_dir() == tmp_path / "home" / ".cis-bench"
 
-    def test_get_catalog_db_path(self):
-        """Should return catalog.db path in data directory."""
-        with patch.dict(os.environ, {"CIS_BENCH_ENV": "test"}):
-            from cis_bench.config import Config
+    def test_a_tilde_is_expanded(self, data_dir, monkeypatch, tmp_path):
+        monkeypatch.setenv("HOME", str(tmp_path / "home"))
+        monkeypatch.setenv("CIS_BENCH_DATA_DIR", "~/cis-data")
+        assert Config.get_data_dir() == tmp_path / "home" / "cis-data"
 
-            db_path = Config.get_catalog_db_path()
-            expected = Path(tempfile.gettempdir()) / "cis-bench-test" / "catalog.db"
-            assert db_path == expected
+    def test_cis_bench_env_is_refused_and_names_the_replacement(self, data_dir, monkeypatch):
+        # A leftover CIS_BENCH_ENV=dev must never silently write to ~/.cis-bench.
+        monkeypatch.setenv("CIS_BENCH_ENV", "dev")
+        with pytest.raises(ConfigurationError, match="CIS_BENCH_DATA_DIR") as caught:
+            load_settings()
+        assert "CIS_BENCH_ENV" in str(caught.value)
 
-    def test_get_benchmarks_dir(self):
-        """Should return benchmarks directory path."""
-        with patch.dict(os.environ, {"CIS_BENCH_ENV": "test"}):
-            from cis_bench.config import Config
+    @pytest.mark.parametrize(
+        "file_name,line",
+        [(".env", "CIS_BENCH_DATA_DIR=/elsewhere\n"), ("config.toml", 'data_dir = "/elsewhere"\n')],
+    )
+    def test_the_data_dir_cannot_be_set_from_a_file_in_it(self, data_dir, file_name, line):
+        (data_dir / file_name).write_text(line)
+        with pytest.raises(ConfigurationError, match="CIS_BENCH_DATA_DIR") as caught:
+            load_settings()
+        assert file_name in str(caught.value)
 
-            benchmarks_dir = Config.get_benchmarks_dir()
-            expected = Path(tempfile.gettempdir()) / "cis-bench-test" / "benchmarks"
-            assert benchmarks_dir == expected
+    def test_surrounding_spaces_are_ignored_like_everywhere_else(self, data_dir, monkeypatch):
+        # The folder the files are read from and the folder reported must be the same one.
+        monkeypatch.setenv("CIS_BENCH_DATA_DIR", f"  {data_dir}  ")
+        (data_dir / "config.toml").write_text("search_limit = 5\n")
+        settings = load_settings()
+        assert settings.data_dir == data_dir
+        assert settings.search_limit == 5
 
-    def test_get_config_path(self):
-        """Should return config.yaml path in data directory."""
-        with patch.dict(os.environ, {"CIS_BENCH_ENV": "test"}):
-            from cis_bench.config import Config
-
-            config_path = Config.get_config_path()
-            expected = Path(tempfile.gettempdir()) / "cis-bench-test" / "config.yaml"
-            assert config_path == expected
-
-    def test_get_config_path_for_dev_env(self):
-        """Should return correct config.yaml path for dev environment."""
-        with patch.dict(os.environ, {"CIS_BENCH_ENV": "dev"}):
-            from cis_bench.config import Config
-
-            config_path = Config.get_config_path()
-            expected = Path.home() / ".cis-bench-dev" / "config.yaml"
-            assert config_path == expected
-
-    def test_get_config_path_for_production_env(self):
-        """Should return correct config.yaml path for production."""
-        with patch.dict(os.environ, {"CIS_BENCH_ENV": "production"}):
-            from cis_bench.config import Config
-
-            config_path = Config.get_config_path()
-            expected = Path.home() / ".cis-bench" / "config.yaml"
-            assert config_path == expected
+    def test_ensure_directories_creates_the_data_and_benchmarks_dirs(self, data_dir):
+        target = data_dir / "new"
+        with patch.dict(os.environ, {"CIS_BENCH_DATA_DIR": str(target)}):
+            Config.ensure_directories()
+            Config.ensure_directories()  # a second call is harmless
+        assert (target / "benchmarks").is_dir()
 
 
-class TestConfigEnsureDirectories:
-    """Tests for directory creation."""
+class TestPrecedence:
+    """One chain: passed-in value > environment > .env > config.toml > default."""
 
-    def test_ensure_directories_creates_data_dir(self, tmp_path):
-        """Should create data directory if it doesn't exist."""
-        with patch.dict(os.environ, {"CIS_BENCH_ENV": "test"}):
-            from cis_bench.config import Config
+    def test_config_toml_beats_the_default(self, data_dir):
+        (data_dir / "config.toml").write_text("search_limit = 5\n")
+        assert load_settings().search_limit == 5
 
-            # Use a patched tempdir to control the path
-            test_dir = tmp_path / "cis-bench-test"
-            with patch("tempfile.gettempdir", return_value=str(tmp_path)):
-                Config.ensure_directories()
-                assert test_dir.exists()
-                assert (test_dir / "benchmarks").exists()
+    def test_dotenv_beats_config_toml(self, data_dir):
+        (data_dir / "config.toml").write_text("search_limit = 5\n")
+        (data_dir / ".env").write_text("CIS_BENCH_SEARCH_LIMIT=7\n")
+        assert load_settings().search_limit == 7
 
-    def test_ensure_directories_idempotent(self, tmp_path):
-        """Should not fail if directories already exist."""
-        with patch.dict(os.environ, {"CIS_BENCH_ENV": "test"}):
-            from cis_bench.config import Config
+    def test_the_environment_beats_dotenv(self, data_dir, monkeypatch):
+        (data_dir / ".env").write_text("CIS_BENCH_SEARCH_LIMIT=7\n")
+        monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "9")
+        assert load_settings().search_limit == 9
 
-            test_dir = tmp_path / "cis-bench-test"
-            test_dir.mkdir(parents=True)
-            (test_dir / "benchmarks").mkdir()
+    def test_a_blank_environment_value_falls_through_to_dotenv(self, data_dir, monkeypatch):
+        (data_dir / ".env").write_text("CIS_BENCH_SEARCH_LIMIT=7\n")
+        monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "  ")
+        assert load_settings().search_limit == 7
 
-            with patch("tempfile.gettempdir", return_value=str(tmp_path)):
-                # Should not raise
-                Config.ensure_directories()
-                assert test_dir.exists()
+    def test_a_passed_in_value_beats_the_environment(self, data_dir, monkeypatch):
+        monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "9")
+        assert load_settings(search_limit=3).search_limit == 3
+
+    def test_a_change_to_the_environment_is_seen_by_the_next_read(self, data_dir, monkeypatch):
+        monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "9")
+        assert Config.get_search_default_limit() == 9
+        monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "11")
+        assert Config.get_search_default_limit() == 11
+
+    def test_files_do_not_change_the_process_environment(self, data_dir):
+        (data_dir / ".env").write_text("CIS_BENCH_SEARCH_LIMIT=7\nREQUESTS_CA_BUNDLE=/x.pem\n")
+        assert load_settings().search_limit == 7
+        assert "CIS_BENCH_SEARCH_LIMIT" not in os.environ
+        assert "REQUESTS_CA_BUNDLE" not in os.environ
+
+    def test_an_unknown_cis_bench_name_in_a_file_is_refused(self, data_dir):
+        # A typo must not be ignored silently; other tools' variables in .env are left alone.
+        (data_dir / ".env").write_text("CIS_BENCH_SERCH_LIMIT=7\nHTTPS_PROXY=http://p:3128\n")
+        with pytest.raises(ConfigurationError, match="serch_limit"):
+            load_settings()
+        (data_dir / ".env").unlink()
+        (data_dir / "config.toml").write_text("serch_limit = 7\n")
+        with pytest.raises(ConfigurationError, match="serch_limit"):
+            load_settings()
+
+    def test_a_config_toml_that_is_not_valid_toml_is_a_configuration_error(self, data_dir):
+        (data_dir / "config.toml").write_text("search_limit = \n")
+        with pytest.raises(ConfigurationError, match="config.toml") as caught:
+            load_settings()
+        assert "TOML" in str(caught.value)
+
+    @pytest.mark.parametrize("value", ["0", "1", "2", '"maybe"'])
+    def test_verify_ssl_in_config_toml_takes_only_the_documented_values(self, data_dir, value):
+        (data_dir / "config.toml").write_text(f"verify_ssl = {value}\n")
+        with pytest.raises(ConfigurationError, match="CIS_BENCH_VERIFY_SSL") as caught:
+            load_settings()
+        assert "true/1/yes" in str(caught.value)
+
+    def test_verify_ssl_in_config_toml_accepts_booleans(self, data_dir):
+        (data_dir / "config.toml").write_text("verify_ssl = false\n")
+        assert load_settings().verify_ssl is False
+
+    @pytest.mark.parametrize(
+        "variable,value,accepted",
+        [
+            ("CIS_BENCH_SEARCH_LIMIT", "abc", "an integer of 1 or more"),
+            ("CIS_BENCH_TABLE_TITLE_WIDTH", "abc", "an integer of 1 or more"),
+            ("CIS_BENCH_REQUEST_TIMEOUT", "abc", "a finite number of seconds greater than 0"),
+        ],
+    )
+    def test_a_refusal_says_what_is_accepted(
+        self, data_dir, monkeypatch, variable, value, accepted
+    ):
+        monkeypatch.setenv(variable, value)
+        with pytest.raises(ConfigurationError, match=variable) as caught:
+            load_settings()
+        assert accepted in str(caught.value)
+
+    def test_a_bad_value_in_config_toml_names_the_file_key(self, data_dir):
+        (data_dir / "config.toml").write_text("search_limit = 0\n")
+        with pytest.raises(ConfigurationError, match="CIS_BENCH_SEARCH_LIMIT") as caught:
+            load_settings()
+        assert "search_limit" in str(caught.value)
 
 
 class TestConfigTableTitleWidth:
-    """Tests for table title width configuration."""
+    """CIS_BENCH_TABLE_TITLE_WIDTH: an integer of 1 or more, default 90."""
 
-    def test_get_table_title_width_default(self):
-        """Should return 90 when env var not set."""
-        env = os.environ.copy()
-        env.pop("CIS_BENCH_TABLE_TITLE_WIDTH", None)
-        with patch.dict(os.environ, env, clear=True):
-            from cis_bench.config import Config
+    def test_default(self, data_dir):
+        assert Config.get_table_title_width() == 90
 
-            # Need to also set CIS_BENCH_ENV to avoid affecting other config
-            with patch.dict(os.environ, {"CIS_BENCH_ENV": "test"}):
-                assert Config.get_table_title_width() == 90
+    def test_from_env(self, data_dir, monkeypatch):
+        monkeypatch.setenv("CIS_BENCH_TABLE_TITLE_WIDTH", "120")
+        assert Config.get_table_title_width() == 120
 
-    def test_get_table_title_width_from_env(self):
-        """Should return custom width when env var set."""
-        with patch.dict(os.environ, {"CIS_BENCH_TABLE_TITLE_WIDTH": "120"}):
-            from cis_bench.config import Config
+    def test_blank_means_the_default(self, data_dir, monkeypatch):
+        monkeypatch.setenv("CIS_BENCH_TABLE_TITLE_WIDTH", "")
+        assert Config.get_table_title_width() == 90
 
-            assert Config.get_table_title_width() == 120
-
-    def test_get_table_title_width_ignores_non_digit(self):
-        """Should return default when env var is not a digit."""
-        with patch.dict(os.environ, {"CIS_BENCH_TABLE_TITLE_WIDTH": "abc"}):
-            from cis_bench.config import Config
-
-            assert Config.get_table_title_width() == 90
-
-    def test_get_table_title_width_ignores_empty_string(self):
-        """Should return default when env var is empty."""
-        with patch.dict(os.environ, {"CIS_BENCH_TABLE_TITLE_WIDTH": ""}):
-            from cis_bench.config import Config
-
-            assert Config.get_table_title_width() == 90
+    @pytest.mark.parametrize("value", ["abc", "0", "-3", "1.5"])
+    def test_a_value_that_is_not_a_positive_integer_is_refused(self, data_dir, monkeypatch, value):
+        monkeypatch.setenv("CIS_BENCH_TABLE_TITLE_WIDTH", value)
+        with pytest.raises(ConfigurationError, match="CIS_BENCH_TABLE_TITLE_WIDTH") as caught:
+            Config.get_table_title_width()
+        assert repr(value) in str(caught.value)
 
 
 class TestConfigSearchLimit:
-    """Tests for search result limit configuration."""
+    """CIS_BENCH_SEARCH_LIMIT: an integer of 1 or more, default 100."""
 
-    def test_get_search_default_limit_default(self):
-        """Should return 100 when env var not set."""
-        env = os.environ.copy()
-        env.pop("CIS_BENCH_SEARCH_LIMIT", None)
-        with patch.dict(os.environ, env, clear=True):
-            from cis_bench.config import Config
+    def test_default(self, data_dir):
+        assert Config.get_search_default_limit() == 100
 
-            with patch.dict(os.environ, {"CIS_BENCH_ENV": "test"}):
-                assert Config.get_search_default_limit() == 100
+    def test_from_env(self, data_dir, monkeypatch):
+        monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "500")
+        assert Config.get_search_default_limit() == 500
 
-    def test_get_search_default_limit_from_env(self):
-        """Should return custom limit when env var set."""
-        with patch.dict(os.environ, {"CIS_BENCH_SEARCH_LIMIT": "500"}):
-            from cis_bench.config import Config
+    def test_blank_means_the_default(self, data_dir, monkeypatch):
+        monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "")
+        assert Config.get_search_default_limit() == 100
 
-            assert Config.get_search_default_limit() == 500
-
-    def test_get_search_default_limit_ignores_non_digit(self):
-        """Should return default when env var is not a digit."""
-        with patch.dict(os.environ, {"CIS_BENCH_SEARCH_LIMIT": "many"}):
-            from cis_bench.config import Config
-
-            assert Config.get_search_default_limit() == 100
-
-    def test_get_search_default_limit_ignores_empty_string(self):
-        """Should return default when env var is empty."""
-        with patch.dict(os.environ, {"CIS_BENCH_SEARCH_LIMIT": ""}):
-            from cis_bench.config import Config
-
-            assert Config.get_search_default_limit() == 100
+    @pytest.mark.parametrize("value", ["abc", "many", "0", "-1", "2.5"])
+    def test_a_value_that_is_not_a_positive_integer_is_refused(self, data_dir, monkeypatch, value):
+        monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", value)
+        with pytest.raises(ConfigurationError, match="CIS_BENCH_SEARCH_LIMIT") as caught:
+            Config.get_search_default_limit()
+        assert repr(value) in str(caught.value)
 
 
 class TestConfigVerifySSL:
@@ -379,6 +295,8 @@ class TestConfigWorkbenchBaseUrl:
     @pytest.mark.parametrize(
         "invalid_url",
         [
+            "/",
+            "///",
             "http://workbench.cisecurity.org",
             "https://evil-cisecurity.org",
             "https://cisecurity.org.attacker.example",
@@ -400,141 +318,12 @@ class TestConfigWorkbenchBaseUrl:
 
 
 class TestConvenienceFunctions:
-    """Tests for module-level convenience functions."""
+    """Module-level shortcuts that callers use until they read the settings object."""
 
-    def test_get_catalog_db_path_function(self):
-        """Should return same path as Config.get_catalog_db_path()."""
-        with patch.dict(os.environ, {"CIS_BENCH_ENV": "test"}):
-            from cis_bench.config import Config, get_catalog_db_path
+    def test_get_catalog_db_path_function(self, data_dir):
+        from cis_bench.config import get_catalog_db_path
 
-            assert get_catalog_db_path() == Config.get_catalog_db_path()
-
-    def test_is_test_mode_function_returns_true(self):
-        """Should return True when in test environment."""
-        with patch.dict(os.environ, {"CIS_BENCH_ENV": "test"}):
-            from cis_bench.config import is_test_mode
-
-            assert is_test_mode() is True
-
-    def test_is_test_mode_function_returns_false(self):
-        """Should return False when not in test environment."""
-        with patch.dict(os.environ, {"CIS_BENCH_ENV": "production"}):
-            from cis_bench.config import is_test_mode
-
-            assert is_test_mode() is False
-
-
-class TestDotenvLoading:
-    """Tests for .env file loading at module import time."""
-
-    def test_dotenv_loads_when_file_exists(self, tmp_path):
-        """Importing the config module loads ~/.cis-bench/.env into the environment."""
-        env_dir = tmp_path / ".cis-bench"
-        env_dir.mkdir()
-        (env_dir / ".env").write_text("CIS_BENCH_DOTENV_PROBE=loaded_from_dotenv\n")
-
-        # patch.dict restores sys.modules afterwards, so the original config module
-        # object (the one other modules hold a reference to) comes back.
-        with (
-            patch("pathlib.Path.home", return_value=tmp_path),
-            patch.dict(os.environ),
-            patch.dict(sys.modules),
-        ):
-            os.environ.pop("CIS_BENCH_DOTENV_PROBE", None)
-            del sys.modules["cis_bench.config"]
-
-            import cis_bench.config  # noqa: F401
-
-            assert os.environ["CIS_BENCH_DOTENV_PROBE"] == "loaded_from_dotenv"
-
-        assert "CIS_BENCH_DOTENV_PROBE" not in os.environ
-
-    def test_dotenv_import_error_handled_gracefully(self):
-        """Should not fail if python-dotenv is not installed."""
-        # Mock dotenv import to raise ImportError
-        with patch.dict(sys.modules, {"dotenv": None}):
-            # This tests that the try/except ImportError works
-            # The actual import happens at module load time
-            pass  # If we get here without error, the handling works
-
-
-class TestDotenvLoadingIntegration:
-    """Integration tests for dotenv loading behavior.
-
-    These tests verify the module-level dotenv loading code (lines 14-23).
-    """
-
-    def test_module_loads_without_dotenv_installed(self):
-        """Should load successfully even if dotenv module import fails."""
-        # Save original module state
-        original_modules = sys.modules.copy()
-
-        try:
-            # Remove config module if loaded
-            if "cis_bench.config" in sys.modules:
-                del sys.modules["cis_bench.config"]
-
-            # Create a mock that raises ImportError
-            mock_dotenv = MagicMock()
-            mock_dotenv.load_dotenv = MagicMock(side_effect=ImportError("No module"))
-
-            # Patch the import to simulate dotenv not being installed
-            with patch.dict(sys.modules, {"dotenv": None}):
-                # This should not raise - the ImportError is caught
-                from cis_bench import config
-
-                # Basic functionality should still work
-                assert hasattr(config, "Config")
-                assert hasattr(config.Config, "get_environment")
-        finally:
-            # Restore original module state
-            sys.modules.clear()
-            sys.modules.update(original_modules)
-
-    def test_env_file_path_construction(self, tmp_path):
-        """Should construct correct path to .env file."""
-        # This tests the path: Path.home() / ".cis-bench" / ".env"
-        with patch("pathlib.Path.home", return_value=tmp_path):
-            expected_path = tmp_path / ".cis-bench" / ".env"
-            # Verify the path construction logic is correct
-            from pathlib import Path
-
-            actual_path = Path.home() / ".cis-bench" / ".env"
-            assert actual_path == expected_path
-
-
-class TestConfigPathsForAllEnvironments:
-    """Comprehensive tests ensuring all environments produce correct paths."""
-
-    @pytest.mark.parametrize(
-        "env,expected_suffix",
-        [
-            ("test", "cis-bench-test"),
-            ("dev", ".cis-bench-dev"),
-            ("production", ".cis-bench"),
-        ],
-    )
-    def test_data_dir_suffix_by_environment(self, env, expected_suffix):
-        """Should use correct directory suffix for each environment."""
-        with patch.dict(os.environ, {"CIS_BENCH_ENV": env}):
-            from cis_bench.config import Config
-
-            data_dir = Config.get_data_dir()
-            assert data_dir.name == expected_suffix or str(data_dir).endswith(expected_suffix)
-
-    def test_all_paths_derive_from_data_dir(self):
-        """All config paths should be relative to data_dir."""
-        with patch.dict(os.environ, {"CIS_BENCH_ENV": "test"}):
-            from cis_bench.config import Config
-
-            data_dir = Config.get_data_dir()
-            catalog_path = Config.get_catalog_db_path()
-            benchmarks_dir = Config.get_benchmarks_dir()
-            config_path = Config.get_config_path()
-
-            assert catalog_path.parent == data_dir
-            assert benchmarks_dir.parent == data_dir
-            assert config_path.parent == data_dir
+        assert get_catalog_db_path() == data_dir / "catalog.db"
 
 
 class TestConfigurationErrorType:

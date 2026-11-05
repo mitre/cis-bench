@@ -297,12 +297,11 @@ cis-bench catalog refresh
 
 **Check:**
 ```bash
-# Verify test env is set
-python3 -c "import os; print(os.getenv('CIS_BENCH_ENV'))"
-# Should print: None (when not in tests)
-
-# In tests, should be: test
+# Which data folder is in use (unset means ~/.cis-bench)
+echo "$CIS_BENCH_DATA_DIR"
 ```
+
+pytest sets `CIS_BENCH_DATA_DIR` to a temporary folder for each run (`tests/conftest.py`).
 
 **If tests use production DB:**
 

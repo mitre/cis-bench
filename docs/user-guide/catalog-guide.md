@@ -415,17 +415,14 @@ xargs -I {} cis-bench export {} --format xccdf --style cis
 
 - `~/.cis-bench/catalog.db`
 
-**Development:**
+**Another data folder (for example for development):**
 ```bash
-export CIS_BENCH_ENV=dev
+export CIS_BENCH_DATA_DIR=~/.cis-bench-dev
 cis-bench catalog refresh
 # Stored in: ~/.cis-bench-dev/catalog.db
 ```
 
-**Test:**
-
-- Automatic test isolation
-- `/tmp/cis-bench-test/catalog.db`
+**Tests:** pytest uses a temporary data folder for each run.
 
 ---
 
