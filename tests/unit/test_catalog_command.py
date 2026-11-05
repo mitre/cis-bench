@@ -93,8 +93,6 @@ def mock_search():
             "published_date": "2024-08-01",
         }
     ]
-    search.list_all_published.return_value = search.search.return_value
-    search.list_by_platform.return_value = search.search.return_value
     search.format_result_for_display.return_value = (
         "[23598] CIS Ubuntu Linux 20.04 LTS Benchmark v2.0.1\n"
         "        Platform: Operating System | Published: 2024-08-01 | Latest"
@@ -104,6 +102,35 @@ def mock_search():
 
 class TestCatalogRefreshCommand:
     """Tests for catalog refresh command."""
+
+    @pytest.mark.parametrize(
+        ("args", "expected_rate"),
+        [(["--rate-limit", "2"], 0.5), ([], None)],
+        ids=["two-seconds-between-requests", "configured-rate"],
+    )
+    def test_refresh_rate_limit_sets_the_request_rate_for_the_run(
+        self, runner, mock_db, args, expected_rate
+    ):
+        # The rate goes to login, so the session check is paced too, not only the scrape.
+        session = Mock()
+        with (
+            patch("cis_bench.cli.commands.catalog.get_catalog_db", return_value=mock_db),
+            patch(
+                "cis_bench.fetcher.auth.AuthManager.get_or_create_session", return_value=session
+            ) as login,
+            patch("cis_bench.catalog.scraper.CatalogScraper") as scraper_class,
+        ):
+            scraper_class.return_value.scrape_full_catalog.return_value = {
+                "total_benchmarks": 1,
+                "pages_scraped": 1,
+                "failed_pages": [],
+            }
+            result = runner.invoke(cli, ["catalog", "refresh", "--max-pages", "1", *args])
+
+        assert result.exit_code == 0, result.output
+        login.assert_called_once()
+        assert login.call_args.kwargs["requests_per_second"] == expected_rate
+        scraper_class.assert_called_once_with(mock_db, session)
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     @patch("cis_bench.fetcher.auth.AuthManager")
@@ -609,7 +636,7 @@ class TestCatalogListCommand:
         result = runner.invoke(cli, ["catalog", "list", "--platform", "Operating System"])
 
         assert result.exit_code == 0
-        mock_search.list_by_platform.assert_called_once()
+        assert mock_search.search.call_args.kwargs["platform"] == "Operating System"
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     @patch("cis_bench.cli.commands.catalog.CatalogSearch")
@@ -617,7 +644,7 @@ class TestCatalogListCommand:
         """Test list with no results (lines 258-260)."""
         mock_get_db.return_value = mock_db
         mock_search = MagicMock()
-        mock_search.list_all_published.return_value = []
+        mock_search.search.return_value = []
         mock_search_class.return_value = mock_search
 
         result = runner.invoke(cli, ["catalog", "list"])
@@ -658,7 +685,7 @@ class TestCatalogListCommand:
         """Test list failure (lines 269-271)."""
         mock_get_db.return_value = mock_db
         mock_search = MagicMock()
-        mock_search.list_all_published.side_effect = RuntimeError("Database error")
+        mock_search.search.side_effect = RuntimeError("Database error")
         mock_search_class.return_value = mock_search
 
         result = runner.invoke(cli, ["catalog", "list"])
@@ -1556,7 +1583,9 @@ class TestVerifiedTLSByDefault:
         result = runner.invoke(cli, ["catalog", "refresh"])
 
         assert result.exit_code == 0, result.output
-        mock_auth.get_or_create_session.assert_called_once_with(browser="chrome", verify_ssl=True)
+        mock_auth.get_or_create_session.assert_called_once_with(
+            browser="chrome", verify_ssl=True, requests_per_second=None
+        )
         mock_auth.validate_session.assert_not_called()
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
@@ -1691,7 +1720,7 @@ class TestCatalogRequestTimeoutSetting:
         assert "Configuration Error" in result.output
         assert "CIS_BENCH_WORKBENCH_URL must use https" in result.output
 
-    @pytest.mark.parametrize("rate", ["nan", "inf", "-1"])
+    @pytest.mark.parametrize("rate", ["nan", "inf", "-1", "0"])
     def test_refresh_rejects_a_bad_rate_limit_before_any_network_call(self, runner, rate):
         with (
             patch("cis_bench.cli.commands.catalog.get_catalog_db") as mock_get_db,
@@ -1703,3 +1732,39 @@ class TestCatalogRequestTimeoutSetting:
         assert "--rate-limit" in result.output
         mock_auth.assert_not_called()
         mock_get_db.assert_not_called()
+
+
+class TestCatalogListingsShowWhatTheLimitCutOff:
+    @pytest.mark.parametrize(
+        "args",
+        [["catalog", "search", "sample", "--limit", "2"], ["catalog", "list", "--limit", "2"]],
+        ids=["catalog-search", "catalog-list"],
+    )
+    def test_a_cut_off_list_says_how_many_matched(self, runner, small_catalog, args):
+        with patch("cis_bench.config.Config.get_catalog_db_path", return_value=small_catalog):
+            result = runner.invoke(cli, args)
+
+        assert result.exit_code == 0, result.output
+        assert "Showing 2 of 5 results; use --limit to see more" in result.output
+
+    def test_catalog_list_takes_its_default_limit_from_the_search_limit_setting(
+        self, runner, small_catalog, monkeypatch
+    ):
+        monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "3")
+        with patch("cis_bench.config.Config.get_catalog_db_path", return_value=small_catalog):
+            result = runner.invoke(cli, ["catalog", "list"])
+
+        assert result.exit_code == 0, result.output
+        assert "Showing 3 of 5 results; use --limit to see more" in result.output
+
+    @patch("cis_bench.cli.commands.catalog.get_catalog_db")
+    @patch("cis_bench.cli.commands.catalog.CatalogSearch")
+    def test_catalog_list_latest_applies_without_a_platform(
+        self, mock_search_class, mock_get_db, runner, mock_db
+    ):
+        mock_get_db.return_value = mock_db
+        mock_search_class.return_value.search.return_value = []
+
+        runner.invoke(cli, ["catalog", "list", "--latest"])
+
+        assert mock_search_class.return_value.search.call_args.kwargs["latest_only"] is True

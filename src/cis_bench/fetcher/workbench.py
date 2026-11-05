@@ -24,6 +24,7 @@ from cis_bench.fetcher.strategies.base import ScraperStrategy
 from cis_bench.fetcher.strategies.detector import StrategyDetector
 from cis_bench.models.benchmark import Benchmark, Recommendation
 from cis_bench.utils.parallel import parallel_execute_batched
+from cis_bench.utils.workbench_urls import navtree_url, recommendation_url
 
 # Suppress SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -174,8 +175,7 @@ class WorkbenchScraper:
         Returns:
             Navigation tree JSON data
         """
-        base_url = Config.get_workbench_base_url()
-        url = f"{base_url}/api/v1/benchmarks/{benchmark_id}/navtree"
+        url = navtree_url(benchmark_id)
         return self.fetch_json(url)
 
     def parse_navtree(self, navtree_data: dict[str, Any]) -> list[dict[str, str]]:
@@ -187,14 +187,13 @@ class WorkbenchScraper:
         Returns:
             List of dicts with url, title, ref
         """
-        base_url = Config.get_workbench_base_url()
 
         def generate_urls(recommendations: list[dict[str, Any]]) -> list[dict[str, str]]:
             output: list[dict[str, str]] = []
             for rec in recommendations:
                 rec_id = rec["id"]
                 section_id = rec["section_id"]
-                url = f"{base_url}/sections/{section_id}/recommendations/{rec_id}"
+                url = recommendation_url(section_id, rec_id)
                 output.append(
                     {"url": url, "title": str(rec["title"]), "ref": str(rec["view_level"])}
                 )
@@ -295,11 +294,14 @@ class WorkbenchScraper:
                 level="debug",
             )
 
-        # Fetch recommendations concurrently with the shared pacing; results come back in
-        # navtree order. An expired session stops the run after the batch that saw it.
+        # Fetch recommendations concurrently; the session's adapter paces the requests and
+        # results come back in navtree order. An expired session stops the run after the
+        # batch that saw it.
         fetched = parallel_execute_batched(
             recommendations_list,
             build_recommendation,
+            batch_size=Config.WORKBENCH_BATCH_SIZE,
+            max_workers=Config.WORKBENCH_MAX_CONCURRENT_REQUESTS,
             progress_callback=report_completion,
             stop_on=(AuthenticationError,),
         )

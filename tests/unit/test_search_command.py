@@ -409,3 +409,20 @@ class TestStatusFilterPassThrough:
 
         assert result.exit_code == 0, result.output
         assert mock_search.search.call_args.kwargs["status"] == " ALL "
+
+
+class TestSearchShowsWhatTheLimitCutOff:
+    def test_a_cut_off_list_says_how_many_matched_and_how_to_see_more(self, runner, small_catalog):
+        with patch("cis_bench.config.Config.get_catalog_db_path", return_value=small_catalog):
+            result = runner.invoke(cli, ["search", "sample", "--limit", "2"])
+
+        assert result.exit_code == 0, result.output
+        assert "Showing 2 of 5 results; use --limit to see more" in result.output
+
+    def test_a_whole_list_says_so(self, runner, small_catalog):
+        with patch("cis_bench.config.Config.get_catalog_db_path", return_value=small_catalog):
+            result = runner.invoke(cli, ["search", "sample"])
+
+        assert result.exit_code == 0, result.output
+        assert "Showing 5 of 5 results" in result.output
+        assert "use --limit" not in result.output

@@ -72,8 +72,7 @@ and the catalog (`catalog refresh` and `catalog update` listing pages,
 - **Accepted values:** a positive number of seconds. Any other value is a configuration error, and the command exits before it authenticates.
 - **Connect timeout:** fixed at 10 seconds, or the read timeout if that is shorter.
 
-A request that times out, fails to connect, or gets a 502, 503 or 504 is
-retried twice, after 1 and then 2 seconds. A request that still fails is
+A request that times out, fails to connect, or gets a 429, 502, 503 or 504 is retried twice: once at once, then after about 2 seconds (plus up to half a second of random jitter). When WorkBench sends a `Retry-After` header, cis-bench waits that long instead, up to 60 seconds. A request that still fails is
 reported with its URL: a download skips that recommendation, and a catalog
 refresh counts that page as failed. Nothing hangs on one connection. Other HTTP
 errors, such as a 404, are not retried.
@@ -175,9 +174,10 @@ cis-bench --quiet export ... # WARNING level
 
 **Rate Limiting:**
 
-- Default: 2 seconds between batches of 10 pages (5 fetched at a time)
-- Configurable: `--rate-limit` option
-- Respectful to CIS servers
+- Default: at most 3 requests per second to each WorkBench host, shared by every thread; 5 requests at a time
+- Applies to every WorkBench request: downloads, catalog refresh, update and check-updates, and session checks
+- Configurable for a catalog refresh: `--rate-limit SECONDS` sets the gap between requests
+- Every request carries the User-Agent `cis-bench-cli/<version> (github.com/mitre/cis-bench)`
 
 **Pages:**
 
@@ -247,8 +247,8 @@ CIS_BENCH_VERIFY_SSL=false
 
 **Catalog:**
 
-- Rate limit: 2 seconds
-- Max pages: All (68)
+- Rate limit: 3 requests per second
+- Max pages: All (about 80)
 - Status filter: Published
 - Latest only: False
 

@@ -1,7 +1,7 @@
 """Unit tests for catalog scraper."""
 
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import pytest
 
@@ -120,7 +120,6 @@ class TestConnectionTesting:
         scraper = CatalogScraper(temp_db, session)
 
         with (
-            patch("cis_bench.fetcher.http.time"),
             pytest.raises(Exception, match="Connection failed"),
         ):
             scraper.test_connection()
@@ -163,17 +162,6 @@ class TestPageFetching:
             == "https://workbench-staging.cisecurity.org/benchmarks?page=2"
         )
 
-    def test_fetch_page_user_agent(self, temp_db, mock_session):
-        """Test User-Agent header is set."""
-        scraper = CatalogScraper(temp_db, mock_session)
-
-        scraper._fetch_page(1)
-
-        call_args = mock_session.get.call_args
-        headers = call_args[1].get("headers", {})
-        assert "User-Agent" in headers
-        assert "cis-bench-cli" in headers["User-Agent"]
-
 
 class TestFullCatalogScrape:
     """Test full catalog scraping."""
@@ -183,7 +171,7 @@ class TestFullCatalogScrape:
         session, _ = stub_session(lambda url: sample_html)
         scraper = CatalogScraper(temp_db, session)
 
-        stats = scraper.scrape_full_catalog(max_pages=2, rate_limit_seconds=0)
+        stats = scraper.scrape_full_catalog(max_pages=2)
 
         assert stats["total_benchmarks"] > 0
         assert stats["pages_scraped"] >= 1
@@ -194,7 +182,7 @@ class TestFullCatalogScrape:
         session, _ = stub_session(lambda url: sample_html)
         scraper = CatalogScraper(temp_db, session)
 
-        stats = scraper.scrape_full_catalog(max_pages=3, rate_limit_seconds=0)
+        stats = scraper.scrape_full_catalog(max_pages=3)
 
         # Should not scrape more than max_pages
         assert stats["pages_scraped"] <= 3
@@ -203,7 +191,7 @@ class TestFullCatalogScrape:
         """Test scraped benchmarks are saved to database across all status types."""
         scraper = CatalogScraper(temp_db, mock_session)
 
-        stats = scraper.scrape_full_catalog(max_pages=1, rate_limit_seconds=0)
+        stats = scraper.scrape_full_catalog(max_pages=1)
 
         assert stats["total_benchmarks"] == 6
         db_stats = temp_db.get_catalog_stats()
@@ -225,7 +213,7 @@ class TestFullCatalogScrape:
         """Test scraper marks latest versions."""
         scraper = CatalogScraper(temp_db, mock_session)
 
-        scraper.scrape_full_catalog(max_pages=1, rate_limit_seconds=0)
+        scraper.scrape_full_catalog(max_pages=1)
 
         # Verify mark_latest_versions was called (check metadata exists)
         # This is indirect - checking the method was executed
@@ -236,7 +224,7 @@ class TestFullCatalogScrape:
         """Test scraper saves scrape metadata."""
         scraper = CatalogScraper(temp_db, mock_session)
 
-        scraper.scrape_full_catalog(max_pages=1, rate_limit_seconds=0)
+        scraper.scrape_full_catalog(max_pages=1)
 
         # Check metadata was saved
         last_scrape = temp_db.get_metadata("last_full_scrape")
@@ -250,7 +238,7 @@ class TestQuickUpdate:
         """Test quick update scrapes page 1 only."""
         scraper = CatalogScraper(temp_db, mock_session)
 
-        stats = scraper.scrape_page_one_update(rate_limit_seconds=0)
+        stats = scraper.scrape_page_one_update()
 
         assert "new_count" in stats
         assert "updated_count" in stats
@@ -261,11 +249,11 @@ class TestQuickUpdate:
         scraper = CatalogScraper(temp_db, mock_session)
 
         # First update - all new
-        stats1 = scraper.scrape_page_one_update(rate_limit_seconds=0)
+        stats1 = scraper.scrape_page_one_update()
         assert stats1["new_count"] > 0
 
         # Second update - none new (same page)
-        stats2 = scraper.scrape_page_one_update(rate_limit_seconds=0)
+        stats2 = scraper.scrape_page_one_update()
         assert stats2["new_count"] == 0
 
     def test_update_detects_field_and_status_changes_without_revision_date(
@@ -288,17 +276,17 @@ class TestQuickUpdate:
             temp_db, mock_session, monkeypatch, lambda _html: [dict(item) for item in current_rows]
         )
 
-        assert scraper.scrape_page_one_update(rate_limit_seconds=0) == {
+        assert scraper.scrape_page_one_update() == {
             "new_count": 1,
             "updated_count": 0,
         }
-        assert scraper.scrape_page_one_update(rate_limit_seconds=0) == {
+        assert scraper.scrape_page_one_update() == {
             "new_count": 0,
             "updated_count": 0,
         }
 
         current_rows[:] = [{**row, "status": "Final Update", "version": "v4.0.1"}]
-        assert scraper.scrape_page_one_update(rate_limit_seconds=0) == {
+        assert scraper.scrape_page_one_update() == {
             "new_count": 0,
             "updated_count": 1,
         }
@@ -336,7 +324,7 @@ class TestQuickUpdate:
         ]
         scraper = _stub_scraper_pages(temp_db, mock_session, monkeypatch, lambda _html: incoming)
 
-        stats = scraper.scrape_page_one_update(rate_limit_seconds=0)
+        stats = scraper.scrape_page_one_update()
         assert stats == {"new_count": 1, "updated_count": 0}
         assert temp_db.get_benchmark("601")["is_latest"] is False
         assert temp_db.get_benchmark("602")["is_latest"] is True
@@ -358,19 +346,19 @@ class TestQuickUpdate:
             temp_db, mock_session, monkeypatch, lambda _html: [dict(item) for item in current_rows]
         )
 
-        assert scraper.scrape_page_one_update(rate_limit_seconds=0) == {
+        assert scraper.scrape_page_one_update() == {
             "new_count": 1,
             "updated_count": 0,
         }
 
         current_rows[:] = [{**base_row, "collections": ["STIG", "Linux"]}]
-        assert scraper.scrape_page_one_update(rate_limit_seconds=0) == {
+        assert scraper.scrape_page_one_update() == {
             "new_count": 0,
             "updated_count": 0,
         }
 
         current_rows[:] = [{**base_row, "collections": ["Linux", "STIG", "Zero Trust"]}]
-        assert scraper.scrape_page_one_update(rate_limit_seconds=0) == {
+        assert scraper.scrape_page_one_update() == {
             "new_count": 0,
             "updated_count": 1,
         }
@@ -416,8 +404,7 @@ class TestErrorHandling:
         scraper = CatalogScraper(temp_db, session)
 
         # This should not crash even if one page fails (19 succeed, 1 fails = 5% failure)
-        with patch("cis_bench.fetcher.http.time"):
-            stats = scraper.scrape_full_catalog(max_pages=20, rate_limit_seconds=0)
+        stats = scraper.scrape_full_catalog(max_pages=20)
 
         # Should have completed scrape attempt
         assert "total_benchmarks" in stats
@@ -475,7 +462,7 @@ class TestErrorHandling:
         )
 
         with caplog.at_level(logging.WARNING):
-            stats = scraper.scrape_full_catalog(max_pages=2, rate_limit_seconds=0)
+            stats = scraper.scrape_full_catalog(max_pages=2)
 
         assert stats["failed_pages"] == []
         assert stats["total_benchmarks"] == 3
@@ -524,7 +511,7 @@ class TestErrorHandling:
         )
 
         with caplog.at_level(logging.WARNING):
-            stats = scraper.scrape_full_catalog(max_pages=20, rate_limit_seconds=0)
+            stats = scraper.scrape_full_catalog(max_pages=20)
 
         assert stats["failed_pages"] == [2]
         assert stats["total_benchmarks"] == 19
@@ -563,7 +550,7 @@ class TestErrorHandling:
         monkeypatch.setattr(temp_db, "insert_benchmark", fail_on_page_two)
 
         with pytest.raises(OperationalError, match="database is locked"):
-            scraper.scrape_full_catalog(max_pages=2, rate_limit_seconds=0)
+            scraper.scrape_full_catalog(max_pages=2)
 
     def test_scrape_page_one_update_skips_invalid_row_and_fails_if_all_invalid(
         self, temp_db, mock_session, monkeypatch
@@ -592,7 +579,7 @@ class TestErrorHandling:
             temp_db, mock_session, monkeypatch, lambda _html: current_rows
         )
 
-        stats = scraper.scrape_page_one_update(rate_limit_seconds=0)
+        stats = scraper.scrape_page_one_update()
         assert stats == {"new_count": 1, "updated_count": 0}
         assert temp_db.get_benchmark("301")["status"] == "Final Update"
         assert temp_db.get_benchmark("302") is None
@@ -606,20 +593,17 @@ class TestErrorHandling:
             }
         ]
         with pytest.raises(ValueError, match="failed validation"):
-            scraper.scrape_page_one_update(rate_limit_seconds=0)
+            scraper.scrape_page_one_update()
 
     def test_fetch_and_parse_page_propagates_authentication_error_without_retries(
         self, temp_db, mock_session, monkeypatch
     ):
-        """_fetch_and_parse_page raises AuthenticationError on first attempt without sleeping."""
-        import cis_bench.catalog.scraper as scraper_module
+        """_fetch_and_parse_page raises AuthenticationError on the first attempt."""
         from cis_bench.catalog.parser import WorkBenchCatalogParser
 
-        sleep_calls: list[float] = []
         fetch_calls: list[int] = []
 
         scraper = CatalogScraper(temp_db, mock_session)
-        monkeypatch.setattr(scraper_module.time, "sleep", lambda secs: sleep_calls.append(secs))
 
         def fake_fetch(page_num: int) -> str:
             fetch_calls.append(page_num)
@@ -635,7 +619,6 @@ class TestErrorHandling:
             scraper._fetch_and_parse_page(2)
 
         assert fetch_calls == [2]
-        assert sleep_calls == []
 
     def test_scrape_full_catalog_propagates_authentication_error_from_worker_page(
         self, temp_db, mock_session, monkeypatch
@@ -658,15 +641,12 @@ class TestErrorHandling:
         scraper = _stub_scraper_pages(temp_db, mock_session, monkeypatch, fake_parse, total_pages=3)
 
         with pytest.raises(AuthenticationError, match="Session expired on page 2"):
-            scraper.scrape_full_catalog(max_pages=3, rate_limit_seconds=0)
+            scraper.scrape_full_catalog(max_pages=3)
 
     def test_scrape_full_catalog_includes_page_one_in_failure_rate_denominator(
         self, temp_db, mock_session, monkeypatch
     ):
         """1 failed page out of 10 total pages (10.0%) succeeds when Page 1 is counted in denominator."""
-        import cis_bench.catalog.scraper as scraper_module
-
-        monkeypatch.setattr(scraper_module.time, "sleep", lambda _secs: None)
 
         def fake_parse(html: str) -> list[dict]:
             page_num = int(html.split("-")[1])
@@ -685,7 +665,7 @@ class TestErrorHandling:
             temp_db, mock_session, monkeypatch, fake_parse, total_pages=10
         )
 
-        stats = scraper.scrape_full_catalog(max_pages=10, rate_limit_seconds=0)
+        stats = scraper.scrape_full_catalog(max_pages=10)
 
         assert stats["failed_pages"] == [2]
         assert stats["pages_scraped"] == 10
@@ -701,7 +681,7 @@ class TestErrorHandling:
         )
 
         with pytest.raises(ValueError, match="No benchmarks found on catalog page 1"):
-            scraper.scrape_full_catalog(max_pages=5, rate_limit_seconds=0)
+            scraper.scrape_full_catalog(max_pages=5)
 
 
 class TestRefreshDownloadedRevisionDates:
@@ -747,8 +727,7 @@ class TestRefreshDownloadedRevisionDates:
         )
         scraper = CatalogScraper(temp_db, session)
 
-        with patch("cis_bench.catalog.scraper.time.sleep") as sleep:
-            refreshed = scraper.refresh_downloaded_revision_dates(rate_limit_seconds=0.5)
+        refreshed = scraper.refresh_downloaded_revision_dates()
 
         assert refreshed == 2
         fetched = sorted(call.args[0] for call in session.get.call_args_list)
@@ -756,7 +735,6 @@ class TestRefreshDownloadedRevisionDates:
             "https://workbench.cisecurity.org/benchmarks/401",
             "https://workbench.cisecurity.org/benchmarks/402",
         ]
-        assert sleep.call_count == 2
         assert temp_db.get_downloaded("401")["workbench_last_modified"] == "2025-08-28"
         assert temp_db.get_downloaded("402")["workbench_last_modified"] == "2025-08-28"
 
@@ -771,7 +749,7 @@ class TestRefreshDownloadedRevisionDates:
             )
         )
 
-        with patch("cis_bench.catalog.scraper.time.sleep"), caplog.at_level("WARNING"):
+        with caplog.at_level("WARNING"):
             refreshed = CatalogScraper(temp_db, session).refresh_downloaded_revision_dates()
 
         assert refreshed == 1
@@ -785,8 +763,7 @@ class TestRefreshDownloadedRevisionDates:
         session = Mock()
         session.get = Mock(return_value=self._response("<html><body>No date here</body></html>"))
 
-        with patch("cis_bench.catalog.scraper.time.sleep"):
-            refreshed = CatalogScraper(temp_db, session).refresh_downloaded_revision_dates()
+        refreshed = CatalogScraper(temp_db, session).refresh_downloaded_revision_dates()
 
         assert refreshed == 0
         assert temp_db.get_downloaded("404")["workbench_last_modified"] is None
@@ -801,7 +778,7 @@ class TestRefreshDownloadedRevisionDates:
             )
         )
 
-        with patch("cis_bench.catalog.scraper.time.sleep"), pytest.raises(AuthenticationError):
+        with pytest.raises(AuthenticationError):
             CatalogScraper(temp_db, session).refresh_downloaded_revision_dates()
 
         assert session.get.call_count == 1

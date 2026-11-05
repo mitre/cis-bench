@@ -568,6 +568,7 @@ class TestGetLoggingConfig:
 
         with patch("cis_bench.cli.commands.get.Config") as mock_config:
             mock_config.get_catalog_db_path.return_value = catalog_path
+            mock_config.get_search_default_limit.return_value = 100
 
             with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                 mock_db = Mock()
@@ -594,6 +595,7 @@ class TestGetLoggingConfig:
 
         with patch("cis_bench.cli.commands.get.Config") as mock_config:
             mock_config.get_catalog_db_path.return_value = catalog_path
+            mock_config.get_search_default_limit.return_value = 100
 
             with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                 mock_db = Mock()
@@ -622,6 +624,7 @@ class TestGetSearchErrors:
 
         with patch("cis_bench.cli.commands.get.Config") as mock_config:
             mock_config.get_catalog_db_path.return_value = catalog_path
+            mock_config.get_search_default_limit.return_value = 100
 
             with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                 mock_db = Mock()
@@ -649,6 +652,7 @@ class TestGetTitleWrapping:
 
         with patch("cis_bench.cli.commands.get.Config") as mock_config:
             mock_config.get_catalog_db_path.return_value = catalog_path
+            mock_config.get_search_default_limit.return_value = 100
 
             with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                 mock_db = Mock()
@@ -693,6 +697,7 @@ class TestGetInteractiveSelection:
 
         with patch("cis_bench.cli.commands.get.Config") as mock_config:
             mock_config.get_catalog_db_path.return_value = catalog_path
+            mock_config.get_search_default_limit.return_value = 100
 
             with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                 mock_db = Mock()
@@ -723,6 +728,7 @@ class TestGetInteractiveSelection:
 
         with patch("cis_bench.cli.commands.get.Config") as mock_config:
             mock_config.get_catalog_db_path.return_value = catalog_path
+            mock_config.get_search_default_limit.return_value = 100
 
             with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                 mock_db = Mock()
@@ -753,6 +759,7 @@ class TestGetInteractiveSelection:
         with runner.isolated_filesystem():
             with patch("cis_bench.cli.commands.get.Config") as mock_config:
                 mock_config.get_catalog_db_path.return_value = catalog_path
+                mock_config.get_search_default_limit.return_value = 100
 
                 with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                     mock_db = Mock()
@@ -804,6 +811,7 @@ class TestGetDownloadErrors:
 
         with patch("cis_bench.cli.commands.get.Config") as mock_config:
             mock_config.get_catalog_db_path.return_value = catalog_path
+            mock_config.get_search_default_limit.return_value = 100
 
             with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                 mock_db = Mock()
@@ -844,6 +852,7 @@ class TestGetDownloadErrors:
             patch("cis_bench.cli.helpers.download_helper.download_with_progress") as mock_dl,
         ):
             mock_config.get_catalog_db_path.return_value = catalog_path
+            mock_config.get_search_default_limit.return_value = 100
             mock_db_class.return_value.get_downloaded.return_value = None  # Not cached
             mock_search_class.return_value.search.return_value = [
                 {"benchmark_id": "12345", "title": "Test", "version": "v1", "status": "Published"}
@@ -880,6 +889,7 @@ class TestGetDownloadErrors:
             patch("cis_bench.cli.helpers.download_helper.download_with_progress") as mock_dl,
         ):
             mock_config.get_catalog_db_path.return_value = catalog_path
+            mock_config.get_search_default_limit.return_value = 100
             mock_db_class.return_value.get_downloaded.return_value = None
             mock_search_class.return_value.search.return_value = [
                 {"benchmark_id": "12345", "title": "Test", "version": "v1", "status": "Published"}
@@ -911,6 +921,7 @@ class TestGetDownloadErrors:
             patch("cis_bench.cli.helpers.download_helper.download_with_progress") as mock_dl,
         ):
             mock_config.get_catalog_db_path.return_value = catalog_path
+            mock_config.get_search_default_limit.return_value = 100
             mock_config.get_verify_ssl.return_value = False
             mock_db = Mock()
             mock_db_class.return_value = mock_db
@@ -973,6 +984,7 @@ class TestGetXccdfExport:
         with runner.isolated_filesystem():
             with patch("cis_bench.cli.commands.get.Config") as mock_config:
                 mock_config.get_catalog_db_path.return_value = catalog_path
+                mock_config.get_search_default_limit.return_value = 100
 
                 with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                     mock_db = Mock()
@@ -1027,6 +1039,7 @@ class TestGetXccdfExport:
         with runner.isolated_filesystem():
             with patch("cis_bench.cli.commands.get.Config") as mock_config:
                 mock_config.get_catalog_db_path.return_value = catalog_path
+                mock_config.get_search_default_limit.return_value = 100
 
                 with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                     mock_db = Mock()
@@ -1084,6 +1097,7 @@ class TestGetExportErrors:
         with runner.isolated_filesystem():
             with patch("cis_bench.cli.commands.get.Config") as mock_config:
                 mock_config.get_catalog_db_path.return_value = catalog_path
+                mock_config.get_search_default_limit.return_value = 100
 
                 with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                     mock_db = Mock()
@@ -1152,6 +1166,7 @@ class TestOutsideTextIsPrintedVerbatim:
             patch("cis_bench.cli.commands.get.ExporterFactory") as mock_factory,
         ):
             mock_config.get_catalog_db_path.return_value = catalog_path
+            mock_config.get_search_default_limit.return_value = 100
             mock_search_class.return_value.search.return_value = [
                 {"benchmark_id": "12345", "title": "CIS T [/t]", "version": "v1", "status": "P"}
             ]
@@ -1180,6 +1195,7 @@ class TestOutsideTextIsPrintedVerbatim:
             patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class,
         ):
             mock_config.get_catalog_db_path.return_value = catalog_path
+            mock_config.get_search_default_limit.return_value = 100
             mock_search_class.return_value.search.return_value = [
                 {
                     "benchmark_id": "1",
@@ -1200,6 +1216,7 @@ class TestOutsideTextIsPrintedVerbatim:
     def test_get_without_a_catalog_prints_the_query_verbatim(self, runner, tmp_path):
         with patch("cis_bench.cli.commands.get.Config") as mock_config:
             mock_config.get_catalog_db_path.return_value = tmp_path / "missing.db"
+            mock_config.get_search_default_limit.return_value = 100
 
             result = runner.invoke(cli, ["get", "web[x]"])
 
@@ -1223,6 +1240,7 @@ class TestOutsideTextIsPrintedVerbatim:
             patch("cis_bench.cli.commands.get.ExporterFactory") as mock_factory,
         ):
             mock_config.get_catalog_db_path.return_value = catalog_path
+            mock_config.get_search_default_limit.return_value = 100
             mock_search_class.return_value.search.return_value = [
                 {"benchmark_id": "23598", "title": "CIS T", "version": "v1", "status": "P"}
             ]
@@ -1267,6 +1285,7 @@ class TestGetNonInteractiveMode:
 
         with patch("cis_bench.cli.commands.get.Config") as mock_config:
             mock_config.get_catalog_db_path.return_value = catalog_path
+            mock_config.get_search_default_limit.return_value = 100
 
             with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                 mock_db = Mock()
@@ -1371,6 +1390,7 @@ class TestCanonicalContentHashConsistency:
                     ) as validate_spy,
                 ):
                     mock_get_cfg.get_catalog_db_path.return_value = db_get.db_path
+                    mock_get_cfg.get_search_default_limit.return_value = 100
                     get_res = runner.invoke(
                         cli,
                         [

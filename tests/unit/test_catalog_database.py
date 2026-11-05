@@ -427,6 +427,21 @@ class TestFTS5Search:
         results = populated_db.search("")
         assert len(results) > 0
 
+    def test_search_without_a_limit_takes_the_search_limit_setting(self, populated_db, monkeypatch):
+        # 3 Published benchmarks; CIS_BENCH_SEARCH_LIMIT is the only default limit.
+        monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "2")
+        assert len(populated_db.search("")) == 2
+
+    def test_count_search_counts_every_match_whatever_the_limit(self, populated_db):
+        # 3 Published benchmarks; a limit of 1 shows one but the count is the whole set.
+        assert len(populated_db.search("", limit=1)) == 1
+        assert populated_db.count_search("") == 3
+        assert populated_db.count_search("linux") == 2
+        assert populated_db.count_search("", platform="Cloud") == 1
+        assert populated_db.count_search("", status="all") == 4
+        assert populated_db.count_search("nonexistent") == 0
+        assert populated_db.count_search("!!!") == 0
+
     def test_search_no_matches(self, populated_db):
         """Test search with no matches returns empty list."""
         results = populated_db.search("nonexistent")

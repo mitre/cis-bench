@@ -70,6 +70,7 @@ class TestGetCommandNoCatalog:
 
         with patch("cis_bench.cli.commands.get.Config") as mock_config:
             mock_config.get_catalog_db_path.return_value = catalog_path
+            mock_config.get_search_default_limit.return_value = 100
 
             result = runner.invoke(cli, ["get", "ubuntu", "--format", "json"])
 
@@ -93,6 +94,7 @@ class TestGetCommandSingleResult:
 
         with patch("cis_bench.cli.commands.get.Config") as mock_config:
             mock_config.get_catalog_db_path.return_value = catalog_path
+            mock_config.get_search_default_limit.return_value = 100
             mock_config.get_verify_ssl.return_value = False
 
             with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
@@ -164,6 +166,7 @@ class TestGetCommandSingleResult:
             patch("cis_bench.cli.helpers.download_helper.download_with_progress") as mock_download,
         ):
             mock_config.get_catalog_db_path.return_value = catalog_path
+            mock_config.get_search_default_limit.return_value = 100
             mock_db = Mock()
             mock_db_class.return_value = mock_db
             mock_db.get_downloaded.side_effect = [
@@ -213,6 +216,7 @@ class TestGetCommandSingleResult:
 
         with patch("cis_bench.cli.commands.get.Config") as mock_config:
             mock_config.get_catalog_db_path.return_value = catalog_path
+            mock_config.get_search_default_limit.return_value = 100
 
             with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                 mock_db = Mock()
@@ -262,6 +266,7 @@ class TestGetCommandMultipleResults:
 
         with patch("cis_bench.cli.commands.get.Config") as mock_config:
             mock_config.get_catalog_db_path.return_value = catalog_path
+            mock_config.get_search_default_limit.return_value = 100
 
             with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                 mock_db = Mock()
@@ -312,6 +317,7 @@ class TestGetCommandNoResults:
 
         with patch("cis_bench.cli.commands.get.Config") as mock_config:
             mock_config.get_catalog_db_path.return_value = catalog_path
+            mock_config.get_search_default_limit.return_value = 100
 
             with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                 mock_db = Mock()
@@ -390,3 +396,14 @@ class TestGetRequestTimeoutSetting:
 
         assert result.exit_code == 0, result.output
         mock_auth.get_or_create_session.assert_not_called()
+
+
+class TestGetCandidateLimit:
+    def test_get_takes_its_candidate_limit_from_the_search_limit_setting(
+        self, runner, small_catalog, monkeypatch
+    ):
+        monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "3")
+        with patch("cis_bench.config.Config.get_catalog_db_path", return_value=small_catalog):
+            result = runner.invoke(cli, ["get", "sample", "--non-interactive"])
+
+        assert "Found 5 benchmarks matching 'sample' (showing the first 3)" in result.output

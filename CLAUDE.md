@@ -125,7 +125,7 @@ All test data via fixtures in `tests/conftest.py`. NO hardcoded paths.
 - `CIS_BENCH_BROWSER` - Default browser for auth
 
 ### Config Paths
-- Session storage: `~/.cis-bench/session.json`
+- Session storage: `~/.cis-bench/session.cookies`
 - Catalog database: `~/.cis-bench/catalog.db`
 - Downloaded benchmarks: `~/.cis-bench/benchmarks/`
 

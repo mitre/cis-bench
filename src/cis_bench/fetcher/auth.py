@@ -22,6 +22,8 @@ except ImportError:
 
 from cis_bench.config import Config
 from cis_bench.exceptions import AuthenticationError, NoSavedSessionError, TLSVerificationError
+from cis_bench.fetcher.http import new_workbench_session
+from cis_bench.utils.workbench_urls import catalog_listing_url
 
 logger = logging.getLogger(__name__)
 
@@ -46,20 +48,14 @@ class AuthManager:
     """Manages authentication for CIS WorkBench."""
 
     CIS_COOKIE_ROOT_DOMAIN = Config.CIS_ROOT_DOMAIN
-    TRUSTED_SSO_HOSTS = frozenset({"auth.portal.cisecurity.org", "auth.portal.qa.cisecurity.org"})
-    MAX_SSO_REDIRECTS = 8
 
     @staticmethod
     def _workbench_host() -> str:
         return urlparse(Config.get_workbench_base_url()).netloc
 
     @staticmethod
-    def _workbench_benchmarks_url() -> str:
-        return f"{Config.get_workbench_base_url()}/benchmarks"
-
-    @staticmethod
     def _trusted_auth_hosts() -> frozenset[str]:
-        return AuthManager.TRUSTED_SSO_HOSTS | {AuthManager._workbench_host()}
+        return Config.TRUSTED_SSO_HOSTS | {AuthManager._workbench_host()}
 
     # Windows-specific error patterns that indicate permission/encryption issues
     WINDOWS_PERMISSION_PATTERNS = [
@@ -143,7 +139,10 @@ Workarounds:
 
     @staticmethod
     def load_cookies_from_browser(
-        browser: str = "chrome", verify_ssl: bool | None = None, try_fallback: bool = False
+        browser: str = "chrome",
+        verify_ssl: bool | None = None,
+        try_fallback: bool = False,
+        requests_per_second: float | None = None,
     ) -> requests.Session:
         """Load cookies from browser using browser-cookie3.
 
@@ -151,6 +150,7 @@ Workarounds:
             browser: Browser name ('chrome', 'firefox', 'edge', 'safari')
             verify_ssl: SSL verification setting (None = use Config default)
             try_fallback: If True and on Windows, try Firefox if Chromium browser fails
+            requests_per_second: Request rate for the session (None = the configured rate)
 
         Returns:
             requests.Session with cookies loaded and SSL verification configured
@@ -159,7 +159,7 @@ Workarounds:
             ValueError: If browser is not supported
             Exception: If cookie extraction fails
         """
-        session = requests.Session()
+        session = new_workbench_session(requests_per_second)
 
         # Configure SSL verification globally for this session
         if verify_ssl is None:
@@ -210,7 +210,10 @@ Workarounds:
                     )
                     # Recursive call with fallback browser (no further fallback)
                     return AuthManager.load_cookies_from_browser(
-                        fallback, verify_ssl=verify_ssl, try_fallback=False
+                        fallback,
+                        verify_ssl=verify_ssl,
+                        try_fallback=False,
+                        requests_per_second=requests_per_second,
                     )
 
             # No fallback available or not on Windows - raise with helpful message
@@ -218,13 +221,16 @@ Workarounds:
 
     @staticmethod
     def load_cookies_from_file(
-        cookies_file: str, verify_ssl: bool | None = None
+        cookies_file: str,
+        verify_ssl: bool | None = None,
+        requests_per_second: float | None = None,
     ) -> requests.Session:
         """Load cookies from Netscape format cookies.txt file.
 
         Args:
             cookies_file: Path to cookies.txt file
             verify_ssl: SSL verification setting (None = use Config default)
+            requests_per_second: Request rate for the session (None = the configured rate)
 
         Returns:
             requests.Session with cookies loaded and SSL verification configured
@@ -233,7 +239,7 @@ Workarounds:
             FileNotFoundError: If cookies file doesn't exist
             Exception: If cookie loading fails
         """
-        session = requests.Session()
+        session = new_workbench_session(requests_per_second)
 
         # Configure SSL verification globally for this session
         if verify_ssl is None:
@@ -268,7 +274,7 @@ Workarounds:
         Returns:
             requests.Session with cookies loaded and SSL verification configured
         """
-        session = requests.Session()
+        session = new_workbench_session()
 
         # Configure SSL verification globally for this session
         session.verify = Config.get_verify_ssl()
@@ -319,7 +325,7 @@ Workarounds:
         Returns:
             Path to session.cookies file in user's config directory
         """
-        return Config.get_data_dir() / "session.cookies"
+        return Config.get_session_file_path()
 
     @staticmethod
     def save_session(session: requests.Session) -> None:
@@ -351,11 +357,14 @@ Workarounds:
             raise Exception(f"Failed to save session: {e}") from e
 
     @staticmethod
-    def load_saved_session(verify_ssl: bool | None = None) -> requests.Session | None:
+    def load_saved_session(
+        verify_ssl: bool | None = None, requests_per_second: float | None = None
+    ) -> requests.Session | None:
         """Load previously saved session from persistent storage.
 
         Args:
             verify_ssl: SSL verification setting (None = use Config default)
+            requests_per_second: Request rate for the session (None = the configured rate)
 
         Returns:
             requests.Session with loaded cookies, or None if no saved session
@@ -376,7 +385,9 @@ Workarounds:
         try:
             logger.debug(f"Loading saved session from {session_path}")
             return AuthManager.load_cookies_from_file(
-                str(session_path), verify_ssl=effective_verify_ssl
+                str(session_path),
+                verify_ssl=effective_verify_ssl,
+                requests_per_second=requests_per_second,
             )
 
         except Exception as e:
@@ -426,13 +437,13 @@ Workarounds:
 
         effective_verify_ssl = Config.get_verify_ssl() if verify_ssl is None else verify_ssl
         workbench_host = AuthManager._workbench_host()
-        benchmarks_url = AuthManager._workbench_benchmarks_url()
+        benchmarks_url = catalog_listing_url()
         trusted_hosts = AuthManager._trusted_auth_hosts()
 
         try:
             current_url = benchmarks_url
 
-            for _ in range(AuthManager.MAX_SSO_REDIRECTS + 1):
+            for _ in range(Config.MAX_SSO_REDIRECTS + 1):
                 response = session.get(
                     current_url,
                     timeout=10,
@@ -513,7 +524,10 @@ Workarounds:
 
     @staticmethod
     def get_or_create_session(
-        browser: str | None = None, force_refresh: bool = False, verify_ssl: bool | None = None
+        browser: str | None = None,
+        force_refresh: bool = False,
+        verify_ssl: bool | None = None,
+        requests_per_second: float | None = None,
     ) -> requests.Session:
         """Get authenticated session, using saved session if available.
 
@@ -524,6 +538,8 @@ Workarounds:
             browser: Browser to extract cookies from if needed
             force_refresh: Force refresh from browser even if saved session exists
             verify_ssl: SSL verification setting (None = use Config default)
+            requests_per_second: Request rate for the session, from the session check on
+                (None = the configured rate)
 
         Returns:
             Authenticated requests.Session
@@ -539,7 +555,9 @@ Workarounds:
         # If force refresh, skip saved session
         if not force_refresh:
             # Try to load saved session
-            saved_session = AuthManager.load_saved_session(verify_ssl=effective_verify_ssl)
+            saved_session = AuthManager.load_saved_session(
+                verify_ssl=effective_verify_ssl, requests_per_second=requests_per_second
+            )
 
             if saved_session:
                 # Validate the saved session
@@ -559,7 +577,9 @@ Workarounds:
 
         # Extract fresh cookies from browser
         logger.debug(f"Authenticating via {browser}")
-        session = AuthManager.load_cookies_from_browser(browser, verify_ssl=effective_verify_ssl)
+        session = AuthManager.load_cookies_from_browser(
+            browser, verify_ssl=effective_verify_ssl, requests_per_second=requests_per_second
+        )
 
         # Validate new session
         if not AuthManager.validate_session(session, verify_ssl=effective_verify_ssl):

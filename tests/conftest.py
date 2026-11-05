@@ -21,6 +21,7 @@ import threading
 from dataclasses import dataclass
 from http import HTTPStatus
 from http.client import HTTPMessage
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -302,6 +303,60 @@ def load_test_benchmark(file_path: Path) -> Benchmark:
 # ============================================================================
 # HTTP stub transport
 # ============================================================================
+
+
+@pytest.fixture
+def small_catalog(tmp_path):
+    """A real catalog database file with five Published 'CIS Sample Benchmark' entries."""
+    from cis_bench.catalog.database import CatalogDatabase
+
+    path = tmp_path / "catalog.db"
+    db = CatalogDatabase(path)
+    try:
+        db.initialize_schema()
+        for n in range(1, 6):
+            db.insert_benchmark(
+                {
+                    "benchmark_id": str(600 + n),
+                    "title": f"CIS Sample Benchmark {n}",
+                    "version": "v1.0.0",
+                    "url": f"https://workbench.cisecurity.org/benchmarks/{600 + n}",
+                    "status": "Published",
+                }
+            )
+        db.mark_latest_versions()  # as a catalog refresh does
+    finally:
+        db.engine.dispose()
+    return path
+
+
+class LocalHTTPServer:
+    """A real HTTP server on 127.0.0.1, for tests that need requests' whole transport.
+
+    Unlike stub_session, requests sent here go through the session's mounted adapter, so
+    urllib3 retries, the rate limiter, timeouts and cookie handling all run for real.
+    ``respond(handler)`` answers each GET on a server thread; use it as a context manager.
+    """
+
+    def __init__(self, respond):
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                respond(self)
+
+            def log_message(self, *args):
+                pass
+
+        self._httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.base_url = f"http://127.0.0.1:{self._httpd.server_port}"
+        self._thread = threading.Thread(target=self._httpd.serve_forever, daemon=True)
+
+    def __enter__(self):
+        self._thread.start()
+        return self
+
+    def __exit__(self, *exc):
+        self._httpd.shutdown()
+        self._httpd.server_close()
 
 
 @dataclass

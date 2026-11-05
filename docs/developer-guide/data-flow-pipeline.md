@@ -910,11 +910,11 @@ SUPPORTED_STYLES = {
 
 ### Parallel Processing
 
-Catalog refresh and benchmark download both use the paced batches in `utils/parallel.py`:
+Catalog refresh and benchmark download both fetch in batches with `utils/parallel.py`, and every request goes through the session's adapter from `fetcher/http.py`:
 
-- 10 pages per batch
-- 5 concurrent threads
-- 2-second pause between batches
+- 10 pages per batch, 5 concurrent threads (`Config.WORKBENCH_BATCH_SIZE`, `Config.WORKBENCH_MAX_CONCURRENT_REQUESTS`)
+- At most 3 requests per second per WorkBench host (`Config.WORKBENCH_REQUESTS_PER_SECOND`), enforced by requests-ratelimiter across all threads
+- Retries by urllib3's `Retry` (`Config.REQUEST_RETRIES`, `RETRYABLE_STATUS_CODES`, backoff, jitter, `Retry-After` cap)
 - Full catalog (about 80 pages): under a minute; one benchmark's recommendation pages (for example 322): about two minutes
 
 ---

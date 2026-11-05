@@ -105,3 +105,35 @@ def resolve_benchmark_reference(reference: str) -> tuple[str, str]:
     if cleaned.isascii() and cleaned.isdigit():
         return normalize_benchmark_url(f"/benchmarks/{cleaned}")
     return normalize_benchmark_url(cleaned)
+
+
+def _workbench_id(value: object, what: str) -> str:
+    """Return value as a WorkBench numeric id, or raise ValueError.
+
+    Ids come from user input and from WorkBench's own JSON; either way they go into a URL
+    path, so only ASCII digits are accepted (no separators, dot segments or whitespace).
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, str)):
+        raise ValueError(f"Invalid {what}: {value!r} is not a numeric WorkBench id")
+    text = str(value)
+    if not (text.isascii() and text.isdigit()):
+        raise ValueError(f"Invalid {what}: {value!r} is not a numeric WorkBench id")
+    return text
+
+
+def catalog_listing_url() -> str:
+    """The catalog listing page on the configured WorkBench origin."""
+    return f"{Config.get_workbench_base_url()}/benchmarks"
+
+
+def navtree_url(benchmark_id: object) -> str:
+    """The navigation-tree API for one benchmark."""
+    benchmark = _workbench_id(benchmark_id, "benchmark id")
+    return f"{Config.get_workbench_base_url()}/api/v1/benchmarks/{benchmark}/navtree"
+
+
+def recommendation_url(section_id: object, recommendation_id: object) -> str:
+    """One recommendation's page, from the section and recommendation ids in the navtree."""
+    section = _workbench_id(section_id, "section id")
+    recommendation = _workbench_id(recommendation_id, "recommendation id")
+    return f"{Config.get_workbench_base_url()}/sections/{section}/recommendations/{recommendation}"

@@ -111,9 +111,11 @@ J --> L[Recommendation]
 **Components:**
 
 - `WorkbenchScraper` - Main scraper class
-- `AuthManager` - Cookie extraction
-- `fetcher/http.py` - `ThreadSessions` (per-thread copies of the logged-in session) and `get_with_retry` (timeout and bounded retry), shared with the catalog scraper
-- `utils/parallel.py` - `parallel_execute_batched` runs the recommendation fetches: five workers, batches of ten, two seconds between batches, results returned in input (navtree) order, and `stop_on` to end the run after a batch that hit an expired session; `iter_batches` yields each batch to the caller before the next one starts
+- `AuthManager` - Cookie extraction; `get_or_create_session(requests_per_second=...)` creates the session at that rate, so the session check is paced too (`catalog refresh --rate-limit` uses it)
+- `fetcher/http.py` - the request mechanism: `new_workbench_session` (every WorkBench session; mounts one requests-ratelimiter `LimiterAdapter` carrying a urllib3 `Retry` subclass at the configured or given rate, and sets the User-Agent), `ThreadSessions` (per-thread copies that share that adapter, so one limiter covers all threads) and `get_with_retry` (timeout; turns a failure left after the retries into `FetchError`)
+- `config.py` - the request policy values the mechanism reads: requests per second, concurrency, batch size, retries, retryable statuses, backoff, jitter, `Retry-After` cap, User-Agent, SSO hosts
+- `utils/workbench_urls.py` - every WorkBench URL (benchmark page, catalog listing, navtree, recommendation page), on the configured origin with numeric ids only
+- `utils/parallel.py` - `parallel_execute_batched` runs the recommendation fetches in batches with the given worker count and batch size, results returned in input (navtree) order, and `stop_on` to end the run after a batch that hit an expired session; `iter_batches` yields each batch to the caller before the next one starts. It does no pacing.
 - `Strategy Pattern` - Adapts to HTML changes
 - `HTMLParser` - Extract data from HTML
 
@@ -239,7 +241,7 @@ M --> H
 - `downloaded_benchmarks` - Cached content
 - `scrape_metadata` - Tracking
 
-**Refresh fetch:** `CatalogScraper.scrape_full_catalog` fetches page 1 on the calling thread, then pages 2..N through `utils/parallel.py` `iter_batches` with the shared pacing. Each batch is yielded back to the calling thread, which writes it to SQLite (one writer), updates the progress count and checks the >10% failure threshold before the next batch starts; a login page ends the run after its batch. Requests go through `fetcher/http.py` (`ThreadSessions` per-thread session copies, `get_with_retry` timeout and retry), the same plumbing `WorkbenchScraper` uses.
+**Refresh fetch:** `CatalogScraper.scrape_full_catalog` fetches page 1 on the calling thread, then pages 2..N through `utils/parallel.py` `iter_batches`. Each batch is yielded back to the calling thread, which writes it to SQLite (one writer), updates the progress count and checks the >10% failure threshold before the next batch starts; a login page ends the run after its batch. Requests go through the session's adapter from `fetcher/http.py` (rate limit and retries) and `get_with_retry` (timeout), the same plumbing `WorkbenchScraper` uses.
 
 **FTS5 Search:**
 
@@ -302,7 +304,7 @@ CatalogScraper->>Parser: parse_catalog_page()
 Parser-->>CatalogScraper: List[benchmark_data]
 CatalogScraper->>Database: insert_benchmark()
 Database->>SQLite: INSERT + FTS5 update
-Note over CatalogScraper,SQLite: Remaining pages in paced batches of 10, saved after each batch
+Note over CatalogScraper,SQLite: Remaining pages in batches of 10 at most 3 requests/s, saved after each batch
 CatalogScraper-->>CLI: Stats
 
 User->>CLI: cis-bench catalog search "ubuntu"
@@ -439,7 +441,7 @@ src/cis_bench/
 │ └── commands/ # Command modules
 ├── fetcher/ # WorkBench scraper
 │ ├── workbench.py # Main scraper
-│ ├── http.py # Per-thread sessions, request timeout and retry
+│ ├── http.py # WorkBench sessions: rate limit, retries, per-thread copies
 │ ├── auth.py # Authentication
 │ └── strategies/ # HTML strategies
 ├── exporters/ # Format exporters

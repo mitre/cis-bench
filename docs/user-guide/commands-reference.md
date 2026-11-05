@@ -74,7 +74,7 @@ cis-bench auth login --browser chrome --no-verify-ssl
 1. Optionally opens browser to CIS WorkBench
 2. Extracts session cookies from your browser (or loads from file)
 3. Validates the session
-4. Saves to `~/.cis-bench/session.json`
+4. Saves to `~/.cis-bench/session.cookies`
 5. All future commands use this saved session
 
 !!! tip "Windows Users"
@@ -163,7 +163,7 @@ cis-bench search [QUERY] [OPTIONS]
 - `--platform-type` - Filter by category (cloud, os, database, container, application)
 - `--status` - Filter by status (`Published`, `Accepted`, `Draft`, `Archived`, `Rejected`, `Final Update`, or `all`) - default: `Published`
 - `--latest` - Show only latest version of each benchmark
-- `--limit` - Maximum results to show (default: 1000)
+- `--limit` - Maximum results to show (default: `CIS_BENCH_SEARCH_LIMIT`, 100). When the limit cuts the list short, the output says how many matched: `Showing 100 of 349 results; use --limit to see more`
 
 **Output Options:**
 
@@ -327,9 +327,10 @@ cis-bench download --file urls.txt
 
 **How recommendations are fetched:**
 
-- Recommendation pages are fetched five at a time, in batches of ten, with a two-second pause between batches. This is the same pacing `cis-bench catalog refresh` uses.
+- Recommendation pages are fetched five at a time, in batches of ten, and never more than 3 requests per second to WorkBench (322 recommendations took about two minutes on 2026-11-04). `cis-bench catalog refresh` uses the same limit.
 - The progress bar counts finished pages, so it can advance out of navtree order; the saved benchmark keeps navtree order.
 - Each request has a timeout and up to three attempts (see [`CIS_BENCH_REQUEST_TIMEOUT`](configuration.md#cis_bench_request_timeout)). A page that still fails is logged with its URL and the error, and the download continues without it.
+- Every request identifies itself with the User-Agent `cis-bench-cli/<version> (github.com/mitre/cis-bench)`.
 - If WorkBench answers with its login page, the saved session has expired: no further batch starts and the download stops with an authentication error. Run `cis-bench auth login` again.
 
 **Exit code:** `0` when every requested benchmark downloaded and exported. `1` when any benchmark or export failed (the others are still downloaded and the summary names the failed IDs), or when the session expired (the run stops at once and later benchmarks are not attempted). `cis-bench get` exits `1` with the same login message when the session expires during its download.
@@ -534,7 +535,7 @@ cis-bench catalog refresh [OPTIONS]
 
 - `--browser TEXT` - Browser for auth (default: chrome)
 - `--max-pages INTEGER` - Limit pages to scrape (for testing)
-- `--rate-limit FLOAT` - Seconds between batches (default: 2.0)
+- `--rate-limit SECONDS` - Seconds between requests to WorkBench for this run, greater than 0 (default: 0.33, that is 3 requests per second)
 
 **Examples:**
 ```bash
@@ -544,13 +545,13 @@ cis-bench catalog refresh
 # Test with limited pages
 cis-bench catalog refresh --max-pages 5
 
-# Faster scraping (less polite)
+# Gentler: one request per second
 cis-bench catalog refresh --rate-limit 1.0
 ```
 
 **What it does:**
 1. Authenticates with WorkBench
-2. Scrapes catalog pages in parallel (10 pages/batch, 5 threads)
+2. Scrapes catalog pages in parallel (10 pages/batch, 5 at a time, at most 3 requests per second)
 3. Detects the page count from page 1 (about 80 pages)
 4. Builds searchable database with about 1,500 benchmarks
 5. Creates FTS5 full-text search index
@@ -558,9 +559,9 @@ cis-bench catalog refresh --rate-limit 1.0
 
 **Performance:**
 
-- Parallel: 10 pages per batch, 5 at a time, `--rate-limit` seconds between batches (the same pacing `cis-bench download` uses for recommendation pages)
+- Parallel: 10 pages per batch, 5 at a time, at most 3 requests per second (or one per `--rate-limit` seconds); `cis-bench download` uses the same limit
 - Sessions: each worker thread uses its own copy of your saved session; nothing logs in again
-- Retry logic: the timeout from [`CIS_BENCH_REQUEST_TIMEOUT`](configuration.md#cis_bench_request_timeout) and up to 3 attempts on timeouts, dropped connections and 502/503/504; a 404 or a page that cannot be parsed is not retried
+- Retry logic: the timeout from [`CIS_BENCH_REQUEST_TIMEOUT`](configuration.md#cis_bench_request_timeout) and up to 3 attempts on timeouts, dropped connections and 429/502/503/504, honoring WorkBench's `Retry-After` up to 60 seconds; a 404 or a page that cannot be parsed is not retried
 - Failure threshold: Aborts if >10% fail
 - Expired session: a login page stops the refresh after the batch that saw it
 
@@ -713,7 +714,7 @@ xargs -I {} cis-bench download {}
 **Display:**
 
 - `CIS_BENCH_TABLE_TITLE_WIDTH` - Widest the Title column of the `search` and `get` tables grows (default: 90). In a narrower terminal the title wraps first, so ID, Version and Status stay whole.
-- `CIS_BENCH_SEARCH_LIMIT` - Default search limit (default: 1000)
+- `CIS_BENCH_SEARCH_LIMIT` - Most results `search`, `catalog search`, `catalog list` and `get` show (default: 100); a cut-off list says how many matched
 
 **Environment:**
 

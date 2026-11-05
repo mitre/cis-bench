@@ -1,29 +1,105 @@
-"""HTTP plumbing shared by every WorkBench scraper.
+"""HTTP plumbing shared by every WorkBench request.
 
-Two pieces: per-thread copies of the logged-in session, and a GET with a timeout and a bounded
-retry. Both scrapers (benchmark download and catalog refresh) use them, so the session
-arrangement and the request policy exist in one place.
+Retries and pacing come from established libraries instead of hand-written loops and sleeps:
+urllib3's Retry (exponential backoff with jitter, Retry-After) and requests-ratelimiter's
+per-host limiter, both on one adapter that new_workbench_session mounts. Per-thread copies of
+a session share that adapter, so one limiter covers every worker thread. The policy values
+(rate, retries, statuses, backoff, User-Agent) live in cis_bench.config.Config and are read
+when a session is built, never copied here.
 """
 
 import copy
 import logging
 import threading
-import time
 from collections import OrderedDict
-from collections.abc import Mapping
 
 import requests
 from requests.structures import CaseInsensitiveDict
+from requests_ratelimiter import LimiterAdapter
+from urllib3.util.retry import Retry
 
+from cis_bench.config import Config
 from cis_bench.exceptions import FetchError
 
 logger = logging.getLogger(__name__)
 
-# Pause before each retry, in seconds; one more attempt than there are pauses.
-RETRY_BACKOFF_SECONDS = (1, 2)
-MAX_ATTEMPTS = len(RETRY_BACKOFF_SECONDS) + 1
-# Server-side conditions worth retrying; every other HTTP status is final.
-RETRYABLE_STATUS_CODES = frozenset({502, 503, 504})
+
+def _max_attempts() -> int:
+    return Config.REQUEST_RETRIES + 1
+
+
+class WorkBenchRetry(Retry):
+    """urllib3 Retry that logs each retry and caps the server's Retry-After.
+
+    One WARNING per retry names the URL, the attempt and the wait about to be slept. The wait
+    is computed once per attempt and cached, so the logged figure is the one urllib3 sleeps.
+    """
+
+    _backoff_time: float | None = None
+
+    def get_backoff_time(self) -> float:
+        if self._backoff_time is None:
+            self._backoff_time = super().get_backoff_time()
+        return self._backoff_time
+
+    def get_retry_after(self, response):
+        seconds = super().get_retry_after(response)
+        return None if seconds is None else min(seconds, Config.RETRY_AFTER_MAX_SECONDS)
+
+    def increment(
+        self, method=None, url=None, response=None, error=None, _pool=None, _stacktrace=None
+    ):
+        retry = super().increment(method, url, response, error, _pool, _stacktrace)
+        retry_after = (
+            retry.get_retry_after(response)
+            if retry.respect_retry_after_header and response is not None
+            else None
+        )
+        wait = retry_after if retry_after else retry.get_backoff_time()
+        where = f"{_pool.scheme}://{_pool.host}:{_pool.port}{url}" if _pool is not None else url
+        cause = error if error is not None else f"HTTP {response.status}"
+        logger.warning(
+            f"Request failed (attempt {len(retry.history)}/{_max_attempts()}), "
+            f"retrying in {wait:.1f}s: {where}: {cause}"
+        )
+        return retry
+
+
+def workbench_retry() -> WorkBenchRetry:
+    """The retry policy for WorkBench GETs: connect, read and 429/502/503/504 failures."""
+    return WorkBenchRetry(
+        total=Config.REQUEST_RETRIES,
+        status_forcelist=Config.RETRYABLE_STATUS_CODES,
+        allowed_methods=frozenset({"GET", "HEAD"}),
+        backoff_factor=Config.RETRY_BACKOFF_FACTOR,
+        backoff_jitter=Config.RETRY_JITTER_SECONDS,
+        respect_retry_after_header=True,
+        raise_on_status=False,
+    )
+
+
+def mount_workbench_adapter(
+    session: requests.Session, requests_per_second: float | None = None
+) -> None:
+    """Mount the WorkBench adapter (rate limit per host, then retries) on session.
+
+    requests_per_second defaults to Config.WORKBENCH_REQUESTS_PER_SECOND.
+    """
+    rate = (
+        Config.WORKBENCH_REQUESTS_PER_SECOND if requests_per_second is None else requests_per_second
+    )
+    adapter = LimiterAdapter(per_second=rate, burst=1, per_host=True, max_retries=workbench_retry())
+    for prefix in ("https://", "http://"):
+        session.mount(prefix, adapter)
+
+
+def new_workbench_session(requests_per_second: float | None = None) -> requests.Session:
+    """A requests.Session for WorkBench: the shared rate limit and retry policy mounted, and the
+    cis-bench User-Agent on every request."""
+    session = requests.Session()
+    session.headers["User-Agent"] = Config.USER_AGENT
+    mount_workbench_adapter(session, requests_per_second)
+    return session
 
 
 def session_for_worker(base: requests.Session) -> requests.Session:
@@ -82,39 +158,23 @@ def get_with_retry(
     url: str,
     *,
     timeout: tuple[float, float],
-    headers: Mapping[str, str] | None = None,
 ) -> requests.Response:
-    """GET url with a timeout and a bounded retry.
+    """GET url through the session's WorkBench adapter, which paces and retries it.
 
-    Timeouts, connection errors and 502/503/504 responses are retried after 1 s and then 2 s;
-    any other HTTP error is raised at once. When the last attempt still fails, FetchError names
-    the url so the caller can skip or report the item instead of hanging on it.
+    Retries happen inside the adapter (see workbench_retry). When they are used up, a timeout,
+    a connection failure or a still-retryable status becomes FetchError naming the url, so the
+    caller can skip or report the item instead of hanging on it; any other HTTP error is raised
+    as it is.
 
     Raises:
         FetchError: After the final failed attempt.
         requests.HTTPError: For a non-retryable HTTP status.
     """
-    for attempt in range(1, MAX_ATTEMPTS + 1):
-        try:
-            if headers is None:
-                response = session.get(url, timeout=timeout)
-            else:
-                response = session.get(url, headers=headers, timeout=timeout)
-            response.raise_for_status()
-            return response
-        except requests.HTTPError as e:
-            status = e.response.status_code if e.response is not None else None
-            if status not in RETRYABLE_STATUS_CODES:
-                raise
-            failure: requests.RequestException = e
-        except (requests.Timeout, requests.ConnectionError) as e:
-            failure = e
-
-        if attempt == MAX_ATTEMPTS:
-            raise FetchError(url, attempt, str(failure)) from failure
-        wait = RETRY_BACKOFF_SECONDS[attempt - 1]
-        logger.warning(
-            f"Request failed (attempt {attempt}/{MAX_ATTEMPTS}), retrying in {wait}s: {url}: {failure}"
-        )
-        time.sleep(wait)
-    raise AssertionError("unreachable: every attempt returns or raises")
+    try:
+        response = session.get(url, timeout=timeout)
+    except (requests.Timeout, requests.ConnectionError) as e:
+        raise FetchError(url, _max_attempts(), str(e)) from e
+    if response.status_code in Config.RETRYABLE_STATUS_CODES:
+        raise FetchError(url, _max_attempts(), f"HTTP {response.status_code}")
+    response.raise_for_status()
+    return response

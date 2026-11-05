@@ -4,21 +4,19 @@ Scrapes benchmark listing pages and populates the catalog database.
 """
 
 import logging
-import time
 
 import requests
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeRemainingColumn
 from sqlalchemy.exc import IntegrityError, OperationalError
 
-from cis_bench import __version__
 from cis_bench.catalog.database import CatalogDatabase
 from cis_bench.catalog.parser import WorkBenchCatalogParser
 from cis_bench.config import Config
 from cis_bench.exceptions import AuthenticationError, FetchError
 from cis_bench.fetcher.auth import is_workbench_login_page
 from cis_bench.fetcher.http import ThreadSessions, get_with_retry
-from cis_bench.utils.parallel import DEFAULT_BATCH_DELAY_SECONDS, check_batch_delay, iter_batches
-from cis_bench.utils.workbench_urls import resolve_benchmark_reference
+from cis_bench.utils.parallel import iter_batches
+from cis_bench.utils.workbench_urls import catalog_listing_url, resolve_benchmark_reference
 
 logger = logging.getLogger(__name__)
 
@@ -26,12 +24,10 @@ logger = logging.getLogger(__name__)
 class CatalogScraper:
     """Scrape CIS WorkBench catalog and populate database.
 
-    Listing pages after the first are fetched from worker threads through the shared paced
-    batches; each worker thread uses its own copy of the session, and every request goes
-    through the shared timeout and retry policy. Database writes stay on the calling thread.
+    Listing pages after the first are fetched from worker threads in batches; each worker
+    thread uses its own copy of the session, whose adapter paces and retries every request
+    (see cis_bench.fetcher.http). Database writes stay on the calling thread.
     """
-
-    _HEADERS = {"User-Agent": f"cis-bench-cli/{__version__} (github.com/mitre/cis-bench)"}
 
     _CATALOG_COMPARISON_FIELDS = (
         "title",
@@ -59,13 +55,11 @@ class CatalogScraper:
     def scrape_full_catalog(
         self,
         max_pages: int | None = None,
-        rate_limit_seconds: float = DEFAULT_BATCH_DELAY_SECONDS,
     ) -> dict:
         """Scrape all catalog pages from CIS WorkBench.
 
         Args:
             max_pages: Maximum pages to scrape (None = all pages)
-            rate_limit_seconds: Pause between batches of pages (default: 2 seconds)
 
         Returns:
             Dictionary with scrape statistics
@@ -75,11 +69,7 @@ class CatalogScraper:
             stats = scraper.scrape_full_catalog(max_pages=5)
             print(f"Scraped {stats['total_benchmarks']} benchmarks")
         """
-        # Refuse a bad pause before any request is sent or anything is written.
-        check_batch_delay(rate_limit_seconds, "rate_limit_seconds")
-        logger.info(
-            f"Starting full catalog scrape (max_pages={max_pages}, rate_limit={rate_limit_seconds}s)"
-        )
+        logger.info(f"Starting full catalog scrape (max_pages={max_pages})")
 
         # Detect total pages by scraping page 1 first
         first_page_html = self._fetch_page(1)
@@ -121,7 +111,7 @@ class CatalogScraper:
             )
             progress.update(task, advance=1)  # First page done
 
-            # Scrape remaining pages in paced batches; each batch is saved here, on the calling
+            # Scrape remaining pages in batches; each batch is saved here, on the calling
             # thread, before the next one starts.
             def fetch_page(page_num: int) -> tuple[int, list[dict]]:
                 return page_num, self._fetch_and_parse_page(page_num)
@@ -133,7 +123,8 @@ class CatalogScraper:
             for batch in iter_batches(
                 range(2, total_pages + 1),
                 fetch_page,
-                batch_delay=rate_limit_seconds,
+                batch_size=Config.WORKBENCH_BATCH_SIZE,
+                max_workers=Config.WORKBENCH_MAX_CONCURRENT_REQUESTS,
                 progress_callback=page_finished,
             ):
                 for _, error in batch.failed:
@@ -199,20 +190,13 @@ class CatalogScraper:
 
         return stats
 
-    def scrape_page_one_update(
-        self, rate_limit_seconds: float = DEFAULT_BATCH_DELAY_SECONDS
-    ) -> dict:
+    def scrape_page_one_update(self) -> dict:
         """Quick update by scraping only page 1 (newest benchmarks).
-
-        Args:
-            rate_limit_seconds: Delay before request
 
         Returns:
             Dictionary with new_count and updated_count
         """
         logger.info("Starting quick catalog update (page 1 only)")
-
-        time.sleep(rate_limit_seconds)
 
         html = self._fetch_page(1)
         benchmarks = WorkBenchCatalogParser.parse_catalog_page(html)
@@ -315,9 +299,7 @@ class CatalogScraper:
             )
         return inserted_count
 
-    def refresh_downloaded_revision_dates(
-        self, rate_limit_seconds: float = DEFAULT_BATCH_DELAY_SECONDS
-    ) -> int:
+    def refresh_downloaded_revision_dates(self) -> int:
         """Fetch each downloaded benchmark's detail page and record its publication date.
 
         Only downloaded benchmarks are visited (a handful of requests, never the
@@ -337,9 +319,7 @@ class CatalogScraper:
                 )
                 continue
             logger.debug(f"Fetching detail page for downloaded benchmark {benchmark_id}: {url}")
-            response = get_with_retry(
-                self._sessions.current(), url, timeout=self.timeout, headers=self._HEADERS
-            )
+            response = get_with_retry(self._sessions.current(), url, timeout=self.timeout)
             if is_workbench_login_page(response.text):
                 raise AuthenticationError(
                     "WorkBench returned the login page; the saved session has expired"
@@ -351,12 +331,7 @@ class CatalogScraper:
                 refreshed += 1
             else:
                 logger.debug(f"No publication date found on detail page for {benchmark_id}")
-            time.sleep(rate_limit_seconds)
         return refreshed
-
-    def _benchmarks_url(self) -> str:
-        """Resolve configured CIS WorkBench catalog listing URL."""
-        return f"{Config.get_workbench_base_url()}/benchmarks"
 
     def _fetch_page(self, page_num: int) -> str:
         """Fetch single catalog page.
@@ -371,13 +346,11 @@ class CatalogScraper:
             FetchError: If the request still fails after every retry
             requests.HTTPError: For a non-retryable HTTP status
         """
-        url = f"{self._benchmarks_url()}?page={page_num}"
+        url = f"{catalog_listing_url()}?page={page_num}"
 
         logger.debug(f"Fetching page {page_num}: {url}")
 
-        response = get_with_retry(
-            self._sessions.current(), url, timeout=self.timeout, headers=self._HEADERS
-        )
+        response = get_with_retry(self._sessions.current(), url, timeout=self.timeout)
 
         logger.debug(f"Fetched {len(response.text)} bytes from page {page_num}")
 

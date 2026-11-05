@@ -2,7 +2,13 @@
 
 import pytest
 
-from cis_bench.utils.workbench_urls import normalize_benchmark_url, resolve_benchmark_reference
+from cis_bench.utils.workbench_urls import (
+    catalog_listing_url,
+    navtree_url,
+    normalize_benchmark_url,
+    recommendation_url,
+    resolve_benchmark_reference,
+)
 
 BASE = "https://workbench.cisecurity.org"
 
@@ -109,3 +115,35 @@ class TestConfigurationErrorsAreDistinct:
         monkeypatch.setenv("CIS_BENCH_WORKBENCH_URL", "http://evil.example")
         with pytest.raises(ConfigurationError, match="CIS_BENCH_WORKBENCH_URL"):
             resolve_benchmark_reference("23598")
+
+
+STAGING = "https://workbench-staging.cisecurity.org"
+
+
+class TestWorkBenchPageUrls:
+    """Every WorkBench page cis-bench fetches is built here, on the configured origin."""
+
+    def test_catalog_listing_url_is_on_the_configured_origin(self, monkeypatch):
+        monkeypatch.setenv("CIS_BENCH_WORKBENCH_URL", STAGING)
+
+        assert catalog_listing_url() == f"{STAGING}/benchmarks"
+
+    def test_navtree_url_names_the_benchmark(self, monkeypatch):
+        monkeypatch.setenv("CIS_BENCH_WORKBENCH_URL", STAGING)
+
+        assert navtree_url(23598) == f"{STAGING}/api/v1/benchmarks/23598/navtree"
+        assert navtree_url("23598") == f"{STAGING}/api/v1/benchmarks/23598/navtree"
+
+    def test_recommendation_url_names_the_section_and_recommendation(self, monkeypatch):
+        monkeypatch.setenv("CIS_BENCH_WORKBENCH_URL", STAGING)
+
+        assert recommendation_url(4567, 374956) == f"{STAGING}/sections/4567/recommendations/374956"
+
+    @pytest.mark.parametrize("bad", ["1/../2", "abc", "", " 1", "١٢", -1, None, 1.5])
+    def test_page_urls_refuse_ids_that_are_not_ascii_digits(self, bad):
+        with pytest.raises(ValueError):
+            navtree_url(bad)
+        with pytest.raises(ValueError):
+            recommendation_url(bad, 1)
+        with pytest.raises(ValueError):
+            recommendation_url(1, bad)

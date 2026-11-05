@@ -72,7 +72,7 @@ class TestMultiPageScraping:
         scraper = CatalogScraper(temp_db, session)
 
         # Scrape multiple pages - should complete successfully
-        stats = scraper.scrape_full_catalog(max_pages=5, rate_limit_seconds=0)
+        stats = scraper.scrape_full_catalog(max_pages=5)
 
         # Behavior: completes scraping
         assert "pages_scraped" in stats
@@ -87,7 +87,7 @@ class TestMultiPageScraping:
         scraper = CatalogScraper(temp_db, session)
 
         # Behavior: handles large number of pages without crashing
-        stats = scraper.scrape_full_catalog(max_pages=20, rate_limit_seconds=0)
+        stats = scraper.scrape_full_catalog(max_pages=20)
 
         assert stats["pages_scraped"] > 0
         assert "failed_pages" in stats
@@ -105,9 +105,6 @@ class TestFailureThreshold:
         self, temp_db, sample_html, monkeypatch, stub_session
     ):
         """Scraping aborts when >10% of pages fail."""
-        import cis_bench.catalog.scraper as scraper_module
-
-        monkeypatch.setattr(scraper_module.time, "sleep", lambda _secs: None)
 
         def handler(url):
             page_num = _page_number(url)
@@ -122,46 +119,10 @@ class TestFailureThreshold:
 
         # Should abort due to high failure rate
         with pytest.raises(Exception) as exc_info:
-            scraper.scrape_full_catalog(max_pages=20, rate_limit_seconds=0)
+            scraper.scrape_full_catalog(max_pages=20)
 
         assert "Scraping aborted" in str(exc_info.value)
         assert "pages failed" in str(exc_info.value)
-
-    def test_scraping_handles_transient_failures_with_retry(
-        self, temp_db, sample_html, monkeypatch, stub_session
-    ):
-        """Scraping handles transient failures via retry logic."""
-        import cis_bench.catalog.scraper as scraper_module
-
-        monkeypatch.setattr(scraper_module.time, "sleep", lambda _secs: None)
-        attempts: dict[int, int] = {}
-        lock = threading.Lock()
-
-        def handler(url):
-            page_num = _page_number(url)
-            with lock:
-                attempts[page_num] = attempts.get(page_num, 0) + 1
-                first_attempt = attempts[page_num] == 1
-            # Every fifth page drops its connection once, then answers on the retry.
-            if page_num % 5 == 0 and first_attempt:
-                raise requests.ConnectionError(f"Transient error on page {page_num}")
-            return sample_html
-
-        session, _ = stub_session(handler)
-
-        scraper = CatalogScraper(temp_db, session)
-
-        stats = scraper.scrape_full_catalog(max_pages=10, rate_limit_seconds=0)
-
-        # Retry fixes transient failures: every page was fetched, none counted failed
-        assert stats["pages_scraped"] == 10
-        assert stats["failed_pages"] == []
-        assert attempts[5] == 2 and attempts[10] == 2
-
-
-# ============================================================================
-# Tests: Scraping Behavior
-# ============================================================================
 
 
 class TestScrapingBehavior:
@@ -174,7 +135,7 @@ class TestScrapingBehavior:
         scraper = CatalogScraper(temp_db, session)
 
         # Behavior: respects the max_pages parameter
-        stats = scraper.scrape_full_catalog(max_pages=10, rate_limit_seconds=0)
+        stats = scraper.scrape_full_catalog(max_pages=10)
 
         # Should not exceed requested pages
         assert stats["pages_scraped"] <= 10
@@ -186,7 +147,7 @@ class TestScrapingBehavior:
 
         scraper = CatalogScraper(temp_db, session)
 
-        stats = scraper.scrape_full_catalog(max_pages=5, rate_limit_seconds=0)
+        stats = scraper.scrape_full_catalog(max_pages=5)
 
         # Behavior: returns complete statistics
         assert "pages_scraped" in stats
@@ -269,8 +230,7 @@ class TestCatalogRefreshSharedFetch:
         self._logged_in(session)
         scraper = CatalogScraper(temp_db, session)
 
-        with patch("cis_bench.utils.parallel.time"):
-            stats = scraper.scrape_full_catalog(max_pages=self.PAGES)
+        stats = scraper.scrape_full_catalog(max_pages=self.PAGES)
 
         assert stats["failed_pages"] == []
         assert sorted(_page_number(u) for u in transport.urls) == list(range(1, self.PAGES + 1))
@@ -281,16 +241,6 @@ class TestCatalogRefreshSharedFetch:
         # Page one ran on the caller's session; the 24 worker responses rotated only the
         # workers' own copies.
         assert session.cookies.get("workbench_session") == "rotated-1"
-
-    def test_refresh_paces_batches_with_the_shared_utility(self, temp_db, stub_session):
-        session, _ = stub_session(self._rotating_pages(delay=0))
-        scraper = CatalogScraper(temp_db, session)
-
-        with patch("cis_bench.utils.parallel.time") as clock:
-            scraper.scrape_full_catalog(max_pages=self.PAGES, rate_limit_seconds=2.0)
-
-        # Pages 2..25 in batches of ten: three batches, two pauses.
-        assert clock.sleep.call_args_list == [((2.0,),), ((2.0,),)]
 
     def test_every_catalog_request_uses_the_configured_timeout(
         self, temp_db, stub_session, monkeypatch
@@ -315,41 +265,33 @@ class TestCatalogRefreshSharedFetch:
         session, transport = stub_session(handler)
         scraper = CatalogScraper(temp_db, session)
 
-        with patch("cis_bench.utils.parallel.time"), patch("cis_bench.catalog.scraper.time"):
-            scraper.scrape_full_catalog(max_pages=3)
-            scraper.scrape_page_one_update()
-            scraper.refresh_downloaded_revision_dates()
+        scraper.scrape_full_catalog(max_pages=3)
+        scraper.scrape_page_one_update()
+        scraper.refresh_downloaded_revision_dates()
 
         assert len(transport.settings) == 5
         assert {s["timeout"] for s in transport.settings} == {(10.0, 45.0)}
 
-    def test_a_page_that_keeps_timing_out_is_tried_three_times_then_counted_failed(
-        self, temp_db, stub_session
-    ):
+    def test_a_page_that_keeps_timing_out_is_counted_failed(self, temp_db, stub_session):
         def stalled(page):
             raise requests.Timeout("Read timed out")
 
         session, transport = stub_session(self._rotating_pages(overrides={3: stalled}, delay=0))
         scraper = CatalogScraper(temp_db, session)
 
-        with patch("cis_bench.utils.parallel.time"), patch("cis_bench.fetcher.http.time"):
-            stats = scraper.scrape_full_catalog(max_pages=self.PAGES)
+        stats = scraper.scrape_full_catalog(max_pages=self.PAGES)
 
-        assert [_page_number(u) for u in transport.urls].count(3) == 3
         assert stats["failed_pages"] == [3]
 
-    def test_a_missing_page_is_not_retried(self, temp_db, stub_session):
+    def test_a_missing_page_is_counted_failed(self, temp_db, stub_session):
         session, transport = stub_session(
             self._rotating_pages(overrides={4: lambda page: StubReply("gone", status=404)}, delay=0)
         )
         scraper = CatalogScraper(temp_db, session)
 
-        with patch("cis_bench.utils.parallel.time"), patch("cis_bench.fetcher.http.time") as clock:
-            stats = scraper.scrape_full_catalog(max_pages=self.PAGES)
+        stats = scraper.scrape_full_catalog(max_pages=self.PAGES)
 
-        assert [_page_number(u) for u in transport.urls].count(4) == 1
         assert stats["failed_pages"] == [4]
-        clock.sleep.assert_not_called()
 
     def test_a_login_page_stops_the_refresh_after_its_batch(self, temp_db, stub_session):
         session, transport = stub_session(
@@ -357,7 +299,7 @@ class TestCatalogRefreshSharedFetch:
         )
         scraper = CatalogScraper(temp_db, session)
 
-        with patch("cis_bench.utils.parallel.time"), pytest.raises(AuthenticationError):
+        with pytest.raises(AuthenticationError):
             scraper.scrape_full_catalog(max_pages=self.PAGES)
 
         fetched = {_page_number(u) for u in transport.urls}
@@ -368,7 +310,6 @@ class TestCatalogRefreshSharedFetch:
         scraper = CatalogScraper(temp_db, session)
 
         with (
-            patch("cis_bench.utils.parallel.time"),
             patch("cis_bench.catalog.scraper.Progress") as progress_class,
         ):
             stats = scraper.scrape_full_catalog(max_pages=self.PAGES)
@@ -383,45 +324,3 @@ class TestCatalogRefreshSharedFetch:
             c.kwargs["description"] for c in bar.update.call_args_list if "description" in c.kwargs
         ][-1]
         assert f"{self.PAGES} benchmarks found" in last_description
-
-    def test_check_updates_retries_a_detail_page_that_timed_out_once(self, temp_db, stub_session):
-        temp_db.insert_benchmark(
-            {
-                "benchmark_id": "401",
-                "title": "CIS Benchmark 401",
-                "version": "v1.0.0",
-                "url": "https://workbench.cisecurity.org/benchmarks/401",
-                "status": "Published",
-            }
-        )
-        temp_db.save_downloaded("401", "{}", "h", 1, version="v1.0.0")
-        attempts = []
-
-        def handler(url):
-            attempts.append(url)
-            if len(attempts) == 1:
-                raise requests.ConnectionError("connection reset")
-            return "<html><body><span>Published 2 months ago on Aug 28th 2025</span></body></html>"
-
-        session, _ = stub_session(handler)
-        scraper = CatalogScraper(temp_db, session)
-
-        with patch("cis_bench.catalog.scraper.time"), patch("cis_bench.fetcher.http.time"):
-            refreshed = scraper.refresh_downloaded_revision_dates()
-
-        assert refreshed == 1
-        assert len(attempts) == 2
-        assert temp_db.get_downloaded("401")["workbench_last_modified"] == "2025-08-28"
-
-    @pytest.mark.parametrize("rate", [float("nan"), float("inf"), -1.0])
-    def test_a_bad_rate_limit_is_rejected_before_any_page_is_fetched(
-        self, temp_db, stub_session, rate
-    ):
-        session, transport = stub_session(self._rotating_pages(delay=0))
-        scraper = CatalogScraper(temp_db, session)
-
-        with pytest.raises(ValueError, match="rate"):
-            scraper.scrape_full_catalog(max_pages=self.PAGES, rate_limit_seconds=rate)
-
-        assert transport.urls == []
-        assert temp_db.get_catalog_stats()["total_benchmarks"] == 0

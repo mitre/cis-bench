@@ -272,21 +272,20 @@ A benchmark is listed when the catalog carries a newer version than you download
 
 **Default behavior:**
 
-- Batches: 10 pages per batch
-- Threads: 5 concurrent per batch
-- Rate limit: 2 seconds between batches
-- Retry: up to 3 attempts on timeouts, dropped connections and 502/503/504 (1 s, then 2 s); a missing page is not retried
+- Batches: 10 pages per batch, saved before the next batch starts
+- Threads: 5 requests at a time
+- Rate limit: at most 3 requests per second to WorkBench, shared by every thread
+- Retry: up to 3 attempts on timeouts, dropped connections and 429/502/503/504 (at once, then after about 2 s; WorkBench's `Retry-After` is honored up to 60 s); a missing page is not retried
 - Failure threshold: Aborts if >10% of pages fail
 
 **Performance:**
 
-- Full refresh (about 80 pages): under a minute (77 pages took 33 s on 2026-11-04)
-- Pause: 2 seconds between batches of 10 pages
-- Respectful to CIS servers
+- Full refresh (about 80 pages): under a minute (77 pages took 34 s on 2026-11-04)
+- Respectful to CIS servers: never more than 3 requests per second
 
 **Tuning:**
 ```bash
-# Faster (less polite)
+# Gentler: one request per second for this run
 cis-bench catalog refresh --rate-limit 1.0
 
 # Test with few pages
@@ -371,7 +370,7 @@ cis-bench search --platform-type os --platform ubuntu
 
 **Retry logic:**
 
-- Automatically retries failed pages (3 attempts)
+- Automatically retries a page that timed out, dropped its connection or got 429/502/503/504 (3 attempts)
 - Continues if failure rate is low (<10%)
 - Aborts if too many failures (indicates bigger issue)
 

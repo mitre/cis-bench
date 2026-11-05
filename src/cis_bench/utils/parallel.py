@@ -6,18 +6,15 @@ caller instead of being raised or dropped.
 """
 
 import logging
-import math
-import time
 from collections.abc import Callable, Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
-# Pacing shared with the catalog refresh: five concurrent requests, then a two second pause.
-DEFAULT_MAX_WORKERS = 5
-DEFAULT_BATCH_SIZE = 10
-DEFAULT_BATCH_DELAY_SECONDS = 2.0
+# No default concurrency or batch size: callers pass the ones they mean (WorkBench callers
+# pass cis_bench.config.Config's). Request pacing is not done here either: WorkBench requests
+# are rate limited by the session's adapter (see cis_bench.fetcher.http).
 
 type ProgressCallback[T] = Callable[[int, int, T], None]
 
@@ -45,7 +42,8 @@ def _require_at_least_one(name: str, value: int) -> None:
 def parallel_execute[T, R](
     items: Iterable[T],
     func: Callable[[T], R],
-    max_workers: int = DEFAULT_MAX_WORKERS,
+    *,
+    max_workers: int,
     progress_callback: ProgressCallback[T] | None = None,
     fail_fast: bool = False,
 ) -> ParallelResult[T, R]:
@@ -93,40 +91,29 @@ def parallel_execute[T, R](
     )
 
 
-def check_batch_delay(batch_delay: float, name: str = "batch_delay") -> None:
-    """Raise ValueError unless batch_delay is a finite number of seconds, zero or more.
-
-    NaN would silently skip every pause and infinity would sleep forever, so both are refused
-    along with negative values. ``name`` is the caller's parameter name for the message.
-    """
-    if not math.isfinite(batch_delay) or batch_delay < 0:
-        raise ValueError(f"{name} must be a finite number of seconds >= 0, got {batch_delay}")
-
-
-def _check_batch_arguments(batch_size: int, max_workers: int, batch_delay: float) -> None:
+def _check_batch_arguments(batch_size: int, max_workers: int) -> None:
     _require_at_least_one("batch_size", batch_size)
     _require_at_least_one("max_workers", max_workers)
-    check_batch_delay(batch_delay)
 
 
 def iter_batches[T, R](
     items: Iterable[T],
     func: Callable[[T], R],
-    batch_size: int = DEFAULT_BATCH_SIZE,
-    max_workers: int = DEFAULT_MAX_WORKERS,
-    batch_delay: float = DEFAULT_BATCH_DELAY_SECONDS,
+    *,
+    batch_size: int,
+    max_workers: int,
     progress_callback: ProgressCallback[T] | None = None,
 ) -> Iterator[ParallelResult[T, R]]:
     """Run ``parallel_execute`` over consecutive slices of ``items``, yielding each slice's result.
 
     Each batch runs to completion before it is yielded, on the calling thread, so the caller can
     act on it (for example write it to a database that only one thread may use) before the next
-    batch starts. The pause of ``batch_delay`` seconds comes before each later batch, so a caller
-    that stops iterating starts no further batch and waits no pause. ``progress_callback`` counts
-    across the whole run. Arguments are checked when this is called, not on first iteration.
+    batch starts, and a caller that stops iterating starts no further batch. ``progress_callback``
+    counts across the whole run. Arguments are checked when this is called, not on first
+    iteration.
     """
-    _check_batch_arguments(batch_size, max_workers, batch_delay)
-    return _run_batches(list(items), func, batch_size, max_workers, batch_delay, progress_callback)
+    _check_batch_arguments(batch_size, max_workers)
+    return _run_batches(list(items), func, batch_size, max_workers, progress_callback)
 
 
 def _run_batches[T, R](
@@ -134,7 +121,6 @@ def _run_batches[T, R](
     func: Callable[[T], R],
     batch_size: int,
     max_workers: int,
-    batch_delay: float,
     progress_callback: ProgressCallback[T] | None,
 ) -> Iterator[ParallelResult[T, R]]:
     total = len(items_list)
@@ -147,8 +133,6 @@ def _run_batches[T, R](
             progress_callback(completed, total, item)
 
     for batch_start in range(0, total, batch_size):
-        if batch_start > 0 and batch_delay > 0:
-            time.sleep(batch_delay)
         yield parallel_execute(
             items_list[batch_start : batch_start + batch_size],
             func,
@@ -160,16 +144,15 @@ def _run_batches[T, R](
 def parallel_execute_batched[T, R](
     items: Iterable[T],
     func: Callable[[T], R],
-    batch_size: int = DEFAULT_BATCH_SIZE,
-    max_workers: int = DEFAULT_MAX_WORKERS,
-    batch_delay: float = DEFAULT_BATCH_DELAY_SECONDS,
+    *,
+    batch_size: int,
+    max_workers: int,
     progress_callback: ProgressCallback[T] | None = None,
     stop_on: tuple[type[Exception], ...] = (),
 ) -> ParallelResult[T, R]:
     """Run every batch from ``iter_batches`` and combine the results.
 
-    Items within a batch run concurrently; the run pauses ``batch_delay`` seconds between
-    batches and never after the last one. The defaults match the catalog refresh pacing.
+    Items within a batch run concurrently and batches run one after another.
     ``progress_callback`` counts across the whole run, not per batch.
 
     When a batch records a failure that is an instance of one of the ``stop_on`` types, the
@@ -181,7 +164,11 @@ def parallel_execute_batched[T, R](
     all_results: list[R] = []
     all_failed: list[tuple[T, Exception]] = []
     for batch in iter_batches(
-        items_list, func, batch_size, max_workers, batch_delay, progress_callback
+        items_list,
+        func,
+        batch_size=batch_size,
+        max_workers=max_workers,
+        progress_callback=progress_callback,
     ):
         all_results.extend(batch.results)
         all_failed.extend(batch.failed)

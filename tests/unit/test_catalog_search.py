@@ -106,6 +106,11 @@ class TestBasicSearch:
 
         assert results == []
 
+    def test_search_without_a_limit_takes_the_search_limit_setting(self, search, monkeypatch):
+        # 3 Published benchmarks; CIS_BENCH_SEARCH_LIMIT is the only default limit.
+        monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "2")
+        assert len(search.search("")) == 2
+
 
 class TestFiltering:
     """Test filtering options."""
@@ -170,25 +175,6 @@ class TestHelperMethods:
         results = search.find_by_name("ubuntu")
 
         assert len(results) > 0
-
-    def test_list_all_published(self, search):
-        """Test listing all published."""
-        results = search.list_all_published()
-
-        assert all(r["status"] == "Published" for r in results)
-
-    def test_list_by_platform(self, search):
-        """Test listing by platform."""
-        results = search.list_by_platform("Operating System")
-
-        assert all(r["platform"] == "Operating System" for r in results)
-
-    def test_get_latest_for_platform(self, search):
-        """Test getting latest for platform."""
-        results = search.get_latest_for_platform("Operating System")
-
-        assert all(r["platform"] == "Operating System" for r in results)
-        assert all(r["is_latest"] for r in results)
 
     def test_get_platforms(self, search):
         """Test getting platform list."""

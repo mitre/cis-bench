@@ -1,6 +1,7 @@
 """Catalog management commands for CIS Benchmark CLI."""
 
 import logging
+import math
 
 import click
 from rich.console import Console
@@ -10,21 +11,20 @@ from rich.table import Table
 from cis_bench.catalog.database import CatalogDatabase
 from cis_bench.catalog.search import CatalogSearch
 from cis_bench.cli.helpers.errors import report_configuration_error
-from cis_bench.cli.helpers.output import output_data
+from cis_bench.cli.helpers.output import output_data, showing_line
 from cis_bench.config import Config
 from cis_bench.exceptions import AuthenticationError, ConfigurationError
-from cis_bench.utils.parallel import DEFAULT_BATCH_DELAY_SECONDS, check_batch_delay
 
 console = Console()
 logger = logging.getLogger(__name__)
 
 
-def _validate_rate_limit(_ctx: click.Context, _param: click.Parameter, value: float) -> float:
-    """Click callback: refuse a NaN, infinite or negative pause before the command runs."""
-    try:
-        check_batch_delay(value, "the pause")
-    except ValueError as e:
-        raise click.BadParameter(str(e)) from e
+def _validate_rate_limit(
+    _ctx: click.Context, _param: click.Parameter, value: float | None
+) -> float | None:
+    """Click callback: refuse a gap between requests that is not a finite number above zero."""
+    if value is not None and (not math.isfinite(value) or value <= 0):
+        raise click.BadParameter(f"must be a finite number of seconds greater than 0, got {value}")
     return value
 
 
@@ -75,24 +75,29 @@ def catalog():
 @click.option("--max-pages", type=int, help="Limit pages to scrape (for testing)")
 @click.option(
     "--rate-limit",
-    default=DEFAULT_BATCH_DELAY_SECONDS,
+    default=None,
     type=float,
     callback=_validate_rate_limit,
-    help="Seconds to pause between batches of pages",
+    metavar="SECONDS",
+    help=(
+        "Seconds between requests to WorkBench for this run "
+        f"(default: {1 / Config.WORKBENCH_REQUESTS_PER_SECOND:.2f}, "
+        f"{Config.WORKBENCH_REQUESTS_PER_SECOND:g} requests per second)"
+    ),
 )
 def refresh(browser, max_pages, rate_limit):
     """Refresh catalog from CIS WorkBench (scrape all pages).
 
     This builds or updates the complete catalog by scraping all benchmark
     listing pages from CIS WorkBench (about 80 pages, about 1,500 benchmarks).
-    Pages are fetched five at a time in batches of ten; a full refresh takes
-    under a minute.
+    Pages are fetched five at a time, at most three requests per second; a full
+    refresh takes under a minute.
 
     \b
     Examples:
         cis-bench catalog refresh
         cis-bench catalog refresh --max-pages 5  # Test with 5 pages
-        cis-bench catalog refresh --rate-limit 1  # Faster (less polite)
+        cis-bench catalog refresh --rate-limit 1  # One request per second (gentler)
     """
     _validate_request_timeout()
     try:
@@ -106,8 +111,12 @@ def refresh(browser, max_pages, rate_limit):
         from cis_bench.fetcher.auth import AuthManager
 
         console.print("[cyan]Validating session...[/cyan]")
+        # Pace every request of this run at the requested gap, from the session check on;
+        # the scraper's worker threads share the session's adapter, so they all follow it.
         session = AuthManager.get_or_create_session(
-            browser=browser, verify_ssl=Config.get_verify_ssl()
+            browser=browser,
+            verify_ssl=Config.get_verify_ssl(),
+            requests_per_second=None if rate_limit is None else 1 / rate_limit,
         )
         console.print("[green]✓[/green] Session valid\n")
 
@@ -123,7 +132,7 @@ def refresh(browser, max_pages, rate_limit):
         pages_msg = f"{max_pages} pages" if max_pages else "all pages"
         console.print(f"[cyan]Scraping catalog ({pages_msg})...[/cyan]")
 
-        stats = scraper.scrape_full_catalog(max_pages=max_pages, rate_limit_seconds=rate_limit)
+        stats = scraper.scrape_full_catalog(max_pages=max_pages)
 
         # Show results
         console.print("\n[green]✓[/green] Catalog refresh complete!")
@@ -184,7 +193,7 @@ def update(browser):
 
         console.print("[cyan]Updating catalog (page 1)...[/cyan]")
 
-        stats = scraper.scrape_page_one_update(rate_limit_seconds=1)
+        stats = scraper.scrape_page_one_update()
 
         console.print("[green]✓[/green] Catalog updated!")
         console.print(f"  New benchmarks: [yellow]{stats['new_count']}[/yellow]")
@@ -211,7 +220,7 @@ def update(browser):
     help="Filter by status (Published, Archived, Draft, Final Update, or all)",
 )
 @click.option("--latest", is_flag=True, help="Latest versions only")
-@click.option("--limit", type=int, help="Max results (default: 1000)")
+@click.option("--limit", type=int, help="Max results (default: CIS_BENCH_SEARCH_LIMIT, 100)")
 @click.option(
     "--output-format",
     "-o",
@@ -275,6 +284,16 @@ def search(query, platform, status, latest, limit, output_format):
             console.print(escape(formatted))
             console.print()  # Blank line
 
+        # A list shorter than the limit is complete; only a full one may have been cut off.
+        total = (
+            search_obj.count(
+                query=query or "", platform=platform, status=status, latest_only=latest
+            )
+            if len(results) >= limit
+            else len(results)
+        )
+        console.print(f"[dim]{showing_line(len(results), total)}[/dim]")
+
     except click.Abort:
         raise
     except Exception as e:
@@ -285,7 +304,7 @@ def search(query, platform, status, latest, limit, output_format):
 @catalog.command(name="list")
 @click.option("--platform", help="Filter by platform")
 @click.option("--latest", is_flag=True, help="Latest versions only")
-@click.option("--limit", default=50, type=int, help="Max results")
+@click.option("--limit", type=int, help="Max results (default: CIS_BENCH_SEARCH_LIMIT, 100)")
 def list_cmd(platform, latest, limit):
     """List benchmarks in catalog.
 
@@ -298,11 +317,11 @@ def list_cmd(platform, latest, limit):
         db = require_catalog_db()
 
         search_obj = CatalogSearch(db)
+        if limit is None:
+            limit = Config.get_search_default_limit()
 
-        if platform:
-            results = search_obj.list_by_platform(platform, latest_only=latest)
-        else:
-            results = search_obj.list_all_published(limit=limit)
+        filters = {"platform": platform, "status": "Published", "latest_only": latest}
+        results = search_obj.search(query="", limit=limit, **filters)
 
         if not results:
             console.print("[yellow]No benchmarks found.[/yellow]")
@@ -310,10 +329,13 @@ def list_cmd(platform, latest, limit):
 
         console.print(f"\n[cyan]{len(results)} benchmarks:[/cyan]\n")
 
-        for r in results[:limit]:
+        for r in results:
             formatted = search_obj.format_result_for_display(r)
             console.print(escape(formatted))
             console.print()
+
+        total = search_obj.count(**filters) if len(results) >= limit else len(results)
+        console.print(f"[dim]{showing_line(len(results), total)}[/dim]")
 
     except click.Abort:
         raise

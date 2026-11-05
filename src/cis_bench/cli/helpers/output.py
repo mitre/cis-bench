@@ -126,6 +126,12 @@ def benchmark_table(results: list[dict]) -> Table:
     return table
 
 
+def showing_line(shown: int, total: int) -> str:
+    """'Showing N of TOTAL results', with a hint when the limit cut the list short."""
+    line = f"Showing {shown} of {total} results"
+    return f"{line}; use --limit to see more" if shown < total else line
+
+
 def output_results(results: list[dict], output_json_flag: bool, human_formatter_func=None) -> None:
     """Output results in JSON or human-friendly format.
 

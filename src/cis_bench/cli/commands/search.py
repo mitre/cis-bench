@@ -7,7 +7,7 @@ import click
 from rich.console import Console
 from rich.markup import escape
 
-from cis_bench.cli.helpers.output import benchmark_table, output_data
+from cis_bench.cli.helpers.output import benchmark_table, output_data, showing_line
 from cis_bench.config import Config
 
 console = Console()
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 )
 @click.option("--latest", is_flag=True, help="Show only latest version of each benchmark")
 @click.option(
-    "--limit", type=int, help="Maximum results to show (default: from config, typically 1000)"
+    "--limit", type=int, help="Maximum results to show (default: CIS_BENCH_SEARCH_LIMIT, 100)"
 )
 @click.option(
     "--output-format",
@@ -147,7 +147,9 @@ def search_cmd(query, platform, platform_type, status, latest, limit, output_for
         console.print(benchmark_table(results))
 
         # Show usage hints
-        console.print(f"\n[dim]Showing {len(results)} of {len(results)} results[/dim]")
+        # A list shorter than the limit is complete; only a full one may have been cut off.
+        total = search.count(query or "", **filters) if len(results) >= limit else len(results)
+        console.print(f"\n[dim]{showing_line(len(results), total)}[/dim]")
         console.print("\n[cyan]Next steps:[/cyan]")
         console.print("  cis-bench download <ID> --browser chrome    # Download a benchmark")
         console.print("  cis-bench catalog info <ID>                 # Show detailed info")

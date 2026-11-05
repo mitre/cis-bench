@@ -114,8 +114,12 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
         db = CatalogDatabase(catalog_db_path)
         search = CatalogSearch(db)
 
-        # Search with Published filter by default
-        results = search.search(query, status="Published", latest_only=True, limit=50)
+        # Search with Published filter by default; CIS_BENCH_SEARCH_LIMIT caps the candidates
+        filters = {"status": "Published", "latest_only": True}
+        limit = Config.get_search_default_limit()
+        results = search.search(query, limit=limit, **filters)
+        # A list shorter than the limit is complete; only a full one may have been cut off.
+        total = search.count(query, **filters) if len(results) >= limit else len(results)
 
         if not results:
             console.print("[yellow]No results found[/yellow]\n")
@@ -136,8 +140,9 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
         console.print(f"[green]✓[/green] Found: {escape(str(selected['title']))}\n")
     else:
         # Multiple results
+        cut_off = f" (showing the first {len(results)})" if total > len(results) else ""
         console.print(
-            f"[yellow]Found {len(results)} benchmarks matching '{escape(query)}'[/yellow]\n"
+            f"[yellow]Found {total} benchmarks matching '{escape(query)}'{cut_off}[/yellow]\n"
         )
 
         from cis_bench.cli.helpers.output import benchmark_table

@@ -136,6 +136,15 @@ class TestConfigDataDir:
 class TestConfigPaths:
     """Tests for derived path methods."""
 
+    def test_get_session_file_path_is_in_the_environment_data_dir(self):
+        with patch.dict(os.environ, {"CIS_BENCH_ENV": "test"}):
+            from cis_bench.config import Config
+
+            assert (
+                Config.get_session_file_path()
+                == Path(tempfile.gettempdir()) / "cis-bench-test" / "session.cookies"
+            )
+
     def test_get_catalog_db_path(self):
         """Should return catalog.db path in data directory."""
         with patch.dict(os.environ, {"CIS_BENCH_ENV": "test"}):
@@ -252,14 +261,14 @@ class TestConfigSearchLimit:
     """Tests for search result limit configuration."""
 
     def test_get_search_default_limit_default(self):
-        """Should return 1000 when env var not set."""
+        """Should return 100 when env var not set."""
         env = os.environ.copy()
         env.pop("CIS_BENCH_SEARCH_LIMIT", None)
         with patch.dict(os.environ, env, clear=True):
             from cis_bench.config import Config
 
             with patch.dict(os.environ, {"CIS_BENCH_ENV": "test"}):
-                assert Config.get_search_default_limit() == 1000
+                assert Config.get_search_default_limit() == 100
 
     def test_get_search_default_limit_from_env(self):
         """Should return custom limit when env var set."""
@@ -273,14 +282,14 @@ class TestConfigSearchLimit:
         with patch.dict(os.environ, {"CIS_BENCH_SEARCH_LIMIT": "many"}):
             from cis_bench.config import Config
 
-            assert Config.get_search_default_limit() == 1000
+            assert Config.get_search_default_limit() == 100
 
     def test_get_search_default_limit_ignores_empty_string(self):
         """Should return default when env var is empty."""
         with patch.dict(os.environ, {"CIS_BENCH_SEARCH_LIMIT": ""}):
             from cis_bench.config import Config
 
-            assert Config.get_search_default_limit() == 1000
+            assert Config.get_search_default_limit() == 100
 
 
 class TestConfigVerifySSL:

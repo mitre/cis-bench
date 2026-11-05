@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 from urllib.parse import urlparse
 
+from cis_bench import __version__
 from cis_bench.exceptions import ConfigurationError
 
 # Load .env file if it exists (production/dev use)
@@ -41,6 +42,27 @@ class Config:
     _VERIFY_SSL_TRUE_VALUES = frozenset({"true", "1", "yes"})
     _VERIFY_SSL_FALSE_VALUES = frozenset({"false", "0", "no"})
     DEFAULT_WORKBENCH_URL = f"https://workbench.{CIS_ROOT_DOMAIN}"
+
+    # WorkBench request policy. The code that sends requests (fetcher.http, the scrapers)
+    # reads these; none of them keeps a copy.
+    # Politeness: the most requests cis-bench sends to one WorkBench host per second.
+    WORKBENCH_REQUESTS_PER_SECOND = 3.0
+    # Concurrent requests, and how many items one batch of parallel work holds.
+    WORKBENCH_MAX_CONCURRENT_REQUESTS = 5
+    WORKBENCH_BATCH_SIZE = 10
+    # Retries after the first attempt, and the statuses worth retrying; every other status
+    # is final. urllib3's backoff: the first retry is immediate, then factor * 2 seconds plus
+    # up to the jitter. A server's Retry-After is honored up to the cap.
+    REQUEST_RETRIES = 2
+    RETRYABLE_STATUS_CODES = frozenset({429, 502, 503, 504})
+    RETRY_BACKOFF_FACTOR = 1.0
+    RETRY_JITTER_SECONDS = 0.5
+    RETRY_AFTER_MAX_SECONDS = 60
+    # Sent on every WorkBench request so CIS can tell who is calling.
+    USER_AGENT = f"cis-bench-cli/{__version__} (github.com/mitre/cis-bench)"
+    # CIS's single sign-on hosts a login may pass through, and how many hops are followed.
+    TRUSTED_SSO_HOSTS = frozenset({"auth.portal.cisecurity.org", "auth.portal.qa.cisecurity.org"})
+    MAX_SSO_REDIRECTS = 8
 
     @staticmethod
     def is_cis_domain(host: str) -> bool:
@@ -145,6 +167,11 @@ class Config:
         return Config.get_data_dir() / "catalog.db"
 
     @staticmethod
+    def get_session_file_path() -> Path:
+        """Get the saved WorkBench session's cookie file (environment-aware)."""
+        return Config.get_data_dir() / "session.cookies"
+
+    @staticmethod
     def get_benchmarks_dir() -> Path:
         """Get benchmarks storage directory.
 
@@ -186,12 +213,13 @@ class Config:
         """Get default search result limit.
 
         Returns:
-            Default limit for search results (default: 1000)
+            Default limit for search, catalog search, catalog list and get's
+            candidate matches (default: 100)
         """
         limit = os.getenv("CIS_BENCH_SEARCH_LIMIT")
         if limit and limit.isdigit():
             return int(limit)
-        return 1000
+        return 100
 
     @staticmethod
     def get_request_timeout() -> tuple[float, float]:

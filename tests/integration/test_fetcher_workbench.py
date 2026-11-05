@@ -9,7 +9,6 @@ import json
 import logging
 import threading
 import time
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import Mock, patch
 
 import pytest
@@ -21,6 +20,7 @@ from cis_bench.fetcher.strategies.base import ScraperStrategy
 from cis_bench.fetcher.workbench import WorkbenchScraper
 from cis_bench.models.benchmark import Benchmark
 from cis_bench.utils.parallel import parallel_execute
+from tests.conftest import LocalHTTPServer
 
 # ============ Fixtures: Real HTML Samples ============
 
@@ -258,70 +258,25 @@ class TestWorkbenchScraperBasicOperations:
             scraper.fetch_html("https://workbench.cisecurity.org/benchmarks/123")
 
     def test_fetch_html_times_out_instead_of_hanging(self, mock_session):
-        """A request that keeps timing out is retried a bounded number of times, then fails loudly.
+        """Every request carries the configured timeout, and a timeout fails loudly.
 
         Before this, fetch_html called session.get with no timeout at all, so one
-        stalled connection hung a 322-recommendation download for over an hour.
+        stalled connection hung a 322-recommendation download for over an hour. The
+        retries happen in the session's adapter (tests/integration/test_fetcher_http.py).
         """
         from cis_bench.exceptions import FetchError
 
         mock_session.get.side_effect = requests.Timeout("Request timed out")
         scraper = WorkbenchScraper(mock_session)
 
-        with patch("time.sleep") as mock_sleep:
-            with pytest.raises(
-                FetchError, match="https://workbench.cisecurity.org/slow"
-            ) as exc_info:
-                scraper.fetch_html("https://workbench.cisecurity.org/slow")
+        with pytest.raises(FetchError, match="https://workbench.cisecurity.org/slow") as exc_info:
+            scraper.fetch_html("https://workbench.cisecurity.org/slow")
 
-        assert mock_session.get.call_count == 3
-        for call in mock_session.get.call_args_list:
-            assert call.kwargs["timeout"] == (10.0, 30.0)
-        assert [c.args[0] for c in mock_sleep.call_args_list] == [1, 2]
+        assert mock_session.get.call_args.kwargs["timeout"] == (10.0, 30.0)
         assert isinstance(exc_info.value.__cause__, requests.Timeout)
         assert exc_info.value.url == "https://workbench.cisecurity.org/slow"
 
-    def test_each_retry_is_logged_with_attempt_and_backoff(self, mock_session, caplog):
-        """An operator watching the log sees every retry: which attempt, how long until the next."""
-        from cis_bench.exceptions import FetchError
-
-        mock_session.get.side_effect = requests.Timeout("Request timed out")
-        scraper = WorkbenchScraper(mock_session)
-
-        with (
-            patch("time.sleep"),
-            caplog.at_level(logging.WARNING, logger="cis_bench.fetcher.http"),
-        ):
-            with pytest.raises(FetchError):
-                scraper.fetch_html("https://workbench.cisecurity.org/slow")
-
-        retry_records = [r for r in caplog.records if "retrying" in r.getMessage()]
-        assert {r.name for r in retry_records} == {"cis_bench.fetcher.http"}
-        retry_lines = [r.getMessage() for r in retry_records]
-        assert len(retry_lines) == 2
-        assert "attempt 1/3" in retry_lines[0] and "retrying in 1s" in retry_lines[0]
-        assert "attempt 2/3" in retry_lines[1] and "retrying in 2s" in retry_lines[1]
-        assert all("https://workbench.cisecurity.org/slow" in line for line in retry_lines)
-
-    @pytest.mark.parametrize("status", [502, 503, 504])
-    def test_each_transient_status_is_retried(self, mock_session, status):
-        failing = Mock()
-        failing.status_code = status
-        failing.raise_for_status.side_effect = requests.HTTPError(
-            f"{status} error", response=failing
-        )
-        ok = Mock()
-        ok.status_code = 200
-        ok.text = "<html>ok</html>"
-        ok.raise_for_status = Mock()
-        mock_session.get.side_effect = [failing, ok]
-        scraper = WorkbenchScraper(mock_session)
-
-        with patch("time.sleep"):
-            assert scraper.fetch_html("https://workbench.cisecurity.org/flaky") == "<html>ok</html>"
-        assert mock_session.get.call_count == 2
-
-    def test_three_transient_failures_give_a_typed_error(self, mock_session):
+    def test_a_transient_status_left_after_the_retries_is_a_typed_error(self, mock_session):
         from cis_bench.exceptions import FetchError
 
         failing = Mock()
@@ -330,11 +285,8 @@ class TestWorkbenchScraperBasicOperations:
         mock_session.get.return_value = failing
         scraper = WorkbenchScraper(mock_session)
 
-        with patch("time.sleep"):
-            with pytest.raises(FetchError, match="3 attempts") as exc_info:
-                scraper.fetch_html("https://workbench.cisecurity.org/down")
-        assert mock_session.get.call_count == 3
-        assert isinstance(exc_info.value.__cause__, requests.HTTPError)
+        with pytest.raises(FetchError, match="HTTP 503 after 3 attempts"):
+            scraper.fetch_html("https://workbench.cisecurity.org/down")
 
     def test_a_login_page_is_an_authentication_error_not_a_retry(self, mock_session):
         """WorkBench answers an expired session with a 200 login page; that is final, not transient."""
@@ -356,26 +308,6 @@ class TestWorkbenchScraperBasicOperations:
         assert mock_session.get.call_count == 1
         mock_sleep.assert_not_called()
 
-    def test_fetch_html_retries_transient_server_errors_then_succeeds(self, mock_session):
-        """502/503/504 are retried with backoff; the next good response is returned."""
-        unavailable = Mock()
-        unavailable.status_code = 503
-        unavailable.raise_for_status.side_effect = requests.HTTPError(
-            "503 Service Unavailable", response=unavailable
-        )
-        ok = Mock()
-        ok.status_code = 200
-        ok.text = "<html>ok</html>"
-        ok.raise_for_status = Mock()
-        mock_session.get.side_effect = [unavailable, ok]
-        scraper = WorkbenchScraper(mock_session)
-
-        with patch("time.sleep") as mock_sleep:
-            assert scraper.fetch_html("https://workbench.cisecurity.org/flaky") == "<html>ok</html>"
-
-        assert mock_session.get.call_count == 2
-        assert [c.args[0] for c in mock_sleep.call_args_list] == [1]
-
     def test_fetch_html_does_not_retry_client_errors(self, mock_session):
         """A 404 or 403 is final: one request, the HTTPError propagates unchanged."""
         not_found = Mock()
@@ -393,27 +325,23 @@ class TestWorkbenchScraperBasicOperations:
         assert mock_session.get.call_count == 1
         mock_sleep.assert_not_called()
 
-    def test_fetch_html_connection_error_is_retried_then_typed(self, mock_session):
+    def test_fetch_html_connection_error_is_typed(self, mock_session):
         from cis_bench.exceptions import FetchError
 
         mock_session.get.side_effect = requests.ConnectionError("connection reset")
         scraper = WorkbenchScraper(mock_session)
 
-        with patch("time.sleep"):
-            with pytest.raises(FetchError, match="3 attempts"):
-                scraper.fetch_html("https://workbench.cisecurity.org/reset")
-        assert mock_session.get.call_count == 3
+        with pytest.raises(FetchError, match="https://workbench.cisecurity.org/reset"):
+            scraper.fetch_html("https://workbench.cisecurity.org/reset")
 
-    def test_fetch_json_uses_the_same_timeout_and_retry(self, mock_session):
+    def test_fetch_json_uses_the_same_timeout(self, mock_session):
         from cis_bench.exceptions import FetchError
 
         mock_session.get.side_effect = requests.Timeout("Request timed out")
         scraper = WorkbenchScraper(mock_session)
 
-        with patch("time.sleep"):
-            with pytest.raises(FetchError):
-                scraper.fetch_json("https://workbench.cisecurity.org/api/v1/benchmarks/1/navtree")
-        assert mock_session.get.call_count == 3
+        with pytest.raises(FetchError):
+            scraper.fetch_json("https://workbench.cisecurity.org/api/v1/benchmarks/1/navtree")
         assert mock_session.get.call_args.kwargs["timeout"] == (10.0, 30.0)
 
     def test_fetch_json_success(self, mock_session):
@@ -872,10 +800,7 @@ class TestWorkbenchScraperFullDownload:
         session, _ = stub_session(handler)
         scraper = WorkbenchScraper(session)
 
-        with patch("cis_bench.utils.parallel.time"):
-            benchmark = scraper.download_benchmark(
-                "https://workbench.cisecurity.org/benchmarks/18528"
-            )
+        benchmark = scraper.download_benchmark("https://workbench.cisecurity.org/benchmarks/18528")
 
         assert isinstance(benchmark, Benchmark)
         assert benchmark.benchmark_id == "18528"
@@ -909,11 +834,10 @@ class TestWorkbenchScraperFullDownload:
         session, _ = stub_session(handler)
         scraper = WorkbenchScraper(session)
 
-        with patch("cis_bench.utils.parallel.time"):
-            scraper.download_benchmark(
-                "https://workbench.cisecurity.org/benchmarks/18528",
-                progress_callback=progress_messages.append,
-            )
+        scraper.download_benchmark(
+            "https://workbench.cisecurity.org/benchmarks/18528",
+            progress_callback=progress_messages.append,
+        )
 
         assert len(progress_messages) > 0
         assert any("Fetching benchmark" in msg for msg in progress_messages)
@@ -959,10 +883,7 @@ class TestWorkbenchScraperFullDownload:
         session, _ = stub_session(handler)
         scraper = WorkbenchScraper(session)
 
-        with patch("cis_bench.utils.parallel.time"):
-            benchmark = scraper.download_benchmark(
-                "https://workbench.cisecurity.org/benchmarks/18528"
-            )
+        benchmark = scraper.download_benchmark("https://workbench.cisecurity.org/benchmarks/18528")
 
         # Verify - should have 2 recommendations (skipped the failed one)
         assert len(benchmark.recommendations) == 2
@@ -997,7 +918,6 @@ class TestWorkbenchScraperFullDownload:
         scraper = WorkbenchScraper(session)
 
         with (
-            patch("time.sleep"),
             caplog.at_level(logging.ERROR, logger="cis_bench.fetcher.workbench"),
         ):
             benchmark = scraper.download_benchmark(
@@ -1006,7 +926,6 @@ class TestWorkbenchScraperFullDownload:
 
         assert len(benchmark.recommendations) == 2
         assert benchmark.total_recommendations == 2
-        assert transport.urls.count(stalled_url) == 3, "tried three times, then given up"
         errors = [r.getMessage() for r in caplog.records if r.levelno == logging.ERROR]
         assert any(stalled_url in line and "3 attempts" in line for line in errors), errors
 
@@ -1043,7 +962,7 @@ class TestWorkbenchScraperFullDownload:
         session, transport = stub_session(handler)
         scraper = WorkbenchScraper(session)
 
-        with patch("cis_bench.utils.parallel.time"), pytest.raises(AuthenticationError):
+        with pytest.raises(AuthenticationError):
             scraper.download_benchmark("https://workbench.cisecurity.org/benchmarks/18528")
 
         assert transport.urls.count(expired_url) == 1
@@ -1070,16 +989,11 @@ class TestWorkbenchScraperFullDownload:
         session, transport = stub_session(handler)
         scraper = WorkbenchScraper(session)
 
-        with patch("cis_bench.utils.parallel.time") as clock:
-            benchmark = scraper.download_benchmark(
-                "https://workbench.cisecurity.org/benchmarks/18528"
-            )
+        benchmark = scraper.download_benchmark("https://workbench.cisecurity.org/benchmarks/18528")
 
         assert [r.ref for r in benchmark.recommendations] == [f"1.{n}" for n in range(1, 13)]
         assert benchmark.total_recommendations == 12
         assert 2 <= transport.peak_in_flight <= 5
-        # Utility pacing: batches of ten, a two second pause between them.
-        assert clock.sleep.call_args_list == [((2.0,),)]
 
     @patch("cis_bench.fetcher.workbench.StrategyDetector.detect_strategy")
     def test_progress_reports_each_recommendation_after_it_is_fetched(
@@ -1108,10 +1022,9 @@ class TestWorkbenchScraperFullDownload:
             with finished_lock:
                 messages.append((msg, finished[0]))
 
-        with patch("cis_bench.utils.parallel.time"):
-            scraper.download_benchmark(
-                "https://workbench.cisecurity.org/benchmarks/18528", progress_callback=on_progress
-            )
+        scraper.download_benchmark(
+            "https://workbench.cisecurity.org/benchmarks/18528", progress_callback=on_progress
+        )
 
         texts = [msg for msg, _ in messages]
         assert any(t.startswith("Benchmark title: ") for t in texts)
@@ -1144,7 +1057,6 @@ class TestWorkbenchScraperFullDownload:
         scraper = WorkbenchScraper(session)
 
         with (
-            patch("time.sleep"),
             caplog.at_level(logging.ERROR, logger="cis_bench.fetcher.workbench"),
         ):
             benchmark = scraper.download_benchmark(
@@ -1179,7 +1091,6 @@ class TestWorkbenchScraperFullDownload:
         scraper = WorkbenchScraper(session)
 
         with (
-            patch("cis_bench.utils.parallel.time"),
             patch("cis_bench.cli.helpers.download_helper.Progress") as progress_class,
         ):
             benchmark = download_with_progress(
@@ -1234,7 +1145,7 @@ class TestWorkbenchScraperFullDownload:
 # ============ Test Concurrent Fetches ============
 
 
-class _RotatingCookieServer:
+class _RotatingCookieServer(LocalHTTPServer):
     """Local HTTP server that, like WorkBench, re-issues the session cookie on every response
     and records the cookies each request carried."""
 
@@ -1243,35 +1154,19 @@ class _RotatingCookieServer:
         self.cookie_headers: list[str] = []
         self._lock = threading.Lock()
         self._counter = itertools.count(1)
-        server = self
+        super().__init__(self._respond)
 
-        class Handler(BaseHTTPRequestHandler):
-            def do_GET(self):
-                with server._lock:
-                    server.cookie_headers.append(self.headers.get("Cookie", ""))
-                    rotation = next(server._counter)
-                self.send_response(200)
-                self.send_header("Content-Type", "text/html")
-                self.send_header("Set-Cookie", f"workbench_session=rotated-{rotation}; Path=/")
-                self.send_header("Set-Cookie", f"XSRF-TOKEN=xsrf-{rotation}; Path=/")
-                self.send_header("Content-Length", str(len(server.page_html)))
-                self.end_headers()
-                self.wfile.write(server.page_html)
-
-            def log_message(self, *args):
-                pass
-
-        self._httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-        self.base_url = f"http://127.0.0.1:{self._httpd.server_port}"
-        self._thread = threading.Thread(target=self._httpd.serve_forever, daemon=True)
-
-    def __enter__(self):
-        self._thread.start()
-        return self
-
-    def __exit__(self, *exc):
-        self._httpd.shutdown()
-        self._httpd.server_close()
+    def _respond(self, handler):
+        with self._lock:
+            self.cookie_headers.append(handler.headers.get("Cookie", ""))
+            rotation = next(self._counter)
+        handler.send_response(200)
+        handler.send_header("Content-Type", "text/html")
+        handler.send_header("Set-Cookie", f"workbench_session=rotated-{rotation}; Path=/")
+        handler.send_header("Set-Cookie", f"XSRF-TOKEN=xsrf-{rotation}; Path=/")
+        handler.send_header("Content-Length", str(len(self.page_html)))
+        handler.end_headers()
+        handler.wfile.write(self.page_html)
 
 
 class _VerifyRecordingAdapter(HTTPAdapter):
