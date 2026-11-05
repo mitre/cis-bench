@@ -24,6 +24,8 @@ from tests.conftest import LocalHTTPServer
 
 BASE = "https://workbench.cisecurity.org"
 TIMEOUT = (10.0, 30.0)
+WORKERS = 5
+BATCH = 10
 
 # ============ Fixtures: Real HTML Samples ============
 
@@ -221,7 +223,9 @@ class TestWorkbenchScraperBasicOperations:
         mock_response.raise_for_status = Mock()
         mock_session.get.return_value = mock_response
 
-        scraper = WorkbenchScraper(mock_session, base_url=BASE, timeout=TIMEOUT)
+        scraper = WorkbenchScraper(
+            mock_session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         # Execute
         html = scraper.fetch_html("https://workbench.cisecurity.org/test")
@@ -241,7 +245,9 @@ class TestWorkbenchScraperBasicOperations:
         mock_response.raise_for_status.side_effect = requests.HTTPError("404 Not Found")
         mock_session.get.return_value = mock_response
 
-        scraper = WorkbenchScraper(mock_session, base_url=BASE, timeout=TIMEOUT)
+        scraper = WorkbenchScraper(
+            mock_session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         # Execute and verify
         with pytest.raises(requests.HTTPError, match="404 Not Found"):
@@ -254,7 +260,9 @@ class TestWorkbenchScraperBasicOperations:
         mock_response.raise_for_status.side_effect = requests.HTTPError("403 Forbidden")
         mock_session.get.return_value = mock_response
 
-        scraper = WorkbenchScraper(mock_session, base_url=BASE, timeout=TIMEOUT)
+        scraper = WorkbenchScraper(
+            mock_session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         # Execute and verify
         with pytest.raises(requests.HTTPError, match="403 Forbidden"):
@@ -270,7 +278,9 @@ class TestWorkbenchScraperBasicOperations:
         from cis_bench.exceptions import FetchError
 
         mock_session.get.side_effect = requests.Timeout("Request timed out")
-        scraper = WorkbenchScraper(mock_session, base_url=BASE, timeout=TIMEOUT)
+        scraper = WorkbenchScraper(
+            mock_session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         with pytest.raises(FetchError, match="https://workbench.cisecurity.org/slow") as exc_info:
             scraper.fetch_html("https://workbench.cisecurity.org/slow")
@@ -279,17 +289,36 @@ class TestWorkbenchScraperBasicOperations:
         assert isinstance(exc_info.value.__cause__, requests.Timeout)
         assert exc_info.value.url == "https://workbench.cisecurity.org/slow"
 
-    def test_a_transient_status_left_after_the_retries_is_a_typed_error(self, mock_session):
+    def test_a_transient_status_left_after_the_retries_is_a_typed_error(self):
+        """Through the real WorkBench adapter: the retries run, then FetchError counts them."""
+        from cis_bench.config import RequestPolicy
         from cis_bench.exceptions import FetchError
+        from cis_bench.fetcher.http import new_workbench_session
+        from tests.conftest import LocalHTTPServer
 
-        failing = Mock()
-        failing.status_code = 503
-        failing.raise_for_status.side_effect = requests.HTTPError("503", response=failing)
-        mock_session.get.return_value = failing
-        scraper = WorkbenchScraper(mock_session, base_url=BASE, timeout=TIMEOUT)
+        arrivals = []
 
-        with pytest.raises(FetchError, match="HTTP 503 after 3 attempts"):
-            scraper.fetch_html("https://workbench.cisecurity.org/down")
+        def always_503(handler):
+            arrivals.append(handler.path)
+            handler.send_response(503)
+            handler.send_header("Content-Length", "0")
+            handler.end_headers()
+
+        policy = RequestPolicy(
+            requests_per_second=50.0, retries=2, backoff_factor=0.0, jitter_seconds=0.0
+        )
+        with LocalHTTPServer(always_503) as server:
+            scraper = WorkbenchScraper(
+                new_workbench_session(policy),
+                base_url=server.base_url,
+                timeout=TIMEOUT,
+                max_workers=WORKERS,
+                batch_size=BATCH,
+            )
+            with pytest.raises(FetchError, match="HTTP 503 after 3 attempts"):
+                scraper.fetch_html(server.base_url + "/down")
+
+        assert len(arrivals) == 3
 
     def test_a_login_page_is_an_authentication_error_not_a_retry(self, mock_session):
         """WorkBench answers an expired session with a 200 login page; that is final, not transient."""
@@ -303,7 +332,9 @@ class TestWorkbenchScraperBasicOperations:
             '<input name="login"><input name="password"></form></div></body></html>'
         )
         mock_session.get.return_value = login
-        scraper = WorkbenchScraper(mock_session, base_url=BASE, timeout=TIMEOUT)
+        scraper = WorkbenchScraper(
+            mock_session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         with patch("time.sleep") as mock_sleep:
             with pytest.raises(AuthenticationError):
@@ -319,7 +350,9 @@ class TestWorkbenchScraperBasicOperations:
             "404 Not Found", response=not_found
         )
         mock_session.get.return_value = not_found
-        scraper = WorkbenchScraper(mock_session, base_url=BASE, timeout=TIMEOUT)
+        scraper = WorkbenchScraper(
+            mock_session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         with patch("time.sleep") as mock_sleep:
             with pytest.raises(requests.HTTPError, match="404"):
@@ -332,21 +365,27 @@ class TestWorkbenchScraperBasicOperations:
         from cis_bench.exceptions import FetchError
 
         mock_session.get.side_effect = requests.ConnectionError("connection reset")
-        scraper = WorkbenchScraper(mock_session, base_url=BASE, timeout=TIMEOUT)
+        scraper = WorkbenchScraper(
+            mock_session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         with pytest.raises(FetchError, match="https://workbench.cisecurity.org/reset"):
             scraper.fetch_html("https://workbench.cisecurity.org/reset")
 
     def test_every_request_uses_the_timeout_the_scraper_is_given(self, mock_session):
         mock_session.get.return_value = Mock(text="<html></html>", raise_for_status=Mock())
-        WorkbenchScraper(mock_session, base_url=BASE, timeout=(2.0, 7.0)).fetch_html(f"{BASE}/x")
+        WorkbenchScraper(
+            mock_session, base_url=BASE, timeout=(2.0, 7.0), max_workers=WORKERS, batch_size=BATCH
+        ).fetch_html(f"{BASE}/x")
         assert mock_session.get.call_args.kwargs["timeout"] == (2.0, 7.0)
 
     def test_fetch_json_uses_the_same_timeout(self, mock_session):
         from cis_bench.exceptions import FetchError
 
         mock_session.get.side_effect = requests.Timeout("Request timed out")
-        scraper = WorkbenchScraper(mock_session, base_url=BASE, timeout=TIMEOUT)
+        scraper = WorkbenchScraper(
+            mock_session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         with pytest.raises(FetchError):
             scraper.fetch_json("https://workbench.cisecurity.org/api/v1/benchmarks/1/navtree")
@@ -361,7 +400,9 @@ class TestWorkbenchScraperBasicOperations:
         mock_response.raise_for_status = Mock()
         mock_session.get.return_value = mock_response
 
-        scraper = WorkbenchScraper(mock_session, base_url=BASE, timeout=TIMEOUT)
+        scraper = WorkbenchScraper(
+            mock_session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         # Execute
         data = scraper.fetch_json("https://workbench.cisecurity.org/api/test")
@@ -380,7 +421,9 @@ class TestWorkbenchScraperBasicOperations:
         mock_response.raise_for_status = Mock()
         mock_session.get.return_value = mock_response
 
-        scraper = WorkbenchScraper(mock_session, base_url=BASE, timeout=TIMEOUT)
+        scraper = WorkbenchScraper(
+            mock_session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         # Execute and verify
         with pytest.raises(json.JSONDecodeError):
@@ -393,7 +436,9 @@ class TestWorkbenchScraperBasicOperations:
         mock_response.raise_for_status = Mock()
         mock_session.get.return_value = mock_response
 
-        scraper = WorkbenchScraper(mock_session, base_url=BASE, timeout=TIMEOUT)
+        scraper = WorkbenchScraper(
+            mock_session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         with pytest.raises(ValueError, match="Expected JSON object"):
             scraper.fetch_json("https://workbench.cisecurity.org/api/list")
@@ -446,7 +491,9 @@ class TestWorkbenchScraperBenchmarkTitle:
         mock_response.raise_for_status = Mock()
         mock_session.get.return_value = mock_response
 
-        scraper = WorkbenchScraper(mock_session, base_url=BASE, timeout=TIMEOUT)
+        scraper = WorkbenchScraper(
+            mock_session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         # Execute
         title = scraper.get_benchmark_title("https://workbench.cisecurity.org/benchmarks/18528")
@@ -462,7 +509,9 @@ class TestWorkbenchScraperBenchmarkTitle:
         mock_response.raise_for_status = Mock()
         mock_session.get.return_value = mock_response
 
-        scraper = WorkbenchScraper(mock_session, base_url=BASE, timeout=TIMEOUT)
+        scraper = WorkbenchScraper(
+            mock_session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         # Execute
         title = scraper.get_benchmark_title("https://workbench.cisecurity.org/benchmarks/123")
@@ -479,7 +528,9 @@ class TestWorkbenchScraperBenchmarkTitle:
         mock_response.raise_for_status = Mock()
         mock_session.get.return_value = mock_response
 
-        scraper = WorkbenchScraper(mock_session, base_url=BASE, timeout=TIMEOUT)
+        scraper = WorkbenchScraper(
+            mock_session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         # Execute
         title = scraper.get_benchmark_title("https://workbench.cisecurity.org/benchmarks/123")
@@ -502,7 +553,9 @@ class TestWorkbenchScraperNavtree:
         mock_response.raise_for_status = Mock()
         mock_session.get.return_value = mock_response
 
-        scraper = WorkbenchScraper(mock_session, base_url=BASE, timeout=TIMEOUT)
+        scraper = WorkbenchScraper(
+            mock_session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         # Execute
         navtree = scraper.fetch_navtree("18528")
@@ -532,7 +585,9 @@ class TestWorkbenchScraperNavtree:
             ]
         }
 
-        scraper = WorkbenchScraper(mock_session, base_url=BASE, timeout=TIMEOUT)
+        scraper = WorkbenchScraper(
+            mock_session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         # Execute
         parsed = scraper.parse_navtree(navtree_data)
@@ -545,7 +600,9 @@ class TestWorkbenchScraperNavtree:
 
     def test_parse_navtree_nested_structure(self, mock_session, sample_benchmark_navtree):
         """Test parsing navtree with nested subsections."""
-        scraper = WorkbenchScraper(mock_session, base_url=BASE, timeout=TIMEOUT)
+        scraper = WorkbenchScraper(
+            mock_session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         # Execute
         parsed = scraper.parse_navtree(sample_benchmark_navtree)
@@ -599,7 +656,9 @@ class TestWorkbenchScraperNavtree:
             ]
         }
 
-        scraper = WorkbenchScraper(mock_session, base_url=BASE, timeout=TIMEOUT)
+        scraper = WorkbenchScraper(
+            mock_session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         # Execute
         parsed = scraper.parse_navtree(navtree_data)
@@ -616,7 +675,9 @@ class TestWorkbenchScraperNavtree:
             ]
         }
 
-        scraper = WorkbenchScraper(mock_session, base_url=BASE, timeout=TIMEOUT)
+        scraper = WorkbenchScraper(
+            mock_session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         # Execute
         parsed = scraper.parse_navtree(navtree_data)
@@ -651,7 +712,9 @@ class TestWorkbenchScraperNavtree:
             ]
         }
 
-        scraper = WorkbenchScraper(mock_session, base_url=BASE, timeout=TIMEOUT)
+        scraper = WorkbenchScraper(
+            mock_session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         # Execute
         parsed = scraper.parse_navtree(navtree_data)
@@ -667,7 +730,11 @@ class TestWorkbenchScraperNavtree:
         mock_session.get.return_value = mock_response
 
         scraper = WorkbenchScraper(
-            mock_session, base_url="https://workbench-staging.cisecurity.org", timeout=TIMEOUT
+            mock_session,
+            base_url="https://workbench-staging.cisecurity.org",
+            timeout=TIMEOUT,
+            max_workers=WORKERS,
+            batch_size=BATCH,
         )
         navtree = scraper.fetch_navtree("61")
         parsed = scraper.parse_navtree(navtree)
@@ -700,7 +767,12 @@ class TestWorkbenchScraperStrategyIntegration:
 
         # Create scraper with manual strategy
         scraper = WorkbenchScraper(
-            mock_session, strategy=mock_strategy, base_url=BASE, timeout=TIMEOUT
+            mock_session,
+            strategy=mock_strategy,
+            base_url=BASE,
+            timeout=TIMEOUT,
+            max_workers=WORKERS,
+            batch_size=BATCH,
         )
 
         # Execute
@@ -725,7 +797,9 @@ class TestWorkbenchScraperStrategyIntegration:
         mock_session.get.return_value = mock_response
 
         # Create scraper without manual strategy
-        scraper = WorkbenchScraper(mock_session, base_url=BASE, timeout=TIMEOUT)
+        scraper = WorkbenchScraper(
+            mock_session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         # Execute
         data = scraper.fetch_recommendation(
@@ -748,7 +822,9 @@ class TestWorkbenchScraperStrategyIntegration:
         mock_response.raise_for_status = Mock()
         mock_session.get.return_value = mock_response
 
-        scraper = WorkbenchScraper(mock_session, base_url=BASE, timeout=TIMEOUT)
+        scraper = WorkbenchScraper(
+            mock_session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         # Execute multiple fetches
         scraper.fetch_recommendation(
@@ -807,7 +883,9 @@ class TestWorkbenchScraperFullDownload:
             return sample_recommendation_html
 
         session, _ = stub_session(handler)
-        scraper = WorkbenchScraper(session, base_url=BASE, timeout=TIMEOUT)
+        scraper = WorkbenchScraper(
+            session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         benchmark = scraper.download_benchmark("https://workbench.cisecurity.org/benchmarks/18528")
 
@@ -818,6 +896,41 @@ class TestWorkbenchScraperFullDownload:
         assert benchmark.scraper_version == "v1_test"
         assert len(benchmark.recommendations) == 3
         assert benchmark.total_recommendations == 3
+
+    @patch("cis_bench.fetcher.workbench.StrategyDetector.detect_strategy")
+    def test_the_recommendation_fetch_runs_with_the_given_workers_and_batch_size(
+        self,
+        mock_detector,
+        mock_strategy,
+        stub_session,
+        sample_benchmark_navtree,
+        sample_benchmark_title_html,
+        sample_recommendation_html,
+    ):
+        from cis_bench.fetcher import workbench as workbench_module
+
+        mock_detector.return_value = mock_strategy
+
+        def handler(url):
+            if "navtree" in url:
+                return sample_benchmark_navtree
+            if "/benchmarks/" in url:
+                return sample_benchmark_title_html
+            return sample_recommendation_html
+
+        session, _ = stub_session(handler)
+        scraper = WorkbenchScraper(
+            session, base_url=BASE, timeout=TIMEOUT, max_workers=2, batch_size=3
+        )
+        with patch.object(
+            workbench_module,
+            "parallel_execute_batched",
+            wraps=workbench_module.parallel_execute_batched,
+        ) as run:
+            scraper.download_benchmark("https://workbench.cisecurity.org/benchmarks/18528")
+
+        assert run.call_args.kwargs["max_workers"] == 2
+        assert run.call_args.kwargs["batch_size"] == 3
 
     @patch("cis_bench.fetcher.workbench.StrategyDetector.detect_strategy")
     def test_download_benchmark_with_progress_callback(
@@ -841,7 +954,9 @@ class TestWorkbenchScraperFullDownload:
             return sample_recommendation_html
 
         session, _ = stub_session(handler)
-        scraper = WorkbenchScraper(session, base_url=BASE, timeout=TIMEOUT)
+        scraper = WorkbenchScraper(
+            session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         scraper.download_benchmark(
             "https://workbench.cisecurity.org/benchmarks/18528",
@@ -890,7 +1005,9 @@ class TestWorkbenchScraperFullDownload:
             return "<html>recommendation</html>"
 
         session, _ = stub_session(handler)
-        scraper = WorkbenchScraper(session, base_url=BASE, timeout=TIMEOUT)
+        scraper = WorkbenchScraper(
+            session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         benchmark = scraper.download_benchmark("https://workbench.cisecurity.org/benchmarks/18528")
 
@@ -911,7 +1028,11 @@ class TestWorkbenchScraperFullDownload:
         """One stalled recommendation costs that recommendation, not the whole download."""
         mock_detector.return_value = mock_strategy
         stalled_url = WorkbenchScraper(
-            requests.Session(), base_url=BASE, timeout=TIMEOUT
+            requests.Session(),
+            base_url=BASE,
+            timeout=TIMEOUT,
+            max_workers=WORKERS,
+            batch_size=BATCH,
         ).parse_navtree(sample_benchmark_navtree)[0]["url"]
 
         def handler(url):
@@ -924,7 +1045,9 @@ class TestWorkbenchScraperFullDownload:
             return "<html>recommendation</html>"
 
         session, transport = stub_session(handler)
-        scraper = WorkbenchScraper(session, base_url=BASE, timeout=TIMEOUT)
+        scraper = WorkbenchScraper(
+            session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         with (
             caplog.at_level(logging.ERROR, logger="cis_bench.fetcher.workbench"),
@@ -936,7 +1059,7 @@ class TestWorkbenchScraperFullDownload:
         assert len(benchmark.recommendations) == 2
         assert benchmark.total_recommendations == 2
         errors = [r.getMessage() for r in caplog.records if r.levelno == logging.ERROR]
-        assert any(stalled_url in line and "3 attempts" in line for line in errors), errors
+        assert any(stalled_url in line and "timed out" in line for line in errors), errors
 
     @patch("cis_bench.fetcher.workbench.StrategyDetector.detect_strategy")
     def test_download_benchmark_aborts_when_the_session_expires(
@@ -955,7 +1078,11 @@ class TestWorkbenchScraperFullDownload:
         rec_urls = [
             r["url"]
             for r in WorkbenchScraper(
-                requests.Session(), base_url=BASE, timeout=TIMEOUT
+                requests.Session(),
+                base_url=BASE,
+                timeout=TIMEOUT,
+                max_workers=WORKERS,
+                batch_size=BATCH,
             ).parse_navtree(navtree)
         ]
         expired_url = rec_urls[1]
@@ -974,7 +1101,9 @@ class TestWorkbenchScraperFullDownload:
             return "<html>recommendation</html>"
 
         session, transport = stub_session(handler)
-        scraper = WorkbenchScraper(session, base_url=BASE, timeout=TIMEOUT)
+        scraper = WorkbenchScraper(
+            session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         with pytest.raises(AuthenticationError):
             scraper.download_benchmark("https://workbench.cisecurity.org/benchmarks/18528")
@@ -992,7 +1121,11 @@ class TestWorkbenchScraperFullDownload:
         rec_urls = [
             r["url"]
             for r in WorkbenchScraper(
-                requests.Session(), base_url=BASE, timeout=TIMEOUT
+                requests.Session(),
+                base_url=BASE,
+                timeout=TIMEOUT,
+                max_workers=WORKERS,
+                batch_size=BATCH,
             ).parse_navtree(navtree)
         ]
 
@@ -1006,7 +1139,9 @@ class TestWorkbenchScraperFullDownload:
             return "<html>recommendation</html>"
 
         session, transport = stub_session(handler)
-        scraper = WorkbenchScraper(session, base_url=BASE, timeout=TIMEOUT)
+        scraper = WorkbenchScraper(
+            session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         benchmark = scraper.download_benchmark("https://workbench.cisecurity.org/benchmarks/18528")
 
@@ -1034,7 +1169,9 @@ class TestWorkbenchScraperFullDownload:
             return "<html>recommendation</html>"
 
         session, _ = stub_session(handler)
-        scraper = WorkbenchScraper(session, base_url=BASE, timeout=TIMEOUT)
+        scraper = WorkbenchScraper(
+            session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
         messages = []
 
         def on_progress(msg):
@@ -1063,7 +1200,11 @@ class TestWorkbenchScraperFullDownload:
         rec_urls = [
             r["url"]
             for r in WorkbenchScraper(
-                requests.Session(), base_url=BASE, timeout=TIMEOUT
+                requests.Session(),
+                base_url=BASE,
+                timeout=TIMEOUT,
+                max_workers=WORKERS,
+                batch_size=BATCH,
             ).parse_navtree(navtree)
         ]
         broken_url = rec_urls[4]
@@ -1078,7 +1219,9 @@ class TestWorkbenchScraperFullDownload:
             return "<html>recommendation</html>"
 
         session, _ = stub_session(handler)
-        scraper = WorkbenchScraper(session, base_url=BASE, timeout=TIMEOUT)
+        scraper = WorkbenchScraper(
+            session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         with (
             caplog.at_level(logging.ERROR, logger="cis_bench.fetcher.workbench"),
@@ -1112,7 +1255,9 @@ class TestWorkbenchScraperFullDownload:
             return "<html>recommendation</html>"
 
         session, _ = stub_session(handler)
-        scraper = WorkbenchScraper(session, base_url=BASE, timeout=TIMEOUT)
+        scraper = WorkbenchScraper(
+            session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         with (
             patch("cis_bench.cli.helpers.download_helper.Progress") as progress_class,
@@ -1155,7 +1300,9 @@ class TestWorkbenchScraperFullDownload:
 
             mock_session.get.side_effect = mock_get
 
-            scraper = WorkbenchScraper(mock_session, base_url=BASE, timeout=TIMEOUT)
+            scraper = WorkbenchScraper(
+                mock_session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+            )
 
             # Execute
             benchmark = scraper.download_benchmark(
@@ -1235,7 +1382,9 @@ class TestWorkbenchScraperConcurrentFetches:
     ):
         session, adapter = saved_session
         mock_detector.return_value = mock_strategy
-        scraper = WorkbenchScraper(session, base_url=BASE, timeout=TIMEOUT)
+        scraper = WorkbenchScraper(
+            session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         with _RotatingCookieServer(sample_recommendation_html) as server:
             result = self._fetch_concurrently(scraper, server)
@@ -1255,7 +1404,9 @@ class TestWorkbenchScraperConcurrentFetches:
     ):
         session, _ = saved_session
         mock_detector.return_value = mock_strategy
-        scraper = WorkbenchScraper(session, base_url=BASE, timeout=TIMEOUT)
+        scraper = WorkbenchScraper(
+            session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         with _RotatingCookieServer(sample_recommendation_html) as server:
             result = self._fetch_concurrently(scraper, server)
@@ -1276,7 +1427,9 @@ class TestWorkbenchScraperConcurrentFetches:
             return mock_strategy
 
         mock_detector.side_effect = slow_detection
-        scraper = WorkbenchScraper(session, base_url=BASE, timeout=TIMEOUT)
+        scraper = WorkbenchScraper(
+            session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         with _RotatingCookieServer(sample_recommendation_html) as server:
             result = self._fetch_concurrently(scraper, server)
@@ -1288,7 +1441,14 @@ class TestWorkbenchScraperConcurrentFetches:
         self, saved_session, mock_strategy, sample_recommendation_html
     ):
         session, adapter = saved_session
-        scraper = WorkbenchScraper(session, strategy=mock_strategy, base_url=BASE, timeout=TIMEOUT)
+        scraper = WorkbenchScraper(
+            session,
+            strategy=mock_strategy,
+            base_url=BASE,
+            timeout=TIMEOUT,
+            max_workers=WORKERS,
+            batch_size=BATCH,
+        )
 
         with _RotatingCookieServer(sample_recommendation_html) as server:
             scraper.fetch_recommendation(f"{server.base_url}/sections/1/recommendations/1")

@@ -16,7 +16,6 @@ import urllib3
 from bs4 import BeautifulSoup, Tag
 from pydantic import HttpUrl
 
-from cis_bench.config import WORKBENCH_BATCH_SIZE, WORKBENCH_MAX_CONCURRENT_REQUESTS
 from cis_bench.exceptions import AuthenticationError
 from cis_bench.fetcher.auth import is_workbench_login_page
 from cis_bench.fetcher.http import ThreadSessions, get_with_retry
@@ -49,6 +48,8 @@ class WorkbenchScraper:
         *,
         base_url: str,
         timeout: tuple[float, float],
+        max_workers: int,
+        batch_size: int,
         strategy: ScraperStrategy | None = None,
     ):
         """Initialize scraper.
@@ -57,6 +58,8 @@ class WorkbenchScraper:
             session: Authenticated requests session
             base_url: The WorkBench origin (already validated) every URL is built on
             timeout: (connect, read) seconds for every request
+            max_workers: Recommendation pages fetched at once
+            batch_size: Recommendations per batch of parallel work
             strategy: Optional specific strategy (auto-detected if not provided)
         """
         self.session = session
@@ -66,6 +69,8 @@ class WorkbenchScraper:
         self._sessions = ThreadSessions(session)
         self.base_url = base_url
         self.timeout = timeout
+        self.max_workers = max_workers
+        self.batch_size = batch_size
 
     def _get_strategy(self, html: str) -> ScraperStrategy:
         """Get strategy to use (override or auto-detect).
@@ -310,8 +315,8 @@ class WorkbenchScraper:
         fetched = parallel_execute_batched(
             recommendations_list,
             build_recommendation,
-            batch_size=WORKBENCH_BATCH_SIZE,
-            max_workers=WORKBENCH_MAX_CONCURRENT_REQUESTS,
+            batch_size=self.batch_size,
+            max_workers=self.max_workers,
             progress_callback=report_completion,
             stop_on=(AuthenticationError,),
         )

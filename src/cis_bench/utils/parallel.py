@@ -12,8 +12,8 @@ from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
-# No default concurrency or batch size: callers pass the ones they mean (WorkBench callers
-# pass WORKBENCH_MAX_CONCURRENT_REQUESTS and WORKBENCH_BATCH_SIZE from cis_bench.config).
+# No default concurrency or batch size: callers pass the ones they mean (the scrapers pass
+# the max_concurrent_requests and batch_size settings they were built with).
 # Request pacing is not done here either: WorkBench requests
 # are rate limited by the session's adapter (see cis_bench.fetcher.http).
 

@@ -11,7 +11,8 @@ from unittest.mock import patch
 
 import pytest
 
-from cis_bench.config import Folders, load_settings, xdg_folders
+from cis_bench import config
+from cis_bench.config import Folders, RequestPolicy, load_settings, xdg_folders
 from cis_bench.exceptions import ConfigurationError
 
 HOME = Path("/home/u")
@@ -230,6 +231,126 @@ class TestAnEarlierInstallsFolderKeepsWorking:
         settings = load_settings()
         assert settings.folders.legacy is None
         assert settings.data_dir == home / "xdg-data" / "cis-bench"
+
+
+TUNABLES = [
+    # (variable, config.toml key, default)
+    ("CIS_BENCH_REQUESTS_PER_SECOND", "requests_per_second", 3.0),
+    ("CIS_BENCH_MAX_CONCURRENT_REQUESTS", "max_concurrent_requests", 5),
+    ("CIS_BENCH_BATCH_SIZE", "batch_size", 10),
+    ("CIS_BENCH_REQUEST_RETRIES", "request_retries", 2),
+    ("CIS_BENCH_RETRY_BACKOFF_FACTOR", "retry_backoff_factor", 1.0),
+    ("CIS_BENCH_RETRY_JITTER_SECONDS", "retry_jitter_seconds", 0.5),
+    ("CIS_BENCH_BROWSER", "browser", "chrome"),
+]
+
+
+class TestTheRequestTunablesAndTheBrowserAreSettings:
+    """Rate, concurrency, batch size, retries, backoff, jitter and the default browser can be
+    tuned per machine or network; each follows the same sources and rules as every setting."""
+
+    @pytest.mark.parametrize(("variable", "key", "default"), TUNABLES)
+    def test_the_default_is_the_policy_cis_bench_shipped_with(
+        self, data_dir, variable, key, default
+    ):
+        assert getattr(load_settings(), key) == default
+
+    def test_each_is_set_from_the_environment(self, data_dir, monkeypatch):
+        values = {
+            "CIS_BENCH_REQUESTS_PER_SECOND": "1.5",
+            "CIS_BENCH_MAX_CONCURRENT_REQUESTS": "2",
+            "CIS_BENCH_BATCH_SIZE": "4",
+            "CIS_BENCH_REQUEST_RETRIES": "0",
+            "CIS_BENCH_RETRY_BACKOFF_FACTOR": "0",
+            "CIS_BENCH_RETRY_JITTER_SECONDS": "0.25",
+            "CIS_BENCH_BROWSER": "firefox",
+        }
+        for name, value in values.items():
+            monkeypatch.setenv(name, value)
+        settings = load_settings()
+        assert settings.requests_per_second == 1.5
+        assert settings.max_concurrent_requests == 2
+        assert settings.batch_size == 4
+        assert settings.request_retries == 0
+        assert settings.retry_backoff_factor == 0.0
+        assert settings.retry_jitter_seconds == 0.25
+        assert settings.browser == "firefox"
+
+    def test_each_is_set_from_config_toml(self, data_dir):
+        (data_dir / "config.toml").write_text(
+            "requests_per_second = 2\nmax_concurrent_requests = 3\nbatch_size = 6\n"
+            'request_retries = 1\nretry_backoff_factor = 0.5\nretry_jitter_seconds = 0\nbrowser = "edge"\n'
+        )
+        settings = load_settings()
+        assert settings.request_policy == RequestPolicy(
+            requests_per_second=2.0, retries=1, backoff_factor=0.5, jitter_seconds=0.0
+        )
+        assert (settings.max_concurrent_requests, settings.batch_size) == (3, 6)
+        assert settings.browser == "edge"
+
+    @pytest.mark.parametrize(
+        ("variable", "value", "accepted"),
+        [
+            ("CIS_BENCH_REQUESTS_PER_SECOND", "0", "a finite number greater than 0"),
+            ("CIS_BENCH_REQUESTS_PER_SECOND", "nan", "a finite number greater than 0"),
+            ("CIS_BENCH_REQUESTS_PER_SECOND", "fast", "a finite number greater than 0"),
+            ("CIS_BENCH_MAX_CONCURRENT_REQUESTS", "0", "an integer of 1 or more"),
+            ("CIS_BENCH_MAX_CONCURRENT_REQUESTS", "2.5", "an integer of 1 or more"),
+            ("CIS_BENCH_BATCH_SIZE", "0", "an integer of 1 or more"),
+            ("CIS_BENCH_REQUEST_RETRIES", "-1", "an integer of 0 or more"),
+            ("CIS_BENCH_RETRY_BACKOFF_FACTOR", "-1", "a finite number of 0 or more"),
+            ("CIS_BENCH_RETRY_BACKOFF_FACTOR", "inf", "a finite number of 0 or more"),
+            ("CIS_BENCH_RETRY_JITTER_SECONDS", "-0.5", "a finite number of 0 or more"),
+            ("CIS_BENCH_BROWSER", "ie", "chrome, firefox, edge or safari"),
+        ],
+    )
+    def test_a_refusal_names_the_variable_and_what_is_accepted(
+        self, data_dir, monkeypatch, variable, value, accepted
+    ):
+        monkeypatch.setenv(variable, value)
+        with pytest.raises(ConfigurationError, match=variable) as caught:
+            load_settings()
+        assert accepted in str(caught.value)
+        assert repr(value) in str(caught.value)
+
+    def test_the_browser_name_is_read_in_any_case(self, data_dir, monkeypatch):
+        monkeypatch.setenv("CIS_BENCH_BROWSER", " FireFox ")
+        assert load_settings().browser == "firefox"
+
+    def test_request_policy_bundles_the_values_a_session_needs(self, data_dir, monkeypatch):
+        monkeypatch.setenv("CIS_BENCH_REQUESTS_PER_SECOND", "1")
+        monkeypatch.setenv("CIS_BENCH_REQUEST_RETRIES", "4")
+        assert load_settings().request_policy == RequestPolicy(
+            requests_per_second=1.0, retries=4, backoff_factor=1.0, jitter_seconds=0.5
+        )
+
+
+class TestTheFixedValuesAreNotSettings:
+    """User-Agent, the SSO allowlist and redirect cap, the retryable statuses and the
+    Retry-After cap are policy, not configuration: no source can change them."""
+
+    @pytest.mark.parametrize(
+        "key",
+        [
+            "user_agent",
+            "trusted_sso_hosts",
+            "max_sso_redirects",
+            "retryable_status_codes",
+            "retry_after_max_seconds",
+        ],
+    )
+    def test_in_config_toml_they_are_unknown_settings(self, data_dir, key):
+        (data_dir / "config.toml").write_text(f'{key} = "x"\n')
+        with pytest.raises(ConfigurationError, match=f"unknown setting '{key}'"):
+            load_settings()
+
+    def test_in_the_environment_they_change_nothing(self, data_dir, monkeypatch):
+        monkeypatch.setenv("CIS_BENCH_USER_AGENT", "spoofed")
+        monkeypatch.setenv("CIS_BENCH_MAX_SSO_REDIRECTS", "99")
+        settings = load_settings()
+        assert not hasattr(settings, "user_agent")
+        assert config.USER_AGENT.startswith("cis-bench-cli/")
+        assert config.MAX_SSO_REDIRECTS == 8
 
 
 class TestPrecedence:

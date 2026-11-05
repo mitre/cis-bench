@@ -13,7 +13,7 @@ from rich.markup import escape
 
 from cis_bench.cli.helpers.output import output_data
 from cis_bench.cli.helpers.services import auth_manager, settings_from, settings_with_flags
-from cis_bench.config import is_cis_domain
+from cis_bench.config import BROWSERS, is_cis_domain
 from cis_bench.exceptions import TLSVerificationError
 
 console = Console()
@@ -39,8 +39,8 @@ def auth():
 @click.option(
     "--browser",
     "-b",
-    type=click.Choice(["chrome", "firefox", "edge", "safari"]),
-    help="Browser to use for authentication",
+    type=click.Choice(list(BROWSERS)),
+    help="Browser to read cookies from (default: the CIS_BENCH_BROWSER setting)",
 )
 @click.option(
     "--cookies",
@@ -72,22 +72,14 @@ def login(browser, cookies, open, no_verify_ssl):
 
     \b
     Examples:
-        cis-bench auth login --browser chrome --open
-        cis-bench auth login --browser firefox
+        cis-bench auth login                       # the CIS_BENCH_BROWSER setting (chrome)
+        cis-bench auth login --browser firefox --open
         cis-bench auth login --cookies cookies.txt
 
     \b
     Windows users: If you get permission errors with Chrome/Edge,
     use Firefox or the --cookies option instead.
     """
-    # Validate that either browser or cookies is specified
-    if not browser and not cookies:
-        console.print("[red]Error: Must specify either --browser or --cookies[/red]")
-        console.print("\n[cyan]Examples:[/cyan]")
-        console.print("  cis-bench auth login --browser chrome")
-        console.print("  cis-bench auth login --cookies cookies.txt")
-        sys.exit(1)
-
     if browser and cookies:
         console.print(
             "[yellow]Warning: Both --browser and --cookies specified, using --cookies[/yellow]"
@@ -95,7 +87,10 @@ def login(browser, cookies, open, no_verify_ssl):
 
     try:
         # --no-verify-ssl is a flag on top of CIS_BENCH_VERIFY_SSL; unset, the setting applies.
-        auth = auth_manager(settings_with_flags(verify_ssl=False if no_verify_ssl else None))
+        settings = settings_with_flags(verify_ssl=False if no_verify_ssl else None)
+        auth = auth_manager(settings)
+        # Without --browser the configured browser is read (CIS_BENCH_BROWSER, chrome by default).
+        browser = browser or settings.browser
         workbench_base_url = auth.workbench_url
         workbench_host = auth.workbench_host
 

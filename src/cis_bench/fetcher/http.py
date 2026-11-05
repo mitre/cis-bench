@@ -3,9 +3,9 @@
 Retries and pacing come from established libraries instead of hand-written loops and sleeps:
 urllib3's Retry (exponential backoff with jitter, Retry-After) and requests-ratelimiter's
 per-host limiter, both on one adapter that new_workbench_session mounts. Per-thread copies of
-a session share that adapter, so one limiter covers every worker thread. The policy values
-(rate, retries, statuses, backoff, User-Agent) are constants in cis_bench.config, imported
-here and never copied.
+a session share that adapter, so one limiter covers every worker thread. The tunable policy
+(rate, retries, backoff, jitter) arrives as a RequestPolicy from the caller; the fixed part
+(retryable statuses, Retry-After cap, User-Agent) is constants in cis_bench.config.
 """
 
 import copy
@@ -19,21 +19,28 @@ from requests_ratelimiter import LimiterAdapter
 from urllib3.util.retry import Retry
 
 from cis_bench.config import (
-    REQUEST_RETRIES,
     RETRY_AFTER_MAX_SECONDS,
-    RETRY_BACKOFF_FACTOR,
-    RETRY_JITTER_SECONDS,
     RETRYABLE_STATUS_CODES,
     USER_AGENT,
-    WORKBENCH_REQUESTS_PER_SECOND,
+    RequestPolicy,
 )
 from cis_bench.exceptions import FetchError
 
 logger = logging.getLogger(__name__)
 
 
-def _max_attempts() -> int:
-    return REQUEST_RETRIES + 1
+def _attempts_allowed(retry: Retry) -> int:
+    """How many attempts this retry object allows in all: its remaining total plus those made."""
+    return int(retry.total or 0) + len(retry.history) + 1
+
+
+def attempts_allowed(session: requests.Session, url: str) -> int:
+    """The attempts the session's adapter makes for url before giving up.
+
+    An adapter without a urllib3 Retry (requests' default, or a test double) makes one.
+    """
+    retry = getattr(session.get_adapter(url), "max_retries", None)
+    return _attempts_allowed(retry) if isinstance(retry, Retry) else 1
 
 
 class WorkBenchRetry(Retry):
@@ -67,44 +74,43 @@ class WorkBenchRetry(Retry):
         where = f"{_pool.scheme}://{_pool.host}:{_pool.port}{url}" if _pool is not None else url
         cause = error if error is not None else f"HTTP {response.status}"
         logger.warning(
-            f"Request failed (attempt {len(retry.history)}/{_max_attempts()}), "
+            f"Request failed (attempt {len(retry.history)}/{_attempts_allowed(retry)}), "
             f"retrying in {wait:.1f}s: {where}: {cause}"
         )
         return retry
 
 
-def workbench_retry() -> WorkBenchRetry:
-    """The retry policy for WorkBench GETs: connect, read and 429/502/503/504 failures."""
+def workbench_retry(policy: RequestPolicy) -> WorkBenchRetry:
+    """The retry behaviour for WorkBench GETs: connect, read and 429/502/503/504 failures."""
     return WorkBenchRetry(
-        total=REQUEST_RETRIES,
+        total=policy.retries,
         status_forcelist=RETRYABLE_STATUS_CODES,
         allowed_methods=frozenset({"GET", "HEAD"}),
-        backoff_factor=RETRY_BACKOFF_FACTOR,
-        backoff_jitter=RETRY_JITTER_SECONDS,
+        backoff_factor=policy.backoff_factor,
+        backoff_jitter=policy.jitter_seconds,
         respect_retry_after_header=True,
         raise_on_status=False,
     )
 
 
-def mount_workbench_adapter(
-    session: requests.Session, requests_per_second: float | None = None
-) -> None:
-    """Mount the WorkBench adapter (rate limit per host, then retries) on session.
-
-    requests_per_second defaults to WORKBENCH_REQUESTS_PER_SECOND.
-    """
-    rate = WORKBENCH_REQUESTS_PER_SECOND if requests_per_second is None else requests_per_second
-    adapter = LimiterAdapter(per_second=rate, burst=1, per_host=True, max_retries=workbench_retry())
+def mount_workbench_adapter(session: requests.Session, policy: RequestPolicy) -> None:
+    """Mount the WorkBench adapter (rate limit per host, then retries) on session."""
+    adapter = LimiterAdapter(
+        per_second=policy.requests_per_second,
+        burst=1,
+        per_host=True,
+        max_retries=workbench_retry(policy),
+    )
     for prefix in ("https://", "http://"):
         session.mount(prefix, adapter)
 
 
-def new_workbench_session(requests_per_second: float | None = None) -> requests.Session:
-    """A requests.Session for WorkBench: the shared rate limit and retry policy mounted, and the
+def new_workbench_session(policy: RequestPolicy) -> requests.Session:
+    """A requests.Session for WorkBench: the given rate limit and retry policy mounted, and the
     cis-bench User-Agent on every request."""
     session = requests.Session()
     session.headers["User-Agent"] = USER_AGENT
-    mount_workbench_adapter(session, requests_per_second)
+    mount_workbench_adapter(session, policy)
     return session
 
 
@@ -179,8 +185,8 @@ def get_with_retry(
     try:
         response = session.get(url, timeout=timeout)
     except (requests.Timeout, requests.ConnectionError) as e:
-        raise FetchError(url, _max_attempts(), str(e)) from e
+        raise FetchError(url, attempts_allowed(session, url), str(e)) from e
     if response.status_code in RETRYABLE_STATUS_CODES:
-        raise FetchError(url, _max_attempts(), f"HTTP {response.status_code}")
+        raise FetchError(url, attempts_allowed(session, url), f"HTTP {response.status_code}")
     response.raise_for_status()
     return response

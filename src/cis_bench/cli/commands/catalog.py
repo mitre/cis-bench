@@ -17,11 +17,13 @@ from cis_bench.cli.helpers.services import (
     settings_from,
     workbench_scraper,
 )
-from cis_bench.config import WORKBENCH_REQUESTS_PER_SECOND
 from cis_bench.exceptions import AuthenticationError
 
 console = Console()
 logger = logging.getLogger(__name__)
+
+
+BROWSER_HELP = "Browser to read cookies from (default: the CIS_BENCH_BROWSER setting)"
 
 
 def _validate_rate_limit(
@@ -68,7 +70,7 @@ def catalog():
 
 
 @catalog.command()
-@click.option("--browser", default="chrome", help="Browser for cookie extraction")
+@click.option("--browser", help=BROWSER_HELP)
 @click.option("--max-pages", type=int, help="Limit pages to scrape (for testing)")
 @click.option(
     "--rate-limit",
@@ -78,8 +80,7 @@ def catalog():
     metavar="SECONDS",
     help=(
         "Seconds between requests to WorkBench for this run "
-        f"(default: {1 / WORKBENCH_REQUESTS_PER_SECOND:.2f}, "
-        f"{WORKBENCH_REQUESTS_PER_SECOND:g} requests per second)"
+        "(default: 1 / the CIS_BENCH_REQUESTS_PER_SECOND setting)"
     ),
 )
 def refresh(browser, max_pages, rate_limit):
@@ -87,8 +88,8 @@ def refresh(browser, max_pages, rate_limit):
 
     This builds or updates the complete catalog by scraping all benchmark
     listing pages from CIS WorkBench (about 80 pages, about 1,500 benchmarks).
-    Pages are fetched five at a time, at most three requests per second; a full
-    refresh takes under a minute.
+    Pages are fetched in parallel, paced by the CIS_BENCH_* request settings; a
+    full refresh takes under a minute with the defaults.
 
     \b
     Examples:
@@ -110,7 +111,7 @@ def refresh(browser, max_pages, rate_limit):
         auth = auth_manager(
             settings, requests_per_second=None if rate_limit is None else 1 / rate_limit
         )
-        session = auth.get_or_create_session(browser=browser)
+        session = auth.get_or_create_session(browser=browser or settings.browser)
         console.print("[green]✓[/green] Session valid\n")
 
         # Create scraper
@@ -157,7 +158,7 @@ def refresh(browser, max_pages, rate_limit):
 
 
 @catalog.command()
-@click.option("--browser", default="chrome", help="Browser for cookie extraction")
+@click.option("--browser", help=BROWSER_HELP)
 def update(browser):
     """Quick catalog update (scrape page 1 only).
 
@@ -176,7 +177,7 @@ def update(browser):
         db.initialize_schema()
 
         settings = settings_from()
-        session = auth_manager(settings).get_or_create_session(browser=browser)
+        session = auth_manager(settings).get_or_create_session(browser=browser or settings.browser)
         scraper = catalog_scraper(settings, db, session)
 
         console.print("[cyan]Updating catalog (page 1)...[/cyan]")
@@ -497,7 +498,7 @@ def stats(output_format):
 
 @catalog.command()
 @click.argument("benchmark_id_or_name")
-@click.option("--browser", default="chrome", help="Browser for cookie extraction")
+@click.option("--browser", help=BROWSER_HELP)
 @click.option("--force", is_flag=True, help="Force re-download even if current")
 @click.option("--interactive", is_flag=True, help="Interactive selection if multiple matches")
 def download(benchmark_id_or_name, browser, force, interactive):
@@ -517,7 +518,7 @@ def download(benchmark_id_or_name, browser, force, interactive):
 
         settings = settings_from()
         # Get authenticated session (reuses saved session or authenticates via browser)
-        session = auth_manager(settings).get_or_create_session(browser=browser)
+        session = auth_manager(settings).get_or_create_session(browser=browser or settings.browser)
 
         # Create downloader
         scraper = workbench_scraper(settings, session)

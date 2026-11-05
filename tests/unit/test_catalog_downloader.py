@@ -6,8 +6,11 @@ import pytest
 
 from cis_bench.catalog.database import CatalogDatabase
 from cis_bench.catalog.downloader import CatalogDownloader
+from cis_bench.config import RequestPolicy
 from cis_bench.fetcher.workbench import WorkbenchScraper
 from cis_bench.models.benchmark import Benchmark
+
+POLICY = RequestPolicy(requests_per_second=3.0, retries=2, backoff_factor=1.0, jitter_seconds=0.5)
 
 
 @pytest.fixture
@@ -464,6 +467,7 @@ class TestCatalogPackageExportsAndBoundaries:
             workbench_url="https://workbench.cisecurity.org",
             verify_ssl=True,
             session_file=tmp_path / "session.cookies",
+            request_policy=POLICY,
         )
         session.get.return_value = login_resp
         assert auth.validate_session(session) is False

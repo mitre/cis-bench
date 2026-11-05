@@ -100,12 +100,67 @@ def mock_search():
     return search
 
 
+class TestTheBrowserSettingIsTheDefaultBrowser:
+    """refresh, update and download read cookies from CIS_BENCH_BROWSER unless --browser is given."""
+
+    @pytest.fixture
+    def login(self, auth_manager_class, mock_db, monkeypatch):
+        monkeypatch.setenv("CIS_BENCH_BROWSER", "firefox")
+        login = auth_manager_class.return_value.get_or_create_session
+        login.return_value = Mock()
+        with (
+            patch("cis_bench.cli.commands.catalog.get_catalog_db", return_value=mock_db),
+            patch("cis_bench.cli.commands.catalog.require_catalog_db", return_value=mock_db),
+            patch("cis_bench.catalog.scraper.CatalogScraper") as scraper_class,
+            patch("cis_bench.fetcher.workbench.WorkbenchScraper"),
+            patch("cis_bench.catalog.downloader.CatalogDownloader") as downloader_class,
+        ):
+            scraper_class.return_value.scrape_full_catalog.return_value = {
+                "total_benchmarks": 1,
+                "pages_scraped": 1,
+                "failed_pages": [],
+            }
+            scraper_class.return_value.scrape_incremental.return_value = {
+                "new_benchmarks": 0,
+                "updated_benchmarks": 0,
+            }
+            downloader_class.return_value.download_by_id.return_value = {
+                "status": "downloaded",
+                "benchmark_id": "23598",
+                "recommendation_count": 1,
+                "file_size": 1,
+            }
+            yield login
+
+    @pytest.mark.parametrize(
+        "args",
+        [["refresh", "--max-pages", "1"], ["update"], ["download", "23598"]],
+        ids=["refresh", "update", "download"],
+    )
+    def test_without_the_flag_the_setting_is_the_browser(self, runner, login, args):
+        result = runner.invoke(cli, ["catalog", *args])
+
+        assert result.exit_code == 0, result.output
+        login.assert_called_once_with(browser="firefox")
+
+    @pytest.mark.parametrize(
+        "args",
+        [["refresh", "--max-pages", "1"], ["update"], ["download", "23598"]],
+        ids=["refresh", "update", "download"],
+    )
+    def test_an_explicit_flag_wins(self, runner, login, args):
+        result = runner.invoke(cli, ["catalog", *args, "--browser", "edge"])
+
+        assert result.exit_code == 0, result.output
+        login.assert_called_once_with(browser="edge")
+
+
 class TestCatalogRefreshCommand:
     """Tests for catalog refresh command."""
 
     @pytest.mark.parametrize(
         ("args", "expected_rate"),
-        [(["--rate-limit", "2"], 0.5), ([], None)],
+        [(["--rate-limit", "2"], 0.5), ([], 3.0)],
         ids=["two-seconds-between-requests", "configured-rate"],
     )
     def test_refresh_rate_limit_sets_the_request_rate_for_the_run(
@@ -130,9 +185,15 @@ class TestCatalogRefreshCommand:
 
         assert result.exit_code == 0, result.output
         login.assert_called_once_with(browser="chrome")
-        assert auth_manager_class.call_args.kwargs["requests_per_second"] == expected_rate
+        policy = auth_manager_class.call_args.kwargs["request_policy"]
+        assert policy.requests_per_second == expected_rate
         scraper_class.assert_called_once_with(
-            mock_db, session, base_url="https://workbench.cisecurity.org", timeout=(10.0, 30.0)
+            mock_db,
+            session,
+            base_url="https://workbench.cisecurity.org",
+            timeout=(10.0, 30.0),
+            max_workers=5,
+            batch_size=10,
         )
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
@@ -1078,7 +1139,11 @@ class TestCatalogDownloadCommand:
         mock_auth.return_value.get_or_create_session.assert_called_once_with(browser="chrome")
         mock_auth.return_value.load_cookies_from_browser.assert_not_called()
         mock_scraper_class.assert_called_once_with(
-            mock_session, base_url="https://workbench.cisecurity.org", timeout=(10.0, 30.0)
+            mock_session,
+            base_url="https://workbench.cisecurity.org",
+            timeout=(10.0, 30.0),
+            max_workers=5,
+            batch_size=10,
         )
         mock_downloader.download_by_id.assert_called_once_with("23598", force=False)
 
@@ -1584,7 +1649,7 @@ class TestVerifiedTLSByDefault:
 
         assert result.exit_code == 0, result.output
         assert mock_auth.call_args.kwargs["verify_ssl"] is True
-        assert mock_auth.call_args.kwargs["requests_per_second"] is None
+        assert mock_auth.call_args.kwargs["request_policy"].requests_per_second == 3.0
         mock_auth.return_value.get_or_create_session.assert_called_once_with(browser="chrome")
         mock_auth.return_value.validate_session.assert_not_called()
 

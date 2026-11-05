@@ -58,21 +58,15 @@ DEFAULT_WORKBENCH_URL = f"https://workbench.{CIS_ROOT_DOMAIN}"
 # The connect timeout of every WorkBench request; never longer than the read timeout.
 CONNECT_TIMEOUT_SECONDS = 10.0
 
-# WorkBench request policy: fixed values, not settings. The code that sends requests
-# (fetcher.http, the scrapers) imports these; none of them keeps a copy.
-# Politeness: the most requests cis-bench sends to one WorkBench host per second.
-WORKBENCH_REQUESTS_PER_SECOND = 3.0
-# Concurrent requests, and how many items one batch of parallel work holds.
-WORKBENCH_MAX_CONCURRENT_REQUESTS = 5
-WORKBENCH_BATCH_SIZE = 10
-# Retries after the first attempt, and the statuses worth retrying; every other status is
-# final. urllib3's backoff: the first retry is immediate, then factor * 2 seconds plus up to
-# the jitter. A server's Retry-After is honored up to the cap.
-REQUEST_RETRIES = 2
+# WorkBench request policy that is fixed, not a setting. The code that sends requests
+# (fetcher.http) imports these; nothing keeps a copy. The tunable part of the policy (rate,
+# retries, backoff, jitter, concurrency, batch size) is Settings fields below.
+# The statuses worth retrying; every other status is final. A server's Retry-After is
+# honored up to the cap.
 RETRYABLE_STATUS_CODES = frozenset({429, 502, 503, 504})
-RETRY_BACKOFF_FACTOR = 1.0
-RETRY_JITTER_SECONDS = 0.5
 RETRY_AFTER_MAX_SECONDS = 60
+# The browsers cookies can be read from.
+BROWSERS = ("chrome", "firefox", "edge", "safari")
 # Sent on every WorkBench request so CIS can tell who is calling.
 USER_AGENT = f"cis-bench-cli/{__version__} (github.com/mitre/cis-bench)"
 # CIS's single sign-on hosts a login may pass through, and how many hops are followed.
@@ -88,6 +82,27 @@ _VERIFY_SSL_ACCEPTED = (
 _WORKBENCH_URL_ACCEPTED = (
     "an https://*.cisecurity.org origin without path, query, fragment, or credentials"
 )
+_BROWSER_ACCEPTED = f"{', '.join(BROWSERS[:-1])} or {BROWSERS[-1]} (any case)"
+_POSITIVE_NUMBER = "a finite number greater than 0"
+_NON_NEGATIVE_NUMBER = "a finite number of 0 or more"
+_POSITIVE_INT = "an integer of 1 or more"
+_NON_NEGATIVE_INT = "an integer of 0 or more"
+
+
+@dataclass(frozen=True)
+class RequestPolicy:
+    """How a WorkBench session paces and retries its requests.
+
+    requests_per_second is the most requests sent to one host per second. retries counts the
+    attempts after the first; urllib3's backoff makes the first retry immediate, then waits
+    backoff_factor * 2 seconds plus up to jitter_seconds of random jitter. Retryable statuses
+    and the Retry-After cap are fixed (RETRYABLE_STATUS_CODES, RETRY_AFTER_MAX_SECONDS).
+    """
+
+    requests_per_second: float
+    retries: int
+    backoff_factor: float
+    jitter_seconds: float
 
 
 def is_cis_domain(host: str) -> bool:
@@ -270,14 +285,66 @@ class Settings(BaseSettings):
         default=100,
         ge=1,
         description="Default number of results for search, catalog search, catalog list and get",
-        json_schema_extra={"accepted": "an integer of 1 or more"},
+        json_schema_extra={"accepted": _POSITIVE_INT},
     )
     table_title_width: int = Field(
         default=90,
         ge=1,
         description="Widest the Title column of the search and get tables may grow, in characters",
-        json_schema_extra={"accepted": "an integer of 1 or more"},
+        json_schema_extra={"accepted": _POSITIVE_INT},
     )
+    requests_per_second: float = Field(
+        default=3.0,
+        gt=0,
+        allow_inf_nan=False,
+        description="Most requests sent to one WorkBench host per second, across all threads",
+        json_schema_extra={"accepted": _POSITIVE_NUMBER},
+    )
+    max_concurrent_requests: int = Field(
+        default=5,
+        ge=1,
+        description="Worker threads fetching recommendation or catalog pages at once",
+        json_schema_extra={"accepted": _POSITIVE_INT},
+    )
+    batch_size: int = Field(
+        default=10,
+        ge=1,
+        description="Pages per batch of parallel work; a run stops after the batch that hit an expired session",
+        json_schema_extra={"accepted": _POSITIVE_INT},
+    )
+    request_retries: int = Field(
+        default=2,
+        ge=0,
+        description="Retries after a failed request (timeout, connection error, 429/502/503/504)",
+        json_schema_extra={"accepted": _NON_NEGATIVE_INT},
+    )
+    retry_backoff_factor: float = Field(
+        default=1.0,
+        ge=0,
+        allow_inf_nan=False,
+        description="Backoff factor: the first retry is immediate, the next waits factor x 2 seconds",
+        json_schema_extra={"accepted": _NON_NEGATIVE_NUMBER},
+    )
+    retry_jitter_seconds: float = Field(
+        default=0.5,
+        ge=0,
+        allow_inf_nan=False,
+        description="Most random seconds added to each retry wait",
+        json_schema_extra={"accepted": _NON_NEGATIVE_NUMBER},
+    )
+    browser: str = Field(
+        default="chrome",
+        description="Browser whose cookies log in when --browser is not given",
+        json_schema_extra={"accepted": _BROWSER_ACCEPTED},
+    )
+
+    @field_validator("browser")
+    @classmethod
+    def _check_browser(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in BROWSERS:
+            raise ValueError(f"use {_BROWSER_ACCEPTED}")
+        return normalized
 
     @field_validator("workbench_url")
     @classmethod
@@ -319,6 +386,16 @@ class Settings(BaseSettings):
     def request_timeouts(self) -> tuple[float, float]:
         """(connect, read) seconds for requests; the connect timeout is capped at the read timeout."""
         return (min(CONNECT_TIMEOUT_SECONDS, self.request_timeout), self.request_timeout)
+
+    @property
+    def request_policy(self) -> RequestPolicy:
+        """The pacing and retry values every WorkBench session is built with."""
+        return RequestPolicy(
+            requests_per_second=self.requests_per_second,
+            retries=self.request_retries,
+            backoff_factor=self.retry_backoff_factor,
+            jitter_seconds=self.retry_jitter_seconds,
+        )
 
     @property
     def data_dir(self) -> Path:

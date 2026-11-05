@@ -11,7 +11,6 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 
 from cis_bench.catalog.database import CatalogDatabase
 from cis_bench.catalog.parser import WorkBenchCatalogParser
-from cis_bench.config import WORKBENCH_BATCH_SIZE, WORKBENCH_MAX_CONCURRENT_REQUESTS
 from cis_bench.exceptions import AuthenticationError, FetchError
 from cis_bench.fetcher.auth import is_workbench_login_page
 from cis_bench.fetcher.http import ThreadSessions, get_with_retry
@@ -47,6 +46,8 @@ class CatalogScraper:
         *,
         base_url: str,
         timeout: tuple[float, float],
+        max_workers: int,
+        batch_size: int,
     ):
         """Initialize scraper.
 
@@ -55,11 +56,15 @@ class CatalogScraper:
             session: Authenticated requests session (from AuthManager)
             base_url: The WorkBench origin (already validated) every URL is built on
             timeout: (connect, read) seconds for every request
+            max_workers: Listing pages fetched at once
+            batch_size: Pages per batch of parallel work
         """
         self.db = database
         self.session = session
         self.base_url = base_url
         self.timeout = timeout
+        self.max_workers = max_workers
+        self.batch_size = batch_size
         self._sessions = ThreadSessions(session)
 
     def scrape_full_catalog(
@@ -135,8 +140,8 @@ class CatalogScraper:
             for batch in iter_batches(
                 range(2, total_pages + 1),
                 fetch_page,
-                batch_size=WORKBENCH_BATCH_SIZE,
-                max_workers=WORKBENCH_MAX_CONCURRENT_REQUESTS,
+                batch_size=self.batch_size,
+                max_workers=self.max_workers,
                 progress_callback=page_finished,
             ):
                 for _, error in batch.failed:

@@ -327,7 +327,7 @@ cis-bench download --file urls.txt
 
 **How recommendations are fetched:**
 
-- Recommendation pages are fetched five at a time, in batches of ten, and never more than 3 requests per second to WorkBench (322 recommendations took about two minutes on 2026-11-04). `cis-bench catalog refresh` uses the same limit.
+- Recommendation pages are fetched in parallel, paced by the `CIS_BENCH_MAX_CONCURRENT_REQUESTS`, `CIS_BENCH_BATCH_SIZE` and `CIS_BENCH_REQUESTS_PER_SECOND` settings (322 recommendations took about two minutes on 2026-11-04 with the defaults). `cis-bench catalog refresh` uses the same settings.
 - The progress bar counts finished pages, so it can advance out of navtree order; the saved benchmark keeps navtree order.
 - Each request has a timeout and up to three attempts (see [`CIS_BENCH_REQUEST_TIMEOUT`](configuration.md#cis_bench_request_timeout)). A page that still fails is logged with its URL and the error, and the download continues without it.
 - Every request identifies itself with the User-Agent `cis-bench-cli/<version> (github.com/mitre/cis-bench)`.
@@ -533,9 +533,9 @@ cis-bench catalog refresh [OPTIONS]
 
 **Options:**
 
-- `--browser TEXT` - Browser for auth (default: chrome)
+- `--browser TEXT` - Browser to read cookies from (default: the `CIS_BENCH_BROWSER` setting)
 - `--max-pages INTEGER` - Limit pages to scrape (for testing)
-- `--rate-limit SECONDS` - Seconds between requests to WorkBench for this run, greater than 0 (default: 0.33, that is 3 requests per second)
+- `--rate-limit SECONDS` - Seconds between requests to WorkBench for this run, greater than 0 (default: 1 / `CIS_BENCH_REQUESTS_PER_SECOND`)
 
 **Examples:**
 ```bash
@@ -551,7 +551,7 @@ cis-bench catalog refresh --rate-limit 1.0
 
 **What it does:**
 1. Authenticates with WorkBench
-2. Scrapes catalog pages in parallel (10 pages/batch, 5 at a time, at most 3 requests per second)
+2. Scrapes catalog pages in parallel (`CIS_BENCH_BATCH_SIZE` pages per batch, `CIS_BENCH_MAX_CONCURRENT_REQUESTS` at a time, at most `CIS_BENCH_REQUESTS_PER_SECOND` requests per second)
 3. Detects the page count from page 1 (about 80 pages)
 4. Builds searchable database with about 1,500 benchmarks
 5. Creates FTS5 full-text search index
@@ -559,9 +559,9 @@ cis-bench catalog refresh --rate-limit 1.0
 
 **Performance:**
 
-- Parallel: 10 pages per batch, 5 at a time, at most 3 requests per second (or one per `--rate-limit` seconds); `cis-bench download` uses the same limit
+- Parallel: `CIS_BENCH_BATCH_SIZE` pages per batch, `CIS_BENCH_MAX_CONCURRENT_REQUESTS` at a time, at most `CIS_BENCH_REQUESTS_PER_SECOND` requests per second (or one per `--rate-limit` seconds); `cis-bench download` uses the same settings
 - Sessions: each worker thread uses its own copy of your saved session; nothing logs in again
-- Retry logic: the timeout from [`CIS_BENCH_REQUEST_TIMEOUT`](configuration.md#cis_bench_request_timeout) and up to 3 attempts on timeouts, dropped connections and 429/502/503/504, honoring WorkBench's `Retry-After` up to 60 seconds; a 404 or a page that cannot be parsed is not retried
+- Retry logic: the timeout from `CIS_BENCH_REQUEST_TIMEOUT` and `CIS_BENCH_REQUEST_RETRIES` retries on timeouts, dropped connections and 429/502/503/504, honoring WorkBench's `Retry-After` up to 60 seconds ([Configuration](configuration.md#settings)); a 404 or a page that cannot be parsed is not retried
 - Failure threshold: Aborts if >10% fail
 - Expired session: a login page stops the refresh after the batch that saw it
 
@@ -736,6 +736,11 @@ xargs -I {} cis-bench download {}
 
 - `CIS_BENCH_TABLE_TITLE_WIDTH` - Widest the Title column of the `search` and `get` tables grows (default: 90). In a narrower terminal the title wraps first, so ID, Version and Status stay whole.
 - `CIS_BENCH_SEARCH_LIMIT` - Most results `search`, `catalog search`, `catalog list` and `get` show (default: 100); a cut-off list says how many matched
+- `CIS_BENCH_REQUESTS_PER_SECOND`, `CIS_BENCH_MAX_CONCURRENT_REQUESTS`, `CIS_BENCH_BATCH_SIZE` - How WorkBench requests are paced: per-host rate, worker threads, pages per batch
+- `CIS_BENCH_REQUEST_RETRIES`, `CIS_BENCH_RETRY_BACKOFF_FACTOR`, `CIS_BENCH_RETRY_JITTER_SECONDS` - Retries after a failed request and the wait between them
+- `CIS_BENCH_BROWSER` - Browser whose cookies log in when `--browser` is not given (`auth login`, `catalog refresh`, `catalog update`, `catalog download`)
+
+Every setting with its type, default and accepted values: [Configuration](configuration.md#settings).
 
 **Folders:**
 

@@ -8,6 +8,7 @@ onto a constructor argument.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 import click
@@ -58,36 +59,48 @@ def settings_with_flags(**flags: object) -> Settings:
 
 
 def auth_manager(settings: Settings, *, requests_per_second: float | None = None) -> AuthManager:
-    """An AuthManager for the configured WorkBench, TLS setting and session file.
+    """An AuthManager for the configured WorkBench, TLS setting, session file and request policy.
 
-    requests_per_second paces every session it makes, from the session check on (a run's
-    --rate-limit); None keeps the fixed policy rate.
+    requests_per_second replaces the configured rate for every session it makes, from the
+    session check on (a run's --rate-limit); None keeps the configured rate.
     """
     from cis_bench.fetcher.auth import AuthManager
 
+    policy = settings.request_policy
+    if requests_per_second is not None:
+        policy = replace(policy, requests_per_second=requests_per_second)
     return AuthManager(
         workbench_url=settings.workbench_url,
         verify_ssl=settings.verify_ssl,
         session_file=settings.session_file_path,
-        requests_per_second=requests_per_second,
+        request_policy=policy,
     )
 
 
 def workbench_scraper(settings: Settings, session: requests.Session) -> WorkbenchScraper:
-    """A benchmark scraper on the configured WorkBench origin and request timeout."""
+    """A benchmark scraper on the configured origin, timeout, worker count and batch size."""
     from cis_bench.fetcher.workbench import WorkbenchScraper
 
     return WorkbenchScraper(
-        session, base_url=settings.workbench_url, timeout=settings.request_timeouts
+        session,
+        base_url=settings.workbench_url,
+        timeout=settings.request_timeouts,
+        max_workers=settings.max_concurrent_requests,
+        batch_size=settings.batch_size,
     )
 
 
 def catalog_scraper(
     settings: Settings, database: CatalogDatabase, session: requests.Session
 ) -> CatalogScraper:
-    """A catalog scraper on the configured WorkBench origin and request timeout."""
+    """A catalog scraper on the configured origin, timeout, worker count and batch size."""
     from cis_bench.catalog.scraper import CatalogScraper
 
     return CatalogScraper(
-        database, session, base_url=settings.workbench_url, timeout=settings.request_timeouts
+        database,
+        session,
+        base_url=settings.workbench_url,
+        timeout=settings.request_timeouts,
+        max_workers=settings.max_concurrent_requests,
+        batch_size=settings.batch_size,
     )

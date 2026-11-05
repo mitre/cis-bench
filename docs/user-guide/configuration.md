@@ -93,75 +93,55 @@ are not read from `config.toml`.
 
 ## Settings
 
-### `CIS_BENCH_HOME` and `CIS_BENCH_CONFIG_DIR`
+Every setting, generated from the `Settings` class when the docs are built (the table and
+the code cannot disagree). The variable name is for the environment; the key is for
+`config.toml`. The folders (`CIS_BENCH_HOME`, `CIS_BENCH_CONFIG_DIR`, the XDG variables)
+are not settings: see [The folders](#the-folders).
 
-The folders (see [above](#the-folders)). Environment only. **Default:** the XDG folders.
+<!-- settings-table -->
 
-### `CIS_BENCH_WORKBENCH_URL`
+### Notes on individual settings
 
-Override the CIS WorkBench base URL. `config.toml` key: `workbench_url`.
+**`CIS_BENCH_WORKBENCH_URL`** is the origin every WorkBench URL is built on; a path, query,
+fragment or credentials are refused, as is any host outside `cisecurity.org`.
 
-- **Default:** `https://workbench.cisecurity.org`
-- **Accepted values:** `https://` origin on `cisecurity.org` or `*.cisecurity.org` (without path, query, fragment, or embedded credentials)
-
-**Usage:**
-```bash
-export CIS_BENCH_WORKBENCH_URL=https://workbench.cisecurity.org
-```
-
-### `CIS_BENCH_VERIFY_SSL`
-
-TLS certificate verification for CIS WorkBench requests. `config.toml` key: `verify_ssl`.
-
-- **Default:** `true` (verification on; unset or blank means on)
-- **Accepted values:** `true`, `1`, `yes` keep verification on; `false`, `0`, `no` turn it off (any case). In `config.toml`, `true` or `false`, or one of those strings. Any other value, including a TOML number, is a configuration error and the command exits.
-
-**Usage (opt out, for example behind a TLS-inspecting proxy):**
-```bash
-export CIS_BENCH_VERIFY_SSL=false
-```
-
-Prefer pointing `requests` at your proxy's CA bundle instead of disabling verification:
+**`CIS_BENCH_VERIFY_SSL`** turns TLS certificate verification off for WorkBench requests
+(not recommended; session cookies travel on them). Behind a TLS-inspecting proxy, point
+`requests` at the proxy's CA bundle instead:
 ```bash
 export REQUESTS_CA_BUNDLE=/etc/ssl/corporate-ca-bundle.crt
 ```
 
-### `CIS_BENCH_REQUEST_TIMEOUT`
-
-Read timeout, in seconds, for every request cis-bench makes to CIS WorkBench:
-benchmark downloads (benchmark page, navigation tree, each recommendation page)
-and the catalog (`catalog refresh` and `catalog update` listing pages,
-`catalog check-updates` detail pages). `config.toml` key: `request_timeout`.
-
-- **Default:** `30`
-- **Accepted values:** a finite number of seconds greater than 0.
-- **Connect timeout:** fixed at 10 seconds, or the read timeout if that is shorter.
-
-A request that times out, fails to connect, or gets a 429, 502, 503 or 504 is retried twice: once at once, then after about 2 seconds (plus up to half a second of random jitter). When WorkBench sends a `Retry-After` header, cis-bench waits that long instead, up to 60 seconds. A request that still fails is
-reported with its URL: a download skips that recommendation, and a catalog
-refresh counts that page as failed. Nothing hangs on one connection. Other HTTP
-errors, such as a 404, are not retried.
-
-**Usage (slow network):**
+**`CIS_BENCH_REQUEST_TIMEOUT`** is the read timeout of every request cis-bench makes to
+WorkBench: benchmark downloads (benchmark page, navigation tree, each recommendation page)
+and the catalog (`catalog refresh` and `catalog update` listing pages, `catalog
+check-updates` detail pages). The connect timeout is 10 seconds, or the read timeout if that
+is shorter. A slow network wants a longer value:
 ```bash
 export CIS_BENCH_REQUEST_TIMEOUT=90
 ```
 
-### `CIS_BENCH_SEARCH_LIMIT`
+**Pacing and retries.** `CIS_BENCH_REQUESTS_PER_SECOND` caps the requests sent to one
+WorkBench host per second, across every worker thread; `catalog refresh --rate-limit SECONDS`
+overrides it for one run. `CIS_BENCH_MAX_CONCURRENT_REQUESTS` is how many recommendation or
+listing pages are fetched at once and `CIS_BENCH_BATCH_SIZE` how many make one batch of
+parallel work; a run stops after the batch that hit an expired session. A request that
+times out, fails to connect, or gets a 429, 502, 503 or 504 is retried
+`CIS_BENCH_REQUEST_RETRIES` times: the first retry at once, the next after
+`CIS_BENCH_RETRY_BACKOFF_FACTOR` × 2 seconds, each plus up to
+`CIS_BENCH_RETRY_JITTER_SECONDS` of random jitter. When WorkBench sends a `Retry-After`
+header, cis-bench waits that long instead, up to 60 seconds. A request that still fails is
+reported with its URL: a download skips that recommendation, and a catalog refresh counts that
+page as failed. Other HTTP errors, such as a 404, are not retried.
 
-How many results `search`, `catalog search`, `catalog list` and `get` show when `--limit`
-is not given. `config.toml` key: `search_limit`.
+**`CIS_BENCH_BROWSER`** is the browser whose cookies log in when a command's `--browser`
+option is not given (`auth login`, `catalog refresh`, `catalog update`, `catalog download`).
 
-- **Default:** `100`
-- **Accepted values:** an integer of 1 or more.
+**`CIS_BENCH_SEARCH_LIMIT`** is how many results `search`, `catalog search`, `catalog list`
+and `get` show when `--limit` is not given; a cut-off list says how many matched.
 
-### `CIS_BENCH_TABLE_TITLE_WIDTH`
-
-The widest, in characters, the Title column of the `search` and `get` tables may grow; a
-narrower terminal wraps the title instead. `config.toml` key: `table_title_width`.
-
-- **Default:** `90`
-- **Accepted values:** an integer of 1 or more.
+**`CIS_BENCH_TABLE_TITLE_WIDTH`** is the widest the Title column of the `search` and `get`
+tables may grow; a narrower terminal wraps the title instead.
 
 ---
 
@@ -217,9 +197,9 @@ cis-bench --quiet export ... # WARNING level
 
 **Rate Limiting:**
 
-- Default: at most 3 requests per second to each WorkBench host, shared by every thread; 5 requests at a time
+- At most `CIS_BENCH_REQUESTS_PER_SECOND` requests per second to each WorkBench host, shared by every thread; `CIS_BENCH_MAX_CONCURRENT_REQUESTS` at a time (see [Settings](#settings))
 - Applies to every WorkBench request: downloads, catalog refresh, update and check-updates, and session checks
-- Configurable for a catalog refresh: `--rate-limit SECONDS` sets the gap between requests
+- For one catalog refresh, `--rate-limit SECONDS` sets the gap between requests instead
 - Every request carries the User-Agent `cis-bench-cli/<version> (github.com/mitre/cis-bench)`
 
 **Pages:**
@@ -279,7 +259,6 @@ To disable (not recommended; session cookies travel on these requests), set
 
 **Catalog:**
 
-- Rate limit: 3 requests per second
 - Max pages: All (about 80)
 - Status filter: Published
 - Latest only: False

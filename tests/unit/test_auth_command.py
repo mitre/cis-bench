@@ -51,12 +51,23 @@ def mock_auth_manager(mock_auth):
 class TestAuthLoginCommand:
     """Tests for 'auth login' command."""
 
-    def test_login_requires_browser_or_cookies(self, runner):
-        """auth login should require either --browser or --cookies."""
+    def test_login_without_flags_reads_cookies_from_the_browser_setting(
+        self, mock_auth_manager, runner, monkeypatch
+    ):
+        """auth login alone uses CIS_BENCH_BROWSER (chrome unless set); --browser overrides it."""
+        monkeypatch.setenv("CIS_BENCH_BROWSER", "firefox")
+        mock_session = MagicMock()
+        mock_session.cookies = [MagicMock()]
+        mock_auth_manager.load_cookies_from_browser.return_value = mock_session
+        mock_auth_manager.validate_session.return_value = True
+        mock_auth_manager._is_windows_permission_error.return_value = False
+
         result = runner.invoke(cli, ["auth", "login"])
 
-        assert result.exit_code == 1
-        assert "Must specify either --browser or --cookies" in result.output
+        assert result.exit_code == 0, result.output
+        mock_auth_manager.load_cookies_from_browser.assert_called_once_with(
+            "firefox", try_fallback=True
+        )
 
     def test_login_with_invalid_browser(self, runner):
         """auth login should reject invalid browser choice."""

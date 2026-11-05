@@ -11,6 +11,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from cis_bench.config import RequestPolicy
+
+POLICY = RequestPolicy(requests_per_second=3.0, retries=2, backoff_factor=1.0, jitter_seconds=0.5)
+
 
 @pytest.fixture
 def auth(tmp_path):
@@ -21,6 +25,7 @@ def auth(tmp_path):
         workbench_url="https://workbench.cisecurity.org",
         verify_ssl=True,
         session_file=tmp_path / "session.cookies",
+        request_policy=POLICY,
     )
 
 
@@ -169,6 +174,7 @@ class TestWindowsErrorMessages:
             workbench_url="https://workbench-staging.cisecurity.org",
             verify_ssl=True,
             session_file=tmp_path / "session.cookies",
+            request_policy=POLICY,
         )
         message = staging._format_windows_cookie_error("chrome", Exception("requires admin"))
         assert "Export cookies for workbench-staging.cisecurity.org" in message

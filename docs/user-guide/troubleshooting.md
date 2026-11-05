@@ -167,7 +167,7 @@ cis-bench catalog update
 
 ### Slow Catalog Refresh
 
-**Normal:** A full refresh takes under a minute: about 80 pages, fetched five at a time and never more than 3 requests per second. Much longer usually means slow responses or retries; run with `-v` to see them.
+**Normal:** A full refresh takes under a minute with the default settings: about 80 pages, `CIS_BENCH_MAX_CONCURRENT_REQUESTS` at a time and never more than `CIS_BENCH_REQUESTS_PER_SECOND` requests per second. Much longer usually means slow responses or retries; run with `-v` to see them, or lower the pace with `--rate-limit`.
 
 **Alternatives:**
 
@@ -230,10 +230,11 @@ cis-bench catalog update
 
 ### Download stalls or a recommendation fails to fetch
 
-Every WorkBench request has a timeout (30 seconds to read by default, 10 to
-connect) and is retried twice on a timeout, a connection error or a 429/502/503/504
-response: once at once, then after about 2 seconds, or after WorkBench's
-`Retry-After` wait (up to 60 seconds). A recommendation that still fails is logged with its URL and
+Every WorkBench request has a timeout (`CIS_BENCH_REQUEST_TIMEOUT` to read, 10 seconds to
+connect) and is retried `CIS_BENCH_REQUEST_RETRIES` times on a timeout, a connection error or a
+429/502/503/504 response: once at once, then after `CIS_BENCH_RETRY_BACKOFF_FACTOR` × 2
+seconds plus jitter, or after WorkBench's `Retry-After` wait (up to 60 seconds); see
+[Configuration](configuration.md#settings). A recommendation that still fails is logged with its URL and
 skipped, so a download finishes with fewer recommendations rather than
 hanging. Each retry is logged as a warning with the attempt number and the
 wait before the next try; `-v` adds the full debug trace around it.

@@ -1,5 +1,6 @@
 """The CLI's one place where settings become the values library objects are built with."""
 
+from dataclasses import replace
 from unittest.mock import Mock
 
 import click
@@ -14,7 +15,7 @@ from cis_bench.cli.helpers.services import (
     settings_with_flags,
     workbench_scraper,
 )
-from cis_bench.config import Folders, Settings, load_settings
+from cis_bench.config import Folders, RequestPolicy, Settings, load_settings
 from cis_bench.exceptions import ConfigurationError
 from cis_bench.fetcher.auth import AuthManager
 from cis_bench.fetcher.workbench import WorkbenchScraper
@@ -29,6 +30,8 @@ def settings(tmp_path) -> Settings:
         workbench_url=STAGING,
         verify_ssl=False,
         request_timeout=45,
+        max_concurrent_requests=2,
+        batch_size=4,
     )
 
 
@@ -71,16 +74,21 @@ class TestFactories:
         assert auth.workbench_url == STAGING
         assert auth.verify_ssl is False
         assert auth.session_file == tmp_path / "session.cookies"
-        assert auth.requests_per_second is None
+        assert auth.request_policy == settings.request_policy
+        assert auth.request_policy == RequestPolicy(
+            requests_per_second=3.0, retries=2, backoff_factor=1.0, jitter_seconds=0.5
+        )
 
     def test_auth_manager_takes_a_run_specific_rate(self, settings):
-        assert auth_manager(settings, requests_per_second=0.5).requests_per_second == 0.5
+        policy = auth_manager(settings, requests_per_second=0.5).request_policy
+        assert policy == replace(settings.request_policy, requests_per_second=0.5)
 
     def test_workbench_scraper_gets_the_origin_and_timeouts(self, settings):
         scraper = workbench_scraper(settings, requests.Session())
         assert isinstance(scraper, WorkbenchScraper)
         assert scraper.base_url == STAGING
         assert scraper.timeout == (10.0, 45.0)
+        assert (scraper.max_workers, scraper.batch_size) == (2, 4)
 
     def test_catalog_scraper_gets_the_origin_and_timeouts(self, settings):
         db = Mock()
@@ -89,3 +97,4 @@ class TestFactories:
         assert scraper.db is db
         assert scraper.base_url == STAGING
         assert scraper.timeout == (10.0, 45.0)
+        assert (scraper.max_workers, scraper.batch_size) == (2, 4)

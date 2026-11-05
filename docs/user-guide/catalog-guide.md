@@ -270,18 +270,18 @@ A benchmark is listed when the catalog carries a newer version than you download
 
 ### Parallel Scraping
 
-**Default behavior:**
+**Behavior** (each value is a setting; see [Configuration](configuration.md#settings)):
 
-- Batches: 10 pages per batch, saved before the next batch starts
-- Threads: 5 requests at a time
-- Rate limit: at most 3 requests per second to WorkBench, shared by every thread
-- Retry: up to 3 attempts on timeouts, dropped connections and 429/502/503/504 (at once, then after about 2 s; WorkBench's `Retry-After` is honored up to 60 s); a missing page is not retried
+- Batches: `CIS_BENCH_BATCH_SIZE` pages per batch, saved before the next batch starts
+- Threads: `CIS_BENCH_MAX_CONCURRENT_REQUESTS` requests at a time
+- Rate limit: at most `CIS_BENCH_REQUESTS_PER_SECOND` requests per second to WorkBench, shared by every thread
+- Retry: `CIS_BENCH_REQUEST_RETRIES` retries on timeouts, dropped connections and 429/502/503/504 (at once, then after `CIS_BENCH_RETRY_BACKOFF_FACTOR` × 2 s plus jitter; WorkBench's `Retry-After` is honored up to 60 s); a missing page is not retried
 - Failure threshold: Aborts if >10% of pages fail
 
 **Performance:**
 
 - Full refresh (about 80 pages): under a minute (77 pages took 34 s on 2026-11-04)
-- Respectful to CIS servers: never more than 3 requests per second
+- Respectful to CIS servers: never more than `CIS_BENCH_REQUESTS_PER_SECOND` requests per second
 
 **Tuning:**
 ```bash

@@ -10,7 +10,10 @@ import pytest
 import requests
 from requests.cookies import RequestsCookieJar, create_cookie
 
+from cis_bench.config import RequestPolicy
 from cis_bench.fetcher.auth import AuthManager
+
+POLICY = RequestPolicy(requests_per_second=3.0, retries=2, backoff_factor=1.0, jitter_seconds=0.5)
 
 
 @pytest.fixture
@@ -20,6 +23,7 @@ def auth(tmp_path):
         workbench_url="https://workbench.cisecurity.org",
         verify_ssl=True,
         session_file=tmp_path / "session.cookies",
+        request_policy=POLICY,
     )
 
 

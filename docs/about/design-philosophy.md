@@ -372,9 +372,8 @@ exporter.export(benchmark, output_path)
 
 **Implementation:**
 
-- 10 pages per batch
-- 5 concurrent threads
-- Retry logic with exponential backoff
+- Pages fetched in batches by a pool of worker threads (batch size, concurrency and rate are settings)
+- Retry logic with exponential backoff (urllib3 `Retry`)
 - Failure threshold (abort if >10% fail)
 
 **Benefit:** Catalog refresh is fast, code stays simple.

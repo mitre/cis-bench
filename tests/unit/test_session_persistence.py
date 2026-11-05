@@ -7,8 +7,11 @@ from unittest.mock import Mock, patch
 import pytest
 import requests
 
+from cis_bench.config import RequestPolicy
 from cis_bench.exceptions import AuthenticationError, NoSavedSessionError, TLSVerificationError
 from cis_bench.fetcher.auth import AuthManager
+
+POLICY = RequestPolicy(requests_per_second=3.0, retries=2, backoff_factor=1.0, jitter_seconds=0.5)
 
 
 def _workbench_cookie(
@@ -48,7 +51,12 @@ def temp_session_path(tmp_path):
 @pytest.fixture
 def auth(temp_session_path):
     """An AuthManager for production WorkBench that verifies TLS and saves to a temp file."""
-    return AuthManager(workbench_url=WORKBENCH_URL, verify_ssl=True, session_file=temp_session_path)
+    return AuthManager(
+        workbench_url=WORKBENCH_URL,
+        verify_ssl=True,
+        session_file=temp_session_path,
+        request_policy=POLICY,
+    )
 
 
 # ============================================================================
@@ -73,7 +81,12 @@ class TestSaveSession:
         session_path = tmp_path / "subdir" / "another" / "session.cookies"
         session = requests.Session()
         session.cookies.set("test", "value")
-        auth = AuthManager(workbench_url=WORKBENCH_URL, verify_ssl=True, session_file=session_path)
+        auth = AuthManager(
+            workbench_url=WORKBENCH_URL,
+            verify_ssl=True,
+            session_file=session_path,
+            request_policy=POLICY,
+        )
 
         auth.save_session(session)
 
@@ -101,7 +114,10 @@ class TestLoadSavedSession:
         cj.set_cookie(_workbench_cookie())
         cj.save(ignore_discard=True, ignore_expires=True)
         auth = AuthManager(
-            workbench_url=WORKBENCH_URL, verify_ssl=False, session_file=temp_session_path
+            workbench_url=WORKBENCH_URL,
+            verify_ssl=False,
+            session_file=temp_session_path,
+            request_policy=POLICY,
         )
 
         session = auth.load_saved_session()
@@ -157,7 +173,10 @@ class TestValidateSession:
     def test_validate_session_makes_test_request(self, temp_session_path):
         """validate_session makes request to WorkBench."""
         auth = AuthManager(
-            workbench_url=WORKBENCH_URL, verify_ssl=False, session_file=temp_session_path
+            workbench_url=WORKBENCH_URL,
+            verify_ssl=False,
+            session_file=temp_session_path,
+            request_policy=POLICY,
         )
         session = requests.Session()
         session.cookies.set("test", "value")
@@ -179,7 +198,10 @@ class TestValidateSession:
     def test_validate_session_detects_login_redirect(self, temp_session_path):
         """validate_session returns False on login redirect to /login."""
         auth = AuthManager(
-            workbench_url=WORKBENCH_URL, verify_ssl=False, session_file=temp_session_path
+            workbench_url=WORKBENCH_URL,
+            verify_ssl=False,
+            session_file=temp_session_path,
+            request_policy=POLICY,
         )
         session = requests.Session()
         session.cookies.set("test", "value")
@@ -197,7 +219,10 @@ class TestValidateSession:
     def test_validate_session_detects_homepage_redirect(self, temp_session_path):
         """validate_session returns False on redirect to homepage (unauthenticated)."""
         auth = AuthManager(
-            workbench_url=WORKBENCH_URL, verify_ssl=False, session_file=temp_session_path
+            workbench_url=WORKBENCH_URL,
+            verify_ssl=False,
+            session_file=temp_session_path,
+            request_policy=POLICY,
         )
         session = requests.Session()
         session.cookies.set("test", "value")
@@ -215,7 +240,10 @@ class TestValidateSession:
     def test_validate_session_detects_login_page_html(self, temp_session_path):
         """validate_session returns False when receiving login page HTML."""
         auth = AuthManager(
-            workbench_url=WORKBENCH_URL, verify_ssl=False, session_file=temp_session_path
+            workbench_url=WORKBENCH_URL,
+            verify_ssl=False,
+            session_file=temp_session_path,
+            request_policy=POLICY,
         )
         session = requests.Session()
         session.cookies.set("test", "value")
@@ -284,7 +312,10 @@ class TestValidateSession:
     ):
         """validate_session confirms /benchmarks access when OIDC callback lands on /dashboard."""
         auth = AuthManager(
-            workbench_url=WORKBENCH_URL, verify_ssl=False, session_file=temp_session_path
+            workbench_url=WORKBENCH_URL,
+            verify_ssl=False,
+            session_file=temp_session_path,
+            request_policy=POLICY,
         )
         session = requests.Session()
         session.cookies.set("auth0", "sso-cookie", domain="auth.portal.cisecurity.org")
@@ -375,6 +406,7 @@ class TestValidateSession:
             workbench_url="https://workbench-staging.cisecurity.org",
             verify_ssl=False,
             session_file=temp_session_path,
+            request_policy=POLICY,
         )
         session = requests.Session()
         session.cookies.set("auth0", "qa-sso", domain="auth.portal.qa.cisecurity.org")
@@ -551,7 +583,10 @@ class TestSessionsCarryTheGivenVerifySsl:
         self, temp_session_path, verify_ssl
     ):
         auth = AuthManager(
-            workbench_url=WORKBENCH_URL, verify_ssl=verify_ssl, session_file=temp_session_path
+            workbench_url=WORKBENCH_URL,
+            verify_ssl=verify_ssl,
+            session_file=temp_session_path,
+            request_policy=POLICY,
         )
         cj = http.cookiejar.MozillaCookieJar(str(temp_session_path))
         cj.set_cookie(_workbench_cookie())

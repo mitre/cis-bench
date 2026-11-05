@@ -122,7 +122,8 @@ All test data via fixtures in `tests/conftest.py`. NO hardcoded paths.
 ### Environment Variables
 - One pydantic-settings `Settings` class in `src/cis_bench/config.py`; precedence: CLI flag > environment > `<config folder>/config.toml` > default
 - `CIS_BENCH_HOME` - One flat folder for everything; `CIS_BENCH_CONFIG_DIR` - the config folder alone (both environment only; `CIS_BENCH_DATA_DIR` and `CIS_BENCH_ENV` are refused)
-- `CIS_BENCH_BROWSER` - Default browser for auth
+- `CIS_BENCH_BROWSER` - Browser whose cookies log in when `--browser` is not given
+- Request tunables: `CIS_BENCH_REQUESTS_PER_SECOND`, `CIS_BENCH_MAX_CONCURRENT_REQUESTS`, `CIS_BENCH_BATCH_SIZE`, `CIS_BENCH_REQUEST_RETRIES`, `CIS_BENCH_RETRY_BACKOFF_FACTOR`, `CIS_BENCH_RETRY_JITTER_SECONDS`; every setting's type, default and accepted values are in the table `docs/user-guide/configuration.md` renders from `Settings` at docs build (`scripts/mkdocs_settings_table.py`)
 
 ### Config Paths
 - Session storage: `~/.local/state/cis-bench/session.cookies`

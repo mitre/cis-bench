@@ -14,6 +14,8 @@ from tests.conftest import StubReply
 
 BASE = "https://workbench.cisecurity.org"
 TIMEOUT = (10.0, 30.0)
+WORKERS = 5
+BATCH = 10
 
 
 @pytest.fixture
@@ -65,6 +67,23 @@ def sample_html():
 # ============================================================================
 
 
+class TestWorkersAndBatchSizeComeFromTheCaller:
+    def test_the_page_fetch_runs_with_the_given_workers_and_batch_size(
+        self, temp_db, sample_html, stub_session
+    ):
+        from cis_bench.catalog import scraper as scraper_module
+
+        session, _ = stub_session(lambda url: sample_html)
+        scraper = CatalogScraper(
+            temp_db, session, base_url=BASE, timeout=TIMEOUT, max_workers=2, batch_size=3
+        )
+        with patch.object(scraper_module, "iter_batches", wraps=scraper_module.iter_batches) as run:
+            scraper.scrape_full_catalog(max_pages=5)
+
+        assert run.call_args.kwargs["max_workers"] == 2
+        assert run.call_args.kwargs["batch_size"] == 3
+
+
 class TestMultiPageScraping:
     """Test scraping behavior with multiple pages."""
 
@@ -72,7 +91,9 @@ class TestMultiPageScraping:
         """Scraping successfully processes all requested pages."""
         session, _ = stub_session(lambda url: sample_html)
 
-        scraper = CatalogScraper(temp_db, session, base_url=BASE, timeout=TIMEOUT)
+        scraper = CatalogScraper(
+            temp_db, session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         # Scrape multiple pages - should complete successfully
         stats = scraper.scrape_full_catalog(max_pages=5)
@@ -87,7 +108,9 @@ class TestMultiPageScraping:
         """Scraping can handle large catalogs."""
         session, _ = stub_session(lambda url: sample_html)
 
-        scraper = CatalogScraper(temp_db, session, base_url=BASE, timeout=TIMEOUT)
+        scraper = CatalogScraper(
+            temp_db, session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         # Behavior: handles large number of pages without crashing
         stats = scraper.scrape_full_catalog(max_pages=20)
@@ -118,7 +141,9 @@ class TestFailureThreshold:
 
         session, _ = stub_session(handler)
 
-        scraper = CatalogScraper(temp_db, session, base_url=BASE, timeout=TIMEOUT)
+        scraper = CatalogScraper(
+            temp_db, session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         # Should abort due to high failure rate
         with pytest.raises(Exception) as exc_info:
@@ -135,7 +160,9 @@ class TestScrapingBehavior:
         """Scraping stops at max_pages limit."""
         session, _ = stub_session(lambda url: sample_html)
 
-        scraper = CatalogScraper(temp_db, session, base_url=BASE, timeout=TIMEOUT)
+        scraper = CatalogScraper(
+            temp_db, session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         # Behavior: respects the max_pages parameter
         stats = scraper.scrape_full_catalog(max_pages=10)
@@ -148,7 +175,9 @@ class TestScrapingBehavior:
         """Scraping returns useful statistics."""
         session, _ = stub_session(lambda url: sample_html)
 
-        scraper = CatalogScraper(temp_db, session, base_url=BASE, timeout=TIMEOUT)
+        scraper = CatalogScraper(
+            temp_db, session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         stats = scraper.scrape_full_catalog(max_pages=5)
 
@@ -231,7 +260,9 @@ class TestCatalogRefreshSharedFetch:
     def test_catalog_pages_are_fetched_with_per_thread_sessions(self, temp_db, stub_session):
         session, transport = stub_session(self._rotating_pages())
         self._logged_in(session)
-        scraper = CatalogScraper(temp_db, session, base_url=BASE, timeout=TIMEOUT)
+        scraper = CatalogScraper(
+            temp_db, session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         stats = scraper.scrape_full_catalog(max_pages=self.PAGES)
 
@@ -265,7 +296,14 @@ class TestCatalogRefreshSharedFetch:
             return detail if "/benchmarks/401" in url else listing(url)
 
         session, transport = stub_session(handler)
-        scraper = CatalogScraper(temp_db, session, base_url=BASE, timeout=(10.0, 45.0))
+        scraper = CatalogScraper(
+            temp_db,
+            session,
+            base_url=BASE,
+            timeout=(10.0, 45.0),
+            max_workers=WORKERS,
+            batch_size=BATCH,
+        )
 
         scraper.scrape_full_catalog(max_pages=3)
         scraper.scrape_page_one_update()
@@ -279,7 +317,9 @@ class TestCatalogRefreshSharedFetch:
             raise requests.Timeout("Read timed out")
 
         session, transport = stub_session(self._rotating_pages(overrides={3: stalled}, delay=0))
-        scraper = CatalogScraper(temp_db, session, base_url=BASE, timeout=TIMEOUT)
+        scraper = CatalogScraper(
+            temp_db, session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         stats = scraper.scrape_full_catalog(max_pages=self.PAGES)
 
@@ -289,7 +329,9 @@ class TestCatalogRefreshSharedFetch:
         session, transport = stub_session(
             self._rotating_pages(overrides={4: lambda page: StubReply("gone", status=404)}, delay=0)
         )
-        scraper = CatalogScraper(temp_db, session, base_url=BASE, timeout=TIMEOUT)
+        scraper = CatalogScraper(
+            temp_db, session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         stats = scraper.scrape_full_catalog(max_pages=self.PAGES)
 
@@ -299,7 +341,9 @@ class TestCatalogRefreshSharedFetch:
         session, transport = stub_session(
             self._rotating_pages(overrides={3: lambda page: _LOGIN_PAGE}, delay=0)
         )
-        scraper = CatalogScraper(temp_db, session, base_url=BASE, timeout=TIMEOUT)
+        scraper = CatalogScraper(
+            temp_db, session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         with pytest.raises(AuthenticationError):
             scraper.scrape_full_catalog(max_pages=self.PAGES)
@@ -309,7 +353,9 @@ class TestCatalogRefreshSharedFetch:
 
     def test_every_page_is_saved_and_counted_in_the_progress_bar(self, temp_db, stub_session):
         session, _ = stub_session(self._rotating_pages())
-        scraper = CatalogScraper(temp_db, session, base_url=BASE, timeout=TIMEOUT)
+        scraper = CatalogScraper(
+            temp_db, session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         with (
             patch("cis_bench.catalog.scraper.Progress") as progress_class,

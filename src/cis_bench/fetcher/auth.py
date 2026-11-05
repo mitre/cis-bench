@@ -20,7 +20,13 @@ except ImportError:
     # truststore not installed, will use certifi bundle
     pass
 
-from cis_bench.config import CIS_ROOT_DOMAIN, MAX_SSO_REDIRECTS, TRUSTED_SSO_HOSTS, is_cis_domain
+from cis_bench.config import (
+    CIS_ROOT_DOMAIN,
+    MAX_SSO_REDIRECTS,
+    TRUSTED_SSO_HOSTS,
+    RequestPolicy,
+    is_cis_domain,
+)
 from cis_bench.exceptions import AuthenticationError, NoSavedSessionError, TLSVerificationError
 from cis_bench.fetcher.http import new_workbench_session
 from cis_bench.utils.workbench_urls import catalog_listing_url
@@ -70,27 +76,27 @@ class AuthManager:
         workbench_url: str,
         verify_ssl: bool,
         session_file: Path,
-        requests_per_second: float | None = None,
+        request_policy: RequestPolicy,
     ):
         """
         Args:
             workbench_url: The WorkBench origin (already validated), e.g. https://workbench.cisecurity.org
             verify_ssl: Whether every session this manager makes verifies TLS certificates
             session_file: Where the saved session's cookies live
-            requests_per_second: Request rate for the sessions it makes, from the session check
-                on (None = the fixed policy rate)
+            request_policy: Pacing and retries of every session it makes, from the session
+                check on
         """
         self.workbench_url = workbench_url
         self.verify_ssl = verify_ssl
         self.session_file = session_file
-        self.requests_per_second = requests_per_second
+        self.request_policy = request_policy
 
     @property
     def workbench_host(self) -> str:
         return urlparse(self.workbench_url).netloc
 
     def _new_session(self) -> requests.Session:
-        session = new_workbench_session(self.requests_per_second)
+        session = new_workbench_session(self.request_policy)
         session.verify = self.verify_ssl
         return session
 

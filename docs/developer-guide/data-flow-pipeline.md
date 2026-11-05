@@ -912,9 +912,9 @@ SUPPORTED_STYLES = {
 
 Catalog refresh and benchmark download both fetch in batches with `utils/parallel.py`, and every request goes through the session's adapter from `fetcher/http.py`:
 
-- 10 pages per batch, 5 concurrent threads (`WORKBENCH_BATCH_SIZE`, `WORKBENCH_MAX_CONCURRENT_REQUESTS` in `config.py`)
-- At most 3 requests per second per WorkBench host (`WORKBENCH_REQUESTS_PER_SECOND`), enforced by requests-ratelimiter across all threads
-- Retries by urllib3's `Retry` (`REQUEST_RETRIES`, `RETRYABLE_STATUS_CODES`, backoff, jitter, `Retry-After` cap)
+- Pages per batch and concurrent threads from the `CIS_BENCH_BATCH_SIZE` and `CIS_BENCH_MAX_CONCURRENT_REQUESTS` settings, passed to the scrapers by `cli/helpers/services.py`
+- At most `CIS_BENCH_REQUESTS_PER_SECOND` requests per second per WorkBench host, enforced by requests-ratelimiter across all threads
+- Retries by urllib3's `Retry` from the `RequestPolicy` the session was built with (`CIS_BENCH_REQUEST_RETRIES`, backoff factor, jitter); the retryable statuses and the `Retry-After` cap are constants in `config.py`
 - Full catalog (about 80 pages): under a minute; one benchmark's recommendation pages (for example 322): about two minutes
 
 ---
