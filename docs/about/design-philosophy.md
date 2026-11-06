@@ -365,8 +365,8 @@ exporter.export(benchmark, output_path)
 
 **Why:**
 
-- Catalog scraping is network-bound (66 pages, ~10 min sequential)
-- Threading reduces time to ~2 min (5x faster)
+- Catalog scraping is network-bound: about 80 pages, and the earlier one-page-at-a-time refresh took about 10 minutes for the 66 pages the catalog had then
+- Worker threads behind one shared rate limit bring a full refresh under a minute (77 pages took 34 s on 2026-11-04)
 - Exports are CPU-bound and fast enough (~2 sec/benchmark)
 - No need to complicate with threading overhead
 

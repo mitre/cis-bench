@@ -25,7 +25,7 @@ The following features were originally planned as "future" but are now complete:
 - **Output Formats** - JSON/CSV/YAML on all query commands
 - **Progress Bars** - Rich progress bars on downloads and catalog refresh
 - **Platform Taxonomy** - Two-field system (platform_type + platform)
-- **Parallel Scraping** - Catalog refresh in ~2 min (was ~10 min)
+- **Parallel Scraping** - Catalog refresh in under a minute
 
 ---
 
@@ -57,7 +57,7 @@ cis-bench download 23598 --offline # ERROR: requires network
 
 ### 2. Background Catalog Refresh
 
-**Problem**: Catalog refresh takes ~2 minutes, blocks user
+**Problem**: Catalog refresh blocks the terminal while it runs (under a minute for about 80 pages)
 
 **Solution**: Optional background refresh with notifications:
 
@@ -67,7 +67,7 @@ cis-bench catalog refresh --background
 
 # Check status
 cis-bench catalog status
-# Output: Refreshing catalog... 45/66 pages (2 min remaining)
+# Output: Refreshing catalog... 45/80 pages
 
 # Use catalog while refreshing (uses last complete refresh)
 cis-bench search "ubuntu" # Works immediately

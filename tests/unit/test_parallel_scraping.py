@@ -1,4 +1,4 @@
-"""Unit tests for parallel catalog scraping with retry logic."""
+"""Unit tests for parallel catalog scraping."""
 
 import re
 import threading
@@ -134,7 +134,7 @@ class TestFailureThreshold:
 
         def handler(url):
             page_num = _page_number(url)
-            # Fail 50% of pages deterministically across retries (pages 2, 4, 6, 8, 10 -> 5/11 > 10%)
+            # Fail every even page (pages 2, 4, 6, 8, 10 -> 5/11 > 10%)
             if page_num % 2 == 0:
                 raise requests.ConnectionError(f"Network error on page {page_num}")
             return sample_html
