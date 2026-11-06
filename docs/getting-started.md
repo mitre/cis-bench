@@ -91,12 +91,12 @@ cis-bench auth login --browser firefox
 1. Optionally opens CIS WorkBench in your browser
 2. Extracts session cookies from your browser
 3. Validates the session
-4. Saves to `~/.cis-bench/session.cookies`
+4. Saves to `~/.local/state/cis-bench/session.cookies`
 5. All future commands use this saved session automatically
 
 **Supported browsers:** Chrome, Firefox, Edge, Safari
 
-### 2. Build Catalog (One-Time, ~2 minutes)
+### 2. Build Catalog (One-Time, Under a Minute)
 
 Build a searchable local database of all CIS benchmarks:
 
@@ -104,7 +104,7 @@ Build a searchable local database of all CIS benchmarks:
 cis-bench catalog refresh
 ```
 
-This scrapes ~66 pages from CIS WorkBench using parallel processing and creates a searchable database with:
+This scrapes about 80 pages from CIS WorkBench using parallel processing (under a minute) and creates a searchable database with:
 
 - 1,300+ benchmarks indexed
 - Full-text search (FTS5)
@@ -290,27 +290,24 @@ cis-bench download 23598 --format xccdf --format yaml
 
 ### Data Storage Locations
 
-The CLI supports three environments:
+cis-bench uses the XDG folders, as the GitHub CLI does: `~/.config/cis-bench/config.toml`,
+`~/.local/share/cis-bench/` for `catalog.db` and `benchmarks/`, and
+`~/.local/state/cis-bench/session.cookies`; see [Configuration](user-guide/configuration.md#the-folders).
 
-**Production (default):**
+**Default:**
 ```bash
-# Data stored in: ~/.cis-bench/
+# catalog.db stored in: ~/.local/share/cis-bench/
 cis-bench catalog refresh
 ```
 
-**Development:**
+**One folder for everything (for example for development or a container):**
 ```bash
-# Data stored in: ~/.cis-bench-dev/
-export CIS_BENCH_ENV=dev
+# Everything stored in: ~/cis-bench-dev/
+export CIS_BENCH_HOME=~/cis-bench-dev
 cis-bench catalog refresh
 ```
 
-**Test (automatic):**
-```bash
-# Data stored in: /tmp/cis-bench-test/
-# Used by pytest automatically
-# Keeps tests isolated
-```
+**Tests:** pytest points `CIS_BENCH_HOME` at a temporary folder for every run, so tests never touch your folders.
 
 ### Environment Variables
 
@@ -318,13 +315,13 @@ cis-bench catalog refresh
 # Disable SSL verification (for corporate proxies)
 export CIS_BENCH_VERIFY_SSL=false
 
-# Change data directory environment
-export CIS_BENCH_ENV=dev
+# Keep everything in one folder
+export CIS_BENCH_HOME=~/cis-bench-dev
 
 # Configure search limit
 export CIS_BENCH_SEARCH_LIMIT=500
 
-# Configure table title width
+# Let the Title column of search results grow up to 120 characters
 export CIS_BENCH_TABLE_TITLE_WIDTH=120
 ```
 
@@ -340,7 +337,7 @@ Keep your catalog up to date:
 # Quick update (page 1 only - new benchmarks)
 cis-bench catalog update
 
-# Full refresh (all 66 pages - ~2 minutes)
+# Full refresh (all pages - under a minute)
 cis-bench catalog refresh
 
 # Check for updates to downloaded benchmarks

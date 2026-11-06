@@ -4,26 +4,29 @@ Scrapes benchmark listing pages and populates the catalog database.
 """
 
 import logging
-import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeRemainingColumn
 from sqlalchemy.exc import IntegrityError, OperationalError
 
-from cis_bench import __version__
 from cis_bench.catalog.database import CatalogDatabase
 from cis_bench.catalog.parser import WorkBenchCatalogParser
-from cis_bench.config import Config
 from cis_bench.exceptions import AuthenticationError
 from cis_bench.fetcher.auth import is_workbench_login_page
-from cis_bench.utils.workbench_urls import resolve_benchmark_reference
+from cis_bench.fetcher.http import ThreadSessions, get_with_retry
+from cis_bench.utils.parallel import iter_batches
+from cis_bench.utils.workbench_urls import catalog_listing_url, resolve_benchmark_reference
 
 logger = logging.getLogger(__name__)
 
 
 class CatalogScraper:
-    """Scrape CIS WorkBench catalog and populate database."""
+    """Scrape CIS WorkBench catalog and populate database.
+
+    Listing pages after the first are fetched from worker threads in batches; each worker
+    thread uses its own copy of the session, whose adapter paces and retries every request
+    (see cis_bench.fetcher.http). Database writes stay on the calling thread.
+    """
 
     _CATALOG_COMPARISON_FIELDS = (
         "title",
@@ -36,44 +39,55 @@ class CatalogScraper:
         "owner",
     )
 
-    def __init__(self, database: CatalogDatabase, session: requests.Session):
+    def __init__(
+        self,
+        database: CatalogDatabase,
+        session: requests.Session,
+        *,
+        base_url: str,
+        timeout: tuple[float, float],
+        max_workers: int,
+        batch_size: int,
+    ):
         """Initialize scraper.
 
         Args:
             database: CatalogDatabase instance
             session: Authenticated requests session (from AuthManager)
+            base_url: The WorkBench origin (already validated) every URL is built on
+            timeout: (connect, read) seconds for every request
+            max_workers: Listing pages fetched at once
+            batch_size: Pages per batch of parallel work
         """
         self.db = database
         self.session = session
+        self.base_url = base_url
+        self.timeout = timeout
+        self.max_workers = max_workers
+        self.batch_size = batch_size
+        self._sessions = ThreadSessions(session)
 
     def scrape_full_catalog(
-        self, max_pages: int | None = None, rate_limit_seconds: float = 2.0
+        self,
+        max_pages: int | None = None,
     ) -> dict:
         """Scrape all catalog pages from CIS WorkBench.
 
         Args:
             max_pages: Maximum pages to scrape (None = all pages)
-            rate_limit_seconds: Delay between requests (default: 2 seconds)
 
         Returns:
             Dictionary with scrape statistics
 
         Example:
-            scraper = CatalogScraper(db, session)
+            scraper = CatalogScraper(db, session, base_url=origin, timeout=(10.0, 30.0))
             stats = scraper.scrape_full_catalog(max_pages=5)
             print(f"Scraped {stats['total_benchmarks']} benchmarks")
         """
-        logger.info(
-            f"Starting full catalog scrape (max_pages={max_pages}, rate_limit={rate_limit_seconds}s)"
-        )
+        logger.info(f"Starting full catalog scrape (max_pages={max_pages})")
 
         # Detect total pages by scraping page 1 first
-        first_page_html = self._fetch_page(1)
-        first_page_benchmarks = WorkBenchCatalogParser.parse_catalog_page(first_page_html)
-        if not first_page_benchmarks:
-            raise ValueError(
-                "No benchmarks found on catalog page 1; HTML structure may have changed."
-            )
+        first_page_html, first_page_benchmarks = self._first_page()
 
         pagination = WorkBenchCatalogParser.extract_pagination_info(first_page_html)
         total_pages = pagination.get("total_pages")
@@ -107,50 +121,49 @@ class CatalogScraper:
             )
             progress.update(task, advance=1)  # First page done
 
-            # Scrape remaining pages in batches
-            batch_size = 10
-            threads_per_batch = 5
-            remaining_pages = list(range(2, total_pages + 1))
+            # Scrape remaining pages in batches; each batch is saved here, on the calling
+            # thread, before the next one starts.
+            def fetch_page(page_num: int) -> tuple[int, list[dict]]:
+                return page_num, self._fetch_and_parse_page(page_num)
 
-            for batch_start in range(0, len(remaining_pages), batch_size):
-                batch_pages = remaining_pages[batch_start : batch_start + batch_size]
+            def page_finished(_completed: int, _total: int, _page_num: int) -> None:
+                progress.update(task, advance=1)
 
-                # Fetch batch concurrently
-                with ThreadPoolExecutor(max_workers=threads_per_batch) as executor:
-                    future_to_page = {
-                        executor.submit(self._fetch_and_parse_page, page_num): page_num
-                        for page_num in batch_pages
-                    }
+            pages_processed = 1
+            for batch in iter_batches(
+                range(2, total_pages + 1),
+                fetch_page,
+                batch_size=self.batch_size,
+                max_workers=self.max_workers,
+                progress_callback=page_finished,
+            ):
+                for _, error in batch.failed:
+                    if isinstance(error, AuthenticationError):
+                        progress.stop()
+                        raise error
+                for page_num, error in batch.failed:
+                    logger.error(f"Failed to scrape page {page_num}: {error}")
+                    failed_pages.append(page_num)
+                for page_num, benchmarks in batch.results:
+                    if not benchmarks:
+                        logger.warning(f"Page {page_num} returned no benchmarks")
+                        continue
+                    try:
+                        inserted_count = self._insert_page_benchmarks(benchmarks, page_num)
+                    except OperationalError:
+                        raise
+                    except Exception as e:
+                        logger.error(f"Failed to scrape page {page_num}: {e}")
+                        failed_pages.append(page_num)
+                        continue
+                    total_benchmarks += inserted_count
+                    logger.debug(f"Page {page_num}: {inserted_count} benchmarks")
+                progress.update(
+                    task, description=f"Scraping catalog | {total_benchmarks} benchmarks found"
+                )
 
-                    for future in as_completed(future_to_page):
-                        page_num = future_to_page[future]
-                        try:
-                            benchmarks = future.result()
-
-                            if benchmarks:
-                                # Save to database
-                                inserted_count = self._insert_page_benchmarks(benchmarks, page_num)
-                                total_benchmarks += inserted_count
-                                logger.debug(f"Page {page_num}: {inserted_count} benchmarks")
-                            else:
-                                logger.warning(f"Page {page_num} returned no benchmarks")
-
-                            # Update progress
-                            progress.update(
-                                task,
-                                advance=1,
-                                description=f"Scraping catalog | {total_benchmarks} benchmarks found",
-                            )
-
-                        except (OperationalError, AuthenticationError):
-                            raise
-                        except Exception as e:
-                            logger.error(f"Failed to scrape page {page_num}: {e}")
-                            failed_pages.append(page_num)
-                            progress.update(task, advance=1)
-
-                # Check failure threshold (stop if >10% of pages have failed, including page 1)
-                pages_processed = 1 + batch_start + len(batch_pages)
+                # Stop if >10% of pages have failed, including page 1
+                pages_processed += batch.total
                 failure_rate = len(failed_pages) / pages_processed
                 if failure_rate > 0.10:
                     logger.error(
@@ -161,10 +174,6 @@ class CatalogScraper:
                         f"Scraping aborted: {len(failed_pages)} pages failed. "
                         f"This may indicate authentication issues or WorkBench problems."
                     )
-
-                # Rate limit between batches (not between pages in batch)
-                if batch_start + batch_size < len(remaining_pages):
-                    time.sleep(rate_limit_seconds)
 
         # Mark latest versions
         self.db.mark_latest_versions()
@@ -191,21 +200,36 @@ class CatalogScraper:
 
         return stats
 
-    def scrape_page_one_update(self, rate_limit_seconds: float = 2.0) -> dict:
-        """Quick update by scraping only page 1 (newest benchmarks).
+    def _first_page(self) -> tuple[str, list[dict]]:
+        """Fetch and parse listing page 1, the page that shows whether the session and the
+        page layout are usable.
 
-        Args:
-            rate_limit_seconds: Delay before request
+        Raises:
+            AuthenticationError: If WorkBench answered with a login page, including a bare
+                redirect page that has none of the login form markup the parser looks for
+            ValueError: If the page lists no benchmarks (the HTML structure changed)
+            FetchError: If the request still fails after every retry
+        """
+        html = self._fetch_page(1)
+        benchmarks = WorkBenchCatalogParser.parse_catalog_page(html, base_url=self.base_url)
+        if not benchmarks and "login" in html.lower() and len(html) < 5000:
+            raise AuthenticationError(
+                "Not authenticated. Page redirected to login.\n"
+                f"Please log into {self.base_url} in your browser first."
+            )
+        if not benchmarks:
+            raise ValueError("Connected but no benchmarks found. HTML structure may have changed.")
+        return html, benchmarks
+
+    def scrape_page_one_update(self) -> dict:
+        """Quick update by scraping only page 1 (newest benchmarks).
 
         Returns:
             Dictionary with new_count and updated_count
         """
         logger.info("Starting quick catalog update (page 1 only)")
 
-        time.sleep(rate_limit_seconds)
-
-        html = self._fetch_page(1)
-        benchmarks = WorkBenchCatalogParser.parse_catalog_page(html)
+        _, benchmarks = self._first_page()
 
         new_count = 0
         updated_count = 0
@@ -305,7 +329,7 @@ class CatalogScraper:
             )
         return inserted_count
 
-    def refresh_downloaded_revision_dates(self, rate_limit_seconds: float = 2.0) -> int:
+    def refresh_downloaded_revision_dates(self) -> int:
         """Fetch each downloaded benchmark's detail page and record its publication date.
 
         Only downloaded benchmarks are visited (a handful of requests, never the
@@ -315,19 +339,17 @@ class CatalogScraper:
         Returns:
             Number of benchmarks whose date was recorded
         """
-        headers = {"User-Agent": f"cis-bench-cli/{__version__} (github.com/mitre/cis-bench)"}
         refreshed = 0
         for benchmark_id in self.db.list_downloaded_benchmark_ids():
             try:
-                _, url = resolve_benchmark_reference(str(benchmark_id))
+                _, url = resolve_benchmark_reference(str(benchmark_id), base_url=self.base_url)
             except ValueError as e:
                 logger.warning(
                     f"Skipping downloaded benchmark with invalid id {benchmark_id!r}: {e}"
                 )
                 continue
             logger.debug(f"Fetching detail page for downloaded benchmark {benchmark_id}: {url}")
-            response = self.session.get(url, headers=headers, timeout=30)
-            response.raise_for_status()
+            response = get_with_retry(self._sessions.current(), url, timeout=self.timeout)
             if is_workbench_login_page(response.text):
                 raise AuthenticationError(
                     "WorkBench returned the login page; the saved session has expired"
@@ -339,12 +361,7 @@ class CatalogScraper:
                 refreshed += 1
             else:
                 logger.debug(f"No publication date found on detail page for {benchmark_id}")
-            time.sleep(rate_limit_seconds)
         return refreshed
-
-    def _benchmarks_url(self) -> str:
-        """Resolve configured CIS WorkBench catalog listing URL."""
-        return f"{Config.get_workbench_base_url()}/benchmarks"
 
     def _fetch_page(self, page_num: int) -> str:
         """Fetch single catalog page.
@@ -356,90 +373,25 @@ class CatalogScraper:
             HTML content
 
         Raises:
-            requests.RequestException: If request fails
+            FetchError: If the request still fails after every retry
+            requests.HTTPError: For a non-retryable HTTP status
         """
-        url = f"{self._benchmarks_url()}?page={page_num}"
+        url = f"{catalog_listing_url(base_url=self.base_url)}?page={page_num}"
 
         logger.debug(f"Fetching page {page_num}: {url}")
 
-        headers = {"User-Agent": f"cis-bench-cli/{__version__} (github.com/mitre/cis-bench)"}
-
-        response = self.session.get(url, headers=headers, timeout=30)
-        response.raise_for_status()
+        response = get_with_retry(self._sessions.current(), url, timeout=self.timeout)
 
         logger.debug(f"Fetched {len(response.text)} bytes from page {page_num}")
 
         return response.text
 
-    def _fetch_and_parse_page(self, page_num: int, max_retries: int = 3) -> list:
-        """Fetch and parse a single page with retry logic (for concurrent execution).
+    def _fetch_and_parse_page(self, page_num: int) -> list[dict]:
+        """Fetch and parse one listing page (run on a worker thread during a full refresh).
 
-        Args:
-            page_num: Page number to fetch
-            max_retries: Maximum retry attempts
-
-        Returns:
-            List of benchmark dictionaries
-
-        Raises:
-            Exception: If fetch or parse fails after all retries
+        Retries happen inside the shared GET; a login page raises AuthenticationError from the
+        parser, which the full refresh treats as the end of the run.
         """
-        if max_retries < 1:
-            raise ValueError("max_retries must be at least 1")
-
-        attempt = 0
-        while True:
-            try:
-                html = self._fetch_page(page_num)
-                benchmarks = WorkBenchCatalogParser.parse_catalog_page(html)
-
-                if attempt > 0:
-                    logger.info(f"Page {page_num} succeeded on retry {attempt + 1}")
-
-                return benchmarks
-
-            except AuthenticationError:
-                raise
-            except Exception as e:
-                attempt += 1
-                if attempt >= max_retries:
-                    logger.error(f"Page {page_num} failed after {max_retries} attempts: {e}")
-                    raise
-                wait_time = attempt * 2  # Exponential backoff: 2s, 4s, 6s
-                logger.warning(
-                    f"Page {page_num} failed (attempt {attempt}/{max_retries}), retrying in {wait_time}s: {e}"
-                )
-                time.sleep(wait_time)
-
-    def test_connection(self) -> bool:
-        """Test if we can connect and are authenticated.
-
-        Returns:
-            True if connection successful and authenticated
-
-        Raises:
-            AuthenticationError: If response is a login page or redirect
-            ValueError: If page 1 parses zero benchmarks
-            Exception: If HTTP connection fails
-        """
-        try:
-            html = self._fetch_page(1)
-            benchmarks = WorkBenchCatalogParser.parse_catalog_page(html)
-
-            # Catch minimal login redirect pages without full WorkBench form markup
-            if not benchmarks and "login" in html.lower() and len(html) < 5000:
-                raise AuthenticationError(
-                    "Not authenticated. Page redirected to login.\n"
-                    f"Please log into {Config.get_workbench_base_url()} in your browser first."
-                )
-
-            if len(benchmarks) == 0:
-                raise ValueError(
-                    "Connected but no benchmarks found. HTML structure may have changed."
-                )
-
-            logger.info(f"Connection test passed: Found {len(benchmarks)} benchmarks on page 1")
-            return True
-
-        except requests.RequestException as e:
-            raise Exception(f"Connection failed: {e}") from e
+        return WorkBenchCatalogParser.parse_catalog_page(
+            self._fetch_page(page_num), base_url=self.base_url
+        )

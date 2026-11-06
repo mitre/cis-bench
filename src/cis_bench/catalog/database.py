@@ -476,9 +476,12 @@ class CatalogDatabase:
         platform_type: str | None,
         status: str | None,
         latest_only: bool,
-        limit: int,
+        limit: int | None,
     ) -> Select[tuple[object, ...]]:
-        """Build parameterized SQLAlchemy SELECT shared by FTS5 search and empty-query listing."""
+        """Build parameterized SQLAlchemy SELECT shared by FTS5 search and empty-query listing.
+
+        ``limit=None`` leaves the result unlimited (used to count every match).
+        """
         fts_table = table("benchmarks_fts", column("benchmark_id"), column("rank"))
         columns: list[ColumnElement[object]] = [
             col(CatalogBenchmark.benchmark_id).label("benchmark_id"),
@@ -544,7 +547,31 @@ class CatalogDatabase:
         else:
             stmt = stmt.order_by(col(CatalogBenchmark.published_date).desc())
 
-        return stmt.limit(limit)
+        return stmt if limit is None else stmt.limit(limit)
+
+    def _search_statement(
+        self,
+        query: str,
+        platform: str | None,
+        platform_type: str | None,
+        status: str | None,
+        latest_only: bool,
+        limit: int | None,
+    ) -> Select[tuple[object, ...]] | None:
+        """The search SELECT, or None when the query has no searchable term."""
+        fts_query: str | None = None
+        if query and query.strip():
+            fts_query = build_fts_query(query)
+            if not fts_query:
+                return None
+        return self._build_search_query(
+            fts_query=fts_query,
+            platform=platform,
+            platform_type=platform_type,
+            status=status,
+            latest_only=latest_only,
+            limit=limit,
+        )
 
     def search(
         self,
@@ -553,7 +580,8 @@ class CatalogDatabase:
         platform_type: str | None = None,
         status: str | None = "Published",
         latest_only: bool = False,
-        limit: int = 50,
+        *,
+        limit: int | None,
     ) -> list[dict]:
         """Search catalog using FTS5 fuzzy matching or list benchmarks when query is blank.
 
@@ -563,29 +591,35 @@ class CatalogDatabase:
             platform_type: Filter by platform category (cloud, os, database, container, application)
             status: Filter by status (default: Published; None or 'all' returns all statuses)
             latest_only: Only latest versions
-            limit: Max results
+            limit: Max results; None returns every match (the caller decides, the CLI from
+                CIS_BENCH_SEARCH_LIMIT)
 
         Returns:
             List of benchmark dictionaries with all joined data
         """
-        fts_query: str | None = None
-        if query and query.strip():
-            fts_query = build_fts_query(query)
-            if not fts_query:
-                return []
-
-        stmt = self._build_search_query(
-            fts_query=fts_query,
-            platform=platform,
-            platform_type=platform_type,
-            status=status,
-            latest_only=latest_only,
-            limit=limit,
-        )
+        stmt = self._search_statement(query, platform, platform_type, status, latest_only, limit)
+        if stmt is None:
+            return []
 
         with Session(self.engine) as session:
             result = session.execute(stmt)
             return [dict(row._mapping) for row in result.fetchall()]
+
+    def count_search(
+        self,
+        query: str,
+        platform: str | None = None,
+        platform_type: str | None = None,
+        status: str | None = "Published",
+        latest_only: bool = False,
+    ) -> int:
+        """Count every benchmark search() would return for these filters, with no limit."""
+        stmt = self._search_statement(query, platform, platform_type, status, latest_only, None)
+        if stmt is None:
+            return 0
+        counted = sa_select(func.count()).select_from(stmt.order_by(None).subquery())
+        with Session(self.engine) as session:
+            return int(session.execute(counted).scalar_one())
 
     def get_benchmark(self, benchmark_id: str) -> dict | None:
         """Get single benchmark with all metadata."""
@@ -756,6 +790,24 @@ class CatalogDatabase:
                 "version": downloaded.version,
                 "workbench_last_modified": downloaded.workbench_last_modified,
             }
+
+    def delete_downloaded(self, benchmark_id: str) -> bool:
+        """Delete a benchmark's cached downloaded copy; the catalog row stays.
+
+        The catalog row, its collections and its search entry are owned by catalog refresh
+        and are kept, so the benchmark is still found by search and can be downloaded again.
+
+        Returns:
+            True if a cached copy was deleted, False if the benchmark was not downloaded
+        """
+        with Session(self.engine) as session:
+            downloaded = session.get(DownloadedBenchmark, benchmark_id)
+            if downloaded is None:
+                return False
+            session.delete(downloaded)
+            session.commit()
+        logger.debug(f"Deleted downloaded benchmark: {benchmark_id}")
+        return True
 
     def list_downloaded_benchmark_ids(self) -> list[str]:
         """IDs of every benchmark whose content has been downloaded."""

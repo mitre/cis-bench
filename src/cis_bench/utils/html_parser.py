@@ -4,9 +4,23 @@ import logging
 import re
 from typing import Any
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 
 logger = logging.getLogger(__name__)
+
+
+def attribute_text(tag: Tag, name: str) -> str | None:
+    """The value of one attribute of tag as text, or None when the tag does not have it.
+
+    bs4 stores multi-valued attributes such as class as a list of words; those are joined
+    with single spaces, the way bs4 writes them back out.
+    """
+    value = tag.get(name)
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    return " ".join(value)
 
 
 class HTMLCleaner:
@@ -86,7 +100,7 @@ class HTMLCleaner:
             logger.debug("No MITRE table found in HTML")
             return None
 
-        result = {"techniques": [], "tactics": [], "mitigations": []}
+        result: dict[str, list[str]] = {"techniques": [], "tactics": [], "mitigations": []}
 
         # Parse table rows
         rows = table.find_all("tr")
@@ -250,4 +264,4 @@ class HTMLValidator:
             List of element IDs found
         """
         soup = BeautifulSoup(html, "html.parser")
-        return [elem.get("id") for elem in soup.find_all(id=True)]
+        return [attribute_text(elem, "id") or "" for elem in soup.find_all(id=True)]

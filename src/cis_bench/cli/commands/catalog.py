@@ -1,6 +1,7 @@
 """Catalog management commands for CIS Benchmark CLI."""
 
 import logging
+import math
 
 import click
 from rich.console import Console
@@ -9,18 +10,42 @@ from rich.table import Table
 
 from cis_bench.catalog.database import CatalogDatabase
 from cis_bench.catalog.search import CatalogSearch
-from cis_bench.cli.helpers.output import output_data
-from cis_bench.config import Config
-from cis_bench.exceptions import AuthenticationError
+from cis_bench.cli.helpers.errors import report_unreachable
+from cis_bench.cli.helpers.output import output_data, showing_line
+from cis_bench.cli.helpers.services import (
+    auth_manager,
+    catalog_scraper,
+    settings_from,
+    workbench_scraper,
+)
+from cis_bench.exceptions import AuthenticationError, FetchError
 
 console = Console()
 logger = logging.getLogger(__name__)
 
 
+BROWSER_HELP = "Browser to read cookies from (default: the CIS_BENCH_BROWSER setting)"
+
+
+def _validate_rate_limit(
+    _ctx: click.Context, _param: click.Parameter, value: float | None
+) -> float | None:
+    """Click callback: refuse a gap between requests that is not a finite number above zero,
+    or so small that the request rate it stands for (1 / gap) is not a finite number."""
+    if value is None:
+        return None
+    if not math.isfinite(value) or value <= 0:
+        raise click.BadParameter(f"must be a finite number of seconds greater than 0, got {value}")
+    if not math.isfinite(1 / value):
+        raise click.BadParameter(f"is too small to be a gap between requests, got {value}")
+    return value
+
+
 def get_catalog_db() -> CatalogDatabase:
-    """Get catalog database instance (environment-aware)."""
-    Config.ensure_directories()
-    return CatalogDatabase(Config.get_catalog_db_path())
+    """The catalog database in the data folder, creating the folder if needed."""
+    settings = settings_from()
+    settings.data_dir.mkdir(parents=True, exist_ok=True)
+    return CatalogDatabase(settings.catalog_db_path)
 
 
 def require_catalog_db(
@@ -43,7 +68,7 @@ def catalog():
 
     \b
     Example workflow:
-        cis-bench catalog refresh              # Build catalog (one-time, ~10 min)
+        cis-bench catalog refresh              # Build catalog (one-time, under a minute)
         cis-bench catalog search "ubuntu 20"   # Find benchmarks
         cis-bench catalog download 23598       # Download by ID
     """
@@ -51,21 +76,32 @@ def catalog():
 
 
 @catalog.command()
-@click.option("--browser", default="chrome", help="Browser for cookie extraction")
+@click.option("--browser", help=BROWSER_HELP)
 @click.option("--max-pages", type=int, help="Limit pages to scrape (for testing)")
-@click.option("--rate-limit", default=2.0, type=float, help="Seconds between requests")
+@click.option(
+    "--rate-limit",
+    default=None,
+    type=float,
+    callback=_validate_rate_limit,
+    metavar="SECONDS",
+    help=(
+        "Seconds between requests to WorkBench for this run "
+        "(default: 1 / the CIS_BENCH_REQUESTS_PER_SECOND setting)"
+    ),
+)
 def refresh(browser, max_pages, rate_limit):
     """Refresh catalog from CIS WorkBench (scrape all pages).
 
     This builds or updates the complete catalog by scraping all benchmark
-    listing pages from CIS WorkBench. Takes approximately 10 minutes for
-    full catalog (~68 pages).
+    listing pages from CIS WorkBench (about 80 pages, about 1,500 benchmarks).
+    Pages are fetched in parallel, paced by the CIS_BENCH_* request settings; a
+    full refresh takes under a minute with the defaults.
 
     \b
     Examples:
         cis-bench catalog refresh
         cis-bench catalog refresh --max-pages 5  # Test with 5 pages
-        cis-bench catalog refresh --rate-limit 1  # Faster (less polite)
+        cis-bench catalog refresh --rate-limit 1  # One request per second (gentler)
     """
     try:
         # Get database
@@ -74,28 +110,24 @@ def refresh(browser, max_pages, rate_limit):
 
         # The session helper validates the saved or freshly extracted session itself
         # and raises AuthenticationError when neither is accepted by WorkBench.
-        from cis_bench.catalog.scraper import CatalogScraper
-        from cis_bench.fetcher.auth import AuthManager
-
+        settings = settings_from()
         console.print("[cyan]Validating session...[/cyan]")
-        session = AuthManager.get_or_create_session(
-            browser=browser, verify_ssl=Config.get_verify_ssl()
+        # Pace every request of this run at the requested gap, from the session check on;
+        # the scraper's worker threads share the session's adapter, so they all follow it.
+        auth = auth_manager(
+            settings, requests_per_second=None if rate_limit is None else 1 / rate_limit
         )
+        session = auth.get_or_create_session(browser=browser or settings.browser)
         console.print("[green]✓[/green] Session valid\n")
 
         # Create scraper
-        scraper = CatalogScraper(db, session)
-
-        # Test connection
-        console.print("[cyan]Testing connection...[/cyan]")
-        scraper.test_connection()
-        console.print("[green]✓[/green] Connected to CIS WorkBench\n")
+        scraper = catalog_scraper(settings, db, session)
 
         # Scrape catalog
         pages_msg = f"{max_pages} pages" if max_pages else "all pages"
         console.print(f"[cyan]Scraping catalog ({pages_msg})...[/cyan]")
 
-        stats = scraper.scrape_full_catalog(max_pages=max_pages, rate_limit_seconds=rate_limit)
+        stats = scraper.scrape_full_catalog(max_pages=max_pages)
 
         # Show results
         console.print("\n[green]✓[/green] Catalog refresh complete!")
@@ -116,6 +148,9 @@ def refresh(browser, max_pages, rate_limit):
 
     except click.Abort:
         raise
+    except FetchError as e:
+        report_unreachable(console, e)
+        raise click.Abort() from e
     except AuthenticationError as e:
         console.print("[red]✗ Authentication required[/red]")
         console.print(f"[yellow]{escape(str(e))}[/yellow]")
@@ -127,12 +162,12 @@ def refresh(browser, max_pages, rate_limit):
 
 
 @catalog.command()
-@click.option("--browser", default="chrome", help="Browser for cookie extraction")
+@click.option("--browser", help=BROWSER_HELP)
 def update(browser):
     """Quick catalog update (scrape page 1 only).
 
     Faster than full refresh - only checks the first page for new/updated
-    benchmarks. Takes ~30 seconds.
+    benchmarks. Takes a few seconds.
 
     \b
     Example:
@@ -145,17 +180,13 @@ def update(browser):
 
         db.initialize_schema()
 
-        from cis_bench.catalog.scraper import CatalogScraper
-        from cis_bench.fetcher.auth import AuthManager
-
-        session = AuthManager.get_or_create_session(
-            browser=browser, verify_ssl=Config.get_verify_ssl()
-        )
-        scraper = CatalogScraper(db, session)
+        settings = settings_from()
+        session = auth_manager(settings).get_or_create_session(browser=browser or settings.browser)
+        scraper = catalog_scraper(settings, db, session)
 
         console.print("[cyan]Updating catalog (page 1)...[/cyan]")
 
-        stats = scraper.scrape_page_one_update(rate_limit_seconds=1)
+        stats = scraper.scrape_page_one_update()
 
         console.print("[green]✓[/green] Catalog updated!")
         console.print(f"  New benchmarks: [yellow]{stats['new_count']}[/yellow]")
@@ -163,6 +194,9 @@ def update(browser):
 
     except click.Abort:
         raise
+    except FetchError as e:
+        report_unreachable(console, e)
+        raise click.Abort() from e
     except AuthenticationError as e:
         console.print("[red]✗ Authentication required[/red]")
         console.print(f"[yellow]{escape(str(e))}[/yellow]")
@@ -182,7 +216,7 @@ def update(browser):
     help="Filter by status (Published, Archived, Draft, Final Update, or all)",
 )
 @click.option("--latest", is_flag=True, help="Latest versions only")
-@click.option("--limit", type=int, help="Max results (default: 1000)")
+@click.option("--limit", type=int, help="Max results (default: CIS_BENCH_SEARCH_LIMIT, 100)")
 @click.option(
     "--output-format",
     "-o",
@@ -204,9 +238,8 @@ def search(query, platform, status, latest, limit, output_format):
 
         search_obj = CatalogSearch(db)
 
-        # Use Config default if limit not provided
         if limit is None:
-            limit = Config.get_search_default_limit()
+            limit = settings_from().search_limit
 
         results = search_obj.search(
             query=query or "",
@@ -243,8 +276,18 @@ def search(query, platform, status, latest, limit, output_format):
 
         for r in results:
             formatted = search_obj.format_result_for_display(r)
-            console.print(formatted)
+            console.print(escape(formatted))
             console.print()  # Blank line
+
+        # A list shorter than the limit is complete; only a full one may have been cut off.
+        total = (
+            search_obj.count(
+                query=query or "", platform=platform, status=status, latest_only=latest
+            )
+            if len(results) >= limit
+            else len(results)
+        )
+        console.print(f"[dim]{showing_line(len(results), total)}[/dim]")
 
     except click.Abort:
         raise
@@ -256,7 +299,7 @@ def search(query, platform, status, latest, limit, output_format):
 @catalog.command(name="list")
 @click.option("--platform", help="Filter by platform")
 @click.option("--latest", is_flag=True, help="Latest versions only")
-@click.option("--limit", default=50, type=int, help="Max results")
+@click.option("--limit", type=int, help="Max results (default: CIS_BENCH_SEARCH_LIMIT, 100)")
 def list_cmd(platform, latest, limit):
     """List benchmarks in catalog.
 
@@ -269,11 +312,11 @@ def list_cmd(platform, latest, limit):
         db = require_catalog_db()
 
         search_obj = CatalogSearch(db)
+        if limit is None:
+            limit = settings_from().search_limit
 
-        if platform:
-            results = search_obj.list_by_platform(platform, latest_only=latest)
-        else:
-            results = search_obj.list_all_published(limit=limit)
+        filters = {"platform": platform, "status": "Published", "latest_only": latest}
+        results = search_obj.search(query="", limit=limit, **filters)
 
         if not results:
             console.print("[yellow]No benchmarks found.[/yellow]")
@@ -281,10 +324,13 @@ def list_cmd(platform, latest, limit):
 
         console.print(f"\n[cyan]{len(results)} benchmarks:[/cyan]\n")
 
-        for r in results[:limit]:
+        for r in results:
             formatted = search_obj.format_result_for_display(r)
-            console.print(formatted)
+            console.print(escape(formatted))
             console.print()
+
+        total = search_obj.count(**filters) if len(results) >= limit else len(results)
+        console.print(f"[dim]{showing_line(len(results), total)}[/dim]")
 
     except click.Abort:
         raise
@@ -323,30 +369,30 @@ def info(benchmark_id, output_format):
             output_data(bench, output_format)
 
         # Display detailed info (table format)
-        console.print(f"\n[bold]{bench['title']}[/bold]")
+        console.print(f"\n[bold]{escape(str(bench['title']))}[/bold]")
 
         if bench.get("version"):
-            console.print(f"Version: {bench['version']}")
+            console.print(f"Version: {escape(str(bench['version']))}")
 
-        console.print(f"ID: {bench['benchmark_id']}")
-        console.print(f"Status: {bench['status']}")
+        console.print(f"ID: {escape(str(bench['benchmark_id']))}")
+        console.print(f"Status: {escape(str(bench['status']))}")
 
         if bench.get("platform"):
-            console.print(f"Platform: {bench['platform']}")
+            console.print(f"Platform: {escape(str(bench['platform']))}")
 
         if bench.get("community"):
-            console.print(f"Community: {bench['community']}")
+            console.print(f"Community: {escape(str(bench['community']))}")
 
         if bench.get("owner"):
-            console.print(f"Owner: {bench['owner']}")
+            console.print(f"Owner: {escape(str(bench['owner']))}")
 
         if bench.get("published_date"):
-            console.print(f"Published: {bench['published_date']}")
+            console.print(f"Published: {escape(str(bench['published_date']))}")
 
-        console.print(f"\nURL: {bench['url']}")
+        console.print(f"\nURL: {escape(str(bench['url']))}")
 
         if bench.get("description"):
-            console.print(f"\n[dim]{bench['description'][:200]}...[/dim]")
+            console.print(f"\n[dim]{escape(bench['description'][:200])}...[/dim]")
 
         console.print(
             f"\n[cyan]Download:[/cyan] cis-bench catalog download {escape(str(benchmark_id))}"
@@ -397,7 +443,7 @@ def platforms(output_format):
         table.add_column("Benchmarks", justify="right", style="yellow")
 
         for p in platforms:
-            table.add_row(p["name"], str(p["count"]))
+            table.add_row(escape(str(p["name"])), str(p["count"]))
 
         console.print()
         console.print(table)
@@ -459,7 +505,7 @@ def stats(output_format):
 
 @catalog.command()
 @click.argument("benchmark_id_or_name")
-@click.option("--browser", default="chrome", help="Browser for cookie extraction")
+@click.option("--browser", help=BROWSER_HELP)
 @click.option("--force", is_flag=True, help="Force re-download even if current")
 @click.option("--interactive", is_flag=True, help="Interactive selection if multiple matches")
 def download(benchmark_id_or_name, browser, force, interactive):
@@ -476,16 +522,13 @@ def download(benchmark_id_or_name, browser, force, interactive):
         db = require_catalog_db()
 
         from cis_bench.catalog.downloader import CatalogDownloader
-        from cis_bench.fetcher.auth import AuthManager
-        from cis_bench.fetcher.workbench import WorkbenchScraper
 
+        settings = settings_from()
         # Get authenticated session (reuses saved session or authenticates via browser)
-        session = AuthManager.get_or_create_session(
-            browser=browser, verify_ssl=Config.get_verify_ssl()
-        )
+        session = auth_manager(settings).get_or_create_session(browser=browser or settings.browser)
 
         # Create downloader
-        scraper = WorkbenchScraper(session)
+        scraper = workbench_scraper(settings, session)
         downloader = CatalogDownloader(db, scraper)
 
         # Determine if ID or name
@@ -516,6 +559,9 @@ def download(benchmark_id_or_name, browser, force, interactive):
 
     except click.Abort:
         raise
+    except FetchError as e:
+        report_unreachable(console, e)
+        raise click.Abort() from e
     except AuthenticationError as e:
         console.print("[red]✗ Authentication required[/red]")
         console.print(f"[yellow]{escape(str(e))}[/yellow]")
@@ -526,7 +572,7 @@ def download(benchmark_id_or_name, browser, force, interactive):
         raise click.Abort() from e
     except Exception as e:
         console.print(f"[red]✗ Download failed: {escape(str(e))}[/red]")
-        logger.error(f"Download error: {e}", exc_info=True)
+        logger.debug("Download error", exc_info=True)
         raise click.Abort() from e
 
 
@@ -552,12 +598,10 @@ def check_updates(offline):
         db = require_catalog_db()
 
         if not offline:
-            from cis_bench.catalog.scraper import CatalogScraper
-            from cis_bench.fetcher.auth import AuthManager
-
-            session = AuthManager.get_or_create_session(verify_ssl=Config.get_verify_ssl())
+            settings = settings_from()
+            session = auth_manager(settings).get_or_create_session()
             console.print("[cyan]Checking WorkBench publication dates...[/cyan]")
-            refreshed = CatalogScraper(db, session).refresh_downloaded_revision_dates()
+            refreshed = catalog_scraper(settings, db, session).refresh_downloaded_revision_dates()
             console.print(f"[green]✓[/green] Checked {refreshed} downloaded benchmark(s)\n")
 
         updates = db.check_updates_available()
@@ -572,10 +616,10 @@ def check_updates(offline):
             console.print(f"  [{u['benchmark_id']}] {escape(str(u['title']))}")
             if u["reason"] == "newer version in catalog":
                 console.print(
-                    f"      Version: {u['downloaded_version'] or '?'} -> {u['catalog_version']}"
+                    f"      Version: {escape(str(u['downloaded_version'] or '?'))} -> {escape(str(u['catalog_version']))}"
                 )
             else:
-                console.print(f"      WorkBench published {u['published_date']}")
+                console.print(f"      WorkBench published {escape(str(u['published_date']))}")
             console.print(f"      Downloaded: {u['downloaded_at']}")
             console.print()
 
@@ -583,6 +627,9 @@ def check_updates(offline):
 
     except click.Abort:
         raise
+    except FetchError as e:
+        report_unreachable(console, e)
+        raise click.Abort() from e
     except AuthenticationError as e:
         console.print("[red]✗ Authentication required[/red]")
         console.print(f"[yellow]{escape(str(e))}[/yellow]")

@@ -255,7 +255,7 @@ Output file type for exports.
 ### Catalog
 Local SQLite database containing metadata for 1,300+ CIS benchmarks from CIS WorkBench.
 
-**Location:** `~/.cis-bench/catalog.db`
+**Location:** `~/.local/share/cis-bench/catalog.db`
 
 **Features:**
 
@@ -344,7 +344,7 @@ A function that modifies field values during export.
 ### Session
 Authenticated connection to CIS WorkBench using cookies.
 
-**Storage:** `~/.cis-bench/session.cookies` (MozillaCookieJar format)
+**Storage:** `~/.local/state/cis-bench/session.cookies` (MozillaCookieJar format)
 
 **Created by:** `cis-bench auth login --browser chrome`
 
@@ -380,12 +380,12 @@ A CLI action (download, export, search, etc.).
 
 **Top-level commands:**
 
-- auth, download, export, get, list, info, search, catalog
+- auth, download, export, get, list, info, search, catalog, remove, config
 
 ### Subcommand
 A command nested under another command.
 
-**Example:** `catalog` has subcommands (refresh, update, search, platforms, stats)
+**Example:** `catalog` has subcommands (refresh, update, search, list, info, platforms, stats, download, check-updates)
 
 **Syntax:** `cis-bench catalog refresh`
 
@@ -418,7 +418,7 @@ How data is displayed to the user.
 ### Catalog Database
 SQLite database storing benchmark metadata.
 
-**Location:** `~/.cis-bench/catalog.db`
+**Location:** `~/.local/share/cis-bench/catalog.db`
 
 **Tables:**
 
@@ -682,21 +682,17 @@ SQLite feature enabling fast fuzzy text search.
 
 ## File and Directory Terminology
 
-### Data Directory
-Where CIS Benchmark CLI stores its data.
+### Folders
+Where CIS Benchmark CLI keeps its files: the XDG base directories, as the GitHub CLI does.
 
-**Locations:**
+**Location:** `~/.config/cis-bench/config.toml`; `~/.local/share/cis-bench/` for `catalog.db` and `benchmarks/`; `~/.local/state/cis-bench/session.cookies`.
 
-- Production: `~/.cis-bench/`
-- Development: `~/.cis-bench-dev/`
-- Test: `/tmp/cis-bench-test/`
-
-**Controlled by:** `CIS_BENCH_ENV` environment variable
+**Controlled by:** `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`; `CIS_BENCH_HOME` for one folder; `CIS_BENCH_CONFIG_DIR` for the config folder
 
 ### Session File
 MozillaCookieJar file containing authentication cookies.
 
-**Location:** `~/.cis-bench/session.cookies`
+**Location:** `~/.local/state/cis-bench/session.cookies`
 
 **Created by:** `cis-bench auth login`
 

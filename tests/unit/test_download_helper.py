@@ -220,6 +220,29 @@ class TestDownloadWithProgress:
 
     @patch("cis_bench.cli.helpers.download_helper.Progress")
     @patch("cis_bench.cli.helpers.download_helper.Console")
+    def test_progress_bar_is_stopped_when_the_download_raises(
+        self, mock_console_class, mock_progress_class
+    ):
+        from cis_bench.cli.helpers.download_helper import download_with_progress
+        from cis_bench.exceptions import AuthenticationError
+
+        mock_progress = MagicMock()
+        mock_progress_class.return_value = mock_progress
+        mock_scraper = MagicMock()
+
+        def expire_mid_download(url, progress_callback=None):
+            progress_callback("Found 10 recommendations to download")
+            raise AuthenticationError("the saved session has expired")
+
+        mock_scraper.download_benchmark.side_effect = expire_mid_download
+
+        with pytest.raises(AuthenticationError):
+            download_with_progress(mock_scraper, "https://example.com/benchmarks/12345")
+
+        mock_progress.stop.assert_called_once()
+
+    @patch("cis_bench.cli.helpers.download_helper.Progress")
+    @patch("cis_bench.cli.helpers.download_helper.Console")
     def test_progress_bar_stopped_after_download(
         self, mock_console_class, mock_progress_class, sample_benchmark
     ):
@@ -245,6 +268,30 @@ class TestDownloadWithProgress:
 
         # Verify stop was called
         mock_progress.stop.assert_called_once()
+
+    def test_callback_prints_the_benchmark_title_verbatim(self, sample_benchmark):
+        from io import StringIO
+
+        from rich.console import Console
+
+        from cis_bench.cli.helpers.download_helper import download_with_progress
+
+        buffer = StringIO()
+
+        def report_title(url, progress_callback=None):
+            progress_callback("Benchmark title: CIS T [/t]")
+            return sample_benchmark
+
+        scraper = MagicMock()
+        scraper.download_benchmark.side_effect = report_title
+        with patch(
+            "cis_bench.cli.helpers.download_helper.Console",
+            return_value=Console(file=buffer, width=120),
+        ):
+            # download passes the bare "[1/1]" prefix
+            download_with_progress(scraper, "https://example.com/benchmarks/1", prefix="[1/1]")
+
+        assert "[1/1] CIS T [/t]" in buffer.getvalue()
 
     @patch("cis_bench.cli.helpers.download_helper.Console")
     def test_callback_extracts_title_correctly(self, mock_console_class, sample_benchmark):

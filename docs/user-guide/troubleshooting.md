@@ -80,6 +80,17 @@ pipx install cis-bench
 3. Log in
 4. Try CLI command again
 
+### "Could not reach WorkBench"
+
+**Cause:** WorkBench did not answer: no network, a timeout, or a server error that lasted
+through the retries. This is not an expired login. cis-bench learned nothing about the
+session, so the saved session is kept.
+
+**Solution:**
+
+- Check the network connection and any proxy settings, then run the command again
+- On a slow link, raise `CIS_BENCH_REQUEST_TIMEOUT` (see [Configuration](configuration.md#settings))
+
 ### "Failed to extract cookies"
 
 **Cause:** Browser database locked or no cookies found.
@@ -121,7 +132,7 @@ export REQUESTS_CA_BUNDLE=/etc/ssl/corporate-ca-bundle.crt
 # Last resort: disable verification for one login
 cis-bench auth login --browser chrome --no-verify-ssl
 
-# Or for every command, via environment / ~/.cis-bench/.env
+# Or for every command, via the environment or config.toml
 export CIS_BENCH_VERIFY_SSL=false
 ```
 
@@ -167,13 +178,13 @@ cis-bench catalog update
 
 ### Slow Catalog Refresh
 
-**Normal:** Full refresh takes ~10 minutes (68 pages × 2 sec rate limit).
+**Normal:** A full refresh takes under a minute with the default settings: about 80 pages, `CIS_BENCH_MAX_CONCURRENT_REQUESTS` at a time and never more than `CIS_BENCH_REQUESTS_PER_SECOND` requests per second, retries included. Much longer usually means slow responses or retries; run with `-v` to see them, or lower the pace with `--rate-limit`.
 
 **Alternatives:**
 
-- Use `catalog update` for quick refresh (~30 sec)
+- Use `catalog update` for a quick refresh of page 1 (a few seconds)
 - Test with `--max-pages 5` first
-- Increase rate with `--rate-limit 1` (less polite to CIS)
+- If WorkBench is rate-limiting you (429 responses in `-v` output), slow the run down with `--rate-limit 2` (one request every 2 seconds)
 
 ---
 
@@ -228,6 +239,26 @@ cis-bench catalog info 23598
 cis-bench catalog update
 ```
 
+### Download stalls or a recommendation fails to fetch
+
+Every WorkBench request has a timeout (`CIS_BENCH_REQUEST_TIMEOUT` to read, 10 seconds to
+connect) and is retried `CIS_BENCH_REQUEST_RETRIES` times on a timeout, a connection error or a
+429/502/503/504 response: first as soon as the rate limit allows, then after
+`CIS_BENCH_RETRY_BACKOFF_FACTOR` × 2
+seconds plus jitter, or after WorkBench's `Retry-After` wait (up to 60 seconds); see
+[Configuration](configuration.md#settings). A recommendation that still fails is logged with its URL and
+skipped, so a download finishes with fewer recommendations rather than
+hanging. Each retry is logged as a warning with the attempt number and the
+wait before the next try; `-v` adds the full debug trace around it.
+
+On a slow or lossy connection raise the read timeout:
+```bash
+export CIS_BENCH_REQUEST_TIMEOUT=90
+```
+
+If the same URL keeps failing, open it in a browser while logged in to check
+whether WorkBench itself is returning an error for that page.
+
 ### "Already up-to-date"
 
 **Not an error** - Benchmark hasn't changed.
@@ -262,10 +293,10 @@ cis-bench catalog download 23598 --force
 **Solution:**
 ```bash
 # Backup first
-cp ~/.cis-bench/catalog.db ~/.cis-bench/catalog.db.backup
+cp ~/.local/share/cis-bench/catalog.db ~/.local/share/cis-bench/catalog.db.backup
 
 # Rebuild
-rm ~/.cis-bench/catalog.db
+rm ~/.local/share/cis-bench/catalog.db
 cis-bench catalog refresh
 ```
 
@@ -279,12 +310,11 @@ cis-bench catalog refresh
 
 **Check:**
 ```bash
-# Verify test env is set
-python3 -c "import os; print(os.getenv('CIS_BENCH_ENV'))"
-# Should print: None (when not in tests)
-
-# In tests, should be: test
+# Which folders are in use (unset means the XDG folders)
+echo "$CIS_BENCH_HOME"
 ```
+
+pytest sets `CIS_BENCH_HOME` to a temporary folder for each run (`tests/conftest.py`).
 
 **If tests use production DB:**
 
@@ -320,7 +350,7 @@ python3 -c "import os; print(os.getenv('CIS_BENCH_ENV'))"
 - Run `VACUUM` on SQLite
 - Rebuild FTS5 index:
 ```bash
-sqlite3 ~/.cis-bench/catalog.db "DELETE FROM benchmarks_fts"
+sqlite3 ~/.local/share/cis-bench/catalog.db "DELETE FROM benchmarks_fts"
 # Then refresh catalog
 ```
 

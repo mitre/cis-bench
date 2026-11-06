@@ -28,7 +28,8 @@ class CatalogSearch:
         platform_type: str | None = None,
         status: str | None = "Published",
         latest_only: bool = False,
-        limit: int = 50,
+        *,
+        limit: int | None,
     ) -> list[dict]:
         """Search catalog with filters.
 
@@ -38,14 +39,16 @@ class CatalogSearch:
             platform_type: Filter by platform category (cloud, os, database, container, application)
             status: Filter by status (default: Published; None or 'all' returns all statuses)
             latest_only: Only latest versions
-            limit: Max results
+            limit: Max results; None returns every match
 
         Returns:
             List of matching benchmarks with all metadata
 
         Example:
             search = CatalogSearch(db)
-            results = search.search("ubuntu", platform="Operating System", latest_only=True)
+            results = search.search(
+                "ubuntu", platform="Operating System", latest_only=True, limit=20
+            )
         """
         logger.debug(
             f"Search: query='{query}', platform={platform}, platform_type={platform_type}, status={status!r}, latest={latest_only}"
@@ -63,6 +66,23 @@ class CatalogSearch:
 
         logger.info(f"Search returned {len(results)} results")
         return results
+
+    def count(
+        self,
+        query: str = "",
+        platform: str | None = None,
+        platform_type: str | None = None,
+        status: str | None = "Published",
+        latest_only: bool = False,
+    ) -> int:
+        """Count every benchmark search() would return for these filters, ignoring any limit."""
+        return self.db.count_search(
+            query=query,
+            platform=platform,
+            platform_type=platform_type,
+            status=status,
+            latest_only=latest_only,
+        )
 
     def find_by_id(self, benchmark_id: str) -> dict | None:
         """Find benchmark by exact ID.
@@ -87,29 +107,6 @@ class CatalogSearch:
         """
         return self.search(query=name, latest_only=latest_only, limit=20)
 
-    def list_all_published(self, limit: int = 100) -> list[dict]:
-        """List all published benchmarks.
-
-        Args:
-            limit: Max results
-
-        Returns:
-            List of published benchmarks
-        """
-        return self.search(query="", status="Published", limit=limit)
-
-    def list_by_platform(self, platform: str, latest_only: bool = False) -> list[dict]:
-        """List benchmarks for a platform.
-
-        Args:
-            platform: Platform name
-            latest_only: Only latest versions
-
-        Returns:
-            List of benchmarks
-        """
-        return self.search(query="", platform=platform, latest_only=latest_only, limit=200)
-
     def get_platforms(self) -> list[dict]:
         """Get all platforms with benchmark counts.
 
@@ -125,17 +122,6 @@ class CatalogSearch:
             List of communities
         """
         return self.db.list_communities()
-
-    def get_latest_for_platform(self, platform: str) -> list[dict]:
-        """Get latest benchmarks for a platform.
-
-        Args:
-            platform: Platform name
-
-        Returns:
-            Latest benchmarks for platform
-        """
-        return self.search(query="", platform=platform, latest_only=True, limit=100)
 
     def format_result_for_display(self, result: dict) -> str:
         """Format search result for CLI display.

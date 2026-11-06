@@ -39,11 +39,13 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.x"
+          python-version: "3.12"
 
-      - name: Install MkDocs and dependencies
+      - name: Install cis-bench, MkDocs and dependencies
+        # The settings table in configuration.md is rendered from cis_bench.config at build
+        # time (scripts/mkdocs_settings_table.py), so the package must be importable.
         run: |
-          pip install mkdocs-material mkdocs-autorefs
+          pip install . mkdocs-material mkdocs-autorefs
 
       - name: Build documentation
         run: mkdocs build

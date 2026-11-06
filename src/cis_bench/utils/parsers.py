@@ -4,8 +4,13 @@ import json
 import re
 
 from bs4 import BeautifulSoup
+from pydantic import HttpUrl
 
 from cis_bench.models.benchmark import Artifact, CISControl, MITREMapping, ParentReference
+from cis_bench.utils.html_parser import attribute_text
+
+# The label of the link to a recommendation's parent section, e.g. "PARENT : Initial Setup".
+_PARENT_LABEL = re.compile(r"PARENT\s*:", re.IGNORECASE)
 
 
 class WorkbenchParser:
@@ -30,7 +35,7 @@ class WorkbenchParser:
         if not table:
             return None
 
-        result = {"techniques": [], "tactics": [], "mitigations": []}
+        result: dict[str, list[str]] = {"techniques": [], "tactics": [], "mitigations": []}
 
         rows = table.find_all("tr")
         current_section = None
@@ -182,8 +187,15 @@ class WorkbenchParser:
         """
         soup = BeautifulSoup(html, "html.parser")
 
-        # Find link with "PARENT" text
-        parent_link = soup.find("a", string=re.compile(r"PARENT\s*:", re.IGNORECASE))
+        # The first link whose only text is "PARENT : <title>"
+        parent_link = next(
+            (
+                a
+                for a in soup.find_all("a")
+                if a.string is not None and _PARENT_LABEL.search(a.string)
+            ),
+            None,
+        )
 
         if not parent_link:
             # Try finding by icon class
@@ -191,12 +203,13 @@ class WorkbenchParser:
             if icon and icon.parent and icon.parent.name == "a":
                 parent_link = icon.parent
 
-        if parent_link and parent_link.get("href"):
+        href = attribute_text(parent_link, "href") if parent_link else None
+        if parent_link and href:
             title_text = parent_link.get_text(strip=True)
             # Remove "PARENT :" prefix
             title = re.sub(r"^.*PARENT\s*:\s*", "", title_text, flags=re.IGNORECASE)
 
-            return ParentReference(url=parent_link["href"], title=title)
+            return ParentReference(url=HttpUrl(href), title=title)
 
         return None
 

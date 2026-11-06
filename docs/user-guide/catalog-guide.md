@@ -42,18 +42,18 @@ A local SQLite database with full-text search containing metadata for all CIS be
 # Login (one-time)
 cis-bench auth login --browser chrome
 
-# Build catalog (one-time, ~2 minutes)
+# Build catalog (one-time, under a minute)
 cis-bench catalog refresh
 ```
 
 **What catalog refresh does:**
 
-- Scrapes ~66 pages from CIS WorkBench
+- Scrapes about 80 pages from CIS WorkBench
 - Parallel processing (10 pages/batch, 5 threads)
 - Builds searchable database
 - Infers platform taxonomy automatically
-- Takes ~2 minutes (vs ~10 min sequential)
-- Stored in: `~/.cis-bench/catalog.db`
+- Takes under a minute
+- Stored in: `~/.local/share/cis-bench/catalog.db`
 
 ### 2. Search and Use
 
@@ -86,7 +86,7 @@ cis-bench search "kubernetes"
 - Full-text search with FTS5
 - Fuzzy matching
 - Searches titles, platforms, communities
-- Returns up to 1000 results by default
+- Returns up to `CIS_BENCH_SEARCH_LIMIT` results (100 by default); `--limit` changes it for one run
 
 ### Platform Filtering
 
@@ -270,23 +270,22 @@ A benchmark is listed when the catalog carries a newer version than you download
 
 ### Parallel Scraping
 
-**Default behavior:**
+**Behavior** (each value is a setting; see [Configuration](configuration.md#settings)):
 
-- Batches: 10 pages per batch
-- Threads: 5 concurrent per batch
-- Rate limit: 2 seconds between batches
-- Retry: 3 attempts with exponential backoff
+- Batches: `CIS_BENCH_BATCH_SIZE` pages per batch, saved before the next batch starts
+- Threads: `CIS_BENCH_MAX_CONCURRENT_REQUESTS` requests at a time
+- Rate limit: at most `CIS_BENCH_REQUESTS_PER_SECOND` requests per second to WorkBench, shared by every thread and counting retries
+- Retry: `CIS_BENCH_REQUEST_RETRIES` retries on timeouts, dropped connections and 429/502/503/504 (the first as soon as the rate limit allows, the next after `CIS_BENCH_RETRY_BACKOFF_FACTOR` × 2 s plus jitter; WorkBench's `Retry-After` is honored up to 60 s); a missing page is not retried
 - Failure threshold: Aborts if >10% of pages fail
 
 **Performance:**
 
-- Full 66 pages: ~2 minutes
-- Per page: ~2 seconds (with parallelism)
-- Respectful to CIS servers
+- Full refresh (about 80 pages): under a minute (77 pages took 34 s on 2026-11-04)
+- Respectful to CIS servers: never more than `CIS_BENCH_REQUESTS_PER_SECOND` requests per second
 
 **Tuning:**
 ```bash
-# Faster (less polite)
+# Gentler: one request per second for this run
 cis-bench catalog refresh --rate-limit 1.0
 
 # Test with few pages
@@ -371,7 +370,7 @@ cis-bench search --platform-type os --platform ubuntu
 
 **Retry logic:**
 
-- Automatically retries failed pages (3 attempts)
+- Automatically retries a page that timed out, dropped its connection or got 429/502/503/504 (`CIS_BENCH_REQUEST_RETRIES` retries, two by default)
 - Continues if failure rate is low (<10%)
 - Aborts if too many failures (indicates bigger issue)
 
@@ -414,19 +413,16 @@ xargs -I {} cis-bench export {} --format xccdf --style cis
 
 **Production:**
 
-- `~/.cis-bench/catalog.db`
+- `~/.local/share/cis-bench/catalog.db` (the XDG data folder)
 
-**Development:**
+**One folder for everything (for example for development):**
 ```bash
-export CIS_BENCH_ENV=dev
+export CIS_BENCH_HOME=~/cis-bench-dev
 cis-bench catalog refresh
-# Stored in: ~/.cis-bench-dev/catalog.db
+# Stored in: ~/cis-bench-dev/catalog.db
 ```
 
-**Test:**
-
-- Automatic test isolation
-- `/tmp/cis-bench-test/catalog.db`
+**Tests:** pytest uses a temporary folder for each run.
 
 ---
 

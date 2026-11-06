@@ -724,6 +724,38 @@ class TestWorkbenchParser:
         result = WorkbenchParser.extract_assessment_status(None)
         assert result == "Unknown"
 
+    def test_parent_link_whose_text_is_the_label(self):
+        html = '<a href="https://workbench.cisecurity.org/sections/1">Parent: Initial Setup</a>'
+        parent = WorkbenchParser.parse_parent_link(html)
+        assert parent is not None
+        assert str(parent.url) == "https://workbench.cisecurity.org/sections/1"
+        assert parent.title == "Initial Setup"
+
+    def test_parent_link_found_by_its_icon(self):
+        html = (
+            '<a href="https://workbench.cisecurity.org/sections/2">'
+            '<i class="fa-level-up"></i> PARENT : Filesystem</a>'
+        )
+        parent = WorkbenchParser.parse_parent_link(html)
+        assert parent is not None
+        assert str(parent.url) == "https://workbench.cisecurity.org/sections/2"
+        assert parent.title == "Filesystem"
+
+    def test_the_first_labelled_link_wins_over_other_links(self):
+        html = (
+            '<a href="https://workbench.cisecurity.org/other">Home</a>'
+            '<a href="https://workbench.cisecurity.org/sections/3">PARENT : Services</a>'
+        )
+        parent = WorkbenchParser.parse_parent_link(html)
+        assert parent is not None
+        assert str(parent.url) == "https://workbench.cisecurity.org/sections/3"
+
+    def test_a_parent_link_without_href_is_no_parent(self):
+        assert WorkbenchParser.parse_parent_link("<a>PARENT : Services</a>") is None
+
+    def test_no_parent_link_is_none(self):
+        assert WorkbenchParser.parse_parent_link('<a href="/x">Home</a>') is None
+
 
 # ============================================================================
 # TEST: HTMLCleaner

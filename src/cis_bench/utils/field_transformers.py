@@ -95,7 +95,7 @@ class RecommendationFieldTransformer:
         if not value:
             return ""
 
-        return TransformRegistry.apply(transform, value)
+        return str(TransformRegistry.apply(transform, value))
 
 
 class SafeFieldAccessor:
@@ -254,7 +254,7 @@ class CISControlFormatter:
             >>> print(grouped[8])  # ['4.1', '4.8']
             >>> print(grouped[7])  # ['9.2']
         """
-        grouped = {}
+        grouped: dict[int, list[str]] = {}
         for c in controls:
             grouped.setdefault(c.version, []).append(c.control)
         return grouped

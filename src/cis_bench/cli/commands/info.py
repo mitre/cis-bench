@@ -1,22 +1,28 @@
 """Info command for CIS Benchmark CLI."""
 
+import logging
 import os
 import sys
 
 import click
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 
 from cis_bench.cli.helpers.output import output_data
+from cis_bench.cli.helpers.services import settings_from
 from cis_bench.models.benchmark import Benchmark
 
 console = Console()
+logger = logging.getLogger(__name__)
 
 
 @click.command()
 @click.argument("filename")
-@click.option("--output-dir", default="./benchmarks", help="Directory containing benchmarks")
+@click.option(
+    "--output-dir", help="Directory containing benchmarks (default: <data dir>/benchmarks)"
+)
 @click.option(
     "--output-format",
     "-o",
@@ -31,6 +37,9 @@ def info(filename, output_dir, output_format):
     Example:
         cis-bench info cis_almalinux_os_8_benchmark_v400.json
     """
+    if output_dir is None:
+        output_dir = settings_from().benchmarks_dir
+
     # Find file
     if os.path.exists(filename):
         filepath = filename
@@ -38,7 +47,7 @@ def info(filename, output_dir, output_format):
         filepath = os.path.join(output_dir, filename)
 
     if not os.path.exists(filepath):
-        console.print(f"[red]Error: File not found: {filepath}[/red]")
+        console.print(f"[red]Error: File not found: {escape(str(filepath))}[/red]")
         sys.exit(1)
 
     try:
@@ -77,11 +86,11 @@ def info(filename, output_dir, output_format):
         console.print()
         console.print(
             Panel.fit(
-                f"[bold]{benchmark.title}[/bold]\n"
-                f"Version: {benchmark.version}\n"
-                f"Benchmark ID: {benchmark.benchmark_id}\n"
+                f"[bold]{escape(benchmark.title)}[/bold]\n"
+                f"Version: {escape(benchmark.version)}\n"
+                f"Benchmark ID: {escape(benchmark.benchmark_id)}\n"
                 f"Downloaded: {benchmark.downloaded_at.strftime('%Y-%m-%d %H:%M:%S')}\n"
-                f"Scraper Version: {benchmark.scraper_version}",
+                f"Scraper Version: {escape(benchmark.scraper_version)}",
                 title="Benchmark Information",
                 border_style="cyan",
             )
@@ -93,14 +102,6 @@ def info(filename, output_dir, output_format):
         table.add_column("Count", justify="right", style="yellow")
 
         table.add_row("Total Recommendations", str(benchmark.total_recommendations))
-
-        # Count compliance mappings
-        cis_v8 = sum(1 for r in benchmark.recommendations for c in r.cis_controls if c.version == 8)
-        cis_v7 = sum(1 for r in benchmark.recommendations for c in r.cis_controls if c.version == 7)
-        mitre_count = sum(1 for r in benchmark.recommendations if r.mitre_mapping)
-        nist_count = sum(1 for r in benchmark.recommendations if r.nist_controls)
-        artifacts = sum(len(r.artifacts) for r in benchmark.recommendations)
-
         table.add_row("CIS Controls v8", str(cis_v8))
         table.add_row("CIS Controls v7", str(cis_v7))
         table.add_row("MITRE Mappings", str(mitre_count))
@@ -113,9 +114,9 @@ def info(filename, output_dir, output_format):
         # Sample recommendations
         console.print("[bold]Sample Recommendations:[/bold]\n")
         for rec in benchmark.recommendations[:5]:
-            profiles = f" [{', '.join(rec.profiles)}]" if rec.profiles else ""
-            console.print(f"  [cyan]{rec.ref}[/cyan]{profiles}")
-            console.print(f"    {rec.title}")
+            profiles = " " + escape(f"[{', '.join(rec.profiles)}]") if rec.profiles else ""
+            console.print(f"  [cyan]{escape(rec.ref)}[/cyan]{profiles}")
+            console.print(f"    {escape(rec.title)}")
 
         if benchmark.total_recommendations > 5:
             console.print(f"\n  ... and {benchmark.total_recommendations - 5} more")
@@ -123,8 +124,6 @@ def info(filename, output_dir, output_format):
         console.print()
 
     except Exception as e:
-        console.print(f"[red]Error: {e}[/red]")
-        import traceback
-
-        traceback.print_exc()
+        logger.debug("Could not show benchmark info", exc_info=True)
+        console.print(f"[red]Error: {escape(str(e))}[/red]")
         sys.exit(1)

@@ -20,8 +20,26 @@ except ImportError:
     # truststore not installed, will use certifi bundle
     pass
 
-from cis_bench.config import Config
-from cis_bench.exceptions import AuthenticationError, NoSavedSessionError, TLSVerificationError
+from cis_bench.config import (
+    CIS_ROOT_DOMAIN,
+    MAX_SSO_REDIRECTS,
+    RETRYABLE_STATUS_CODES,
+    TRUSTED_SSO_HOSTS,
+    RequestPolicy,
+    is_cis_domain,
+)
+from cis_bench.exceptions import (
+    AuthenticationError,
+    FetchError,
+    NoSavedSessionError,
+    TLSVerificationError,
+)
+from cis_bench.fetcher.http import attempts_allowed, new_workbench_session
+from cis_bench.utils.workbench_urls import (
+    catalog_listing_url,
+    printable_url,
+    without_query_strings,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -42,24 +60,28 @@ def is_workbench_login_page(html: str) -> bool:
     return any(indicator is not None for indicator in login_indicators)
 
 
+def _is_a_rejection(status: int) -> bool:
+    """Whether this answer to the session check means WorkBench does not accept the session.
+
+    A redirect (to the login page, or one more after the SSO handshake) and 401/403 do; any
+    other error status only means WorkBench did not answer the question.
+    """
+    return 300 <= status < 400 or status in (401, 403)
+
+
+def _no_answer(session: requests.Session, url: str, response: requests.Response) -> FetchError:
+    """The error for a session check WorkBench answered with an error status."""
+    retried = response.status_code in RETRYABLE_STATUS_CODES
+    attempts = attempts_allowed(session, url) if retried else 1
+    return FetchError(printable_url(url), attempts, f"HTTP {response.status_code}")
+
+
 class AuthManager:
-    """Manages authentication for CIS WorkBench."""
+    """Authentication for CIS WorkBench: browser and file cookies, the saved session, its check.
 
-    CIS_COOKIE_ROOT_DOMAIN = Config.CIS_ROOT_DOMAIN
-    TRUSTED_SSO_HOSTS = frozenset({"auth.portal.cisecurity.org", "auth.portal.qa.cisecurity.org"})
-    MAX_SSO_REDIRECTS = 8
-
-    @staticmethod
-    def _workbench_host() -> str:
-        return urlparse(Config.get_workbench_base_url()).netloc
-
-    @staticmethod
-    def _workbench_benchmarks_url() -> str:
-        return f"{Config.get_workbench_base_url()}/benchmarks"
-
-    @staticmethod
-    def _trusted_auth_hosts() -> frozenset[str]:
-        return AuthManager.TRUSTED_SSO_HOSTS | {AuthManager._workbench_host()}
+    Built with everything it depends on, so it reads no settings itself: the CLI builds one
+    per command from the run's settings (cli/helpers/services.py).
+    """
 
     # Windows-specific error patterns that indicate permission/encryption issues
     WINDOWS_PERMISSION_PATTERNS = [
@@ -73,6 +95,39 @@ class AuthManager:
 
     # Browsers that use Chromium's App-Bound Encryption on Windows
     CHROMIUM_BROWSERS = ["chrome", "edge", "brave", "chromium", "vivaldi", "opera"]
+
+    def __init__(
+        self,
+        *,
+        workbench_url: str,
+        verify_ssl: bool,
+        session_file: Path,
+        request_policy: RequestPolicy,
+        timeout: tuple[float, float],
+    ):
+        """
+        Args:
+            workbench_url: The WorkBench origin (already validated), e.g. https://workbench.cisecurity.org
+            verify_ssl: Whether every session this manager makes verifies TLS certificates
+            session_file: Where the saved session's cookies live
+            request_policy: Pacing and retries of every session it makes, from the session
+                check on
+            timeout: (connect, read) seconds each request of the session check may take
+        """
+        self.workbench_url = workbench_url
+        self.verify_ssl = verify_ssl
+        self.session_file = session_file
+        self.request_policy = request_policy
+        self.timeout = timeout
+
+    @property
+    def workbench_host(self) -> str:
+        return urlparse(self.workbench_url).netloc
+
+    def _new_session(self) -> requests.Session:
+        session = new_workbench_session(self.request_policy)
+        session.verify = self.verify_ssl
+        return session
 
     @staticmethod
     def _is_windows_permission_error(error: Exception) -> bool:
@@ -105,8 +160,7 @@ class AuthManager:
         # No fallback for Firefox or Safari
         return None
 
-    @staticmethod
-    def _format_windows_cookie_error(browser: str, error: Exception) -> str:
+    def _format_windows_cookie_error(self, browser: str, error: Exception) -> str:
         """Format a helpful error message for Windows cookie extraction failures.
 
         Args:
@@ -130,42 +184,29 @@ Workarounds:
 
 3. Export cookies to a file manually:
    - Install a browser extension like "Get cookies.txt LOCALLY"
-   - Export cookies for workbench.cisecurity.org
-   - Use: cis-bench download <id> --cookies cookies.txt
+   - Export cookies for {self.workbench_host}
+   - Use: cis-bench auth login --cookies cookies.txt
 
 4. Run as Administrator (not recommended for security reasons)
 """
 
-    @staticmethod
-    def _is_cis_cookie_domain(domain: str) -> bool:
-        """Return True when a cookie domain belongs to cisecurity.org or its subdomains."""
-        return Config.is_cis_domain(domain)
-
-    @staticmethod
     def load_cookies_from_browser(
-        browser: str = "chrome", verify_ssl: bool | None = None, try_fallback: bool = False
+        self, browser: str = "chrome", try_fallback: bool = False
     ) -> requests.Session:
         """Load cookies from browser using browser-cookie3.
 
         Args:
             browser: Browser name ('chrome', 'firefox', 'edge', 'safari')
-            verify_ssl: SSL verification setting (None = use Config default)
             try_fallback: If True and on Windows, try Firefox if Chromium browser fails
 
         Returns:
-            requests.Session with cookies loaded and SSL verification configured
+            requests.Session with the CIS cookies, this manager's TLS setting and rate
 
         Raises:
             ValueError: If browser is not supported
             Exception: If cookie extraction fails
         """
-        session = requests.Session()
-
-        # Configure SSL verification globally for this session
-        if verify_ssl is None:
-            session.verify = Config.get_verify_ssl()
-        else:
-            session.verify = verify_ssl
+        session = self._new_session()
 
         browser_loaders = {
             "chrome": browser_cookie3.chrome,
@@ -183,9 +224,9 @@ Workarounds:
                     f"Unsupported browser: {browser}. Use chrome, firefox, edge, or safari"
                 )
 
-            cj = loader(domain_name=AuthManager.CIS_COOKIE_ROOT_DOMAIN)
+            cj = loader(domain_name=CIS_ROOT_DOMAIN)
             for cookie in cj:
-                if AuthManager._is_cis_cookie_domain(cookie.domain):
+                if is_cis_domain(cookie.domain):
                     session.cookies.set_cookie(cookie)
 
             cookie_count = len(list(session.cookies))
@@ -209,41 +250,29 @@ Workarounds:
                         f"trying {fallback} as fallback"
                     )
                     # Recursive call with fallback browser (no further fallback)
-                    return AuthManager.load_cookies_from_browser(
-                        fallback, verify_ssl=verify_ssl, try_fallback=False
-                    )
+                    return self.load_cookies_from_browser(fallback, try_fallback=False)
 
             # No fallback available or not on Windows - raise with helpful message
             raise Exception(f"Failed to extract cookies from {browser}: {e}") from e
 
-    @staticmethod
-    def load_cookies_from_file(
-        cookies_file: str, verify_ssl: bool | None = None
-    ) -> requests.Session:
+    def load_cookies_from_file(self, cookies_file: str | Path) -> requests.Session:
         """Load cookies from Netscape format cookies.txt file.
 
         Args:
             cookies_file: Path to cookies.txt file
-            verify_ssl: SSL verification setting (None = use Config default)
 
         Returns:
-            requests.Session with cookies loaded and SSL verification configured
+            requests.Session with the file's cookies, this manager's TLS setting and rate
 
         Raises:
             FileNotFoundError: If cookies file doesn't exist
             Exception: If cookie loading fails
         """
-        session = requests.Session()
-
-        # Configure SSL verification globally for this session
-        if verify_ssl is None:
-            session.verify = Config.get_verify_ssl()
-        else:
-            session.verify = verify_ssl
+        session = self._new_session()
 
         try:
             logger.debug(f"Loading cookies from {cookies_file}...")
-            cj = http.cookiejar.MozillaCookieJar(cookies_file)
+            cj = http.cookiejar.MozillaCookieJar(str(cookies_file))
             cj.load(ignore_discard=True, ignore_expires=True)
             for cookie in cj:
                 session.cookies.set_cookie(cookie)
@@ -258,72 +287,8 @@ Workarounds:
         except Exception as e:
             raise Exception(f"Failed to load cookies from file: {e}") from e
 
-    @staticmethod
-    def create_session_with_cookies(cookies_dict: dict) -> requests.Session:
-        """Create session with cookie dictionary (for backward compatibility).
-
-        Args:
-            cookies_dict: Dictionary of cookie name/value pairs
-
-        Returns:
-            requests.Session with cookies loaded and SSL verification configured
-        """
-        session = requests.Session()
-
-        # Configure SSL verification globally for this session
-        session.verify = Config.get_verify_ssl()
-
-        session.cookies.update(cookies_dict)
-
-        logger.debug(f"Created session with {len(cookies_dict)} cookies")
-
-        return session
-
-    @staticmethod
-    def get_authenticated_session(
-        browser=None, cookies_file=None, cookies_dict=None
-    ) -> requests.Session:
-        """Get an authenticated session using the best available method.
-
-        Priority:
-        1. Browser cookies (if browser specified)
-        2. Cookies file (if file specified)
-        3. Cookie dictionary (if dict specified)
-
-        Args:
-            browser: Browser name to extract cookies from
-            cookies_file: Path to cookies.txt file
-            cookies_dict: Dictionary of cookies (fallback)
-
-        Returns:
-            requests.Session with cookies loaded
-
-        Raises:
-            ValueError: If no cookie source provided
-        """
-        if browser:
-            return AuthManager.load_cookies_from_browser(browser)
-        elif cookies_file:
-            return AuthManager.load_cookies_from_file(cookies_file)
-        elif cookies_dict:
-            return AuthManager.create_session_with_cookies(cookies_dict)
-        else:
-            raise ValueError(
-                "No cookie source provided. Specify browser, cookies_file, or cookies_dict"
-            )
-
-    @staticmethod
-    def get_session_file_path() -> Path:
-        """Get path to saved session cookies file.
-
-        Returns:
-            Path to session.cookies file in user's config directory
-        """
-        return Config.get_data_dir() / "session.cookies"
-
-    @staticmethod
-    def save_session(session: requests.Session) -> None:
-        """Save session cookies to persistent file.
+    def save_session(self, session: requests.Session) -> None:
+        """Save session cookies to the session file.
 
         Args:
             session: requests.Session with cookies to save
@@ -331,11 +296,12 @@ Workarounds:
         Raises:
             Exception: If saving fails
         """
-        session_path = AuthManager.get_session_file_path()
+        session_path = self.session_file
 
         try:
-            # Ensure directory exists
-            session_path.parent.mkdir(parents=True, exist_ok=True)
+            # The folder holds login cookies: when it has to be created, it is the owner's
+            # alone. A folder that already exists keeps the mode its owner gave it.
+            session_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
 
             # Create cookie jar and save
             cj = http.cookiejar.MozillaCookieJar(str(session_path))
@@ -350,48 +316,34 @@ Workarounds:
         except Exception as e:
             raise Exception(f"Failed to save session: {e}") from e
 
-    @staticmethod
-    def load_saved_session(verify_ssl: bool | None = None) -> requests.Session | None:
-        """Load previously saved session from persistent storage.
-
-        Args:
-            verify_ssl: SSL verification setting (None = use Config default)
+    def load_saved_session(self) -> requests.Session | None:
+        """Load the previously saved session from the session file.
 
         Returns:
-            requests.Session with loaded cookies, or None if no saved session
-
-        Raises:
-            Exception: If loading fails (but not if file doesn't exist)
+            requests.Session with loaded cookies, or None if no saved session or unreadable
         """
-        session_path = AuthManager.get_session_file_path()
+        session_path = self.session_file
 
         if not session_path.exists():
             logger.debug("No saved session found")
             return None
 
-        # Resolve configuration outside the try: a bad CIS_BENCH_VERIFY_SSL value is a
-        # configuration error and must not be reported as an unreadable session file.
-        effective_verify_ssl = Config.get_verify_ssl() if verify_ssl is None else verify_ssl
-
         try:
             logger.debug(f"Loading saved session from {session_path}")
-            return AuthManager.load_cookies_from_file(
-                str(session_path), verify_ssl=effective_verify_ssl
-            )
+            return self.load_cookies_from_file(session_path)
 
         except Exception as e:
             logger.warning(f"Failed to load saved session: {e}")
             # Return None instead of raising - let caller handle re-auth
             return None
 
-    @staticmethod
-    def clear_saved_session() -> bool:
+    def clear_saved_session(self) -> bool:
         """Clear/delete saved session cookies.
 
         Returns:
             True if session was cleared, False if no session existed
         """
-        session_path = AuthManager.get_session_file_path()
+        session_path = self.session_file
 
         if session_path.exists():
             try:
@@ -405,39 +357,42 @@ Workarounds:
             logger.debug("No saved session to clear")
             return False
 
-    @staticmethod
-    def validate_session(session: requests.Session | None, verify_ssl: bool | None = None) -> bool:
+    def validate_session(self, session: requests.Session | None) -> bool:
         """Validate that session cookies are still valid, completing trusted CIS Auth0 SSO redirects.
 
         Args:
             session: Session to validate
-            verify_ssl: SSL verification setting (None = use Config default)
 
         Returns:
-            True if session is valid on configured WorkBench host, False otherwise
+            True if WorkBench accepts the session on this manager's host; False if WorkBench
+            rejected it (a login page or a redirect to login, 401 or 403)
 
         Raises:
             TLSVerificationError: If the server certificate cannot be verified. This is
                 raised rather than returned as False so callers never report a trust
                 failure as an expired session.
+            FetchError: If WorkBench could not be asked (a timeout or connection failure
+                after the retries, or an error status). Nothing is known about the session
+                then, so this is never reported as False.
         """
         if not session or not session.cookies:
             return False
 
-        effective_verify_ssl = Config.get_verify_ssl() if verify_ssl is None else verify_ssl
-        workbench_host = AuthManager._workbench_host()
-        benchmarks_url = AuthManager._workbench_benchmarks_url()
-        trusted_hosts = AuthManager._trusted_auth_hosts()
+        workbench_host = self.workbench_host
+        benchmarks_url = catalog_listing_url(base_url=self.workbench_url)
+        trusted_hosts = TRUSTED_SSO_HOSTS | {workbench_host}
 
+        requested = benchmarks_url
         try:
             current_url = benchmarks_url
 
-            for _ in range(AuthManager.MAX_SSO_REDIRECTS + 1):
+            for _ in range(MAX_SSO_REDIRECTS + 1):
+                requested = current_url
                 response = session.get(
                     current_url,
-                    timeout=10,
+                    timeout=self.timeout,
                     allow_redirects=False,
-                    verify=effective_verify_ssl,
+                    verify=self.verify_ssl,
                 )
 
                 if 300 <= response.status_code < 400:
@@ -476,13 +431,16 @@ Workarounds:
                         return False
 
                     if current_url != benchmarks_url:
+                        requested = benchmarks_url
                         bench_response = session.get(
                             benchmarks_url,
-                            timeout=10,
+                            timeout=self.timeout,
                             allow_redirects=False,
-                            verify=effective_verify_ssl,
+                            verify=self.verify_ssl,
                         )
                         if not (200 <= bench_response.status_code < 300):
+                            if not _is_a_rejection(bench_response.status_code):
+                                raise _no_answer(session, benchmarks_url, bench_response)
                             logger.debug(
                                 "Session invalid - /benchmarks inaccessible after SSO handshake"
                             )
@@ -494,62 +452,63 @@ Workarounds:
                     logger.debug("Session validated successfully")
                     return True
 
-                logger.warning(f"Session validation returned status {response.status_code}")
+                if not _is_a_rejection(response.status_code):
+                    raise _no_answer(session, current_url, response)
+                logger.debug(f"Session invalid - WorkBench answered {response.status_code}")
                 return False
 
             logger.debug("Session invalid - exceeded maximum SSO redirects")
             return False
 
         except requests.exceptions.SSLError as e:
-            logger.error(f"TLS certificate verification failed for {workbench_host}: {e}")
+            reason = without_query_strings(str(e))  # the failing hop may carry a state or code
+            logger.error(f"TLS certificate verification failed for {workbench_host}: {reason}")
             raise TLSVerificationError(
-                f"TLS certificate verification failed for {workbench_host}: {e}. "
+                f"TLS certificate verification failed for {workbench_host}: {reason}. "
                 "If a proxy re-signs HTTPS traffic, point REQUESTS_CA_BUNDLE at its CA "
                 "bundle; to skip verification entirely set CIS_BENCH_VERIFY_SSL=false."
             ) from e
         except requests.exceptions.RequestException as e:
-            logger.warning(f"Session validation failed: {e}")
-            return False
+            # WorkBench could not be asked; that says nothing about the session.
+            # A hop of the SSO handshake may carry a state or a code in its query string.
+            raise FetchError(
+                printable_url(requested),
+                attempts_allowed(session, requested),
+                without_query_strings(str(e)),
+            ) from e
 
-    @staticmethod
     def get_or_create_session(
-        browser: str | None = None, force_refresh: bool = False, verify_ssl: bool | None = None
+        self, browser: str | None = None, force_refresh: bool = False
     ) -> requests.Session:
-        """Get authenticated session, using saved session if available.
+        """Get an authenticated session, using the saved session if it is still valid.
 
         This is the main entry point for getting an authenticated session.
-        It tries saved session first, then falls back to browser extraction.
+        It tries the saved session first, then falls back to browser extraction.
 
         Args:
             browser: Browser to extract cookies from if needed
             force_refresh: Force refresh from browser even if saved session exists
-            verify_ssl: SSL verification setting (None = use Config default)
 
         Returns:
             Authenticated requests.Session
 
         Raises:
             NoSavedSessionError: If no saved session exists and no browser was given
-            ValueError: If the configured WorkBench URL is invalid
             AuthenticationError: If freshly extracted browser cookies are not accepted by WorkBench
             TLSVerificationError: If the WorkBench certificate cannot be verified
+            FetchError: If WorkBench could not be reached to check a session; the saved
+                session is left as it is
         """
-        effective_verify_ssl = Config.get_verify_ssl() if verify_ssl is None else verify_ssl
-
         # If force refresh, skip saved session
         if not force_refresh:
-            # Try to load saved session
-            saved_session = AuthManager.load_saved_session(verify_ssl=effective_verify_ssl)
+            saved_session = self.load_saved_session()
 
             if saved_session:
-                # Validate the saved session
-                if AuthManager.validate_session(saved_session, verify_ssl=effective_verify_ssl):
+                if self.validate_session(saved_session):
                     logger.debug("Using saved session")
                     return saved_session
-                else:
-                    logger.info("Saved session invalid, need to re-authenticate")
-                    # Clear invalid session
-                    AuthManager.clear_saved_session()
+                logger.info("Saved session invalid, need to re-authenticate")
+                self.clear_saved_session()
 
         # No valid saved session, need to authenticate
         if not browser:
@@ -559,16 +518,14 @@ Workarounds:
 
         # Extract fresh cookies from browser
         logger.debug(f"Authenticating via {browser}")
-        session = AuthManager.load_cookies_from_browser(browser, verify_ssl=effective_verify_ssl)
+        session = self.load_cookies_from_browser(browser)
 
-        # Validate new session
-        if not AuthManager.validate_session(session, verify_ssl=effective_verify_ssl):
-            workbench_host = AuthManager._workbench_host()
+        if not self.validate_session(session):
             raise AuthenticationError(
-                f"Failed to authenticate. Please ensure you are logged into {workbench_host} in {browser}"
+                f"Failed to authenticate. Please ensure you are logged into {self.workbench_host} in {browser}"
             )
 
         # Save for future use
-        AuthManager.save_session(session)
+        self.save_session(session)
 
         return session

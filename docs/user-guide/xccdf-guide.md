@@ -171,7 +171,7 @@ cis-bench export benchmark.json --format xccdf --style cis -o custom-name.xml
 
 ```bash
 # Export all downloaded benchmarks
-for file in benchmarks/*.json; do
+for file in ~/.local/share/cis-bench/benchmarks/*.json; do
 cis-bench export "$file" --format xccdf --style cis
 done
 ```

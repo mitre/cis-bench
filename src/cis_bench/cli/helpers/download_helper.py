@@ -4,6 +4,7 @@ import logging
 import re
 
 from rich.console import Console
+from rich.markup import escape
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeRemainingColumn
 
 logger = logging.getLogger(__name__)
@@ -21,7 +22,7 @@ def download_with_progress(scraper, url, prefix=""):
         Benchmark object
 
     Example:
-        scraper = WorkbenchScraper(session)
+        scraper = workbench_scraper(settings, session)
         benchmark = download_with_progress(scraper, url, prefix="[1/1]")
     """
     console = Console()
@@ -36,7 +37,7 @@ def download_with_progress(scraper, url, prefix=""):
         if "Benchmark title:" in msg:
             # Extract and show title
             benchmark_title = msg.split("Benchmark title:", 1)[1].strip()
-            console.print(f"{prefix}{benchmark_title}", highlight=False)
+            console.print(f"{prefix} {escape(benchmark_title)}", highlight=False)
         elif "Found" in msg and "recommendations" in msg:
             # Extract total and create progress bar
             match = re.search(r"Found (\d+) recommendations", msg)
@@ -63,11 +64,12 @@ def download_with_progress(scraper, url, prefix=""):
 
     # Download with progress callback
     logger.debug(f"Starting download: {url}")
-    benchmark = scraper.download_benchmark(url, progress_callback=progress_callback)
-
-    # Stop progress bar if created
-    if progress_bar:
-        progress_bar.stop()
+    try:
+        benchmark = scraper.download_benchmark(url, progress_callback=progress_callback)
+    finally:
+        # Stop the live progress display whether the download finished or raised
+        if progress_bar:
+            progress_bar.stop()
 
     logger.debug(f"Download complete: {benchmark.title}")
     return benchmark

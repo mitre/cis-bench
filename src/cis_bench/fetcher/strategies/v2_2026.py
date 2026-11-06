@@ -27,6 +27,7 @@ from typing import Any
 from bs4 import BeautifulSoup
 
 from cis_bench.models.benchmark import CISControl, MITREMapping
+from cis_bench.utils.html_parser import attribute_text
 from cis_bench.utils.parsers import WorkbenchParser
 
 from .base import ScraperStrategy
@@ -101,14 +102,18 @@ class WorkbenchV2Strategy(ScraperStrategy):
 
         for field, attr_value in self._DATA_ATTRIBUTES.items():
             el = soup.find("wb-recommendation-data", attrs={"attribute": attr_value})
-            data[field] = self._clean_text(el.get("text") if el else None)
+            data[field] = self._clean_text(attribute_text(el, "text") if el else None)
 
         status_el = soup.find("wb-recommendation-data", attrs={"attribute": "automated_scoring"})
-        status_text = self._clean_text(status_el.get("text") if status_el else None) or ""
+        status_text = (
+            self._clean_text(attribute_text(status_el, "text") if status_el else None) or ""
+        )
         data["assessment_status"] = self._normalize_status(status_text)
 
         profiles_el = soup.find("wb-recommendation-data", attrs={"attribute": "profiles"})
-        profiles_text = self._clean_text(profiles_el.get("text") if profiles_el else None)
+        profiles_text = self._clean_text(
+            attribute_text(profiles_el, "text") if profiles_el else None
+        )
         data["profiles"] = [profiles_text] if profiles_text else []
 
         data["cis_controls"] = self._extract_cis_controls(soup)
@@ -152,9 +157,11 @@ class WorkbenchV2Strategy(ScraperStrategy):
 
         # Prefer the Vue ``:controls`` attribute; fall back to the pre-2026
         # ``json-controls`` attr so cached HTML still parses.
-        parsed = self._parse_vue_json(el.get(":controls") or el.get("controls"))
+        parsed = self._parse_vue_json(
+            attribute_text(el, ":controls") or attribute_text(el, "controls")
+        )
         if parsed is None:
-            legacy = el.get("json-controls")
+            legacy = attribute_text(el, "json-controls")
             if legacy:
                 try:
                     parsed = json.loads(legacy)
@@ -192,7 +199,9 @@ class WorkbenchV2Strategy(ScraperStrategy):
         el = soup.find("wb-recommendation-mitre-mappings")
         if not el:
             return None
-        parsed = self._parse_vue_json(el.get(":mappings") or el.get("mappings"))
+        parsed = self._parse_vue_json(
+            attribute_text(el, ":mappings") or attribute_text(el, "mappings")
+        )
         if not isinstance(parsed, dict):
             return None
 
@@ -217,11 +226,11 @@ class WorkbenchV2Strategy(ScraperStrategy):
 
         # The legacy ``artifacts-json`` attribute is still served alongside
         # the Vue ``:artifacts`` attribute; prefer it when present.
-        legacy = el.get("artifacts-json")
+        legacy = attribute_text(el, "artifacts-json")
         if legacy:
             return WorkbenchParser.parse_artifacts_json(legacy)
 
-        decoded = _decode_vue_payload(el.get(":artifacts"))
+        decoded = _decode_vue_payload(attribute_text(el, ":artifacts"))
         if decoded:
             return WorkbenchParser.parse_artifacts_json(decoded)
 

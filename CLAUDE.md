@@ -106,10 +106,9 @@ XCCDF 1.2/1.1.4 Output
 ## Testing
 
 ### Test Isolation
-Tests automatically use isolated environment (`CIS_BENCH_ENV=test`):
-- Test database: `/tmp/cis-bench-test/catalog.db`
-- Production: `~/.cis-bench/catalog.db`
-- Development: `~/.cis-bench-dev/catalog.db` (set `CIS_BENCH_ENV=dev`)
+Tests automatically use an isolated folder (`tests/conftest.py` sets `CIS_BENCH_HOME` to a temporary folder per run):
+- Default folders: XDG (`~/.config/cis-bench/config.toml`, `~/.local/share/cis-bench/` for catalog.db and benchmarks/, `~/.local/state/cis-bench/session.cookies`)
+- Development: set `CIS_BENCH_HOME=~/cis-bench-dev` for one folder
 
 ### Test Fixtures
 All test data via fixtures in `tests/conftest.py`. NO hardcoded paths.
@@ -117,17 +116,21 @@ All test data via fixtures in `tests/conftest.py`. NO hardcoded paths.
 - `fixtures_dir`, `benchmark_fixtures`, `xccdf_fixtures` - Test data paths
 - `sample_recommendation_minimal/complete` - Test data objects
 - `cli_runner` - Click test runner
+- `working_dir` - Empty current directory for commands that read or write relative paths
 
 ## Configuration
 
 ### Environment Variables
-- `CIS_BENCH_ENV` - Environment (test/dev/production)
-- `CIS_BENCH_BROWSER` - Default browser for auth
+- One pydantic-settings `Settings` class in `src/cis_bench/config.py`; precedence: CLI flag > environment > `<config folder>/config.toml` > default
+- `CIS_BENCH_HOME` - One flat folder for everything; `CIS_BENCH_CONFIG_DIR` - the config folder alone (both environment only; `CIS_BENCH_DATA_DIR` and `CIS_BENCH_ENV` are refused)
+- `CIS_BENCH_BROWSER` - Browser whose cookies log in when `--browser` is not given
+- Request tunables: `CIS_BENCH_REQUESTS_PER_SECOND`, `CIS_BENCH_MAX_CONCURRENT_REQUESTS`, `CIS_BENCH_BATCH_SIZE`, `CIS_BENCH_REQUEST_RETRIES`, `CIS_BENCH_RETRY_BACKOFF_FACTOR`, `CIS_BENCH_RETRY_JITTER_SECONDS`; every setting's type, default and accepted values are in the table `docs/user-guide/configuration.md` renders from `Settings` at docs build (`scripts/mkdocs_settings_table.py`)
 
 ### Config Paths
-- Session storage: `~/.cis-bench/session.json`
-- Catalog database: `~/.cis-bench/catalog.db`
-- Downloaded benchmarks: `~/.cis-bench/benchmarks/`
+- Session storage: `~/.local/state/cis-bench/session.cookies`
+- Catalog database: `~/.local/share/cis-bench/catalog.db`
+- Downloaded benchmarks: inside `catalog.db`; their files go to `~/.local/share/cis-bench/benchmarks/` (`<data folder>/benchmarks`, unless `--output-dir` says otherwise)
+- `cis-bench config migrate` moves an earlier version's `~/.cis-bench` into these folders
 
 ## Key Files
 

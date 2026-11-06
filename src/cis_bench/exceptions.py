@@ -48,6 +48,19 @@ class ScraperError(CISBenchError):
     pass
 
 
+class FetchError(ScraperError):
+    """Raised when a WorkBench request still fails after every retry.
+
+    Carries the url so callers can report or skip the item that failed. The
+    underlying requests exception is chained as ``__cause__``.
+    """
+
+    def __init__(self, url: str, attempts: int, message: str) -> None:
+        super().__init__(f"{url}: {message} after {attempts} attempts")
+        self.url = url
+        self.attempts = attempts
+
+
 class ParserError(CISBenchError):
     """Raised when parsing HTML fails."""
 

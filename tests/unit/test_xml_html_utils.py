@@ -869,3 +869,35 @@ class TestHTMLValidatorExtractAllIds:
         result = HTMLValidator.extract_all_ids(html)
 
         assert "deeply-nested" in result
+
+
+class TestAttributeText:
+    """attribute_text reads one attribute of a tag as text, whatever bs4 stored it as."""
+
+    @staticmethod
+    def _tag(html):
+        from bs4 import BeautifulSoup
+
+        return BeautifulSoup(html, "html.parser").find("wb-x")
+
+    def test_a_single_valued_attribute_is_returned_as_written(self):
+        from cis_bench.utils.html_parser import attribute_text
+
+        assert attribute_text(self._tag("<wb-x profiles='[{\"a\": 1}]'></wb-x>"), "profiles") == (
+            '[{"a": 1}]'
+        )
+
+    def test_a_missing_attribute_is_none(self):
+        from cis_bench.utils.html_parser import attribute_text
+
+        assert attribute_text(self._tag("<wb-x></wb-x>"), "profiles") is None
+
+    def test_an_empty_attribute_is_an_empty_string(self):
+        from cis_bench.utils.html_parser import attribute_text
+
+        assert attribute_text(self._tag('<wb-x id=""></wb-x>'), "id") == ""
+
+    def test_a_multi_valued_attribute_is_joined_as_it_was_written(self):
+        from cis_bench.utils.html_parser import attribute_text
+
+        assert attribute_text(self._tag('<wb-x class="one  two"></wb-x>'), "class") == "one two"
