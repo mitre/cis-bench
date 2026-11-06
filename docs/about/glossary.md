@@ -430,7 +430,7 @@ SQLite database storing benchmark metadata.
 ### FTS5
 SQLite Full-Text Search version 5 - Fast text search engine.
 
-**Usage:** Powers catalog search with fuzzy matching
+**Usage:** Powers catalog search: every query word matches the start of a word (no typo tolerance)
 
 **Example:** `cis-bench search "oracle cloud"` uses FTS5 to find matches
 
@@ -672,7 +672,7 @@ Two-level system for categorizing benchmarks.
 **Inferred from:** Benchmark title using pattern matching
 
 ### Full-Text Search (FTS5)
-SQLite feature enabling fast fuzzy text search.
+SQLite feature enabling fast word-prefix text search.
 
 **Usage:** Catalog search uses FTS5 on benchmark titles
 

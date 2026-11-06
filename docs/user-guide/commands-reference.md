@@ -179,6 +179,10 @@ cis-bench search [QUERY] [OPTIONS]
 cis-bench search "ubuntu 22.04"
 cis-bench search "oracle cloud"
 
+# One release, by version (with or without the leading v)
+cis-bench search "kubernetes v2.1.0"
+cis-bench search "kubernetes 2.1"       # 2.1 and 2.1.x, not 2.10.x
+
 # Filter by platform category
 cis-bench search --platform-type cloud
 cis-bench search --platform-type database --latest
@@ -197,6 +201,13 @@ cis-bench search --platform-type cloud --output-format csv
 # List all published benchmarks
 cis-bench search
 ```
+
+**How a query matches:**
+
+- Every word must match. A word matches the start of a word in the title, platform, community or description (`ubunt` finds Ubuntu).
+- A dotted number or a `v` number (`v2.1.0`, `2.1`, `v18`) also matches a benchmark's version from its start, number by number: `2.1` finds v2.1.0 and v2.1.3, not v2.10.0 or v1.2.1.
+- A word also matches a whole word of a version (`vNext`, the `NEXT` of `v1.1.0 NEXT`), so a name pasted with its version is found.
+- A plain number (`almalinux 8`) is looked up in the same text as any other word (title, platform, community, description), never in versions.
 
 **Requirements:**
 
@@ -224,7 +235,7 @@ cis-bench get <QUERY> [OPTIONS]
 
 **Arguments:**
 
-- `QUERY` - Search query for benchmark
+- `QUERY` - Search words, or a catalog ID
 
 **Export Options:**
 
@@ -234,7 +245,7 @@ cis-bench get <QUERY> [OPTIONS]
 
 **Behavior Options:**
 
-- `--non-interactive` - Disable interactive prompts (show table instead)
+- `--non-interactive` - No menu: when several benchmarks match, take the best match and say how many others there were
 
 **Output Options:**
 
@@ -250,14 +261,20 @@ cis-bench get "ubuntu 22.04" --format xccdf --style cis
 # Get AWS benchmark
 cis-bench get "aws eks" --format yaml
 
+# Get one release by its version
+cis-bench get "kubernetes v2.0.1" --format xccdf
+
+# Get by catalog ID (any status, latest or not)
+cis-bench get 23598 --format xccdf
+
 # Non-interactive mode (for CI/scripts)
 cis-bench get "oracle cloud" --format json --non-interactive
 ```
 
 **What it does:**
-1. Searches catalog for your query
+1. A catalog ID selects that benchmark. Otherwise searches the catalog among Published benchmarks: the latest release of each, plus any release the query names by its version (`kubernetes v2.0.1`)
 2. If single match: selects it automatically
-3. If multiple matches: shows interactive menu (or table if --non-interactive)
+3. If multiple matches: shows a menu, best match first; with `--non-interactive` (or no usable terminal) takes the best match and prints how many others matched and the `search` command that lists them
 4. Checks if already downloaded (uses cache)
 5. If not cached: downloads benchmark
 6. Exports to requested format

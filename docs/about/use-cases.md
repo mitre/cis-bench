@@ -230,7 +230,7 @@ cis-bench export benchmark.json \
 ### High Value + Medium (v1.2)
 
 - Interactive multi-select
-- `get` command with fuzzy matching
+- `get` command with word-prefix matching
 - Benchmark diff/comparison
 - Framework mapping analysis
 

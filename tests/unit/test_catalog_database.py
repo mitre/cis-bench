@@ -913,39 +913,6 @@ class TestDownloadedBenchmarks:
 
         assert temp_db.get_downloaded("23598")["version"] == "v2.0.1"
 
-    def test_initialize_schema_adds_the_version_column_to_an_older_downloaded_table(self, tmp_path):
-        """Upgrading a database created before the column existed is idempotent."""
-        import sqlite3
-
-        db_path = tmp_path / "old.db"
-        con = sqlite3.connect(db_path)
-        con.executescript(
-            """
-            CREATE TABLE benchmark_statuses (status_id INTEGER PRIMARY KEY, name VARCHAR NOT NULL,
-                is_active BOOLEAN NOT NULL, sort_order INTEGER NOT NULL);
-            CREATE TABLE catalog_benchmarks (benchmark_id VARCHAR PRIMARY KEY, url VARCHAR NOT NULL,
-                title VARCHAR NOT NULL, version VARCHAR, status_id INTEGER NOT NULL, platform_id INTEGER,
-                community_id INTEGER, owner_id INTEGER, platform_type VARCHAR, published_date VARCHAR,
-                last_revision_date VARCHAR, description VARCHAR, is_latest BOOLEAN NOT NULL,
-                is_vnext BOOLEAN NOT NULL, metadata_json VARCHAR, scraped_at DATETIME NOT NULL);
-            CREATE TABLE downloaded_benchmarks (benchmark_id VARCHAR PRIMARY KEY, content_json VARCHAR NOT NULL,
-                content_hash VARCHAR NOT NULL, file_size INTEGER, recommendation_count INTEGER,
-                downloaded_at DATETIME NOT NULL, last_accessed DATETIME NOT NULL,
-                workbench_last_modified VARCHAR);
-            """
-        )
-        con.close()
-
-        db = CatalogDatabase(db_path)
-        db.initialize_schema()
-        db.initialize_schema()  # second run must be a no-op
-
-        con = sqlite3.connect(db_path)
-        columns = {row[1] for row in con.execute("PRAGMA table_info(downloaded_benchmarks)")}
-        con.close()
-        assert "version" in columns
-        db.engine.dispose()
-
     def _insert(self, db, bid, version, status="Published"):
         db.insert_benchmark(
             {
@@ -1479,3 +1446,239 @@ class TestConcurrency:
         stats = temp_db.get_catalog_stats()
         assert stats["platforms"] == 1  # Should have 1 platform, not 5
         assert stats["total_benchmarks"] == 5
+
+
+class TestOpeningAnOlderCatalog:
+    """A catalog written by an earlier version is brought up to date when it is opened."""
+
+    OLD_FTS = """
+        DROP TABLE benchmarks_fts;
+        CREATE VIRTUAL TABLE benchmarks_fts USING fts5(
+            benchmark_id UNINDEXED, title, platform, community, description,
+            tokenize='porter unicode61');
+        INSERT INTO benchmarks_fts (benchmark_id, title, platform, community, description)
+        SELECT b.benchmark_id, b.title, coalesce(p.name, ''), coalesce(c.name, ''),
+               coalesce(b.description, '')
+        FROM catalog_benchmarks b
+        LEFT JOIN platforms p ON p.platform_id = b.platform_id
+        LEFT JOIN communities c ON c.community_id = b.community_id;
+    """
+
+    @staticmethod
+    def _catalog(path, sql_afterwards):
+        """A catalog with two releases of one benchmark, then altered as an older version left it."""
+        import sqlite3
+
+        db = CatalogDatabase(path)
+        db.initialize_schema()
+        for benchmark_id, version in (("200", "v2.0.0"), ("210", "v2.1.0")):
+            db.insert_benchmark(
+                {
+                    "benchmark_id": benchmark_id,
+                    "title": "CIS Kubernetes Benchmark",
+                    "version": version,
+                    "url": f"https://workbench.cisecurity.org/benchmarks/{benchmark_id}",
+                    "status": "Published",
+                    "platform": "Container Platform",
+                    "community": "CIS Kubernetes Benchmarks",
+                    "description": "Guidance for kubelet and etcd",
+                }
+            )
+        db.engine.dispose()
+        con = sqlite3.connect(path)
+        con.executescript(sql_afterwards)
+        con.close()
+
+    @staticmethod
+    def _index_rows(path):
+        import sqlite3
+
+        con = sqlite3.connect(path)
+        try:
+            return sorted(row[0] for row in con.execute("SELECT benchmark_id FROM benchmarks_fts"))
+        finally:
+            con.close()
+
+    @staticmethod
+    def _warnings(caplog):
+        return [record.getMessage() for record in caplog.records if record.levelname == "WARNING"]
+
+    @staticmethod
+    def _found(db, query):
+        return sorted(str(row["benchmark_id"]) for row in db.search(query, limit=None))
+
+    def test_an_index_without_versions_is_rebuilt_so_a_version_search_works(self, tmp_path):
+        path = tmp_path / "older.db"
+        self._catalog(path, self.OLD_FTS)
+
+        db = CatalogDatabase(path)
+        try:
+            assert self._found(db, "kubernetes 2.1.0") == ["210"]
+            assert self._found(db, "kubernetes") == ["200", "210"]
+            assert self._found(db, "container") == ["200", "210"]
+            assert self._found(db, "kubelet") == ["200", "210"]
+        finally:
+            db.engine.dispose()
+        assert self._index_rows(path) == ["200", "210"]
+
+    def test_opening_it_again_leaves_one_index_row_per_benchmark(self, tmp_path):
+        path = tmp_path / "older.db"
+        self._catalog(path, self.OLD_FTS)
+
+        for _ in range(2):
+            CatalogDatabase(path).engine.dispose()
+
+        assert self._index_rows(path) == ["200", "210"]
+
+    def test_an_index_that_has_versions_is_left_as_it_is(self, tmp_path):
+        path = tmp_path / "current.db"
+        marker = "INSERT INTO benchmarks_fts (benchmark_id, title) VALUES ('marker', 'kept');"
+        self._catalog(path, marker)
+
+        CatalogDatabase(path).engine.dispose()
+
+        assert self._index_rows(path) == ["200", "210", "marker"]
+
+    def test_a_downloaded_table_without_the_version_column_gets_it(self, tmp_path):
+        path = tmp_path / "older.db"
+        self._catalog(path, "ALTER TABLE downloaded_benchmarks DROP COLUMN version;")
+
+        CatalogDatabase(path).engine.dispose()
+        db = CatalogDatabase(path)
+        try:
+            db.save_downloaded("210", '{"version": "v2.1.0"}', "hash", 20, version="v2.1.0")
+            assert db.get_downloaded("210")["version"] == "v2.1.0"
+        finally:
+            db.engine.dispose()
+
+    def test_a_rebuild_that_fails_part_way_leaves_the_old_index_in_place(
+        self, tmp_path, monkeypatch
+    ):
+        import sqlite3
+
+        path = tmp_path / "older.db"
+        self._catalog(path, self.OLD_FTS)
+        write_row = CatalogDatabase._insert_fts_row
+        written = []
+
+        def fail_on_the_second_row(benchmark, session):
+            if written:
+                raise RuntimeError("disk full")
+            written.append(benchmark.benchmark_id)
+            write_row(benchmark, session)
+
+        monkeypatch.setattr(
+            CatalogDatabase, "_insert_fts_row", staticmethod(fail_on_the_second_row)
+        )
+
+        with pytest.raises(RuntimeError, match="disk full"):
+            CatalogDatabase(path)
+
+        con = sqlite3.connect(path)
+        try:
+            columns = [row[1] for row in con.execute("PRAGMA table_info(benchmarks_fts)")]
+        finally:
+            con.close()
+        assert columns == ["benchmark_id", "title", "platform", "community", "description"]
+        assert self._index_rows(path) == ["200", "210"]
+
+    def test_an_upgrade_another_process_finished_first_is_not_repeated(
+        self, tmp_path, monkeypatch, caplog
+    ):
+        path = tmp_path / "current.db"
+        marker = "INSERT INTO benchmarks_fts (benchmark_id, title) VALUES ('marker', 'kept');"
+        self._catalog(path, marker)
+        read_pending = CatalogDatabase._pending_upgrades
+        answers = iter([(True, True)])
+
+        def stale_then_real(connection):
+            # The first look, taken before the write lock, saw an older catalog.
+            return next(answers, None) or read_pending(connection)
+
+        monkeypatch.setattr(CatalogDatabase, "_pending_upgrades", staticmethod(stale_then_real))
+
+        with caplog.at_level("WARNING", logger="cis_bench.catalog.database"):
+            CatalogDatabase(path).engine.dispose()
+
+        assert self._warnings(caplog) == []
+        assert self._index_rows(path) == ["200", "210", "marker"]
+
+    def test_an_older_catalog_that_cannot_be_written_still_opens_and_says_why(
+        self, tmp_path, monkeypatch, caplog
+    ):
+        from sqlalchemy.exc import OperationalError
+
+        path = tmp_path / "older.db"
+        self._catalog(path, self.OLD_FTS)
+        path.chmod(0o400)
+        # A catalog owned by someone else: its mode cannot be changed either.
+        monkeypatch.setattr(Path, "chmod", lambda *args, **kwargs: None)
+
+        with caplog.at_level("WARNING", logger="cis_bench.catalog.database"):
+            db = CatalogDatabase(path)
+        try:
+            assert db.get_catalog_stats()["total_benchmarks"] == 2
+            # Its index has no version column, which every search now refers to.
+            with pytest.raises(OperationalError, match="no such column: version"):
+                db.search("kubernetes", limit=None)
+        finally:
+            db.engine.dispose()
+        (warning,) = self._warnings(caplog)
+        assert warning.startswith(f"Could not update the catalog database {path} for this ")
+        assert warning.endswith("Searching it needs the update.")
+
+    def test_a_file_that_is_not_a_database_is_reported_when_it_is_first_read(
+        self, tmp_path, caplog
+    ):
+        from sqlalchemy.exc import DatabaseError
+
+        path = tmp_path / "notes.db"
+        path.write_text("this is not a SQLite database, only a text file of some length\n" * 40)
+
+        with caplog.at_level("WARNING", logger="cis_bench.catalog.database"):
+            db = CatalogDatabase(path)
+        try:
+            with pytest.raises(DatabaseError, match="not a database"):
+                db.search("kubernetes", limit=None)
+        finally:
+            db.engine.dispose()
+        (warning,) = self._warnings(caplog)
+        assert warning.startswith(f"Could not update the catalog database {path} for this ")
+
+    def test_the_index_row_holds_each_field_in_its_own_column(self, tmp_path):
+        import sqlite3
+
+        path = tmp_path / "current.db"
+        self._catalog(path, "")
+
+        con = sqlite3.connect(path)
+        try:
+            row = con.execute(
+                "SELECT title, platform, community, description, version FROM benchmarks_fts"
+                " WHERE benchmark_id = '210'"
+            ).fetchone()
+        finally:
+            con.close()
+        assert row == (
+            "CIS Kubernetes Benchmark",
+            "Container Platform",
+            "CIS Kubernetes Benchmarks",
+            "Guidance for kubelet and etcd",
+            "2.1.0",
+        )
+
+    def test_a_file_with_no_tables_is_left_empty(self, tmp_path, caplog):
+        import sqlite3
+
+        path = tmp_path / "empty.db"
+        path.touch()
+
+        with caplog.at_level("WARNING", logger="cis_bench.catalog.database"):
+            CatalogDatabase(path).engine.dispose()
+
+        assert self._warnings(caplog) == []
+        con = sqlite3.connect(path)
+        try:
+            assert con.execute("SELECT count(*) FROM sqlite_master").fetchone()[0] == 0
+        finally:
+            con.close()

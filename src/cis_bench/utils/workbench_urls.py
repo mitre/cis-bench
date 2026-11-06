@@ -99,10 +99,15 @@ def resolve_benchmark_reference(reference: str, *, base_url: str) -> tuple[str, 
         ValueError: If the reference is neither all digits nor a valid WorkBench benchmark URL
     """
     cleaned = reference.strip()
-    # str.isdigit accepts non-ASCII digits; a benchmark ID is ASCII digits only
-    if cleaned.isascii() and cleaned.isdigit():
+    if is_benchmark_id(cleaned):
         return normalize_benchmark_url(f"/benchmarks/{cleaned}", base_url=base_url)
     return normalize_benchmark_url(cleaned, base_url=base_url)
+
+
+def is_benchmark_id(reference: str) -> bool:
+    """Whether user text is a benchmark ID: ASCII digits only (str.isdigit accepts more)."""
+    cleaned = reference.strip()
+    return cleaned.isascii() and cleaned.isdigit()
 
 
 def _workbench_id(value: object, what: str) -> str:

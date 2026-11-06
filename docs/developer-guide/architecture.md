@@ -252,7 +252,7 @@ M --> H
 
 **FTS5 Search:**
 
-- Fuzzy matching ("ubunt" finds "ubuntu")
+- Word-prefix matching ("ubunt" finds "ubuntu"); no typo tolerance
 - Multi-word search
 - Ranked results (BM25)
 - Fast (<1ms for 1000+ records)
@@ -647,11 +647,12 @@ title,
 platform,
 community,
 description,
+version,
 tokenize='porter unicode61'
 );
 ```
 
-Provides fuzzy full-text search.
+Provides word-prefix full-text search. `version` holds the benchmark's version without its leading "v" (`2.1.0`). Every term is looked up in the four text columns as a word prefix; a word is also matched as a whole word of `version` (`vNext`); a term shaped like a version (`v2.1.0`, `2.1`, `v18`) is also matched against `version` from its start, number by number; a plain number is never matched against `version` (`catalog/fts.py`). A catalog whose index predates the `version` column has the index rebuilt when the database is opened (`CatalogDatabase._upgrade_schema`, one write transaction; a database that cannot be written is left as it is with a warning).
 
 ---
 

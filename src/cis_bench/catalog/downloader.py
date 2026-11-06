@@ -136,10 +136,10 @@ class CatalogDownloader:
         interactive: bool = False,
         force: bool = False,
     ) -> dict:
-        """Download benchmark by name (fuzzy search).
+        """Download benchmark by name (catalog search).
 
         Args:
-            name_query: Search query (fuzzy matched)
+            name_query: Search query (every word matches the start of a word)
             latest: Only search latest versions
             interactive: If multiple matches, prompt user to select
             force: Force re-download even if up-to-date

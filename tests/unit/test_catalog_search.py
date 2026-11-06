@@ -236,3 +236,172 @@ class TestFormatting:
 
         # Should include description text
         assert len(formatted) > 0
+
+
+@pytest.fixture
+def releases(tmp_path):
+    """One benchmark in several releases, and benchmarks whose titles carry numbers."""
+    db = CatalogDatabase(tmp_path / "releases.db")
+    db.initialize_schema()
+    rows = [
+        ("120", "CIS Kubernetes Benchmark", "v1.2.0"),
+        ("121", "CIS Kubernetes Benchmark", "v1.2.1"),
+        ("200", "CIS Kubernetes Benchmark", "v2.0.0"),
+        ("201", "CIS Kubernetes Benchmark", "v2.0.1"),
+        ("210", "CIS Kubernetes Benchmark", "v2.1.0"),
+        ("2100", "CIS Kubernetes Benchmark", "v2.10.0"),
+        ("710", "CIS Kubernetes Benchmark", "v7.1.0 (vNext)"),
+        ("800", "CIS Kubernetes Benchmark", "vNext"),
+        ("900", "CIS Kubernetes Benchmark", "v1.1.0 NEXT"),
+        ("8", "CIS AlmaLinux OS 8 Benchmark", "v4.0.0"),
+        ("9", "CIS AlmaLinux OS 9 Benchmark", "v8.0.0"),
+        ("2004", "CIS Ubuntu Linux 20.04 LTS Benchmark", "v3.0.0"),
+        ("18", "CIS SOPHOS XG Firewall v18 Benchmark", "v1.0.0"),
+    ]
+    for benchmark_id, title, version in rows:
+        db.insert_benchmark(
+            {
+                "benchmark_id": benchmark_id,
+                "title": title,
+                "version": version,
+                "url": f"https://workbench.cisecurity.org/benchmarks/{benchmark_id}",
+                "status": "Published",
+            }
+        )
+    yield CatalogSearch(db)
+    db.engine.dispose()
+
+
+def _ids(results):
+    return sorted(str(row["benchmark_id"]) for row in results)
+
+
+class TestSearchingByVersion:
+    """A version in the query picks the release: matched from the start, piece by piece."""
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "kubernetes v2.1.0",
+            "kubernetes 2.1.0",
+            "kubernetes V2.1.0",
+            "kubernetes (v2.1.0)",
+            "CIS Kubernetes Benchmark v2.1.0",
+            "2.1.0 kubernetes",
+        ],
+    )
+    def test_a_search_with_the_version_finds_that_release(self, releases, query):
+        assert _ids(releases.search(query, limit=None)) == ["210"]
+
+    @pytest.mark.parametrize(
+        ("query", "expected"),
+        [
+            ("kubernetes 2.1", ["210"]),
+            ("kubernetes 2.0", ["200", "201"]),
+            ("kubernetes 1.2", ["120", "121"]),
+            ("kubernetes v2", ["200", "201", "210", "2100"]),
+        ],
+    )
+    def test_a_version_prefix_finds_the_releases_under_it(self, releases, query, expected):
+        assert _ids(releases.search(query, limit=None)) == sorted(expected)
+
+    def test_a_version_followed_by_a_label_is_found_by_its_number(self, releases):
+        assert _ids(releases.search("kubernetes 7.1.0", limit=None)) == ["710"]
+
+    @pytest.mark.parametrize(
+        ("query", "expected"),
+        [
+            ("kubernetes vnext", ["710", "800"]),
+            ("kubernetes vNext", ["710", "800"]),
+            ("CIS Kubernetes Benchmark v7.1.0 (vNext)", ["710"]),
+            ("kubernetes next", ["900"]),
+            ("kubernetes 1.1.0 next", ["900"]),
+            ("kubernetes vne", []),
+        ],
+    )
+    def test_a_word_of_a_version_label_is_matched_whole(self, releases, query, expected):
+        assert _ids(releases.search(query, limit=None)) == expected
+
+    def test_a_version_alone_finds_the_benchmarks_at_that_version(self, releases):
+        assert _ids(releases.search("8.0.0", limit=None)) == ["9"]
+
+    def test_the_count_agrees_with_a_version_search(self, releases):
+        assert releases.count("kubernetes 2.0") == 2
+
+    @pytest.mark.parametrize(
+        ("query", "expected"),
+        [
+            ("almalinux 8", ["8"]),
+            ("almalinux 4", []),
+            ("kubernetes 2", []),
+        ],
+    )
+    def test_a_plain_number_matches_titles_and_never_a_version(self, releases, query, expected):
+        assert _ids(releases.search(query, limit=None)) == expected
+
+    @pytest.mark.parametrize(
+        ("query", "expected"),
+        [("ubuntu 20.04", ["2004"]), ("sophos v18", ["18"])],
+    )
+    def test_a_version_shaped_number_in_a_title_is_still_found(self, releases, query, expected):
+        assert _ids(releases.search(query, limit=None)) == expected
+
+
+@pytest.fixture
+def families(tmp_path):
+    """Three benchmarks with their releases; the newest release of each is marked latest."""
+    db = CatalogDatabase(tmp_path / "families.db")
+    db.initialize_schema()
+    rows = [
+        ("200", "CIS Kubernetes Benchmark", "v2.0.0"),
+        ("201", "CIS Kubernetes Benchmark", "v2.0.1"),
+        ("210", "CIS Kubernetes Benchmark", "v2.1.0"),
+        ("300", "CIS Google Kubernetes Engine (GKE) Benchmark", "v2.0.0"),
+        ("401", "CIS Ubuntu Linux 22.04 LTS Benchmark", "v1.0.0"),
+        ("402", "CIS Ubuntu Linux 22.04 LTS Benchmark", "v2.0.0"),
+    ]
+    for benchmark_id, title, version in rows:
+        db.insert_benchmark(
+            {
+                "benchmark_id": benchmark_id,
+                "title": title,
+                "version": version,
+                "url": f"https://workbench.cisecurity.org/benchmarks/{benchmark_id}",
+                "status": "Published",
+            }
+        )
+    db.mark_latest_versions()
+    yield CatalogSearch(db)
+    db.engine.dispose()
+
+
+class TestLatestOrNamedReleases:
+    """Latest releases only, except a release the query names by its version."""
+
+    @pytest.mark.parametrize(
+        ("query", "expected"),
+        [
+            ("kubernetes", ["210", "300"]),
+            ("kubernetes 2.1.0", ["210"]),
+            ("kubernetes 2.0.1", ["201"]),
+            ("kubernetes 2.0.0", ["200", "300"]),
+            ("kubernetes 2.0", ["200", "201", "300"]),
+            ("ubuntu 22.04", ["402"]),
+            ("ubuntu 22.04 v1.0.0", ["401"]),
+            ("ubuntu 9.9.9", []),
+        ],
+    )
+    def test_a_named_release_is_found_beside_the_latest_ones(self, families, query, expected):
+        found = families.search(query, latest_only=True, named_releases=True, limit=None)
+
+        assert _ids(found) == sorted(expected)
+        assert families.count(query, latest_only=True, named_releases=True) == len(expected)
+
+    def test_latest_only_alone_still_means_latest_releases_only(self, families):
+        assert _ids(families.search("kubernetes 2.0.0", latest_only=True, limit=None)) == ["300"]
+        assert families.count("kubernetes 2.0.0", latest_only=True) == 1
+
+    def test_without_latest_only_every_release_is_found_either_way(self, families):
+        found = families.search("kubernetes", named_releases=True, limit=None)
+
+        assert _ids(found) == ["200", "201", "210", "300"]

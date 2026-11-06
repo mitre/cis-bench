@@ -79,13 +79,15 @@ Use the top-level `search` command (recommended):
 cis-bench search "ubuntu"
 cis-bench search "oracle cloud"
 cis-bench search "kubernetes"
+cis-bench search "kubernetes v2.1.0"
 ```
 
 **Search features:**
 
 - Full-text search with FTS5
-- Fuzzy matching
+- Word matching: every word must match the start of a word in the title, platform, community or description (`ubunt` finds Ubuntu); no typo tolerance
 - Searches titles, platforms, communities
+- A version in the query (`v2.1.0`, `2.1`) picks the release; see [How a query matches](commands-reference.md#cis-bench-search)
 - Returns up to `CIS_BENCH_SEARCH_LIMIT` results (100 by default); `--limit` changes it for one run
 
 ### Platform Filtering
@@ -311,7 +313,7 @@ cis-bench catalog refresh --max-pages 5
 **benchmarks_fts:**
 
 - FTS5 virtual table for full-text search
-- Indexes: title, platform, community, description
+- Indexes: title, platform, community, description, version
 
 ### Platform Inference
 

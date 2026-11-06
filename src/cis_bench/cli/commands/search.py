@@ -42,12 +42,14 @@ def search_cmd(query, platform, platform_type, status, latest, limit, output_for
     Searches the local catalog database if it exists, otherwise provides
     instructions for building the catalog. Multi-word queries match all terms
     (boolean keywords like AND, OR, and NOT are treated as literal search words).
+    A version in the query (v2.1.0, 2.1) picks the release.
 
     \b
     Examples:
         # Basic search
         cis-bench search "ubuntu 20.04"
         cis-bench search "oracle cloud"
+        cis-bench search "kubernetes v2.1.0"
 
     \b
         # Filter by platform category

@@ -19,6 +19,7 @@ from sqlalchemy import (
     event,
     func,
     literal_column,
+    or_,
     table,
     text,
     update,
@@ -27,11 +28,17 @@ from sqlalchemy import (
     select as sa_select,
 )
 from sqlalchemy.engine import URL, Connection
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DatabaseError, IntegrityError
 from sqlalchemy.sql.elements import ColumnElement
 from sqlmodel import Session, SQLModel, col, create_engine, select
 
-from cis_bench.catalog.fts import build_fts_query
+from cis_bench.catalog.fts import (
+    TEXT_COLUMNS,
+    VERSION_COLUMN,
+    build_fts_query,
+    build_version_match_query,
+    version_index_text,
+)
 from cis_bench.catalog.models import (
     BenchmarkCollection,
     BenchmarkStatus,
@@ -61,6 +68,17 @@ DEFAULT_BENCHMARK_STATUSES: tuple[tuple[str, bool, int], ...] = (
 
 _TRAILING_VERSION_RE = re.compile(r"\s+v\d+(?:\.[\w-]+)*\s*$", re.IGNORECASE)
 LookupModelT = TypeVar("LookupModelT", bound=SQLModel)
+
+# The search index: one row per catalog benchmark. fts.py says which columns a query term
+# is looked up in.
+_FTS_COLUMNS = (*TEXT_COLUMNS, VERSION_COLUMN)
+_FTS_TABLE = table(
+    "benchmarks_fts", column("benchmark_id"), *(column(name) for name in _FTS_COLUMNS)
+)
+_CREATE_FTS_TABLE = (
+    "CREATE VIRTUAL TABLE IF NOT EXISTS benchmarks_fts USING fts5("
+    f"benchmark_id UNINDEXED, {', '.join(_FTS_COLUMNS)}, tokenize='porter unicode61')"
+)
 
 
 def _normalize_base_title(title: str | None) -> str:
@@ -169,13 +187,15 @@ class CatalogDatabase:
 
         logger.debug(f"Initialized catalog database: {self.db_path}")
 
+        if self.db_path.exists():
+            self._upgrade_schema()
+
     def initialize_schema(self):
         """Create all tables and indexes."""
         logger.info("Creating database schema")
 
         # Create all tables from SQLModel models
         SQLModel.metadata.create_all(self.engine)
-        self._ensure_column("downloaded_benchmarks", "version", "VARCHAR")
 
         # Insert or backfill default statuses idempotently and create FTS5 virtual table
         with Session(self.engine) as session:
@@ -190,36 +210,70 @@ class CatalogDatabase:
                 session.add_all(missing_statuses)
                 logger.info("Inserted default benchmark statuses")
 
-            session.execute(
-                text(
-                    """
-                CREATE VIRTUAL TABLE IF NOT EXISTS benchmarks_fts USING fts5(
-                    benchmark_id UNINDEXED,
-                    title,
-                    platform,
-                    community,
-                    description,
-                    tokenize='porter unicode61'
-                )
-            """
-                )
-            )
+            session.execute(text(_CREATE_FTS_TABLE))
             session.commit()
             logger.info("Created FTS5 virtual table")
 
         logger.info("Database schema initialized")
 
-    def _ensure_column(self, table_name: str, column_name: str, column_type: str) -> None:
-        """Add a column to an existing table if an older database predates it (idempotent)."""
-        with self.engine.begin() as connection:
-            existing = {
-                row[1] for row in connection.execute(text(f"PRAGMA table_info({table_name})"))
-            }
-            if column_name not in existing:
-                connection.execute(
-                    text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
-                )
-                logger.info(f"Added column {table_name}.{column_name}")
+    def _upgrade_schema(self) -> None:
+        """Bring a database an earlier version wrote up to the current schema (idempotent).
+
+        Runs whenever an existing database file is opened, so no command needs a catalog
+        refresh first. Only what is found is changed: a table that is not there yet is left
+        for initialize_schema to create. A database that cannot be written (read-only,
+        locked by another process) or read is left as it is with a warning; reading it
+        still works as far as its schema allows.
+        """
+        try:
+            with self.engine.connect() as connection:
+                if not any(self._pending_upgrades(connection)):
+                    return
+            with Session(self.engine) as session:
+                # One write transaction for every change: either all of it is written or
+                # the database stays as it was. sqlite3 does not open a transaction for
+                # ALTER, DROP or CREATE on its own.
+                session.execute(text("BEGIN IMMEDIATE"))
+                # Looked at again under the write lock: another process may have finished
+                # the same upgrade since the first look.
+                add_version_column, rebuild_index = self._pending_upgrades(session)
+                if add_version_column:
+                    session.execute(
+                        text("ALTER TABLE downloaded_benchmarks ADD COLUMN version VARCHAR")
+                    )
+                    logger.info("Added column downloaded_benchmarks.version")
+                if rebuild_index:
+                    self._rebuild_fts(session)
+                    logger.info("Rebuilt the search index to include benchmark versions")
+                session.commit()
+        except DatabaseError as error:
+            logger.warning(
+                f"Could not update the catalog database {self.db_path} for this version "
+                f"of cis-bench: {error.orig}. Searching it needs the update."
+            )
+
+    @staticmethod
+    def _pending_upgrades(connection: Connection | Session) -> tuple[bool, bool]:
+        """Whether downloaded_benchmarks lacks its version column, and whether the search
+        index lacks its version column. A table that does not exist needs neither."""
+
+        def columns(table_name: str) -> set[str]:
+            rows = connection.execute(text(f"PRAGMA table_info({table_name})"))
+            return {row[1] for row in rows}
+
+        downloaded = columns("downloaded_benchmarks")
+        index = columns("benchmarks_fts")
+        return (
+            bool(downloaded) and "version" not in downloaded,
+            bool(index) and VERSION_COLUMN not in index,
+        )
+
+    def _rebuild_fts(self, session: Session) -> None:
+        """Replace the search index with one in the current layout (FTS5 cannot add a column)."""
+        session.execute(text("DROP TABLE benchmarks_fts"))
+        session.execute(text(_CREATE_FTS_TABLE))
+        for benchmark in session.exec(select(CatalogBenchmark)):
+            self._insert_fts_row(benchmark, session)
 
     def _get_or_create(
         self,
@@ -448,26 +502,22 @@ class CatalogDatabase:
             text("DELETE FROM benchmarks_fts WHERE benchmark_id = :bid"), {"bid": benchmark_id}
         )
 
-        # Insert new FTS entry
-        platform_name = benchmark.platform.name if benchmark.platform else ""
-        community_name = benchmark.community.name if benchmark.community else ""
-
-        session.execute(
-            text(
-                """
-            INSERT INTO benchmarks_fts (benchmark_id, title, platform, community, description)
-            VALUES (:bid, :title, :platform, :community, :desc)
-        """
-            ),
-            {
-                "bid": benchmark_id,
-                "title": benchmark.title,
-                "platform": platform_name,
-                "community": community_name,
-                "desc": benchmark.description or "",
-            },
-        )
+        self._insert_fts_row(benchmark, session)
         session.flush()  # Ensure FTS insert executes
+
+    @staticmethod
+    def _insert_fts_row(benchmark: CatalogBenchmark, session: Session) -> None:
+        """Write the search index row of one benchmark."""
+        session.execute(
+            _FTS_TABLE.insert().values(
+                benchmark_id=benchmark.benchmark_id,
+                title=benchmark.title,
+                platform=benchmark.platform.name if benchmark.platform else "",
+                community=benchmark.community.name if benchmark.community else "",
+                description=benchmark.description or "",
+                version=version_index_text(benchmark.version),
+            )
+        )
 
     @staticmethod
     def _build_search_query(
@@ -476,11 +526,14 @@ class CatalogDatabase:
         platform_type: str | None,
         status: str | None,
         latest_only: bool,
+        named_release_query: str | None,
         limit: int | None,
     ) -> Select[tuple[object, ...]]:
         """Build parameterized SQLAlchemy SELECT shared by FTS5 search and empty-query listing.
 
         ``limit=None`` leaves the result unlimited (used to count every match).
+        ``named_release_query`` is the FTS5 query for releases that stay in a latest-only
+        result although they are not the latest (the releases the search names by version).
         """
         fts_table = table("benchmarks_fts", column("benchmark_id"), column("rank"))
         columns: list[ColumnElement[object]] = [
@@ -540,7 +593,16 @@ class CatalogDatabase:
             stmt = stmt.where(col(BenchmarkStatusModel.name) == normalized_status)
 
         if latest_only:
-            stmt = stmt.where(col(CatalogBenchmark.is_latest).is_(True))
+            is_latest = col(CatalogBenchmark.is_latest).is_(True)
+            if named_release_query:
+                named = (
+                    sa_select(_FTS_TABLE.c.benchmark_id)
+                    .where(literal_column("benchmarks_fts").op("MATCH")(named_release_query))
+                    .correlate(None)
+                )
+                stmt = stmt.where(or_(is_latest, col(CatalogBenchmark.benchmark_id).in_(named)))
+            else:
+                stmt = stmt.where(is_latest)
 
         if fts_query is not None:
             stmt = stmt.order_by(fts_table.c.rank)
@@ -556,6 +618,7 @@ class CatalogDatabase:
         platform_type: str | None,
         status: str | None,
         latest_only: bool,
+        named_releases: bool,
         limit: int | None,
     ) -> Select[tuple[object, ...]] | None:
         """The search SELECT, or None when the query has no searchable term."""
@@ -570,6 +633,7 @@ class CatalogDatabase:
             platform_type=platform_type,
             status=status,
             latest_only=latest_only,
+            named_release_query=build_version_match_query(query) if named_releases else None,
             limit=limit,
         )
 
@@ -582,8 +646,9 @@ class CatalogDatabase:
         latest_only: bool = False,
         *,
         limit: int | None,
+        named_releases: bool = False,
     ) -> list[dict]:
-        """Search catalog using FTS5 fuzzy matching or list benchmarks when query is blank.
+        """Search catalog with FTS5 word-prefix matching, or list benchmarks when query is blank.
 
         Args:
             query: Search query (supports wildcards)
@@ -593,11 +658,15 @@ class CatalogDatabase:
             latest_only: Only latest versions
             limit: Max results; None returns every match (the caller decides, the CLI from
                 CIS_BENCH_SEARCH_LIMIT)
+            named_releases: With latest_only, also keep the releases the query names by
+                their version ("kubernetes 2.0.1"), latest or not
 
         Returns:
             List of benchmark dictionaries with all joined data
         """
-        stmt = self._search_statement(query, platform, platform_type, status, latest_only, limit)
+        stmt = self._search_statement(
+            query, platform, platform_type, status, latest_only, named_releases, limit
+        )
         if stmt is None:
             return []
 
@@ -612,9 +681,13 @@ class CatalogDatabase:
         platform_type: str | None = None,
         status: str | None = "Published",
         latest_only: bool = False,
+        *,
+        named_releases: bool = False,
     ) -> int:
         """Count every benchmark search() would return for these filters, with no limit."""
-        stmt = self._search_statement(query, platform, platform_type, status, latest_only, None)
+        stmt = self._search_statement(
+            query, platform, platform_type, status, latest_only, named_releases, None
+        )
         if stmt is None:
             return 0
         counted = sa_select(func.count()).select_from(stmt.order_by(None).subquery())

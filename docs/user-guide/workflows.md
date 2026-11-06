@@ -675,7 +675,7 @@ Exported: ubuntu-22-04-cis.xml
 
 **Non-Interactive Mode:**
 ```bash
-# Skip interactive selection, show table instead
+# No menu: take the best match when several benchmarks match
 cis-bench get "ubuntu 22" --format xccdf --style cis --non-interactive
 ```
 

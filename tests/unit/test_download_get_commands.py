@@ -601,7 +601,9 @@ class TestGetTitleWrapping:
                     },
                 ]
 
-                result = runner.invoke(cli, ["get", "test", "--non-interactive"])
+                with patch("cis_bench.cli.commands.get.questionary") as mock_q:
+                    mock_q.select.return_value.ask.return_value = None
+                    result = runner.invoke(cli, ["get", "test"])
 
                 table_rows = [line for line in result.output.splitlines() if "│" in line]
                 assert sum(line.count("A") for line in table_rows) == 100
@@ -642,8 +644,10 @@ class TestGetInteractiveSelection:
                     assert result.exit_code == 0
                     assert "Cancelled" in result.output
 
-    def test_get_interactive_selection_exception_falls_back(self, runner, tmp_path, monkeypatch):
-        """Get falls back to non-interactive when questionary fails."""
+    def test_get_interactive_selection_exception_falls_back(
+        self, runner, sample_benchmark, tmp_path, monkeypatch, working_dir
+    ):
+        """Without a usable menu, get takes the best match as it does non-interactively."""
         catalog_path = tmp_path / "catalog.db"
         catalog_path.touch()
 
@@ -653,6 +657,11 @@ class TestGetInteractiveSelection:
         with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
             mock_db = Mock()
             mock_db_class.return_value = mock_db
+            mock_db.get_downloaded.return_value = {
+                "benchmark_id": "1",
+                "content_json": sample_benchmark.model_dump_json(),
+                "downloaded_at": datetime.now(),
+            }
 
             with patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class:
                 mock_search = Mock()
@@ -665,11 +674,12 @@ class TestGetInteractiveSelection:
                 with patch("cis_bench.cli.commands.get.questionary") as mock_q:
                     mock_q.select.side_effect = Exception("Terminal not supported")
 
-                    result = runner.invoke(cli, ["get", "test"])
+                    result = runner.invoke(cli, ["get", "test", "--format", "json"])
 
-                    # Should fall back to non-interactive mode
-                    assert result.exit_code == 0
-                    assert "Multiple matches found" in result.output
+                    assert result.exit_code == 0, result.output
+                    assert "Chose: A v1" in result.output
+                    assert "1 other benchmark matched" in result.output
+                    assert mock_db.get_downloaded.call_args.args == ("1",)
 
     def test_get_interactive_selection_success(
         self, runner, sample_benchmark, tmp_path, monkeypatch, working_dir
@@ -1114,12 +1124,17 @@ class TestOutsideTextIsPrintedVerbatim:
                 {"benchmark_id": "2", "title": "CIS B", "version": "v2", "status": "Published"},
             ]
 
-            result = runner.invoke(cli, ["get", "web[x]", "--non-interactive"])
+            with patch("cis_bench.cli.commands.get.questionary") as mock_q:
+                mock_q.select.return_value.ask.return_value = None
+                menu = runner.invoke(cli, ["get", "web[x]"])
+            chosen = runner.invoke(cli, ["get", "web[x]", "--non-interactive"])
 
-        assert "matching 'web[x]'" in result.output
-        assert "CIS A [/a]" in result.output
-        assert "v1 [/v]" in result.output
-        assert "P [/s]" in result.output
+        assert "matching 'web[x]'" in menu.output
+        assert "CIS A [/a]" in menu.output
+        assert "v1 [/v]" in menu.output
+        assert "P [/s]" in menu.output
+        assert "Chose: CIS A [/a] v1 [/v]" in chosen.output
+        assert 'cis-bench search "web[x]"' in chosen.output
 
     def test_get_without_a_catalog_prints_the_query_verbatim(self, runner, tmp_path, monkeypatch):
         monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path / "missing"))
@@ -1180,47 +1195,6 @@ class TestOutsideTextIsPrintedVerbatim:
         assert result.exit_code == 0, result.output
         assert "Downloaded: CIS T [/t]" in result.output
         assert "Exported JSON: o[x]/cis_t_t.json" in result.output
-
-
-class TestGetNonInteractiveMode:
-    """Test get command non-interactive mode display (lines 181->192)."""
-
-    def test_get_non_interactive_shows_instructions(self, runner, tmp_path, monkeypatch):
-        """Get in non-interactive mode shows helpful instructions."""
-        catalog_path = tmp_path / "catalog.db"
-        catalog_path.touch()
-
-        monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
-        monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "100")
-
-        with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
-            mock_db = Mock()
-            mock_db_class.return_value = mock_db
-
-            with patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class:
-                mock_search = Mock()
-                mock_search_class.return_value = mock_search
-                mock_search.search.return_value = [
-                    {
-                        "benchmark_id": "1",
-                        "title": "Ubuntu 20.04",
-                        "version": "v1",
-                        "status": "Published",
-                    },
-                    {
-                        "benchmark_id": "2",
-                        "title": "Ubuntu 22.04",
-                        "version": "v2",
-                        "status": "Published",
-                    },
-                ]
-
-                result = runner.invoke(cli, ["get", "ubuntu", "--non-interactive"])
-
-                assert result.exit_code == 0
-                assert "Multiple matches found" in result.output
-                assert "Be more specific" in result.output
-                assert "cis-bench download" in result.output
 
 
 class TestCanonicalContentHashConsistency:
