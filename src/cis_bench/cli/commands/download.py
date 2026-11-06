@@ -96,6 +96,7 @@ def download(
         # First, authenticate (one time)
         cis-bench auth login --browser chrome
 
+    \b
         # Then download
         cis-bench download 23598
         cis-bench download 23598 22605 --format json --format xccdf

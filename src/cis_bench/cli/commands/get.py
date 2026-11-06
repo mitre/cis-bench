@@ -182,8 +182,10 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
             console.print(
                 "  2. Or use ID directly: [bold]cis-bench download <ID> --format xccdf[/bold]"
             )
+            console.print("\n[dim]Example: cis-bench download 23598 --format xccdf[/dim]")
             console.print(
-                "\n[dim]Example: cis-bench download 23598 --format xccdf --style cis[/dim]"
+                "[dim]         cis-bench export 23598 --format xccdf --style cis"
+                "   # choose the XCCDF style[/dim]"
             )
             sys.exit(0)
 

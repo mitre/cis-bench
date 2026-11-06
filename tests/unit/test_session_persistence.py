@@ -641,6 +641,54 @@ class TestValidateSession:
                 auth.validate_session(session)
         assert at_the_last_request.value.url == f"{WORKBENCH_URL}/benchmarks"
 
+    def test_a_failure_at_an_sso_hop_does_not_print_the_hops_query_string(self, auth):
+        """The handshake's redirect URLs carry a state and a code; neither may reach an error."""
+        from cis_bench.exceptions import FetchError
+
+        session = requests.Session()
+        session.cookies.set("test", "value")
+        callback = f"{WORKBENCH_URL}/auth0/callback?code=SECRET&state=NONCE"
+        to_callback = Mock(status_code=302, headers={"Location": callback}, text="")
+        failure = requests.exceptions.ConnectionError(
+            "Max retries exceeded with url: /auth0/callback?code=SECRET&state=NONCE (Caused by X)"
+        )
+
+        with patch.object(session, "get", side_effect=[to_callback, failure]):
+            with pytest.raises(FetchError) as raised:
+                auth.validate_session(session)
+
+        assert raised.value.url == f"{WORKBENCH_URL}/auth0/callback"
+        assert "SECRET" not in str(raised.value)
+        assert "NONCE" not in str(raised.value)
+        assert "Max retries exceeded with url: /auth0/callback (Caused by X)" in str(raised.value)
+
+        server_error = Mock(status_code=503, headers={}, text="")
+        with patch.object(session, "get", side_effect=[to_callback, server_error]):
+            with pytest.raises(FetchError) as answered_with_an_error:
+                auth.validate_session(session)
+
+        assert answered_with_an_error.value.url == f"{WORKBENCH_URL}/auth0/callback"
+        assert "SECRET" not in str(answered_with_an_error.value)
+
+    def test_a_tls_failure_at_an_sso_hop_does_not_print_the_hops_query_string(self, auth, caplog):
+        session = requests.Session()
+        session.cookies.set("test", "value")
+        callback = f"{WORKBENCH_URL}/auth0/callback?code=SECRET&state=NONCE"
+        to_callback = Mock(status_code=302, headers={"Location": callback}, text="")
+        failure = requests.exceptions.SSLError(
+            "Max retries exceeded with url: /auth0/callback?code=SECRET&state=NONCE "
+            "(Caused by SSLError('certificate verify failed'))"
+        )
+
+        with patch.object(session, "get", side_effect=[to_callback, failure]):
+            with pytest.raises(TLSVerificationError) as raised:
+                auth.validate_session(session)
+
+        assert "certificate verify failed" in str(raised.value)
+        for text in (str(raised.value), caplog.text):
+            assert "SECRET" not in text
+            assert "NONCE" not in text
+
     def test_every_request_of_the_check_uses_the_given_timeout(self, temp_session_path):
         """The SSO walk and the final /benchmarks request all wait as long as the caller says."""
         auth = AuthManager(

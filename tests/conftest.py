@@ -327,6 +327,66 @@ def auth_manager_class():
 # ============================================================================
 
 
+def unusable_command_hints(output: str) -> list[str]:
+    """The `cis-bench ...` command lines in CLI output that Click would refuse.
+
+    Each hint is parsed the way Click parses a real command line (options, their values and
+    choices, required and surplus arguments, at the root and at every subcommand), without
+    running any command. A placeholder such as <ID> stands for a value, a trailing
+    `# comment` or shell pipe is ignored, and a file a hint names need not exist.
+    Call it outside any patch(): resolving a command imports its module, and a module first
+    imported while a name is patched keeps the mock.
+    """
+    import contextlib
+    import io
+    import re
+    import shlex
+
+    import click
+
+    from cis_bench.cli.app import cli
+
+    root = click.Context(cli, info_name="cis-bench")
+    names = "|".join(re.escape(name) for name in cli.list_commands(root))
+    problems = []
+    for match in re.finditer(rf"cis-bench ((?:-\S+ )*(?:{names})\b[^\n'`]*)", output):
+        text = re.split(r"\s(?:\||&&|>)\s", match.group(1).split("#")[0])[
+            0
+        ]  # up to a shell operator
+        text = re.sub(r"<[^>]+>", "23598", text).strip().rstrip(".,;:")
+        try:
+            args = shlex.split(text)
+        except ValueError as error:
+            problems.append(f"{text}: {error}")
+            continue
+        command: click.Command = cli
+        parent = None
+        name = "cis-bench"
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                while isinstance(command, click.Group):
+                    ctx = click.Context(command, info_name=name, parent=parent)
+                    _, rest, _ = command.make_parser(ctx).parse_args(list(args))
+                    if not rest:
+                        break  # a group named alone shows its help
+                    name, *args = rest
+                    sub = command.get_command(ctx, name)
+                    if sub is None:
+                        problems.append(f"{text}: no such command {name}")
+                        break
+                    command, parent = sub, ctx
+                else:
+                    command.make_context(name, list(args), parent=parent)
+        except click.exceptions.Exit:
+            pass  # --help or --version: Click answered it
+        except click.BadParameter as error:
+            if "does not exist" not in error.format_message():
+                problems.append(f"{text}: {error.format_message()}")
+        except click.UsageError as error:
+            problems.append(f"{text}: {error.format_message()}")
+    return problems
+
+
 def get_source_code(file_path: Path) -> str:
     """Read source code file (helper for architecture tests).
 

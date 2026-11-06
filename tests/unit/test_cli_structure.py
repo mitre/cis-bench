@@ -9,6 +9,7 @@ This prevents flag duplication and user confusion (Issue #3).
 
 import json
 import os
+import re
 
 import pytest
 
@@ -437,3 +438,84 @@ class TestAnEarlierInstallsFolderIsReportedOnStderr:
         assert result.exit_code == 0, result.output
         assert "config migrate" not in result.stderr
         assert "earlier version" not in result.stderr
+
+
+class TestEveryCommandLineTheCliPrintsCanBeRun:
+    """A hint or example that names an option the command lacks sends the user into an error."""
+
+    def test_the_checker_itself_refuses_what_click_refuses(self):
+        from tests.conftest import unusable_command_hints
+
+        refused = [
+            "cis-bench download 23598 --browser chrome",
+            "cis-bench catalog info",
+            "cis-bench catalog refresh extra",
+            "cis-bench get ubuntu --format bogus",
+            "cis-bench -v download 23598 --no-such-flag",
+            "cis-bench catalog refesh",
+        ]
+        for line in refused:
+            assert len(unusable_command_hints(line)) == 1, line
+        accepted = (
+            "Run 'cis-bench catalog refresh' first.\n"
+            "  cis-bench auth login --cookies cookies.txt\n"
+            '  cis-bench get "ubuntu 22" --format xccdf   # one step\n'
+            "  cis-bench search --help\n"
+            "  cis-bench -v download <ID> --force\n"
+        )
+        assert unusable_command_hints(accepted) == []
+
+    def test_every_example_in_every_help_page(self, cli_runner):
+        import click
+
+        from cis_bench.cli.app import cli
+        from tests.conftest import unusable_command_hints
+
+        pages = []
+
+        def collect(command, path):
+            pages.append(cli_runner.invoke(cli, [*path, "--help"], terminal_width=200).output)
+            if isinstance(command, click.Group):
+                ctx = click.Context(command, info_name=path[-1] if path else "cis-bench")
+                for name in command.list_commands(ctx):
+                    collect(command.get_command(ctx, name), [*path, name])
+
+        collect(cli, [])
+
+        assert len(pages) > 20
+        assert unusable_command_hints("\n".join(pages)) == []
+        # Click rewraps a help paragraph unless it is marked; two examples on one line (or an
+        # example after its comment) mean a paragraph of examples lost its marker.
+        run_together = [
+            line
+            for page in pages
+            for line in page.splitlines()
+            if len(re.findall(r"(?<![\w./~-])cis-bench [a-z-]", line)) > 1
+            or re.search(r"#[^\n]*\s{3,}cis-bench [a-z]", line)
+        ]
+        assert run_together == []
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ["auth", "status"],
+            ["catalog", "stats"],
+            ["catalog", "check-updates"],
+            ["search", "ubuntu"],
+            ["download", "23598"],
+            ["get", "ubuntu", "--non-interactive"],
+        ],
+        ids=lambda args: " ".join(args),
+    )
+    def test_what_a_command_says_with_no_login_and_no_catalog(
+        self, cli_runner, tmp_path, monkeypatch, args
+    ):
+        from cis_bench.cli.app import cli
+        from tests.conftest import unusable_command_hints
+
+        monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path))
+
+        result = cli_runner.invoke(cli, args)
+
+        assert "cis-bench " in result.output  # it does point at a next command
+        assert unusable_command_hints(result.output) == []

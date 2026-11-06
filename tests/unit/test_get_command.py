@@ -8,6 +8,7 @@ from click.testing import CliRunner
 
 from cis_bench.cli.app import cli
 from cis_bench.models.benchmark import Benchmark, Recommendation
+from tests.conftest import unusable_command_hints
 
 
 @pytest.fixture
@@ -301,6 +302,9 @@ class TestGetCommandMultipleResults:
                 assert "Found 2 benchmarks" in result.output
                 assert "Multiple matches found" in result.output
                 assert "Be more specific" in result.output
+
+        # Outside the patches above: resolving a hinted command imports its module.
+        assert unusable_command_hints(result.output) == []
 
 
 # ============================================================================

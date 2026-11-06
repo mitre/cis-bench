@@ -29,6 +29,7 @@ from cis_bench.config import (
     RequestPolicy,
 )
 from cis_bench.exceptions import FetchError
+from cis_bench.utils.workbench_urls import printable_url, without_query_strings
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +94,9 @@ class WorkBenchRetry(Retry):
             else None
         )
         wait = retry_after if retry_after else retry.get_backoff_time()
-        where = f"{_pool.scheme}://{_pool.host}:{_pool.port}{url}" if _pool is not None else url
+        where = printable_url(
+            f"{_pool.scheme}://{_pool.host}:{_pool.port}{url}" if _pool is not None else (url or "")
+        )
         cause = error if error is not None else f"HTTP {response.status}"
         logger.warning(
             f"Request failed (attempt {len(retry.history)}/{_attempts_allowed(retry)}), "
@@ -254,11 +257,17 @@ def get_with_retry(
         FetchError: After the final failed attempt.
         requests.HTTPError: For a non-retryable HTTP status.
     """
+    # A request may have been redirected into the SSO handshake, whose URLs carry a state or
+    # a code: the error names the URL and quotes the library's message without those.
     try:
         response = session.get(url, timeout=timeout)
     except (requests.Timeout, requests.ConnectionError) as e:
-        raise FetchError(url, attempts_allowed(session, url), str(e)) from e
+        raise FetchError(
+            printable_url(url), attempts_allowed(session, url), without_query_strings(str(e))
+        ) from e
     if response.status_code in RETRYABLE_STATUS_CODES:
-        raise FetchError(url, attempts_allowed(session, url), f"HTTP {response.status_code}")
+        raise FetchError(
+            printable_url(url), attempts_allowed(session, url), f"HTTP {response.status_code}"
+        )
     response.raise_for_status()
     return response

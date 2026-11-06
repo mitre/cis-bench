@@ -100,9 +100,11 @@ def cli(ctx, verbose, debug, quiet):
         cis-bench search "oracle cloud" --platform-type cloud
         cis-bench download 23598
 
+    \b
         # All-in-one command
         cis-bench get "aws eks" --format xccdf --style cis
 
+    \b
         # Scripting with JSON output
         cis-bench search oracle --output-format json | jq
 

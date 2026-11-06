@@ -372,3 +372,19 @@ class TestCatalogRefreshSharedFetch:
             c.kwargs["description"] for c in bar.update.call_args_list if "description" in c.kwargs
         ][-1]
         assert f"{self.PAGES} benchmarks found" in last_description
+
+
+class TestCatalogRefreshAsksForPageOneOnce:
+    def test_refresh_requests_each_page_once(self, cli_runner, stub_session, tmp_path, monkeypatch):
+        from cis_bench.cli.app import cli
+
+        monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path))
+        session, transport = stub_session(lambda url: _catalog_page(_page_number(url), 3))
+
+        with patch(
+            "cis_bench.fetcher.auth.AuthManager.get_or_create_session", return_value=session
+        ):
+            result = cli_runner.invoke(cli, ["catalog", "refresh"])
+
+        assert result.exit_code == 0, result.output
+        assert sorted(_page_number(url) for url in transport.urls) == [1, 2, 3]

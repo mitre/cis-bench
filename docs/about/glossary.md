@@ -380,12 +380,12 @@ A CLI action (download, export, search, etc.).
 
 **Top-level commands:**
 
-- auth, download, export, get, list, info, search, catalog
+- auth, download, export, get, list, info, search, catalog, remove, config
 
 ### Subcommand
 A command nested under another command.
 
-**Example:** `catalog` has subcommands (refresh, update, search, platforms, stats)
+**Example:** `catalog` has subcommands (refresh, update, search, list, info, platforms, stats, download, check-updates)
 
 **Syntax:** `cis-bench catalog refresh`
 

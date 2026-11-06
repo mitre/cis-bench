@@ -130,6 +130,58 @@ class TestRetries:
         assert "attempt 1/3" in message
         assert "retrying in 1.0s" in message
 
+    def test_the_retry_warning_shows_the_page_number_but_no_other_query_parameter(self, caplog):
+        caplog.set_level(logging.WARNING, logger="cis_bench.fetcher.http")
+        with _ScriptedServer([(503, {}, 0), (200, {}, 0)]) as server:
+            url = server.base_url + "/benchmarks?page=2&code=SECRET&state=NONCE"
+            get_with_retry(new_workbench_session(QUICK), url, timeout=TIMEOUT)
+
+        (warning,) = [r.getMessage() for r in caplog.records if r.name == "cis_bench.fetcher.http"]
+        assert "/benchmarks?page=2:" in warning
+        assert "SECRET" not in warning
+        assert "NONCE" not in warning
+
+    def test_a_request_that_fails_for_good_names_its_url_without_other_query_parameters(self):
+        """The error for a refused connection quotes the URL and the library's message."""
+        with _ScriptedServer([]) as server:
+            dead = server.base_url
+        url = dead + "/benchmarks?page=2&code=SECRET&state=NONCE"
+
+        with pytest.raises(FetchError) as raised:
+            get_with_retry(new_workbench_session(QUICK), url, timeout=TIMEOUT)
+
+        assert raised.value.url == dead + "/benchmarks?page=2"
+        assert "SECRET" not in str(raised.value)
+        assert "NONCE" not in str(raised.value)
+
+    def test_the_cli_logging_setup_leaves_no_second_retry_line_with_the_raw_url(self, capfd):
+        """urllib3 logs each connection retry itself, with the path and query as sent."""
+        from cis_bench.utils.logging_config import LoggingConfig
+
+        with _ScriptedServer([]) as server:
+            dead = server.base_url
+        root = logging.getLogger()
+        handlers, level = root.handlers[:], root.level
+        pool_logger = logging.getLogger("urllib3.connectionpool")
+        pool_level = pool_logger.level
+        try:
+            LoggingConfig.setup_from_flags(quiet=True)
+            with pytest.raises(FetchError):
+                get_with_retry(
+                    new_workbench_session(QUICK),
+                    dead + "/auth0/callback?code=SECRET&state=NONCE",
+                    timeout=TIMEOUT,
+                )
+        finally:
+            root.handlers[:] = handlers
+            root.setLevel(level)
+            pool_logger.setLevel(pool_level)
+
+        printed = capfd.readouterr().err
+        assert printed.count("Request failed (attempt") == 2  # our own line, once per retry
+        assert "SECRET" not in printed
+        assert "NONCE" not in printed
+
     def test_a_long_retry_after_is_capped(self, monkeypatch):
         monkeypatch.setattr(http, "RETRY_AFTER_MAX_SECONDS", 1)
         with _ScriptedServer([(503, {"Retry-After": "3600"}, 0), (200, {}, 0)]) as server:

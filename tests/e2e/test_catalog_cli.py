@@ -56,7 +56,6 @@ class TestCatalogRefresh:
 
         # Mock scraper
         mock_scraper = Mock()
-        mock_scraper.test_connection.return_value = True
         mock_scraper.scrape_full_catalog.return_value = {
             "total_benchmarks": 20,
             "pages_scraped": 1,

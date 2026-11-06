@@ -6,6 +6,7 @@ import pytest
 from click.testing import CliRunner
 
 from cis_bench.cli.app import cli
+from tests.conftest import unusable_command_hints
 
 
 @pytest.fixture
@@ -215,6 +216,9 @@ class TestSearchCommand:
                 assert "cis-bench download" in result.output
                 assert "cis-bench catalog info" in result.output
                 assert "cis-bench get" in result.output
+
+        # Outside the patches above: resolving a hinted command imports its module.
+        assert unusable_command_hints(result.output) == []
 
     def test_search_limit_parameter(self, runner, tmp_path, monkeypatch):
         """Search respects limit parameter."""

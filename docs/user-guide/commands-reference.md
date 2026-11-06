@@ -571,6 +571,27 @@ cis-bench catalog refresh --rate-limit 1.0
 
 ---
 
+### `cis-bench catalog update`
+
+Check the first page of the WorkBench listing for new and updated benchmarks. Faster than a
+full refresh (a few seconds; 4 s on 2026-11-06).
+
+**Syntax:**
+```bash
+cis-bench catalog update [OPTIONS]
+```
+
+**Options:**
+
+- `--browser TEXT` - Browser to read cookies from when no saved session can be used (default: the `CIS_BENCH_BROWSER` setting)
+
+**Example:**
+```bash
+cis-bench catalog update
+```
+
+---
+
 ### `cis-bench catalog search`
 
 Search catalog (similar to top-level search).
@@ -596,6 +617,52 @@ cis-bench catalog info <BENCHMARK_ID> [OPTIONS]
 **Options:**
 
 - `-o, --output-format` - Format (table|json|yaml)
+
+---
+
+### `cis-bench catalog list`
+
+List the benchmarks in the local catalog.
+
+**Syntax:**
+```bash
+cis-bench catalog list [OPTIONS]
+```
+
+**Options:**
+
+- `--platform TEXT` - Filter by platform
+- `--latest` - Latest versions only
+- `--limit INTEGER` - Max results (default: the `CIS_BENCH_SEARCH_LIMIT` setting, 100)
+
+**Examples:**
+```bash
+cis-bench catalog list
+cis-bench catalog list --platform "Operating System" --latest
+```
+
+---
+
+### `cis-bench catalog download`
+
+Download a benchmark named by its ID, or by a name that is searched for in the catalog.
+
+**Syntax:**
+```bash
+cis-bench catalog download [OPTIONS] BENCHMARK_ID_OR_NAME
+```
+
+**Options:**
+
+- `--browser TEXT` - Browser to read cookies from when no saved session can be used (default: the `CIS_BENCH_BROWSER` setting)
+- `--force` - Download again even if the cached copy is current
+- `--interactive` - Choose from a list when several benchmarks match
+
+**Examples:**
+```bash
+cis-bench catalog download 23598
+cis-bench catalog download "ubuntu 20.04" --interactive
+```
 
 ---
 

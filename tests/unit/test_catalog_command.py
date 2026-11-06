@@ -210,7 +210,6 @@ class TestCatalogRefreshCommand:
         mock_auth.return_value.get_or_create_session.return_value = mock_session
 
         mock_scraper = Mock()
-        mock_scraper.test_connection.return_value = True
         mock_scraper.scrape_full_catalog.return_value = {
             "total_benchmarks": 100,
             "pages_scraped": 68,
@@ -235,7 +234,6 @@ class TestCatalogRefreshCommand:
         saved_session = Mock()
         saved_session.cookies = [Mock()]
         mock_scraper = Mock()
-        mock_scraper.test_connection.return_value = True
         mock_scraper.scrape_full_catalog.return_value = {
             "total_benchmarks": 1,
             "pages_scraped": 1,
@@ -295,7 +293,6 @@ class TestCatalogRefreshCommand:
         mock_auth.return_value.get_or_create_session.return_value = mock_session
 
         mock_scraper = Mock()
-        mock_scraper.test_connection.return_value = True
         mock_scraper.scrape_full_catalog.return_value = {
             "total_benchmarks": 95,
             "pages_scraped": 68,
@@ -341,7 +338,7 @@ class TestCatalogRefreshCommand:
         mock_auth.return_value.get_or_create_session.return_value = mock_session
 
         mock_scraper = Mock()
-        mock_scraper.test_connection.side_effect = RuntimeError("Connection failed")
+        mock_scraper.scrape_full_catalog.side_effect = RuntimeError("Connection failed")
         mock_scraper_class.return_value = mock_scraper
 
         result = runner.invoke(cli, ["catalog", "refresh"])
@@ -1637,7 +1634,6 @@ class TestVerifiedTLSByDefault:
         mock_get_db.return_value = mock_db
         mock_auth.return_value.get_or_create_session.return_value = Mock()
         mock_scraper = Mock()
-        mock_scraper.test_connection.return_value = True
         mock_scraper.scrape_full_catalog.return_value = {
             "total_benchmarks": 1,
             "pages_scraped": 1,

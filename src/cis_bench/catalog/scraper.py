@@ -11,7 +11,7 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 
 from cis_bench.catalog.database import CatalogDatabase
 from cis_bench.catalog.parser import WorkBenchCatalogParser
-from cis_bench.exceptions import AuthenticationError, FetchError
+from cis_bench.exceptions import AuthenticationError
 from cis_bench.fetcher.auth import is_workbench_login_page
 from cis_bench.fetcher.http import ThreadSessions, get_with_retry
 from cis_bench.utils.parallel import iter_batches
@@ -87,14 +87,7 @@ class CatalogScraper:
         logger.info(f"Starting full catalog scrape (max_pages={max_pages})")
 
         # Detect total pages by scraping page 1 first
-        first_page_html = self._fetch_page(1)
-        first_page_benchmarks = WorkBenchCatalogParser.parse_catalog_page(
-            first_page_html, base_url=self.base_url
-        )
-        if not first_page_benchmarks:
-            raise ValueError(
-                "No benchmarks found on catalog page 1; HTML structure may have changed."
-            )
+        first_page_html, first_page_benchmarks = self._first_page()
 
         pagination = WorkBenchCatalogParser.extract_pagination_info(first_page_html)
         total_pages = pagination.get("total_pages")
@@ -207,6 +200,27 @@ class CatalogScraper:
 
         return stats
 
+    def _first_page(self) -> tuple[str, list[dict]]:
+        """Fetch and parse listing page 1, the page that shows whether the session and the
+        page layout are usable.
+
+        Raises:
+            AuthenticationError: If WorkBench answered with a login page, including a bare
+                redirect page that has none of the login form markup the parser looks for
+            ValueError: If the page lists no benchmarks (the HTML structure changed)
+            FetchError: If the request still fails after every retry
+        """
+        html = self._fetch_page(1)
+        benchmarks = WorkBenchCatalogParser.parse_catalog_page(html, base_url=self.base_url)
+        if not benchmarks and "login" in html.lower() and len(html) < 5000:
+            raise AuthenticationError(
+                "Not authenticated. Page redirected to login.\n"
+                f"Please log into {self.base_url} in your browser first."
+            )
+        if not benchmarks:
+            raise ValueError("Connected but no benchmarks found. HTML structure may have changed.")
+        return html, benchmarks
+
     def scrape_page_one_update(self) -> dict:
         """Quick update by scraping only page 1 (newest benchmarks).
 
@@ -215,8 +229,7 @@ class CatalogScraper:
         """
         logger.info("Starting quick catalog update (page 1 only)")
 
-        html = self._fetch_page(1)
-        benchmarks = WorkBenchCatalogParser.parse_catalog_page(html, base_url=self.base_url)
+        _, benchmarks = self._first_page()
 
         new_count = 0
         updated_count = 0
@@ -382,36 +395,3 @@ class CatalogScraper:
         return WorkBenchCatalogParser.parse_catalog_page(
             self._fetch_page(page_num), base_url=self.base_url
         )
-
-    def test_connection(self) -> bool:
-        """Test if we can connect and are authenticated.
-
-        Returns:
-            True if connection successful and authenticated
-
-        Raises:
-            AuthenticationError: If response is a login page or redirect
-            ValueError: If page 1 parses zero benchmarks
-            Exception: If HTTP connection fails
-        """
-        try:
-            html = self._fetch_page(1)
-            benchmarks = WorkBenchCatalogParser.parse_catalog_page(html, base_url=self.base_url)
-
-            # Catch minimal login redirect pages without full WorkBench form markup
-            if not benchmarks and "login" in html.lower() and len(html) < 5000:
-                raise AuthenticationError(
-                    "Not authenticated. Page redirected to login.\n"
-                    f"Please log into {self.base_url} in your browser first."
-                )
-
-            if len(benchmarks) == 0:
-                raise ValueError(
-                    "Connected but no benchmarks found. HTML structure may have changed."
-                )
-
-            logger.info(f"Connection test passed: Found {len(benchmarks)} benchmarks on page 1")
-            return True
-
-        except (requests.RequestException, FetchError) as e:
-            raise Exception(f"Connection failed: {e}") from e

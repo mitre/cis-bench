@@ -157,3 +157,64 @@ class TestTheOriginComesFromTheCaller:
             "23598",
             f"{STAGING}/benchmarks/23598",
         )
+
+
+class TestUrlsAsTheyMayBePrinted:
+    """A URL shown in a log line or an error keeps only what is harmless to show."""
+
+    @pytest.mark.parametrize(
+        ("url", "printed"),
+        [
+            (
+                "https://workbench.cisecurity.org/auth0/callback?code=SECRET&state=NONCE",
+                "https://workbench.cisecurity.org/auth0/callback",
+            ),
+            (
+                "https://auth.portal.cisecurity.org/authorize?client_id=abc&state=NONCE",
+                "https://auth.portal.cisecurity.org/authorize",
+            ),
+            (
+                "https://workbench.cisecurity.org/benchmarks?page=2",
+                "https://workbench.cisecurity.org/benchmarks?page=2",
+            ),
+            (
+                "https://workbench.cisecurity.org/benchmarks?page=2&code=SECRET",
+                "https://workbench.cisecurity.org/benchmarks?page=2",
+            ),
+            (
+                "https://workbench.cisecurity.org/benchmarks/23598",
+                "https://workbench.cisecurity.org/benchmarks/23598",
+            ),
+            (
+                "https://workbench.cisecurity.org/p#access_token=SECRET",
+                "https://workbench.cisecurity.org/p",
+            ),
+            ("http://127.0.0.1:8080/p?page=3&x=1", "http://127.0.0.1:8080/p?page=3"),
+            (
+                "https://user:secret@workbench.cisecurity.org/p",
+                "https://workbench.cisecurity.org/p",
+            ),
+            (
+                "https://workbench.cisecurity.org/p?page=SECRET",
+                "https://workbench.cisecurity.org/p",
+            ),
+        ],
+    )
+    def test_only_the_page_number_survives_of_a_query(self, url, printed):
+        from cis_bench.utils.workbench_urls import printable_url
+
+        assert printable_url(url) == printed
+
+    def test_text_that_quotes_a_url_loses_its_query_strings(self):
+        from cis_bench.utils.workbench_urls import without_query_strings
+
+        text = (
+            "Max retries exceeded with url: /auth0/callback?code=SECRET&state=NONCE (Caused by X)"
+        )
+        assert without_query_strings(text) == (
+            "Max retries exceeded with url: /auth0/callback (Caused by X)"
+        )
+        assert without_query_strings("url: /callback#access_token=SECRET (err)") == (
+            "url: /callback (err)"
+        )
+        assert without_query_strings("attempt #2 of 3 failed") == "attempt #2 of 3 failed"

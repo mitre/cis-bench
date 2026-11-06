@@ -49,14 +49,17 @@ def search_cmd(query, platform, platform_type, status, latest, limit, output_for
         cis-bench search "ubuntu 20.04"
         cis-bench search "oracle cloud"
 
+    \b
         # Filter by platform category
         cis-bench search --platform-type cloud
         cis-bench search --platform-type database
 
+    \b
         # Filter by specific platform
         cis-bench search --platform aws
         cis-bench search oracle --platform-type cloud
 
+    \b
         # Scripting with JSON
         cis-bench search "ubuntu" --latest --output-format json | jq
         cis-bench search --platform-type cloud --output-format csv
@@ -151,7 +154,7 @@ def search_cmd(query, platform, platform_type, status, latest, limit, output_for
         total = search.count(query or "", **filters) if len(results) >= limit else len(results)
         console.print(f"\n[dim]{showing_line(len(results), total)}[/dim]")
         console.print("\n[cyan]Next steps:[/cyan]")
-        console.print("  cis-bench download <ID> --browser chrome    # Download a benchmark")
+        console.print("  cis-bench download <ID>                     # Download a benchmark")
         console.print("  cis-bench catalog info <ID>                 # Show detailed info")
         console.print(
             '  cis-bench get "<query>" --format xccdf        # Search + download + export in one step'

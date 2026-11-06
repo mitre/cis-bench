@@ -228,6 +228,7 @@ def _export_single_benchmark(
 def export_cmd(identifiers, export_format, style, output_file, output_dir, input_dir):
     """Export benchmarks to different formats.
 
+    \b
     IDENTIFIERS can be one or more of:
     - Benchmark IDs (e.g., 23598) - loads from catalog database
     - File paths (e.g., benchmark.json) - loads from file
@@ -238,10 +239,12 @@ def export_cmd(identifiers, export_format, style, output_file, output_dir, input
         cis-bench export 23598 --format xccdf --style cis
         cis-bench export benchmark.json --format yaml
 
+    \b
         # Batch export multiple benchmarks
         cis-bench export 23598 22605 18208 --format yaml
         cis-bench export 23598 22605 --format xccdf --style disa
 
+    \b
         # Export to specific directory
         cis-bench export 23598 22605 --format xccdf --output-dir ./stig_exports
     """

@@ -9,7 +9,7 @@ never send the session cookies somewhere else.
 from __future__ import annotations
 
 import re
-from urllib.parse import unquote, urljoin, urlsplit
+from urllib.parse import parse_qsl, unquote, urlencode, urljoin, urlsplit, urlunsplit
 
 _BENCHMARK_PATH_RE = re.compile(r"^/benchmarks/([0-9]+)(?:/.*)?$")
 
@@ -135,3 +135,31 @@ def recommendation_url(section_id: object, recommendation_id: object, *, base_ur
     section = _workbench_id(section_id, "section id")
     recommendation = _workbench_id(recommendation_id, "recommendation id")
     return f"{base_url}/sections/{section}/recommendations/{recommendation}"
+
+
+# Query parameters that say which page was asked for and nothing else. The redirect URLs of
+# the SSO handshake carry state and code parameters, which must never be printed.
+_PRINTABLE_QUERY_KEYS = frozenset({"page"})
+
+
+def printable_url(url: str) -> str:
+    """url as it may be shown in a log line or an error message.
+
+    The fragment and any user name or password are dropped, and of the query only the
+    parameters known to be harmless are kept (the catalog listing's page number, when it is
+    a number).
+    """
+    parts = urlsplit(url)
+    host = parts.netloc.rpartition("@")[2]
+    kept = [
+        (key, value)
+        for key, value in parse_qsl(parts.query, keep_blank_values=True)
+        if key in _PRINTABLE_QUERY_KEYS and value.isdigit()
+    ]
+    return urlunsplit((parts.scheme, host, parts.path, urlencode(kept), ""))
+
+
+def without_query_strings(text: str) -> str:
+    """text with the query string and fragment removed from every URL or path it quotes (a
+    library's error message, for example), so that nothing a redirect carried is printed."""
+    return re.sub(r"(?<=[\w/%.~-])[?#][^\s'\")]*", "", text)

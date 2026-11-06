@@ -182,7 +182,7 @@ cis-bench catalog update
 
 **Alternatives:**
 
-- Use `catalog update` for quick refresh (~30 sec)
+- Use `catalog update` for a quick refresh of page 1 (a few seconds)
 - Test with `--max-pages 5` first
 - If WorkBench is rate-limiting you (429 responses in `-v` output), slow the run down with `--rate-limit 2` (one request every 2 seconds)
 

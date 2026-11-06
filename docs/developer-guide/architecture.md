@@ -48,10 +48,15 @@ Q --> S[SQLite + FTS5]
 
 ```mermaid
 graph LR
-A[cis-bench] --> B[download]
+A[cis-bench] --> G[auth]
+A --> B[download]
+A --> H[get]
 A --> C[export]
 A --> D[list]
 A --> E[info]
+A --> I[search]
+A --> J[remove]
+A --> K[config]
 A --> F[catalog]
 
 F --> F1[refresh]
@@ -69,6 +74,8 @@ F --> F4[update]
 - `list` - Show downloaded benchmarks
 - `info` - Display benchmark details
 - `search` - Search the local catalog
+- `remove` - Delete a downloaded benchmark from the local cache
+- `config` - Settings and folders (`config migrate`)
 - `catalog` - Manage catalog (9 subcommands)
 
 **Command loading:** `cli` is a `LazyGroup` (`src/cis_bench/cli/lazy_group.py`), Click's

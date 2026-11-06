@@ -123,11 +123,6 @@ def refresh(browser, max_pages, rate_limit):
         # Create scraper
         scraper = catalog_scraper(settings, db, session)
 
-        # Test connection
-        console.print("[cyan]Testing connection...[/cyan]")
-        scraper.test_connection()
-        console.print("[green]✓[/green] Connected to CIS WorkBench\n")
-
         # Scrape catalog
         pages_msg = f"{max_pages} pages" if max_pages else "all pages"
         console.print(f"[cyan]Scraping catalog ({pages_msg})...[/cyan]")
@@ -172,7 +167,7 @@ def update(browser):
     """Quick catalog update (scrape page 1 only).
 
     Faster than full refresh - only checks the first page for new/updated
-    benchmarks. Takes ~30 seconds.
+    benchmarks. Takes a few seconds.
 
     \b
     Example:

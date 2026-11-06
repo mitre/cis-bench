@@ -86,7 +86,7 @@ cis-bench search "kubernetes"
 - Full-text search with FTS5
 - Fuzzy matching
 - Searches titles, platforms, communities
-- Returns up to 1000 results by default
+- Returns up to `CIS_BENCH_SEARCH_LIMIT` results (100 by default); `--limit` changes it for one run
 
 ### Platform Filtering
 

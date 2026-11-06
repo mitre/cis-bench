@@ -35,7 +35,11 @@ from cis_bench.exceptions import (
     TLSVerificationError,
 )
 from cis_bench.fetcher.http import attempts_allowed, new_workbench_session
-from cis_bench.utils.workbench_urls import catalog_listing_url
+from cis_bench.utils.workbench_urls import (
+    catalog_listing_url,
+    printable_url,
+    without_query_strings,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +73,7 @@ def _no_answer(session: requests.Session, url: str, response: requests.Response)
     """The error for a session check WorkBench answered with an error status."""
     retried = response.status_code in RETRYABLE_STATUS_CODES
     attempts = attempts_allowed(session, url) if retried else 1
-    return FetchError(url, attempts, f"HTTP {response.status_code}")
+    return FetchError(printable_url(url), attempts, f"HTTP {response.status_code}")
 
 
 class AuthManager:
@@ -457,15 +461,21 @@ Workarounds:
             return False
 
         except requests.exceptions.SSLError as e:
-            logger.error(f"TLS certificate verification failed for {workbench_host}: {e}")
+            reason = without_query_strings(str(e))  # the failing hop may carry a state or code
+            logger.error(f"TLS certificate verification failed for {workbench_host}: {reason}")
             raise TLSVerificationError(
-                f"TLS certificate verification failed for {workbench_host}: {e}. "
+                f"TLS certificate verification failed for {workbench_host}: {reason}. "
                 "If a proxy re-signs HTTPS traffic, point REQUESTS_CA_BUNDLE at its CA "
                 "bundle; to skip verification entirely set CIS_BENCH_VERIFY_SSL=false."
             ) from e
         except requests.exceptions.RequestException as e:
             # WorkBench could not be asked; that says nothing about the session.
-            raise FetchError(requested, attempts_allowed(session, requested), str(e)) from e
+            # A hop of the SSO handshake may carry a state or a code in its query string.
+            raise FetchError(
+                printable_url(requested),
+                attempts_allowed(session, requested),
+                without_query_strings(str(e)),
+            ) from e
 
     def get_or_create_session(
         self, browser: str | None = None, force_refresh: bool = False

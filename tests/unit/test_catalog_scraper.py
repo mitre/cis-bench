@@ -84,72 +84,60 @@ class TestScraperInitialization:
         assert not hasattr(CatalogScraper, "BASE_URL")
 
 
-class TestConnectionTesting:
-    """Test connection and authentication testing."""
+class TestPageOneShowsWhetherTheSessionAndTheHtmlAreUsable:
+    """A refresh checks its first page: an expired session and an unreadable page stop it."""
 
-    def test_connection_success(self, temp_db, mock_session):
-        """Test successful connection test."""
-        scraper = CatalogScraper(
-            temp_db,
-            mock_session,
-            base_url=BASE,
-            timeout=TIMEOUT,
-            max_workers=WORKERS,
-            batch_size=BATCH,
+    @staticmethod
+    def _scraper(temp_db, session):
+        return CatalogScraper(
+            temp_db, session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
         )
 
-        result = scraper.test_connection()
-
-        assert result is True
-        mock_session.get.assert_called_once()
-
-    def test_connection_detects_login_redirect(self, temp_db):
-        """Test detection of login redirect raises AuthenticationError."""
+    @staticmethod
+    def _answering(text):
         session = Mock()
         response = Mock()
-        response.text = "<html><body>Login required</body></html>"
+        response.text = text
         response.status_code = 200
         response.raise_for_status = Mock()
         session.get = Mock(return_value=response)
+        return session
 
-        scraper = CatalogScraper(
-            temp_db, session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
-        )
+    def test_a_bare_login_redirect_page_is_an_authentication_error(self, temp_db):
+        """A redirect stub without WorkBench's login form still means: not logged in."""
+        session = self._answering("<html><body>Login required</body></html>")
 
         with pytest.raises(AuthenticationError, match="Not authenticated"):
-            scraper.test_connection()
+            self._scraper(temp_db, session).scrape_full_catalog(max_pages=1)
 
-    def test_connection_raises_value_error_when_page_one_has_zero_rows(self, temp_db):
-        """test_connection raises ValueError when Page 1 parses 0 benchmarks."""
-        session = Mock()
-        response = Mock()
-        response.text = "<html><body><table><tr><th>Title</th></tr></table></body></html>"
-        response.status_code = 200
-        response.raise_for_status = Mock()
-        session.get = Mock(return_value=response)
-
-        scraper = CatalogScraper(
-            temp_db, session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+    def test_a_page_one_without_benchmarks_is_an_error_not_an_empty_catalog(self, temp_db):
+        session = self._answering(
+            "<html><body><table><tr><th>Title</th></tr></table></body></html>"
         )
 
-        with pytest.raises(ValueError, match="no benchmarks found"):
-            scraper.test_connection()
+        with pytest.raises(ValueError, match="Connected but no benchmarks found"):
+            self._scraper(temp_db, session).scrape_full_catalog(max_pages=1)
 
-    def test_connection_handles_network_error(self, temp_db):
-        """Test handling of network errors."""
+    def test_the_quick_update_makes_the_same_two_checks(self, temp_db):
+        """catalog update reads page 1 too; it must not report success on an unusable page."""
+        bare_login = self._answering("<html><body>Login required</body></html>")
+        with pytest.raises(AuthenticationError, match="Not authenticated"):
+            self._scraper(temp_db, bare_login).scrape_page_one_update()
+
+        empty = self._answering("<html><body><table><tr><th>Title</th></tr></table></body></html>")
+        with pytest.raises(ValueError, match="Connected but no benchmarks found"):
+            self._scraper(temp_db, empty).scrape_page_one_update()
+
+    def test_a_network_failure_at_page_one_is_a_fetch_error(self, temp_db):
         import requests
+
+        from cis_bench.exceptions import FetchError
 
         session = Mock()
         session.get = Mock(side_effect=requests.ConnectionError("Network error"))
 
-        scraper = CatalogScraper(
-            temp_db, session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
-        )
-
-        with (
-            pytest.raises(Exception, match="Connection failed"),
-        ):
-            scraper.test_connection()
+        with pytest.raises(FetchError, match="Network error"):
+            self._scraper(temp_db, session).scrape_full_catalog(max_pages=1)
 
 
 class TestPageFetching:
@@ -782,7 +770,7 @@ class TestErrorHandling:
             temp_db, mock_session, monkeypatch, lambda _html: [], total_pages=5
         )
 
-        with pytest.raises(ValueError, match="No benchmarks found on catalog page 1"):
+        with pytest.raises(ValueError, match="Connected but no benchmarks found"):
             scraper.scrape_full_catalog(max_pages=5)
 
 
