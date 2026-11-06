@@ -21,6 +21,8 @@ cis-bench --debug <command> # Same as --verbose
 cis-bench --quiet <command> # Only warnings and errors
 ```
 
+Errors are printed without a Python traceback. Add `--verbose` to also log the full error with its traceback, for example `cis-bench --verbose download <ID>`.
+
 **Per-Command Flags:**
 Most commands also accept `-v, --verbose`, `-d, --debug`, `-q, --quiet` flags at the end.
 
@@ -72,7 +74,7 @@ cis-bench auth login --browser chrome --no-verify-ssl
 1. Optionally opens browser to CIS WorkBench
 2. Extracts session cookies from your browser (or loads from file)
 3. Validates the session
-4. Saves to `~/.cis-bench/session.json`
+4. Saves to `~/.local/state/cis-bench/session.cookies` (the state folder)
 5. All future commands use this saved session
 
 !!! tip "Windows Users"
@@ -111,11 +113,15 @@ cis-bench auth status --output-format json
 ```json
 {
 "logged_in": true,
-"session_file": "/Users/username/.cis-bench/session.cookies",
+"session_file": "/Users/username/.local/state/cis-bench/session.cookies",
 "cookie_count": 5,
 "ssl_verify": false
 }
 ```
+
+**Exit code:** `0` when WorkBench accepts the saved session. `1` when WorkBench rejects it
+(the session expired), and `1` when WorkBench could not be reached; in that case the saved
+session is kept and nothing is known about whether it is still valid.
 
 ---
 
@@ -135,7 +141,7 @@ cis-bench auth logout
 
 **What it does:**
 
-- Deletes `~/.cis-bench/session.cookies`
+- Deletes `~/.local/state/cis-bench/session.cookies`
 - You'll need to run `auth login` again to use commands
 
 ---
@@ -159,9 +165,9 @@ cis-bench search [QUERY] [OPTIONS]
 
 - `--platform` - Filter by specific platform (e.g., ubuntu, aws, oracle-database)
 - `--platform-type` - Filter by category (cloud, os, database, container, application)
-- `--status` - Filter by status (Published, Archived, Draft) - default: Published
+- `--status` - Filter by status (`Published`, `Accepted`, `Draft`, `Archived`, `Rejected`, `Final Update`, or `all`) - default: `Published`
 - `--latest` - Show only latest version of each benchmark
-- `--limit` - Maximum results to show (default: 1000)
+- `--limit` - Maximum results to show (default: `CIS_BENCH_SEARCH_LIMIT`, 100). When the limit cuts the list short, the output says how many matched: `Showing 100 of 349 results; use --limit to see more`
 
 **Output Options:**
 
@@ -180,6 +186,9 @@ cis-bench search --platform-type database --latest
 # Filter by specific platform
 cis-bench search --platform aws
 cis-bench search oracle --platform-type cloud
+
+# Search across all statuses (including Draft, Archived, Final Update)
+cis-bench search "ubuntu" --status all
 
 # Scripting with JSON
 cis-bench search "ubuntu" --latest --output-format json | jq
@@ -278,11 +287,13 @@ cis-bench download <BENCHMARK_ID> [BENCHMARK_ID...] [OPTIONS]
 
 **Input Options:**
 
-- `-f, --file PATH` - File containing URLs/IDs (one per line)
+- `-f, --file PATH` - File containing URLs/IDs (one per line; blank lines and `#` comments are skipped)
+
+**Accepted references:** a numeric benchmark ID (`23598`), a `/benchmarks/23598` path, or an `https://` URL on the configured WorkBench origin (`https://workbench.cisecurity.org/benchmarks/23598`; a query string or fragment is dropped). Every reference is validated before authentication: a cleartext `http://` URL, another host, a non-numeric ID or path traversal aborts the whole run, and with `--file` the message names the offending line, so nothing is downloaded from a bad list.
 
 **Output Options:**
 
-- `-o, --output-dir PATH` - Output directory (default: ./benchmarks)
+- `-o, --output-dir PATH` - Output directory (default: `<data folder>/benchmarks`, for example `~/.local/share/cis-bench/benchmarks`)
 - `-fmt, --format` - Export formats (json|yaml|csv|markdown|xccdf) - can specify multiple
 
 **Behavior Options:**
@@ -313,10 +324,20 @@ cis-bench download --file urls.txt
 **What it does:**
 1. Checks if already cached (shows message if yes, unless --force)
 2. Uses saved session from `cis-bench auth login`
-3. Downloads benchmark from WorkBench with progress bar
+3. Downloads benchmark from WorkBench with progress bar (see "How recommendations are fetched" below)
 4. Saves to database cache
 5. Saves to file in output directory
 6. Exports to requested formats
+
+**How recommendations are fetched:**
+
+- Recommendation pages are fetched in parallel, paced by the `CIS_BENCH_MAX_CONCURRENT_REQUESTS`, `CIS_BENCH_BATCH_SIZE` and `CIS_BENCH_REQUESTS_PER_SECOND` settings (322 recommendations took about two minutes on 2026-11-04 with the defaults). `cis-bench catalog refresh` uses the same settings.
+- The progress bar counts finished pages, so it can advance out of navtree order; the saved benchmark keeps navtree order.
+- Each request has a timeout (`CIS_BENCH_REQUEST_TIMEOUT`) and is retried `CIS_BENCH_REQUEST_RETRIES` times (two by default); see [Configuration](configuration.md#settings). A page that still fails is logged with its URL and the error, and the download continues without it.
+- Every request identifies itself with the User-Agent `cis-bench-cli/<version> (github.com/mitre/cis-bench)`.
+- If WorkBench answers with its login page, the saved session has expired: no further batch starts and the download stops with an authentication error. Run `cis-bench auth login` again.
+
+**Exit code:** `0` when every requested benchmark downloaded and exported. `1` when any benchmark or export failed (the others are still downloaded and the summary names the failed IDs), or when the session expired (the run stops at once and later benchmarks are not attempted). `cis-bench get` exits `1` with the same login message when the session expires during its download.
 
 **Requirements:**
 
@@ -346,7 +367,7 @@ cis-bench export <IDENTIFIER> [IDENTIFIER...] [OPTIONS]
 
 **Input Options:**
 
-- `--input-dir PATH` - Input directory for file paths (default: ./benchmarks)
+- `--input-dir PATH` - Input directory for file paths (default: `<data folder>/benchmarks`)
 
 **Examples:**
 ```bash
@@ -394,7 +415,7 @@ cis-bench list [OPTIONS]
 
 **Options:**
 
-- `--output-dir PATH` - Directory to scan (default: ./benchmarks)
+- `--output-dir PATH` - Directory to scan (default: `<data folder>/benchmarks`)
 - `-o, --output-format` - Format (table|json|csv|yaml) - default: table
 
 **Examples:**
@@ -436,7 +457,7 @@ cis-bench info <FILENAME> [OPTIONS]
 
 **Options:**
 
-- `--output-dir PATH` - Directory containing benchmark (default: ./benchmarks)
+- `--output-dir PATH` - Directory containing benchmark (default: `<data folder>/benchmarks`)
 - `-o, --output-format` - Format (table|json|yaml) - default: table
 
 **Examples:**
@@ -463,6 +484,46 @@ cis-bench info benchmark.json --output-format yaml
 
 ---
 
+### `cis-bench remove`
+
+Remove downloaded benchmarks from the local cache.
+
+**Syntax:**
+```bash
+cis-bench remove <REFERENCE> [REFERENCE...] [OPTIONS]
+```
+
+**Arguments:**
+
+- `REFERENCE` - One or more benchmark IDs or URLs, in the same forms `cis-bench download` accepts
+
+**Options:**
+
+- `-y, --yes` - Remove without asking for confirmation
+
+**Examples:**
+```bash
+# Remove one cached benchmark (lists it and asks first)
+cis-bench remove 23598
+
+# Remove several without a prompt (scripts)
+cis-bench remove 23598 22605 --yes
+```
+
+**What it does:**
+
+1. Validates every reference first; one bad reference removes nothing
+2. Lists each cached benchmark it will remove (ID, title, version, download date) and asks for confirmation unless `--yes`
+3. Deletes the cached copy that `download`, `get` and `export <ID>` use
+4. Keeps the benchmark in the catalog, so `cis-bench search` still finds it and it can be downloaded again
+5. Leaves exported files such as `<data folder>/benchmarks/*.json` untouched
+
+**Exit code:** `0` when every requested benchmark was removed; `1` when a reference is invalid, a benchmark was not downloaded, or you declined the prompt.
+
+To replace a bad copy instead of removing it, run `cis-bench download <ID> --force`. `remove` makes no network request and needs no login.
+
+---
+
 ## Catalog Management
 
 ### `cis-bench catalog refresh`
@@ -476,36 +537,58 @@ cis-bench catalog refresh [OPTIONS]
 
 **Options:**
 
-- `--browser TEXT` - Browser for auth (default: chrome)
+- `--browser TEXT` - Browser to read cookies from (default: the `CIS_BENCH_BROWSER` setting)
 - `--max-pages INTEGER` - Limit pages to scrape (for testing)
-- `--rate-limit FLOAT` - Seconds between batches (default: 2.0)
+- `--rate-limit SECONDS` - Seconds between requests to WorkBench for this run, greater than 0 (default: 1 / `CIS_BENCH_REQUESTS_PER_SECOND`)
 
 **Examples:**
 ```bash
-# Full catalog refresh (~2 minutes with parallel scraping)
+# Full catalog refresh (under a minute)
 cis-bench catalog refresh
 
 # Test with limited pages
 cis-bench catalog refresh --max-pages 5
 
-# Faster scraping (less polite)
+# Gentler: one request per second
 cis-bench catalog refresh --rate-limit 1.0
 ```
 
 **What it does:**
 1. Authenticates with WorkBench
-2. Scrapes catalog pages in parallel (10 pages/batch, 5 threads)
-3. Detects ~66 pages automatically
-4. Builds searchable database with ~1,300+ benchmarks
+2. Scrapes catalog pages in parallel (`CIS_BENCH_BATCH_SIZE` pages per batch, `CIS_BENCH_MAX_CONCURRENT_REQUESTS` at a time, at most `CIS_BENCH_REQUESTS_PER_SECOND` requests per second)
+3. Detects the page count from page 1 (about 80 pages)
+4. Builds searchable database with about 1,500 benchmarks
 5. Creates FTS5 full-text search index
-6. Takes ~2 minutes for full catalog
+6. Takes under a minute for the full catalog
 
 **Performance:**
 
-- Parallel: 10 pages per batch
-- Threads: 5 concurrent
-- Retry logic: 3 attempts with backoff
+- Parallel: `CIS_BENCH_BATCH_SIZE` pages per batch, `CIS_BENCH_MAX_CONCURRENT_REQUESTS` at a time, at most `CIS_BENCH_REQUESTS_PER_SECOND` requests per second (or one per `--rate-limit` seconds); `cis-bench download` uses the same settings
+- Sessions: each worker thread uses its own copy of your saved session; nothing logs in again
+- Retry logic: the timeout from `CIS_BENCH_REQUEST_TIMEOUT` and `CIS_BENCH_REQUEST_RETRIES` retries on timeouts, dropped connections and 429/502/503/504, honoring WorkBench's `Retry-After` up to 60 seconds ([Configuration](configuration.md#settings)); a 404 or a page that cannot be parsed is not retried
 - Failure threshold: Aborts if >10% fail
+- Expired session: a login page stops the refresh after the batch that saw it
+
+---
+
+### `cis-bench catalog update`
+
+Check the first page of the WorkBench listing for new and updated benchmarks. Faster than a
+full refresh (a few seconds; 4 s on 2026-11-06).
+
+**Syntax:**
+```bash
+cis-bench catalog update [OPTIONS]
+```
+
+**Options:**
+
+- `--browser TEXT` - Browser to read cookies from when no saved session can be used (default: the `CIS_BENCH_BROWSER` setting)
+
+**Example:**
+```bash
+cis-bench catalog update
+```
 
 ---
 
@@ -537,6 +620,52 @@ cis-bench catalog info <BENCHMARK_ID> [OPTIONS]
 
 ---
 
+### `cis-bench catalog list`
+
+List the benchmarks in the local catalog.
+
+**Syntax:**
+```bash
+cis-bench catalog list [OPTIONS]
+```
+
+**Options:**
+
+- `--platform TEXT` - Filter by platform
+- `--latest` - Latest versions only
+- `--limit INTEGER` - Max results (default: the `CIS_BENCH_SEARCH_LIMIT` setting, 100)
+
+**Examples:**
+```bash
+cis-bench catalog list
+cis-bench catalog list --platform "Operating System" --latest
+```
+
+---
+
+### `cis-bench catalog download`
+
+Download a benchmark named by its ID, or by a name that is searched for in the catalog.
+
+**Syntax:**
+```bash
+cis-bench catalog download [OPTIONS] BENCHMARK_ID_OR_NAME
+```
+
+**Options:**
+
+- `--browser TEXT` - Browser to read cookies from when no saved session can be used (default: the `CIS_BENCH_BROWSER` setting)
+- `--force` - Download again even if the cached copy is current
+- `--interactive` - Choose from a list when several benchmarks match
+
+**Examples:**
+```bash
+cis-bench catalog download 23598
+cis-bench catalog download "ubuntu 20.04" --interactive
+```
+
+---
+
 ### `cis-bench catalog platforms`
 
 List all platforms with benchmark counts.
@@ -557,6 +686,21 @@ cis-bench catalog platforms --output-format json
 ```
 
 ---
+
+### `cis-bench catalog check-updates`
+
+Report downloaded benchmarks that WorkBench has moved past.
+
+**Options:**
+
+- `--offline` - Compare versions only; do not contact WorkBench
+
+**How it decides:** a benchmark is listed when the catalog now carries a newer version than the one you downloaded, or (unless `--offline`) when its WorkBench page shows a publication date after your download. Only downloaded benchmarks are fetched, one page each, so run `cis-bench catalog refresh` first if the catalog itself is stale.
+
+```bash
+cis-bench catalog check-updates
+cis-bench catalog check-updates --offline
+```
 
 ### `cis-bench catalog stats`
 
@@ -585,6 +729,30 @@ cis-bench catalog stats --output-format json
 - Platforms count
 - Communities count
 - Last refresh date
+
+---
+
+## Configuration Commands
+
+### `cis-bench config migrate`
+
+Move an earlier version's `~/.cis-bench` files into the folders this version uses (see
+[Configuration](configuration.md#the-folders)): `config.toml` to the config folder,
+`catalog.db` and `benchmarks/` to the data folder, `session.cookies` to the state folder.
+
+```bash
+cis-bench config migrate
+```
+
+**Behavior:**
+
+1. Does nothing, exit 0, when the run is not using an earlier version's folder
+2. Stops with exit 1 before moving anything if a destination file already exists
+3. Prints each move; leaves any other file in `~/.cis-bench` in place and names it
+4. If a move fails (for example a folder that cannot be written), stops with exit 1 and names
+   the file and the reason. What was moved stays moved; run the command again to move the
+   rest (`catalog.db` moves last, so the old folder stays in use until everything is across)
+5. Removes `~/.cis-bench` once it is empty
 
 ---
 
@@ -635,16 +803,26 @@ xargs -I {} cis-bench download {}
 
 **Session/Auth:**
 
-- `CIS_BENCH_VERIFY_SSL` - SSL verification (true/false, default: false)
+- `CIS_BENCH_WORKBENCH_URL` - CIS WorkBench base URL (`https://*.cisecurity.org`, default: `https://workbench.cisecurity.org`)
+- `CIS_BENCH_VERIFY_SSL` - TLS certificate verification (`true`/`1`/`yes` or `false`/`0`/`no`, default: `true`)
 
 **Display:**
 
-- `CIS_BENCH_TABLE_TITLE_WIDTH` - Table title column width (default: 90)
-- `CIS_BENCH_SEARCH_LIMIT` - Default search limit (default: 1000)
+- `CIS_BENCH_TABLE_TITLE_WIDTH` - Widest the Title column of the `search` and `get` tables grows (default: 90). In a narrower terminal the title wraps first, so ID, Version and Status stay whole.
+- `CIS_BENCH_SEARCH_LIMIT` - Most results `search`, `catalog search`, `catalog list` and `get` show (default: 100); a cut-off list says how many matched
+- `CIS_BENCH_REQUESTS_PER_SECOND`, `CIS_BENCH_MAX_CONCURRENT_REQUESTS`, `CIS_BENCH_BATCH_SIZE` - How WorkBench requests are paced: per-host rate, worker threads, pages per batch
+- `CIS_BENCH_REQUEST_RETRIES`, `CIS_BENCH_RETRY_BACKOFF_FACTOR`, `CIS_BENCH_RETRY_JITTER_SECONDS` - Retries after a failed request and the wait between them
+- `CIS_BENCH_BROWSER` - Browser whose cookies log in when `--browser` is not given (`auth login`, `catalog refresh`, `catalog update`, `catalog download`)
 
-**Environment:**
+Every setting with its type, default and accepted values: [Configuration](configuration.md#settings).
 
-- `CIS_BENCH_ENV` - Environment (production|dev|test)
+**Folders:**
+
+- `CIS_BENCH_HOME` - One flat folder for `config.toml`, `catalog.db`, `benchmarks/` and `session.cookies` (environment only)
+- `CIS_BENCH_CONFIG_DIR` - The config folder alone (environment only)
+- Otherwise the XDG folders: `$XDG_CONFIG_HOME/cis-bench`, `$XDG_DATA_HOME/cis-bench`, `$XDG_STATE_HOME/cis-bench`
+
+Settings can also be set in `<config folder>/config.toml`; see [Configuration](configuration.md#where-settings-come-from).
 
 **SSL/TLS (automatically respected):**
 
@@ -664,7 +842,7 @@ pip install -e .
 # Login (one-time)
 cis-bench auth login --browser chrome
 
-# Build catalog (one-time, ~2 min)
+# Build catalog (one-time, under a minute)
 cis-bench catalog refresh
 ```
 
@@ -706,6 +884,7 @@ cis-bench list --output-format csv > inventory.csv
 
 - `0` - Success
 - `1` - Error (authentication failed, file not found, etc.)
+- `cis-bench download` exits `1` if any requested benchmark or export failed, even when others succeeded
 
 ---
 
@@ -713,21 +892,18 @@ cis-bench list --output-format csv > inventory.csv
 
 **Session:**
 
-- `~/.cis-bench/session.cookies` - Saved authentication session
+- `~/.local/state/cis-bench/session.cookies` - Saved authentication session (the state folder)
 
 **Catalog Database:**
 
-- `~/.cis-bench/catalog.db` - SQLite database with FTS5 search
+- `~/.local/share/cis-bench/catalog.db` - SQLite database with FTS5 search (the data folder)
 
 **Downloaded Benchmarks:**
 
-- Stored in: `~/.cis-bench/catalog.db` (downloaded_benchmarks table)
-- Also saved as: `./benchmarks/*.json` files
+- Stored in: `~/.local/share/cis-bench/catalog.db` (downloaded_benchmarks table). This cached copy is what `download` checks, `get` and `export <ID>` read, and `catalog stats` counts; `cis-bench remove <ID>` deletes it and `cis-bench download <ID> --force` replaces it.
+- Also saved as: `<data folder>/benchmarks/*.json` files. These are your exported copies; `cis-bench list` and `cis-bench info` read them, and `remove` does not delete them.
 
-**Development/Test:**
-
-- Dev: `~/.cis-bench-dev/`
-- Test: `/tmp/cis-bench-test/`
+**The folders:** the defaults above are the XDG folders; `CIS_BENCH_HOME` puts everything in one folder. See [Configuration](configuration.md#the-folders).
 
 ---
 

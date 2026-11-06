@@ -12,47 +12,45 @@ This project uses environment-based configuration to ensure tests never pollute 
 
 ### Environments
 
-**Production (default):**
+**Default:**
 ```bash
 # No environment variable set
 cis-bench catalog refresh
-# Uses: ~/.cis-bench/catalog.db
+# Uses: ~/.local/share/cis-bench/catalog.db
 ```
 
-**Development:**
+**Development (one folder for everything):**
 ```bash
-export CIS_BENCH_ENV=dev
+export CIS_BENCH_HOME=~/cis-bench-dev
 cis-bench catalog refresh
-# Uses: ~/.cis-bench-dev/catalog.db
+# Uses: ~/cis-bench-dev/catalog.db
 ```
 
 **Test (automatic in pytest):**
 ```bash
-# Set automatically by pytest fixture
 pytest tests/
-# Uses: /tmp/cis-bench-test/catalog.db
+# Uses: a new temporary folder per run
 ```
 
 ### How It Works
 
 **Config Module:**
 
-- `src/cis_bench/config.py` provides environment-aware paths
-- Checks `CIS_BENCH_ENV` environment variable
-- Returns appropriate paths based on environment
+- `src/cis_bench/config.py` has one `Settings` class (pydantic-settings)
+- The folders are the XDG base directories (`config.toml` in `~/.config/cis-bench`, `catalog.db` and `benchmarks/` in `~/.local/share/cis-bench`, `session.cookies` in `~/.local/state/cis-bench`); `CIS_BENCH_HOME` puts them all in one folder
+- `CIS_BENCH_DATA_DIR` and `CIS_BENCH_ENV` are no longer read; a set one is a configuration error
 
 **Pytest Fixture:**
 
-- `tests/conftest.py` has `test_environment` fixture
-- `autouse=True` - applies to all tests automatically
-- `scope="session"` - sets once at start
-- Sets `CIS_BENCH_ENV=test` for entire test run
+- `tests/conftest.py` has the `test_environment` fixture
+- `autouse=True`, `scope="session"`: applies to every test, set once at start
+- Sets `CIS_BENCH_HOME` to a temporary folder and removes any `CIS_BENCH_ENV` or `CIS_BENCH_DATA_DIR` from your shell
 
 **Result:**
 
-- Tests use `/tmp/cis-bench-test/` (ephemeral)
-- Dev work uses `~/.cis-bench-dev/` (isolated)
-- Production uses `~/.cis-bench/` (safe)
+- Tests use a temporary folder
+- Dev work uses whatever `CIS_BENCH_HOME` you set, or the XDG folders
+- Your own folders are never touched by tests
 
 ---
 
@@ -126,9 +124,9 @@ return db
 
 **E2E tests:**
 
-- Automatically use `/tmp/cis-bench-test/catalog.db`
+- Automatically use `<temporary data folder>/catalog.db`
 - No manual setup needed
-- Cleaned between test runs
+- A new folder each test run
 
 ### Test Data Factories
 
@@ -148,8 +146,8 @@ return {
 
 ## Best Practices
 
-1. **Never hardcode paths** - Use fixtures or Config
-2. **Use tmp_path** - Pytest's built-in temp directory fixture
+1. **Never hardcode paths** - Use fixtures and `tmp_path`; library tests pass values such as `base_url` and `timeout` directly, CLI tests set `CIS_BENCH_*` with `monkeypatch.setenv`
+2. **Use tmp_path** - Pytest's built-in temp directory fixture; a CLI test whose command reads or writes relative paths takes the `working_dir` fixture (an empty current directory) instead of `CliRunner.isolated_filesystem`, which Click deprecated in 8.5
 3. **Mock external APIs** - Do not hit real CIS WorkBench in tests
 4. **Test isolation** - Each test independent
 5. **Proper cleanup** - Use fixtures with yield/cleanup

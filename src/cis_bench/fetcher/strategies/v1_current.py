@@ -10,6 +10,7 @@ from typing import Any
 
 from bs4 import BeautifulSoup
 
+from cis_bench.utils.html_parser import attribute_text
 from cis_bench.utils.parsers import WorkbenchParser
 
 from .base import ScraperStrategy
@@ -59,7 +60,7 @@ class WorkbenchV1Strategy(ScraperStrategy):
             Dictionary with all extracted and parsed fields
         """
         soup = BeautifulSoup(html, "html.parser")
-        data = {}
+        data: dict[str, Any] = {}
 
         # ============ Step 1: Extract HTML content from div elements ============
         for field, selector in self.selectors.items():
@@ -77,26 +78,27 @@ class WorkbenchV1Strategy(ScraperStrategy):
 
         # Profiles
         profiles_elem = soup.find("wb-recommendation-profiles")
-        if profiles_elem and profiles_elem.get("profiles"):
-            data["profiles"] = WorkbenchParser.parse_profiles_json(profiles_elem.get("profiles"))
+        profiles_json = attribute_text(profiles_elem, "profiles") if profiles_elem else None
+        if profiles_json:
+            data["profiles"] = WorkbenchParser.parse_profiles_json(profiles_json)
         else:
             data["profiles"] = []
 
         # CIS Controls
         controls_elem = soup.find("wb-recommendation-feature-controls")
-        if controls_elem and controls_elem.get("json-controls"):
-            data["cis_controls"] = WorkbenchParser.parse_cis_controls_json(
-                controls_elem.get("json-controls")
-            )
+        controls_json = attribute_text(controls_elem, "json-controls") if controls_elem else None
+        if controls_json:
+            data["cis_controls"] = WorkbenchParser.parse_cis_controls_json(controls_json)
         else:
             data["cis_controls"] = []
 
         # Artifacts
         artifacts_elem = soup.find("wb-recommendation-artifacts")
-        if artifacts_elem and artifacts_elem.get("artifacts-json"):
-            data["artifacts"] = WorkbenchParser.parse_artifacts_json(
-                artifacts_elem.get("artifacts-json")
-            )
+        artifacts_json = (
+            attribute_text(artifacts_elem, "artifacts-json") if artifacts_elem else None
+        )
+        if artifacts_json:
+            data["artifacts"] = WorkbenchParser.parse_artifacts_json(artifacts_json)
         else:
             data["artifacts"] = []
 

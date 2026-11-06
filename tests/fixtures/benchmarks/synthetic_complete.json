@@ -1,0 +1,1168 @@
+{
+  "title": "CIS Synthetic Enterprise Platform Benchmark v1.0.0",
+  "benchmark_id": "90001",
+  "url": "https://workbench.cisecurity.org/benchmarks/90001",
+  "version": "v1.0.0",
+  "downloaded_at": "2026-01-15T12:00:00",
+  "scraper_version": "1.0.0",
+  "total_recommendations": 20,
+  "recommendations": [
+    {
+      "ref": "1.1.1",
+      "title": "Ensure unused legacy filesystem kernel modules are disabled",
+      "url": "https://workbench.cisecurity.org/sections/90001/recommendations/91001",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Level 1 - Server",
+        "Level 1 - Workstation"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "4.8",
+          "title": "Uninstall or Disable Unnecessary Services on Enterprise Assets and Software",
+          "ig1": false,
+          "ig2": true,
+          "ig3": true
+        },
+        {
+          "version": 7,
+          "control": "2.6",
+          "title": "Address unapproved software",
+          "ig1": false,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": {
+        "techniques": [
+          "T1068",
+          "T1203"
+        ],
+        "tactics": [
+          "TA0004"
+        ],
+        "mitigations": [
+          "M1042",
+          "M1038"
+        ]
+      },
+      "nist_controls": [
+        "CM-6",
+        "CM-7"
+      ],
+      "parent": {
+        "url": "https://workbench.cisecurity.org/sections/90001",
+        "title": "1.1 Configure Filesystem Module Controls"
+      },
+      "artifacts": [
+        {
+          "id": 70001,
+          "view_level": "1.1.1.1",
+          "title": "Verify configuration state for 1.1.1",
+          "status": "Published",
+          "artifact_type": {
+            "id": 1,
+            "name": "Automated Configuration Check"
+          }
+        }
+      ],
+      "description": "<p>Synthetic control guidance for section <code>1.1.1</code>: ensure unused legacy filesystem kernel modules are disabled.</p><table><thead><tr><th>Module</th><th>Directive</th></tr></thead><tbody><tr><td>legacyfs</td><td>install /bin/false</td></tr></tbody></table>",
+      "rationale": "<p>Enforcing control <code>1.1.1</code> reduces attack surface and prevents unauthorized state transitions across enterprise workloads.</p>",
+      "impact": "<p>Workloads relying on non-standard legacy behavior may require explicit operational exceptions prior to rollout.</p>",
+      "audit": "<p>Execute the synthetic verification check for <code>1.1.1</code>:</p><pre><code class=\"audit-cli\">synthetic-audit --ref \"1.1.1\" --expect 'compliant'</code></pre>",
+      "remediation": "<p>Apply the hardened baseline configuration for <code>1.1.1</code>:</p><pre><code>synthetic-remediate --apply &quot;1.1.1&quot; --verify</code></pre>",
+      "additional_info": "<p>Consult enterprise baseline documentation when tailoring parameters for isolated workloads.</p>",
+      "default_value": "<p>Vendor default varies by deployment profile.</p>",
+      "artifact_equation": "A",
+      "references": "<ul><li><a href=\"https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final\">NIST SP 800-53 Rev. 5</a></li></ul>"
+    },
+    {
+      "ref": "1.1.2",
+      "title": "Ensure temporary directory mount enforces nodev, nosuid, and noexec options",
+      "url": "https://workbench.cisecurity.org/sections/90002/recommendations/91002",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Level 1 - Server",
+        "Level 1 - Workstation"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "4.1",
+          "title": "Establish and Maintain a Secure Configuration Process",
+          "ig1": true,
+          "ig2": true,
+          "ig3": true
+        },
+        {
+          "version": 7,
+          "control": "5.1",
+          "title": "Establish Secure Configurations",
+          "ig1": true,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": {
+        "techniques": [
+          "T1574",
+          "T1574.006"
+        ],
+        "tactics": [
+          "TA0003"
+        ],
+        "mitigations": [
+          "M1022",
+          "M1028"
+        ]
+      },
+      "nist_controls": [
+        "CM-6",
+        "AC-3"
+      ],
+      "parent": {
+        "url": "https://workbench.cisecurity.org/sections/90002",
+        "title": "1.1 Configure Filesystem Module Controls"
+      },
+      "artifacts": [
+        {
+          "id": 70002,
+          "view_level": "1.1.2.1",
+          "title": "Verify configuration state for 1.1.2",
+          "status": "Published",
+          "artifact_type": {
+            "id": 1,
+            "name": "Automated Configuration Check"
+          }
+        }
+      ],
+      "description": "<p>Synthetic control guidance for section <code>1.1.2</code>: ensure temporary directory mount enforces nodev, nosuid, and noexec options.</p><ul><li><code>nodev</code> blocks device file interpretation</li><li><code>nosuid</code> &amp; <code>noexec</code> block setuid/direct binary execution</li></ul>",
+      "rationale": "<p>Enforcing control <code>1.1.2</code> reduces attack surface and prevents unauthorized state transitions across enterprise workloads.</p>",
+      "impact": "<p>Workloads relying on non-standard legacy behavior may require explicit operational exceptions prior to rollout.</p>",
+      "audit": "<p>Execute the synthetic verification check for <code>1.1.2</code>:</p><pre><code class=\"audit-cli\">synthetic-audit --ref \"1.1.2\" --expect 'compliant'</code></pre>",
+      "remediation": "<p>Apply the hardened baseline configuration for <code>1.1.2</code>:</p><pre><code>synthetic-remediate --apply &quot;1.1.2&quot; --verify</code></pre>",
+      "additional_info": "<p>Consult enterprise baseline documentation when tailoring parameters for isolated workloads.</p>",
+      "default_value": "<p>Vendor default varies by deployment profile.</p>",
+      "artifact_equation": "A",
+      "references": "<ul><li><a href=\"https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final\">NIST SP 800-53 Rev. 5</a></li></ul>"
+    },
+    {
+      "ref": "1.2.1",
+      "title": "Ensure cryptographic package signature verification is enforced globally",
+      "url": "https://workbench.cisecurity.org/sections/90003/recommendations/91003",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Level 1 - Server",
+        "Level 1 - Workstation"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "2.5",
+          "title": "Allowlist Authorized Software",
+          "ig1": false,
+          "ig2": true,
+          "ig3": true
+        },
+        {
+          "version": 7,
+          "control": "2.2",
+          "title": "Ensure Software is Supported by Vendor",
+          "ig1": true,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": {
+        "techniques": [
+          "T1195",
+          "T1195.002"
+        ],
+        "tactics": [
+          "TA0001"
+        ],
+        "mitigations": [
+          "M1045",
+          "M1051"
+        ]
+      },
+      "nist_controls": [
+        "CM-11",
+        "SI-7"
+      ],
+      "parent": {
+        "url": "https://workbench.cisecurity.org/sections/90003",
+        "title": "1.2 Configure Software Package Integrity"
+      },
+      "artifacts": [
+        {
+          "id": 70003,
+          "view_level": "1.2.1.1",
+          "title": "Verify configuration state for 1.2.1",
+          "status": "Published",
+          "artifact_type": {
+            "id": 1,
+            "name": "Automated Configuration Check"
+          }
+        }
+      ],
+      "description": "<p>Synthetic control guidance for section <code>1.2.1</code>: ensure cryptographic package signature verification is enforced globally.</p><pre><code>pkg-verify --check-config --require-gpg &quot;strict&quot;</code></pre>",
+      "rationale": "<p>Enforcing control <code>1.2.1</code> reduces attack surface and prevents unauthorized state transitions across enterprise workloads.</p>",
+      "impact": "<p>Workloads relying on non-standard legacy behavior may require explicit operational exceptions prior to rollout.</p>",
+      "audit": "<p>Execute the synthetic verification check for <code>1.2.1</code>:</p><pre><code class=\"audit-cli\">synthetic-audit --ref \"1.2.1\" --expect 'compliant'</code></pre>",
+      "remediation": "<p>Apply the hardened baseline configuration for <code>1.2.1</code>:</p><pre><code>synthetic-remediate --apply &quot;1.2.1&quot; --verify</code></pre>",
+      "additional_info": "<p>Consult enterprise baseline documentation when tailoring parameters for isolated workloads.</p>",
+      "default_value": "<p>Vendor default varies by deployment profile.</p>",
+      "artifact_equation": "A",
+      "references": "<ul><li><a href=\"https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final\">NIST SP 800-53 Rev. 5</a></li></ul>"
+    },
+    {
+      "ref": "1.3.1",
+      "title": "Ensure bootloader administrative credentials and boot parameters are protected",
+      "url": "https://workbench.cisecurity.org/sections/90004/recommendations/91004",
+      "assessment_status": "Manual",
+      "profiles": [
+        "Level 2 - Server",
+        "Level 2 - Workstation"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "4.7",
+          "title": "Manage Default Accounts on Enterprise Assets and Software",
+          "ig1": true,
+          "ig2": true,
+          "ig3": true
+        },
+        {
+          "version": 7,
+          "control": "4.2",
+          "title": "Change Default Passwords",
+          "ig1": true,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": {
+        "techniques": [
+          "T1542",
+          "T1542.003"
+        ],
+        "tactics": [
+          "TA0005"
+        ],
+        "mitigations": [
+          "M1027",
+          "M1026"
+        ]
+      },
+      "nist_controls": [
+        "AC-3",
+        "IA-5"
+      ],
+      "parent": null,
+      "artifacts": [],
+      "description": "<p>Synthetic control guidance for section <code>1.3.1</code>: ensure bootloader administrative credentials and boot parameters are protected.</p><p>Confirm boot entry permissions satisfy <code>mode &lt;= 0600</code> and owner equals <code>'root'</code>.</p>",
+      "rationale": "<p>Enforcing control <code>1.3.1</code> reduces attack surface and prevents unauthorized state transitions across enterprise workloads.</p>",
+      "impact": "<p>Workloads relying on non-standard legacy behavior may require explicit operational exceptions prior to rollout.</p>",
+      "audit": "<p>Execute the synthetic verification check for <code>1.3.1</code>:</p><pre><code class=\"audit-cli\">synthetic-audit --ref \"1.3.1\" --expect 'compliant'</code></pre>",
+      "remediation": "<p>Apply the hardened baseline configuration for <code>1.3.1</code>:</p><pre><code>synthetic-remediate --apply &quot;1.3.1&quot; --verify</code></pre>",
+      "additional_info": "<p>Consult enterprise baseline documentation when tailoring parameters for isolated workloads.</p>",
+      "default_value": "<p>Vendor default varies by deployment profile.</p>",
+      "artifact_equation": null,
+      "references": "<ul><li><a href=\"https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final\">NIST SP 800-53 Rev. 5</a></li></ul>"
+    },
+    {
+      "ref": "2.1.1",
+      "title": "Ensure authenticated network time synchronization daemon is active",
+      "url": "https://workbench.cisecurity.org/sections/90005/recommendations/91005",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Level 1 - Server",
+        "Level 1 - Workstation"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "8.4",
+          "title": "Standardize Time Synchronization",
+          "ig1": false,
+          "ig2": true,
+          "ig3": true
+        },
+        {
+          "version": 7,
+          "control": "6.1",
+          "title": "Utilize Three Synchronized Time Sources",
+          "ig1": false,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": {
+        "techniques": [
+          "T1070",
+          "T1070.006"
+        ],
+        "tactics": [
+          "TA0005"
+        ],
+        "mitigations": [
+          "M1029",
+          "M1030"
+        ]
+      },
+      "nist_controls": [
+        "AU-8",
+        "SC-8"
+      ],
+      "parent": {
+        "url": "https://workbench.cisecurity.org/sections/90005",
+        "title": "2.1 Configure Time Synchronization"
+      },
+      "artifacts": [
+        {
+          "id": 70005,
+          "view_level": "2.1.1.1",
+          "title": "Verify configuration state for 2.1.1",
+          "status": "Published",
+          "artifact_type": {
+            "id": 1,
+            "name": "Automated Configuration Check"
+          }
+        }
+      ],
+      "description": "<p>Synthetic control guidance for section <code>2.1.1</code>: ensure authenticated network time synchronization daemon is active.</p><p>Require at least 2 upstream peers where stratum &gt; 0 &amp;&amp; stratum &lt; 10.</p>",
+      "rationale": "<p>Enforcing control <code>2.1.1</code> reduces attack surface and prevents unauthorized state transitions across enterprise workloads.</p>",
+      "impact": "<p>Workloads relying on non-standard legacy behavior may require explicit operational exceptions prior to rollout.</p>",
+      "audit": "<p>Execute the synthetic verification check for <code>2.1.1</code>:</p><pre><code class=\"audit-cli\">synthetic-audit --ref \"2.1.1\" --expect 'compliant'</code></pre>",
+      "remediation": "<p>Apply the hardened baseline configuration for <code>2.1.1</code>:</p><pre><code>synthetic-remediate --apply &quot;2.1.1&quot; --verify</code></pre>",
+      "additional_info": "<p>Consult enterprise baseline documentation when tailoring parameters for isolated workloads.</p>",
+      "default_value": "<p>Vendor default varies by deployment profile.</p>",
+      "artifact_equation": "A",
+      "references": "<ul><li><a href=\"https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final\">NIST SP 800-53 Rev. 5</a></li></ul>"
+    },
+    {
+      "ref": "2.1.2",
+      "title": "Ensure time synchronization daemon runs under a dedicated unprivileged account",
+      "url": "https://workbench.cisecurity.org/sections/90006/recommendations/91006",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Level 1 - Server",
+        "Level 1 - Workstation"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "5.4",
+          "title": "Restrict Administrator Privileges to Dedicated Administrator Accounts",
+          "ig1": true,
+          "ig2": true,
+          "ig3": true
+        },
+        {
+          "version": 7,
+          "control": "4.3",
+          "title": "Ensure the Use of Dedicated Administrative Accounts",
+          "ig1": true,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": {
+        "techniques": [
+          "T1078",
+          "T1078.003"
+        ],
+        "tactics": [
+          "TA0004"
+        ],
+        "mitigations": [
+          "M1026",
+          "M1018"
+        ]
+      },
+      "nist_controls": [
+        "AC-6",
+        "CM-6"
+      ],
+      "parent": {
+        "url": "https://workbench.cisecurity.org/sections/90006",
+        "title": "2.1 Configure Time Synchronization"
+      },
+      "artifacts": [],
+      "description": "<p>Synthetic control guidance for section <code>2.1.2</code>: ensure time synchronization daemon runs under a dedicated unprivileged account.</p><p>Daemon process UID must evaluate to <code>uid &gt; 0 &amp;&amp; uid != 0</code>.</p>",
+      "rationale": "<p>Enforcing control <code>2.1.2</code> reduces attack surface and prevents unauthorized state transitions across enterprise workloads.</p>",
+      "impact": "<p>Workloads relying on non-standard legacy behavior may require explicit operational exceptions prior to rollout.</p>",
+      "audit": "<p>Execute the synthetic verification check for <code>2.1.2</code>:</p><pre><code class=\"audit-cli\">synthetic-audit --ref \"2.1.2\" --expect 'compliant'</code></pre>",
+      "remediation": "<p>Apply the hardened baseline configuration for <code>2.1.2</code>:</p><pre><code>synthetic-remediate --apply &quot;2.1.2&quot; --verify</code></pre>",
+      "additional_info": "<p>Consult enterprise baseline documentation when tailoring parameters for isolated workloads.</p>",
+      "default_value": "<p>Vendor default varies by deployment profile.</p>",
+      "artifact_equation": null,
+      "references": "<ul><li><a href=\"https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final\">NIST SP 800-53 Rev. 5</a></li></ul>"
+    },
+    {
+      "ref": "2.2.1",
+      "title": "Ensure unencrypted legacy directory and remote shell listeners are absent",
+      "url": "https://workbench.cisecurity.org/sections/90007/recommendations/91007",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Level 1 - Server"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "4.8",
+          "title": "Uninstall or Disable Unnecessary Services on Enterprise Assets and Software",
+          "ig1": false,
+          "ig2": true,
+          "ig3": true
+        },
+        {
+          "version": 7,
+          "control": "9.2",
+          "title": "Ensure Only Approved Ports, Protocols and Services Are Running",
+          "ig1": false,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": {
+        "techniques": [
+          "T1021",
+          "T1040"
+        ],
+        "tactics": [
+          "TA0008"
+        ],
+        "mitigations": [
+          "M1042",
+          "M1041"
+        ]
+      },
+      "nist_controls": [
+        "CM-7",
+        "SC-8"
+      ],
+      "parent": null,
+      "artifacts": [
+        {
+          "id": 70007,
+          "view_level": "2.2.1.1",
+          "title": "Verify configuration state for 2.2.1",
+          "status": "Published",
+          "artifact_type": {
+            "id": 1,
+            "name": "Automated Configuration Check"
+          }
+        }
+      ],
+      "description": "<p>Synthetic control guidance for section <code>2.2.1</code>: ensure unencrypted legacy directory and remote shell listeners are absent.</p><p>Disable cleartext daemon units in server environments.</p>",
+      "rationale": "<p>Enforcing control <code>2.2.1</code> reduces attack surface and prevents unauthorized state transitions across enterprise workloads.</p>",
+      "impact": "<p>Workloads relying on non-standard legacy behavior may require explicit operational exceptions prior to rollout.</p>",
+      "audit": "<p>Execute the synthetic verification check for <code>2.2.1</code>:</p><pre><code class=\"audit-cli\">synthetic-audit --ref \"2.2.1\" --expect 'compliant'</code></pre>",
+      "remediation": "<p>Apply the hardened baseline configuration for <code>2.2.1</code>:</p><pre><code>synthetic-remediate --apply &quot;2.2.1&quot; --verify</code></pre>",
+      "additional_info": "<p>Consult enterprise baseline documentation when tailoring parameters for isolated workloads.</p>",
+      "default_value": "<p>Vendor default varies by deployment profile.</p>",
+      "artifact_equation": "A",
+      "references": "<ul><li><a href=\"https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final\">NIST SP 800-53 Rev. 5</a></li></ul>"
+    },
+    {
+      "ref": "2.3.1",
+      "title": "Ensure local mail transfer agent listens exclusively on loopback interfaces",
+      "url": "https://workbench.cisecurity.org/sections/90008/recommendations/91008",
+      "assessment_status": "Manual",
+      "profiles": [
+        "Level 1 - Workstation"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "12.2",
+          "title": "Establish and Maintain a Secure Network Architecture",
+          "ig1": false,
+          "ig2": true,
+          "ig3": true
+        },
+        {
+          "version": 7,
+          "control": "9.2",
+          "title": "Ensure Only Approved Ports, Protocols and Services Are Running",
+          "ig1": false,
+          "ig2": false,
+          "ig3": false
+        }
+      ],
+      "mitre_mapping": null,
+      "nist_controls": [
+        "CM-7",
+        "SC-7"
+      ],
+      "parent": null,
+      "artifacts": [],
+      "description": "<p>Synthetic control guidance for section <code>2.3.1</code>: ensure local mail transfer agent listens exclusively on loopback interfaces.</p><p>Verify socket bindings remain restricted to <code>127.0.0.1</code> and <code>::1</code>.</p>",
+      "rationale": "<p>Enforcing control <code>2.3.1</code> reduces attack surface and prevents unauthorized state transitions across enterprise workloads.</p>",
+      "impact": "<p>Workloads relying on non-standard legacy behavior may require explicit operational exceptions prior to rollout.</p>",
+      "audit": "<p>Execute the synthetic verification check for <code>2.3.1</code>:</p><pre><code class=\"audit-cli\">synthetic-audit --ref \"2.3.1\" --expect 'compliant'</code></pre>",
+      "remediation": "<p>Apply the hardened baseline configuration for <code>2.3.1</code>:</p><pre><code>synthetic-remediate --apply &quot;2.3.1&quot; --verify</code></pre>",
+      "additional_info": "<p>Consult enterprise baseline documentation when tailoring parameters for isolated workloads.</p>",
+      "default_value": "<p>Vendor default varies by deployment profile.</p>",
+      "artifact_equation": null,
+      "references": "<ul><li><a href=\"https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final\">NIST SP 800-53 Rev. 5</a></li></ul>"
+    },
+    {
+      "ref": "3.1.1",
+      "title": "Ensure IP packet forwarding is disabled on non-routing hosts",
+      "url": "https://workbench.cisecurity.org/sections/90009/recommendations/91009",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Level 1 - Server",
+        "Level 1 - Workstation"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "4.1",
+          "title": "Establish and Maintain a Secure Configuration Process",
+          "ig1": true,
+          "ig2": true,
+          "ig3": true
+        },
+        {
+          "version": 7,
+          "control": "5.1",
+          "title": "Establish Secure Configurations",
+          "ig1": true,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": {
+        "techniques": [
+          "T1090",
+          "T1090.001"
+        ],
+        "tactics": [
+          "TA0011"
+        ],
+        "mitigations": [
+          "M1037",
+          "M1030"
+        ]
+      },
+      "nist_controls": [
+        "CM-6",
+        "SC-7"
+      ],
+      "parent": {
+        "url": "https://workbench.cisecurity.org/sections/90009",
+        "title": "3.1 Configure Host Network Parameters"
+      },
+      "artifacts": [
+        {
+          "id": 70009,
+          "view_level": "3.1.1.1",
+          "title": "Verify configuration state for 3.1.1",
+          "status": "Published",
+          "artifact_type": {
+            "id": 1,
+            "name": "Automated Configuration Check"
+          }
+        }
+      ],
+      "description": "<p>Synthetic control guidance for section <code>3.1.1</code>: ensure ip packet forwarding is disabled on non-routing hosts.</p><pre><code>net-param --get net.ip.forward == 0</code></pre>",
+      "rationale": "<p>Enforcing control <code>3.1.1</code> reduces attack surface and prevents unauthorized state transitions across enterprise workloads.</p>",
+      "impact": "<p>Workloads relying on non-standard legacy behavior may require explicit operational exceptions prior to rollout.</p>",
+      "audit": "<p>Execute the synthetic verification check for <code>3.1.1</code>:</p><pre><code class=\"audit-cli\">synthetic-audit --ref \"3.1.1\" --expect 'compliant'</code></pre>",
+      "remediation": "<p>Apply the hardened baseline configuration for <code>3.1.1</code>:</p><pre><code>synthetic-remediate --apply &quot;3.1.1&quot; --verify</code></pre>",
+      "additional_info": "<p>Consult enterprise baseline documentation when tailoring parameters for isolated workloads.</p>",
+      "default_value": "<p>Vendor default varies by deployment profile.</p>",
+      "artifact_equation": "A",
+      "references": "<ul><li><a href=\"https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final\">NIST SP 800-53 Rev. 5</a></li></ul>"
+    },
+    {
+      "ref": "3.2.1",
+      "title": "Ensure source-routed packets and ICMP redirects are rejected",
+      "url": "https://workbench.cisecurity.org/sections/90010/recommendations/91010",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Level 1 - Server",
+        "Level 1 - Workstation"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "13.1",
+          "title": "Centralize Security Event Alerting",
+          "ig1": false,
+          "ig2": true,
+          "ig3": true
+        },
+        {
+          "version": 7,
+          "control": "12.4",
+          "title": "Deny Communications With Known Malicious IP Addresses",
+          "ig1": false,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": {
+        "techniques": [
+          "T1557",
+          "T1095"
+        ],
+        "tactics": [
+          "TA0006"
+        ],
+        "mitigations": [
+          "M1037",
+          "M1031"
+        ]
+      },
+      "nist_controls": [
+        "SC-5",
+        "SC-7"
+      ],
+      "parent": null,
+      "artifacts": [],
+      "description": "<p>Synthetic control guidance for section <code>3.2.1</code>: ensure source-routed packets and icmp redirects are rejected.</p><p>Reject inbound packets carrying loose or strict source-routing options.</p>",
+      "rationale": "<p>Enforcing control <code>3.2.1</code> reduces attack surface and prevents unauthorized state transitions across enterprise workloads.</p>",
+      "impact": "<p>Workloads relying on non-standard legacy behavior may require explicit operational exceptions prior to rollout.</p>",
+      "audit": "<p>Execute the synthetic verification check for <code>3.2.1</code>:</p><pre><code class=\"audit-cli\">synthetic-audit --ref \"3.2.1\" --expect 'compliant'</code></pre>",
+      "remediation": "<p>Apply the hardened baseline configuration for <code>3.2.1</code>:</p><pre><code>synthetic-remediate --apply &quot;3.2.1&quot; --verify</code></pre>",
+      "additional_info": "<p>Consult enterprise baseline documentation when tailoring parameters for isolated workloads.</p>",
+      "default_value": "<p>Vendor default varies by deployment profile.</p>",
+      "artifact_equation": null,
+      "references": "<ul><li><a href=\"https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final\">NIST SP 800-53 Rev. 5</a></li></ul>"
+    },
+    {
+      "ref": "3.3.1",
+      "title": "Ensure host firewall default deny policy applies to all ingress and forward chains",
+      "url": "https://workbench.cisecurity.org/sections/90011/recommendations/91011",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Level 2 - Server"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "4.4",
+          "title": "Implement and Manage a Firewall on Servers",
+          "ig1": true,
+          "ig2": true,
+          "ig3": true
+        },
+        {
+          "version": 7,
+          "control": "9.4",
+          "title": "Apply Host-based Firewalls or Port Filtering",
+          "ig1": true,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": {
+        "techniques": [
+          "T1562",
+          "T1562.004"
+        ],
+        "tactics": [
+          "TA0005"
+        ],
+        "mitigations": [
+          "M1037",
+          "M1035"
+        ]
+      },
+      "nist_controls": [
+        "SC-7",
+        "AC-4"
+      ],
+      "parent": null,
+      "artifacts": [],
+      "description": "<p>Synthetic control guidance for section <code>3.3.1</code>: ensure host firewall default deny policy applies to all ingress and forward chains.</p><p>Default chain policy must be <code>DROP</code> or <code>REJECT</code> for unapproved flows.</p>",
+      "rationale": "<p>Enforcing control <code>3.3.1</code> reduces attack surface and prevents unauthorized state transitions across enterprise workloads.</p>",
+      "impact": "<p>Workloads relying on non-standard legacy behavior may require explicit operational exceptions prior to rollout.</p>",
+      "audit": "<p>Execute the synthetic verification check for <code>3.3.1</code>:</p><pre><code class=\"audit-cli\">synthetic-audit --ref \"3.3.1\" --expect 'compliant'</code></pre>",
+      "remediation": "<p>Apply the hardened baseline configuration for <code>3.3.1</code>:</p><pre><code>synthetic-remediate --apply &quot;3.3.1&quot; --verify</code></pre>",
+      "additional_info": "<p>Consult enterprise baseline documentation when tailoring parameters for isolated workloads.</p>",
+      "default_value": "<p>Vendor default varies by deployment profile.</p>",
+      "artifact_equation": null,
+      "references": "<ul><li><a href=\"https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final\">NIST SP 800-53 Rev. 5</a></li></ul>"
+    },
+    {
+      "ref": "4.1.1",
+      "title": "Ensure system audit event collection daemon is enabled and persistent",
+      "url": "https://workbench.cisecurity.org/sections/90012/recommendations/91012",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Level 1 - Server",
+        "Level 1 - Workstation"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "8.2",
+          "title": "Collect Audit Logs",
+          "ig1": true,
+          "ig2": true,
+          "ig3": true
+        },
+        {
+          "version": 7,
+          "control": "6.2",
+          "title": "Activate audit logging",
+          "ig1": true,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": {
+        "techniques": [
+          "T1562",
+          "T1562.002"
+        ],
+        "tactics": [
+          "TA0005"
+        ],
+        "mitigations": [
+          "M1047",
+          "M1029"
+        ]
+      },
+      "nist_controls": [
+        "AU-2",
+        "AU-12"
+      ],
+      "parent": null,
+      "artifacts": [],
+      "description": "<p>Synthetic control guidance for section <code>4.1.1</code>: ensure system audit event collection daemon is enabled and persistent.</p><p>Persistent audit storage ensures pre-boot and runtime security events are retained.</p>",
+      "rationale": "<p>Enforcing control <code>4.1.1</code> reduces attack surface and prevents unauthorized state transitions across enterprise workloads.</p>",
+      "impact": "<p>Workloads relying on non-standard legacy behavior may require explicit operational exceptions prior to rollout.</p>",
+      "audit": "<p>Execute the synthetic verification check for <code>4.1.1</code>:</p><pre><code class=\"audit-cli\">synthetic-audit --ref \"4.1.1\" --expect 'compliant'</code></pre>",
+      "remediation": "<p>Apply the hardened baseline configuration for <code>4.1.1</code>:</p><pre><code>synthetic-remediate --apply &quot;4.1.1&quot; --verify</code></pre>",
+      "additional_info": "<p>Consult enterprise baseline documentation when tailoring parameters for isolated workloads.</p>",
+      "default_value": "<p>Vendor default varies by deployment profile.</p>",
+      "artifact_equation": null,
+      "references": "<ul><li><a href=\"https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final\">NIST SP 800-53 Rev. 5</a></li></ul>"
+    },
+    {
+      "ref": "4.2.1",
+      "title": "Ensure privileged command invocations and identity changes generate audit records",
+      "url": "https://workbench.cisecurity.org/sections/90013/recommendations/91013",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Level 1 - Server",
+        "Level 1 - Workstation"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "8.5",
+          "title": "Collect Detailed Audit Logs",
+          "ig1": false,
+          "ig2": true,
+          "ig3": true
+        },
+        {
+          "version": 7,
+          "control": "6.3",
+          "title": "Enable Detailed Logging",
+          "ig1": false,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": {
+        "techniques": [
+          "T1548",
+          "T1548.003"
+        ],
+        "tactics": [
+          "TA0004"
+        ],
+        "mitigations": [
+          "M1026",
+          "M1047"
+        ]
+      },
+      "nist_controls": [
+        "AU-2",
+        "AU-3",
+        "AU-12"
+      ],
+      "parent": null,
+      "artifacts": [],
+      "description": "<p>Synthetic control guidance for section <code>4.2.1</code>: ensure privileged command invocations and identity changes generate audit records.</p><pre><code>audit-rule --watch /etc/identity --perm wa --uid &quot;&gt;=1000&quot;</code></pre>",
+      "rationale": "<p>Enforcing control <code>4.2.1</code> reduces attack surface and prevents unauthorized state transitions across enterprise workloads.</p>",
+      "impact": "<p>Workloads relying on non-standard legacy behavior may require explicit operational exceptions prior to rollout.</p>",
+      "audit": "<p>Execute the synthetic verification check for <code>4.2.1</code>:</p><pre><code class=\"audit-cli\">synthetic-audit --ref \"4.2.1\" --expect 'compliant'</code></pre>",
+      "remediation": "<p>Apply the hardened baseline configuration for <code>4.2.1</code>:</p><pre><code>synthetic-remediate --apply &quot;4.2.1&quot; --verify</code></pre>",
+      "additional_info": "<p>Consult enterprise baseline documentation when tailoring parameters for isolated workloads.</p>",
+      "default_value": "<p>Vendor default varies by deployment profile.</p>",
+      "artifact_equation": null,
+      "references": "<ul><li><a href=\"https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final\">NIST SP 800-53 Rev. 5</a></li></ul>"
+    },
+    {
+      "ref": "4.3.1",
+      "title": "Ensure structured log forwarding uses mutually authenticated TLS transport",
+      "url": "https://workbench.cisecurity.org/sections/90014/recommendations/91014",
+      "assessment_status": "Manual",
+      "profiles": [
+        "Level 1 - Server"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "8.9",
+          "title": "Centralize Audit Logs",
+          "ig1": false,
+          "ig2": true,
+          "ig3": true
+        },
+        {
+          "version": 7,
+          "control": "6.5",
+          "title": "Central Log Management",
+          "ig1": false,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": {
+        "techniques": [
+          "T1070",
+          "T1070.002"
+        ],
+        "tactics": [
+          "TA0005"
+        ],
+        "mitigations": [
+          "M1029",
+          "M1041"
+        ]
+      },
+      "nist_controls": [
+        "AU-9",
+        "SC-8"
+      ],
+      "parent": null,
+      "artifacts": [],
+      "description": "<p>Synthetic control guidance for section <code>4.3.1</code>: ensure structured log forwarding uses mutually authenticated tls transport.</p><p>Configure TLS 1.3 peer certificate validation on central log collectors.</p>",
+      "rationale": "<p>Enforcing control <code>4.3.1</code> reduces attack surface and prevents unauthorized state transitions across enterprise workloads.</p>",
+      "impact": "<p>Workloads relying on non-standard legacy behavior may require explicit operational exceptions prior to rollout.</p>",
+      "audit": "<p>Execute the synthetic verification check for <code>4.3.1</code>:</p><pre><code class=\"audit-cli\">synthetic-audit --ref \"4.3.1\" --expect 'compliant'</code></pre>",
+      "remediation": "<p>Apply the hardened baseline configuration for <code>4.3.1</code>:</p><pre><code>synthetic-remediate --apply &quot;4.3.1&quot; --verify</code></pre>",
+      "additional_info": "<p>Consult enterprise baseline documentation when tailoring parameters for isolated workloads.</p>",
+      "default_value": "<p>Vendor default varies by deployment profile.</p>",
+      "artifact_equation": null,
+      "references": "<ul><li><a href=\"https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final\">NIST SP 800-53 Rev. 5</a></li></ul>"
+    },
+    {
+      "ref": "5.1.1",
+      "title": "Ensure scheduled job directories restrict write permissions to root",
+      "url": "https://workbench.cisecurity.org/sections/90015/recommendations/91015",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Level 1 - Server",
+        "Level 1 - Workstation"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "3.3",
+          "title": "Configure Data Access Control Lists",
+          "ig1": true,
+          "ig2": true,
+          "ig3": true
+        },
+        {
+          "version": 7,
+          "control": "14.6",
+          "title": "Protect Information through Access Control Lists",
+          "ig1": true,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": {
+        "techniques": [
+          "T1053",
+          "T1053.003"
+        ],
+        "tactics": [
+          "TA0003"
+        ],
+        "mitigations": [
+          "M1022",
+          "M1018"
+        ]
+      },
+      "nist_controls": [
+        "AC-3",
+        "CM-6"
+      ],
+      "parent": null,
+      "artifacts": [],
+      "description": "<p>Synthetic control guidance for section <code>5.1.1</code>: ensure scheduled job directories restrict write permissions to root.</p><p>Directory permissions must be <code>0700</code> with owner/group <code>root:root</code>.</p>",
+      "rationale": "<p>Enforcing control <code>5.1.1</code> reduces attack surface and prevents unauthorized state transitions across enterprise workloads.</p>",
+      "impact": "<p>Workloads relying on non-standard legacy behavior may require explicit operational exceptions prior to rollout.</p>",
+      "audit": "<p>Execute the synthetic verification check for <code>5.1.1</code>:</p><pre><code class=\"audit-cli\">synthetic-audit --ref \"5.1.1\" --expect 'compliant'</code></pre>",
+      "remediation": "<p>Apply the hardened baseline configuration for <code>5.1.1</code>:</p><pre><code>synthetic-remediate --apply &quot;5.1.1&quot; --verify</code></pre>",
+      "additional_info": "<p>Consult enterprise baseline documentation when tailoring parameters for isolated workloads.</p>",
+      "default_value": "<p>Vendor default varies by deployment profile.</p>",
+      "artifact_equation": null,
+      "references": "<ul><li><a href=\"https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final\">NIST SP 800-53 Rev. 5</a></li></ul>"
+    },
+    {
+      "ref": "5.2.1",
+      "title": "Ensure remote administration service disables direct root login and empty passwords",
+      "url": "https://workbench.cisecurity.org/sections/90016/recommendations/91016",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Level 1 - Server",
+        "Level 1 - Workstation"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "5.2",
+          "title": "Use Unique Passwords",
+          "ig1": true,
+          "ig2": true,
+          "ig3": true
+        },
+        {
+          "version": 7,
+          "control": "4.4",
+          "title": "Use Unique Passwords",
+          "ig1": true,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": {
+        "techniques": [
+          "T1021",
+          "T1021.004"
+        ],
+        "tactics": [
+          "TA0008"
+        ],
+        "mitigations": [
+          "M1032",
+          "M1027"
+        ]
+      },
+      "nist_controls": [
+        "IA-2",
+        "IA-5",
+        "AC-17"
+      ],
+      "parent": null,
+      "artifacts": [],
+      "description": "<p>Synthetic control guidance for section <code>5.2.1</code>: ensure remote administration service disables direct root login and empty passwords.</p><ul><li><code>PermitRootLogin no</code></li><li><code>PermitEmptyPasswords no</code></li></ul>",
+      "rationale": "<p>Enforcing control <code>5.2.1</code> reduces attack surface and prevents unauthorized state transitions across enterprise workloads.</p>",
+      "impact": "<p>Workloads relying on non-standard legacy behavior may require explicit operational exceptions prior to rollout.</p>",
+      "audit": "<p>Execute the synthetic verification check for <code>5.2.1</code>:</p><pre><code class=\"audit-cli\">synthetic-audit --ref \"5.2.1\" --expect 'compliant'</code></pre>",
+      "remediation": "<p>Apply the hardened baseline configuration for <code>5.2.1</code>:</p><pre><code>synthetic-remediate --apply &quot;5.2.1&quot; --verify</code></pre>",
+      "additional_info": "<p>Consult enterprise baseline documentation when tailoring parameters for isolated workloads.</p>",
+      "default_value": "<p>Vendor default varies by deployment profile.</p>",
+      "artifact_equation": null,
+      "references": "<ul><li><a href=\"https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final\">NIST SP 800-53 Rev. 5</a></li></ul>"
+    },
+    {
+      "ref": "5.2.2",
+      "title": "Ensure remote administration service restricts cryptographic ciphers and MACs",
+      "url": "https://workbench.cisecurity.org/sections/90017/recommendations/91017",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Level 2 - Server",
+        "Level 2 - Workstation"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "3.10",
+          "title": "Encrypt Sensitive Data in Transit",
+          "ig1": false,
+          "ig2": true,
+          "ig3": true
+        },
+        {
+          "version": 7,
+          "control": "13.6",
+          "title": "Encrypt Mobile Device Data",
+          "ig1": false,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": {
+        "techniques": [
+          "T1557",
+          "T1600"
+        ],
+        "tactics": [
+          "TA0006"
+        ],
+        "mitigations": [
+          "M1041",
+          "M1013"
+        ]
+      },
+      "nist_controls": [
+        "SC-8",
+        "SC-13"
+      ],
+      "parent": null,
+      "artifacts": [],
+      "description": "<p>Synthetic control guidance for section <code>5.2.2</code>: ensure remote administration service restricts cryptographic ciphers and macs.</p><p>Allow only AEAD ciphers and authenticated key exchange groups.</p>",
+      "rationale": "<p>Enforcing control <code>5.2.2</code> reduces attack surface and prevents unauthorized state transitions across enterprise workloads.</p>",
+      "impact": "<p>Workloads relying on non-standard legacy behavior may require explicit operational exceptions prior to rollout.</p>",
+      "audit": "<p>Execute the synthetic verification check for <code>5.2.2</code>:</p><pre><code class=\"audit-cli\">synthetic-audit --ref \"5.2.2\" --expect 'compliant'</code></pre>",
+      "remediation": "<p>Apply the hardened baseline configuration for <code>5.2.2</code>:</p><pre><code>synthetic-remediate --apply &quot;5.2.2&quot; --verify</code></pre>",
+      "additional_info": "<p>Consult enterprise baseline documentation when tailoring parameters for isolated workloads.</p>",
+      "default_value": "<p>Vendor default varies by deployment profile.</p>",
+      "artifact_equation": null,
+      "references": "<ul><li><a href=\"https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final\">NIST SP 800-53 Rev. 5</a></li></ul>"
+    },
+    {
+      "ref": "5.3.1",
+      "title": "Ensure interactive session idle timeout and screen lock policies are enforced",
+      "url": "https://workbench.cisecurity.org/sections/90018/recommendations/91018",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Level 1 - Workstation"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "4.3",
+          "title": "Configure Automatic Session Locking on Enterprise Assets",
+          "ig1": true,
+          "ig2": true,
+          "ig3": true
+        },
+        {
+          "version": 7,
+          "control": "7.3",
+          "title": "Limit Use of Scripting Languages in Web Browsers and Email Clients",
+          "ig1": true,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": {
+        "techniques": [
+          "T1078",
+          "T1563"
+        ],
+        "tactics": [
+          "TA0008"
+        ],
+        "mitigations": [
+          "M1018",
+          "M1032"
+        ]
+      },
+      "nist_controls": [
+        "AC-11",
+        "AC-12"
+      ],
+      "parent": null,
+      "artifacts": [],
+      "description": "<p>Synthetic control guidance for section <code>5.3.1</code>: ensure interactive session idle timeout and screen lock policies are enforced.</p><p>Enforce idle timeout where <code>idle_seconds &lt;= 900 &amp;&amp; idle_seconds &gt; 0</code>.</p>",
+      "rationale": "<p>Enforcing control <code>5.3.1</code> reduces attack surface and prevents unauthorized state transitions across enterprise workloads.</p>",
+      "impact": "<p>Workloads relying on non-standard legacy behavior may require explicit operational exceptions prior to rollout.</p>",
+      "audit": "<p>Execute the synthetic verification check for <code>5.3.1</code>:</p><pre><code class=\"audit-cli\">synthetic-audit --ref \"5.3.1\" --expect 'compliant'</code></pre>",
+      "remediation": "<p>Apply the hardened baseline configuration for <code>5.3.1</code>:</p><pre><code>synthetic-remediate --apply &quot;5.3.1&quot; --verify</code></pre>",
+      "additional_info": "<p>Consult enterprise baseline documentation when tailoring parameters for isolated workloads.</p>",
+      "default_value": "<p>Vendor default varies by deployment profile.</p>",
+      "artifact_equation": null,
+      "references": "<ul><li><a href=\"https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final\">NIST SP 800-53 Rev. 5</a></li></ul>"
+    },
+    {
+      "ref": "6.1.1",
+      "title": "Ensure periodic filesystem integrity checks monitor system binaries and configuration",
+      "url": "https://workbench.cisecurity.org/sections/90019/recommendations/91019",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Level 1 - Server",
+        "Level 1 - Workstation"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "3.14",
+          "title": "Log Sensitive Data Access",
+          "ig1": false,
+          "ig2": false,
+          "ig3": true
+        },
+        {
+          "version": 7,
+          "control": "8.11",
+          "title": "Conduct Audit Log Reviews",
+          "ig1": false,
+          "ig2": false,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": {
+        "techniques": [
+          "T1565",
+          "T1565.001"
+        ],
+        "tactics": [
+          "TA0001"
+        ],
+        "mitigations": [
+          "M1022",
+          "M1045"
+        ]
+      },
+      "nist_controls": [
+        "AU-2",
+        "SI-6",
+        "SI-7"
+      ],
+      "parent": null,
+      "artifacts": [],
+      "description": "<p>Synthetic control guidance for section <code>6.1.1</code>: ensure periodic filesystem integrity checks monitor system binaries and configuration.</p><p>Schedule daily integrity verification against an offline-protected baseline digest store.</p>",
+      "rationale": "<p>Enforcing control <code>6.1.1</code> reduces attack surface and prevents unauthorized state transitions across enterprise workloads.</p>",
+      "impact": "<p>Workloads relying on non-standard legacy behavior may require explicit operational exceptions prior to rollout.</p>",
+      "audit": "<p>Execute the synthetic verification check for <code>6.1.1</code>:</p><pre><code class=\"audit-cli\">synthetic-audit --ref \"6.1.1\" --expect 'compliant'</code></pre>",
+      "remediation": "<p>Apply the hardened baseline configuration for <code>6.1.1</code>:</p><pre><code>synthetic-remediate --apply &quot;6.1.1&quot; --verify</code></pre>",
+      "additional_info": "<p>Consult enterprise baseline documentation when tailoring parameters for isolated workloads.</p>",
+      "default_value": "<p>Vendor default varies by deployment profile.</p>",
+      "artifact_equation": null,
+      "references": "<ul><li><a href=\"https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final\">NIST SP 800-53 Rev. 5</a></li></ul>"
+    },
+    {
+      "ref": "6.2.1",
+      "title": "Ensure local organizational emergency recovery account procedures are documented",
+      "url": "https://workbench.cisecurity.org/sections/90020/recommendations/91020",
+      "assessment_status": "Manual",
+      "profiles": [
+        "Level 2 - Workstation"
+      ],
+      "cis_controls": [],
+      "mitre_mapping": null,
+      "nist_controls": [],
+      "parent": null,
+      "artifacts": [],
+      "description": "<p>Synthetic control guidance for section <code>6.2.1</code>: ensure local organizational emergency recovery account procedures are documented.</p><p>Review break-glass credential custody &amp; rotation logs every 90 days.</p>",
+      "rationale": "<p>Enforcing control <code>6.2.1</code> reduces attack surface and prevents unauthorized state transitions across enterprise workloads.</p>",
+      "impact": "<p>Workloads relying on non-standard legacy behavior may require explicit operational exceptions prior to rollout.</p>",
+      "audit": "<p>Execute the synthetic verification check for <code>6.2.1</code>:</p><pre><code class=\"audit-cli\">synthetic-audit --ref \"6.2.1\" --expect 'compliant'</code></pre>",
+      "remediation": "<p>Apply the hardened baseline configuration for <code>6.2.1</code>:</p><pre><code>synthetic-remediate --apply &quot;6.2.1&quot; --verify</code></pre>",
+      "additional_info": "<p>Consult enterprise baseline documentation when tailoring parameters for isolated workloads.</p>",
+      "default_value": "<p>Vendor default varies by deployment profile.</p>",
+      "artifact_equation": null,
+      "references": "<ul><li><a href=\"https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final\">NIST SP 800-53 Rev. 5</a></li></ul>"
+    }
+  ]
+}

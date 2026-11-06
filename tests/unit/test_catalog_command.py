@@ -21,13 +21,21 @@ import pytest
 from click.testing import CliRunner
 
 from cis_bench.cli.app import cli
-from cis_bench.exceptions import AuthenticationError
+from cis_bench.exceptions import AuthenticationError, NoSavedSessionError
+from cis_bench.fetcher.auth import AuthManager
 
 
 @pytest.fixture
 def runner():
-    """Create Click CLI test runner."""
-    return CliRunner()
+    """Create Click CLI test runner and prune closed logging handlers after invocation."""
+    import logging
+
+    yield CliRunner()
+    root_logger = logging.getLogger()
+    for handler in list(root_logger.handlers):
+        stream = getattr(handler, "stream", None)
+        if stream is not None and getattr(stream, "closed", False):
+            root_logger.removeHandler(handler)
 
 
 @pytest.fixture
@@ -85,8 +93,6 @@ def mock_search():
             "published_date": "2024-08-01",
         }
     ]
-    search.list_all_published.return_value = search.search.return_value
-    search.list_by_platform.return_value = search.search.return_value
     search.format_result_for_display.return_value = (
         "[23598] CIS Ubuntu Linux 20.04 LTS Benchmark v2.0.1\n"
         "        Platform: Operating System | Published: 2024-08-01 | Latest"
@@ -94,26 +100,116 @@ def mock_search():
     return search
 
 
+class TestTheBrowserSettingIsTheDefaultBrowser:
+    """refresh, update and download read cookies from CIS_BENCH_BROWSER unless --browser is given."""
+
+    @pytest.fixture
+    def login(self, auth_manager_class, mock_db, monkeypatch):
+        monkeypatch.setenv("CIS_BENCH_BROWSER", "firefox")
+        login = auth_manager_class.return_value.get_or_create_session
+        login.return_value = Mock()
+        with (
+            patch("cis_bench.cli.commands.catalog.get_catalog_db", return_value=mock_db),
+            patch("cis_bench.cli.commands.catalog.require_catalog_db", return_value=mock_db),
+            patch("cis_bench.catalog.scraper.CatalogScraper") as scraper_class,
+            patch("cis_bench.fetcher.workbench.WorkbenchScraper"),
+            patch("cis_bench.catalog.downloader.CatalogDownloader") as downloader_class,
+        ):
+            scraper_class.return_value.scrape_full_catalog.return_value = {
+                "total_benchmarks": 1,
+                "pages_scraped": 1,
+                "failed_pages": [],
+            }
+            scraper_class.return_value.scrape_incremental.return_value = {
+                "new_benchmarks": 0,
+                "updated_benchmarks": 0,
+            }
+            downloader_class.return_value.download_by_id.return_value = {
+                "status": "downloaded",
+                "benchmark_id": "23598",
+                "recommendation_count": 1,
+                "file_size": 1,
+            }
+            yield login
+
+    @pytest.mark.parametrize(
+        "args",
+        [["refresh", "--max-pages", "1"], ["update"], ["download", "23598"]],
+        ids=["refresh", "update", "download"],
+    )
+    def test_without_the_flag_the_setting_is_the_browser(self, runner, login, args):
+        result = runner.invoke(cli, ["catalog", *args])
+
+        assert result.exit_code == 0, result.output
+        login.assert_called_once_with(browser="firefox")
+
+    @pytest.mark.parametrize(
+        "args",
+        [["refresh", "--max-pages", "1"], ["update"], ["download", "23598"]],
+        ids=["refresh", "update", "download"],
+    )
+    def test_an_explicit_flag_wins(self, runner, login, args):
+        result = runner.invoke(cli, ["catalog", *args, "--browser", "edge"])
+
+        assert result.exit_code == 0, result.output
+        login.assert_called_once_with(browser="edge")
+
+
 class TestCatalogRefreshCommand:
     """Tests for catalog refresh command."""
 
+    @pytest.mark.parametrize(
+        ("args", "expected_rate"),
+        [(["--rate-limit", "2"], 0.5), ([], 3.0)],
+        ids=["two-seconds-between-requests", "configured-rate"],
+    )
+    def test_refresh_rate_limit_sets_the_request_rate_for_the_run(
+        self, runner, mock_db, args, expected_rate, auth_manager_class, monkeypatch
+    ):
+        # The rate goes to the AuthManager, so the session check is paced too, not only the scrape.
+        monkeypatch.delenv("CIS_BENCH_WORKBENCH_URL", raising=False)
+        monkeypatch.delenv("CIS_BENCH_REQUEST_TIMEOUT", raising=False)
+        session = Mock()
+        login = auth_manager_class.return_value.get_or_create_session
+        login.return_value = session
+        with (
+            patch("cis_bench.cli.commands.catalog.get_catalog_db", return_value=mock_db),
+            patch("cis_bench.catalog.scraper.CatalogScraper") as scraper_class,
+        ):
+            scraper_class.return_value.scrape_full_catalog.return_value = {
+                "total_benchmarks": 1,
+                "pages_scraped": 1,
+                "failed_pages": [],
+            }
+            result = runner.invoke(cli, ["catalog", "refresh", "--max-pages", "1", *args])
+
+        assert result.exit_code == 0, result.output
+        login.assert_called_once_with(browser="chrome")
+        policy = auth_manager_class.call_args.kwargs["request_policy"]
+        assert policy.requests_per_second == expected_rate
+        scraper_class.assert_called_once_with(
+            mock_db,
+            session,
+            base_url="https://workbench.cisecurity.org",
+            timeout=(10.0, 30.0),
+            max_workers=5,
+            batch_size=10,
+        )
+
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
-    @patch("cis_bench.cli.commands.catalog.AuthManager")
-    @patch("cis_bench.cli.commands.catalog.CatalogScraper")
-    @patch("cis_bench.cli.commands.catalog.Config")
+    @patch("cis_bench.fetcher.auth.AuthManager")
+    @patch("cis_bench.catalog.scraper.CatalogScraper")
     def test_refresh_success(
-        self, mock_config, mock_scraper_class, mock_auth, mock_get_db, runner, mock_db
+        self, mock_scraper_class, mock_auth, mock_get_db, runner, mock_db, monkeypatch
     ):
         """Test successful catalog refresh."""
         mock_get_db.return_value = mock_db
-        mock_config.get_verify_ssl.return_value = False
+        monkeypatch.setenv("CIS_BENCH_VERIFY_SSL", "false")
 
         mock_session = Mock()
-        mock_auth.get_or_create_session.return_value = mock_session
-        mock_auth.validate_session.return_value = True
+        mock_auth.return_value.get_or_create_session.return_value = mock_session
 
         mock_scraper = Mock()
-        mock_scraper.test_connection.return_value = True
         mock_scraper.scrape_full_catalog.return_value = {
             "total_benchmarks": 100,
             "pages_scraped": 68,
@@ -128,40 +224,75 @@ class TestCatalogRefreshCommand:
         mock_db.initialize_schema.assert_called_once()
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
-    @patch("cis_bench.cli.commands.catalog.AuthManager")
-    @patch("cis_bench.cli.commands.catalog.Config")
-    def test_refresh_invalid_session(self, mock_config, mock_auth, mock_get_db, runner, mock_db):
-        """Test refresh with invalid session (lines 74-76)."""
+    @patch("cis_bench.catalog.scraper.CatalogScraper")
+    def test_refresh_validates_session_once(
+        self, mock_scraper_class, mock_get_db, runner, mock_db, monkeypatch
+    ):
+        """The session helper owns validation; refresh must not validate a second time."""
+        monkeypatch.delenv("CIS_BENCH_VERIFY_SSL", raising=False)
         mock_get_db.return_value = mock_db
-        mock_config.get_verify_ssl.return_value = False
+        saved_session = Mock()
+        saved_session.cookies = [Mock()]
+        mock_scraper = Mock()
+        mock_scraper.scrape_full_catalog.return_value = {
+            "total_benchmarks": 1,
+            "pages_scraped": 1,
+            "failed_pages": [],
+        }
+        mock_scraper_class.return_value = mock_scraper
 
-        mock_session = Mock()
-        mock_auth.get_or_create_session.return_value = mock_session
-        mock_auth.validate_session.return_value = False  # Invalid session
+        with (
+            patch.object(AuthManager, "load_saved_session", return_value=saved_session),
+            patch.object(
+                AuthManager, "validate_session", autospec=True, return_value=True
+            ) as mock_validate,
+        ):
+            result = runner.invoke(cli, ["catalog", "refresh"])
 
-        result = runner.invoke(cli, ["catalog", "refresh"])
-
-        assert result.exit_code == 1
-        assert "Session invalid or expired" in result.output
-        assert "cis-bench auth login" in result.output
+        assert result.exit_code == 0, result.output
+        mock_validate.assert_called_once()
+        auth, checked_session = mock_validate.call_args.args
+        assert checked_session is saved_session
+        assert auth.verify_ssl is True
+        assert mock_validate.call_args.kwargs == {}
+        assert result.output.count("Session valid") == 1
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
-    @patch("cis_bench.cli.commands.catalog.AuthManager")
-    @patch("cis_bench.cli.commands.catalog.CatalogScraper")
-    @patch("cis_bench.cli.commands.catalog.Config")
+    def test_refresh_invalid_session(self, mock_get_db, runner, mock_db, monkeypatch):
+        """When neither the saved nor the browser session validates, refresh says how to log in."""
+        monkeypatch.delenv("CIS_BENCH_VERIFY_SSL", raising=False)
+        mock_get_db.return_value = mock_db
+        stale_session = Mock()
+        stale_session.cookies = [Mock()]
+
+        with (
+            patch.object(AuthManager, "load_saved_session", return_value=stale_session),
+            patch.object(AuthManager, "clear_saved_session", return_value=True),
+            patch.object(AuthManager, "load_cookies_from_browser", return_value=stale_session),
+            patch.object(AuthManager, "validate_session", return_value=False),
+            patch.object(AuthManager, "save_session") as mock_save,
+        ):
+            result = runner.invoke(cli, ["catalog", "refresh"])
+
+        assert result.exit_code == 1
+        assert "Authentication required" in result.output
+        assert "cis-bench auth login" in result.output
+        mock_save.assert_not_called()
+
+    @patch("cis_bench.cli.commands.catalog.get_catalog_db")
+    @patch("cis_bench.fetcher.auth.AuthManager")
+    @patch("cis_bench.catalog.scraper.CatalogScraper")
     def test_refresh_with_failed_pages(
-        self, mock_config, mock_scraper_class, mock_auth, mock_get_db, runner, mock_db
+        self, mock_scraper_class, mock_auth, mock_get_db, runner, mock_db, monkeypatch
     ):
         """Test refresh showing failed pages (line 99)."""
         mock_get_db.return_value = mock_db
-        mock_config.get_verify_ssl.return_value = False
+        monkeypatch.setenv("CIS_BENCH_VERIFY_SSL", "false")
 
         mock_session = Mock()
-        mock_auth.get_or_create_session.return_value = mock_session
-        mock_auth.validate_session.return_value = True
+        mock_auth.return_value.get_or_create_session.return_value = mock_session
 
         mock_scraper = Mock()
-        mock_scraper.test_connection.return_value = True
         mock_scraper.scrape_full_catalog.return_value = {
             "total_benchmarks": 95,
             "pages_scraped": 68,
@@ -176,16 +307,17 @@ class TestCatalogRefreshCommand:
         assert "3" in result.output
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
-    @patch("cis_bench.cli.commands.catalog.AuthManager")
-    @patch("cis_bench.cli.commands.catalog.Config")
+    @patch("cis_bench.fetcher.auth.AuthManager")
     def test_refresh_authentication_error(
-        self, mock_config, mock_auth, mock_get_db, runner, mock_db
+        self, mock_auth, mock_get_db, runner, mock_db, monkeypatch
     ):
         """Test refresh with AuthenticationError (lines 110-116)."""
         mock_get_db.return_value = mock_db
-        mock_config.get_verify_ssl.return_value = False
+        monkeypatch.setenv("CIS_BENCH_VERIFY_SSL", "false")
 
-        mock_auth.get_or_create_session.side_effect = AuthenticationError("No cookies found")
+        mock_auth.return_value.get_or_create_session.side_effect = AuthenticationError(
+            "No cookies found"
+        )
 
         result = runner.invoke(cli, ["catalog", "refresh"])
 
@@ -193,22 +325,20 @@ class TestCatalogRefreshCommand:
         assert "Authentication required" in result.output
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
-    @patch("cis_bench.cli.commands.catalog.AuthManager")
-    @patch("cis_bench.cli.commands.catalog.CatalogScraper")
-    @patch("cis_bench.cli.commands.catalog.Config")
+    @patch("cis_bench.fetcher.auth.AuthManager")
+    @patch("cis_bench.catalog.scraper.CatalogScraper")
     def test_refresh_generic_error(
-        self, mock_config, mock_scraper_class, mock_auth, mock_get_db, runner, mock_db
+        self, mock_scraper_class, mock_auth, mock_get_db, runner, mock_db, monkeypatch
     ):
         """Test refresh with generic exception (lines 114-116)."""
         mock_get_db.return_value = mock_db
-        mock_config.get_verify_ssl.return_value = False
+        monkeypatch.setenv("CIS_BENCH_VERIFY_SSL", "false")
 
         mock_session = Mock()
-        mock_auth.get_or_create_session.return_value = mock_session
-        mock_auth.validate_session.return_value = True
+        mock_auth.return_value.get_or_create_session.return_value = mock_session
 
         mock_scraper = Mock()
-        mock_scraper.test_connection.side_effect = RuntimeError("Connection failed")
+        mock_scraper.scrape_full_catalog.side_effect = RuntimeError("Connection failed")
         mock_scraper_class.return_value = mock_scraper
 
         result = runner.invoke(cli, ["catalog", "refresh"])
@@ -221,14 +351,17 @@ class TestCatalogUpdateCommand:
     """Tests for catalog update command."""
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
-    @patch("cis_bench.cli.commands.catalog.AuthManager")
-    @patch("cis_bench.cli.commands.catalog.CatalogScraper")
-    def test_update_success(self, mock_scraper_class, mock_auth, mock_get_db, runner, mock_db):
-        """Test successful catalog update (lines 131-153)."""
+    @patch("cis_bench.fetcher.auth.AuthManager")
+    @patch("cis_bench.catalog.scraper.CatalogScraper")
+    def test_update_success(
+        self, mock_scraper_class, mock_auth, mock_get_db, runner, mock_db, monkeypatch
+    ):
+        """Test successful catalog update uses saved or SSO-validated session."""
         mock_get_db.return_value = mock_db
+        monkeypatch.setenv("CIS_BENCH_VERIFY_SSL", "false")
 
         mock_session = Mock()
-        mock_auth.load_cookies_from_browser.return_value = mock_session
+        mock_auth.return_value.get_or_create_session.return_value = mock_session
 
         mock_scraper = Mock()
         mock_scraper.scrape_page_one_update.return_value = {
@@ -242,6 +375,10 @@ class TestCatalogUpdateCommand:
         assert result.exit_code == 0
         assert "Catalog updated" in result.output
         assert "New benchmarks" in result.output
+        mock_db.initialize_schema.assert_called_once_with()
+        assert mock_auth.call_args.kwargs["verify_ssl"] is False
+        mock_auth.return_value.get_or_create_session.assert_called_once_with(browser="chrome")
+        mock_auth.return_value.load_cookies_from_browser.assert_not_called()
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     def test_update_catalog_not_initialized(self, mock_get_db, runner):
@@ -258,14 +395,17 @@ class TestCatalogUpdateCommand:
         assert "cis-bench catalog refresh" in result.output
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
-    @patch("cis_bench.cli.commands.catalog.AuthManager")
-    @patch("cis_bench.cli.commands.catalog.CatalogScraper")
-    def test_update_failure(self, mock_scraper_class, mock_auth, mock_get_db, runner, mock_db):
+    @patch("cis_bench.fetcher.auth.AuthManager")
+    @patch("cis_bench.catalog.scraper.CatalogScraper")
+    def test_update_failure(
+        self, mock_scraper_class, mock_auth, mock_get_db, runner, mock_db, monkeypatch
+    ):
         """Test update failure (lines 151-153)."""
         mock_get_db.return_value = mock_db
+        monkeypatch.setenv("CIS_BENCH_VERIFY_SSL", "true")
 
         mock_session = Mock()
-        mock_auth.load_cookies_from_browser.return_value = mock_session
+        mock_auth.return_value.get_or_create_session.return_value = mock_session
 
         mock_scraper = Mock()
         mock_scraper.scrape_page_one_update.side_effect = RuntimeError("Network error")
@@ -275,6 +415,8 @@ class TestCatalogUpdateCommand:
 
         assert result.exit_code == 1
         assert "Update failed" in result.output
+        assert mock_auth.call_args.kwargs["verify_ssl"] is True
+        mock_auth.return_value.get_or_create_session.assert_called_once_with(browser="chrome")
 
 
 class TestCatalogSearchCommand:
@@ -295,16 +437,30 @@ class TestCatalogSearchCommand:
         assert "Catalog not found" in result.output
         assert "cis-bench catalog refresh" in result.output
 
+    def test_search_catalog_not_found_does_not_print_secondary_error(self, runner, tmp_path):
+        """Missing catalog aborts cleanly without emitting a secondary 'Search failed:' banner."""
+        from cis_bench.catalog.database import CatalogDatabase
+
+        missing_db = CatalogDatabase(tmp_path / "uninitialized_catalog.db")
+        assert not missing_db.db_path.exists()
+
+        with patch("cis_bench.cli.commands.catalog.get_catalog_db", return_value=missing_db):
+            result = runner.invoke(cli, ["catalog", "search", "ubuntu"])
+
+        missing_db.engine.dispose()
+        assert result.exit_code == 1
+        assert "Catalog not found. Run 'cis-bench catalog refresh' first." in result.output
+        assert "Search failed" not in result.output
+
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     @patch("cis_bench.cli.commands.catalog.CatalogSearch")
-    @patch("cis_bench.cli.commands.catalog.Config")
     def test_search_uses_default_limit(
-        self, mock_config, mock_search_class, mock_get_db, runner, mock_db, mock_search
+        self, mock_search_class, mock_get_db, runner, mock_db, mock_search, monkeypatch
     ):
         """Test search uses config default limit (lines 190-191)."""
         mock_get_db.return_value = mock_db
         mock_search_class.return_value = mock_search
-        mock_config.get_search_default_limit.return_value = 500
+        monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "500")
 
         result = runner.invoke(cli, ["catalog", "search", "ubuntu"])
 
@@ -316,16 +472,15 @@ class TestCatalogSearchCommand:
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     @patch("cis_bench.cli.commands.catalog.CatalogSearch")
-    @patch("cis_bench.cli.commands.catalog.Config")
     def test_search_no_results_table_format(
-        self, mock_config, mock_search_class, mock_get_db, runner, mock_db
+        self, mock_search_class, mock_get_db, runner, mock_db, monkeypatch
     ):
         """Test search with no results in table format (line 199-201)."""
         mock_get_db.return_value = mock_db
         mock_search = MagicMock()
         mock_search.search.return_value = []
         mock_search_class.return_value = mock_search
-        mock_config.get_search_default_limit.return_value = 1000
+        monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "1000")
 
         result = runner.invoke(cli, ["catalog", "search", "nonexistent"])
 
@@ -334,17 +489,16 @@ class TestCatalogSearchCommand:
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     @patch("cis_bench.cli.commands.catalog.CatalogSearch")
-    @patch("cis_bench.cli.commands.catalog.Config")
     @patch("cis_bench.cli.commands.catalog.output_data")
     def test_search_no_results_json_format(
-        self, mock_output, mock_config, mock_search_class, mock_get_db, runner, mock_db
+        self, mock_output, mock_search_class, mock_get_db, runner, mock_db, monkeypatch
     ):
         """Test search with no results in JSON format (lines 198-199)."""
         mock_get_db.return_value = mock_db
         mock_search = MagicMock()
         mock_search.search.return_value = []
         mock_search_class.return_value = mock_search
-        mock_config.get_search_default_limit.return_value = 1000
+        monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "1000")
 
         # Note: output_data calls sys.exit(0) but mock prevents that
         mock_output.return_value = None
@@ -356,15 +510,14 @@ class TestCatalogSearchCommand:
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     @patch("cis_bench.cli.commands.catalog.CatalogSearch")
-    @patch("cis_bench.cli.commands.catalog.Config")
     @patch("cis_bench.cli.commands.catalog.output_data")
     def test_search_results_json_format(
-        self, mock_output, mock_config, mock_search_class, mock_get_db, runner, mock_db, mock_search
+        self, mock_output, mock_search_class, mock_get_db, runner, mock_db, mock_search, monkeypatch
     ):
         """Test search with results in JSON format (lines 205-215)."""
         mock_get_db.return_value = mock_db
         mock_search_class.return_value = mock_search
-        mock_config.get_search_default_limit.return_value = 1000
+        monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "1000")
         mock_output.return_value = None
 
         result = runner.invoke(cli, ["catalog", "search", "ubuntu", "-o", "json"])
@@ -377,14 +530,13 @@ class TestCatalogSearchCommand:
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     @patch("cis_bench.cli.commands.catalog.CatalogSearch")
-    @patch("cis_bench.cli.commands.catalog.Config")
     def test_search_results_table_format(
-        self, mock_config, mock_search_class, mock_get_db, runner, mock_db, mock_search
+        self, mock_search_class, mock_get_db, runner, mock_db, mock_search, monkeypatch
     ):
         """Test search with results in table format (lines 218-223)."""
         mock_get_db.return_value = mock_db
         mock_search_class.return_value = mock_search
-        mock_config.get_search_default_limit.return_value = 1000
+        monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "1000")
 
         result = runner.invoke(cli, ["catalog", "search", "ubuntu"])
 
@@ -394,38 +546,121 @@ class TestCatalogSearchCommand:
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     @patch("cis_bench.cli.commands.catalog.CatalogSearch")
-    @patch("cis_bench.cli.commands.catalog.Config")
+    def test_search_prints_result_text_verbatim(
+        self, mock_search_class, mock_get_db, runner, mock_db, mock_search, monkeypatch
+    ):
+        mock_get_db.return_value = mock_db
+        mock_search.format_result_for_display.return_value = (
+            "[23598] CIS Benchmark [/t] v1\n        Platform: OS [/p]"
+        )
+        mock_search_class.return_value = mock_search
+        monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "1000")
+
+        result = runner.invoke(cli, ["catalog", "search", "ubuntu"])
+
+        assert result.exit_code == 0, result.output
+        assert "[23598] CIS Benchmark [/t] v1" in result.output
+        assert "Platform: OS [/p]" in result.output
+
+    @patch("cis_bench.cli.commands.catalog.get_catalog_db")
+    @patch("cis_bench.cli.commands.catalog.CatalogSearch")
     def test_search_with_explicit_limit(
-        self, mock_config, mock_search_class, mock_get_db, runner, mock_db, mock_search
+        self, mock_search_class, mock_get_db, runner, mock_db, mock_search, monkeypatch
     ):
         """Test search with explicit limit (branch 190->193)."""
         mock_get_db.return_value = mock_db
         mock_search_class.return_value = mock_search
+        monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "7")
 
         result = runner.invoke(cli, ["catalog", "search", "ubuntu", "--limit", "25"])
 
         assert result.exit_code == 0
-        # Config.get_search_default_limit should NOT be called when limit is provided
-        mock_config.get_search_default_limit.assert_not_called()
+        # The configured default (CIS_BENCH_SEARCH_LIMIT=7) is not used when --limit is given
         # Verify explicit limit was passed
         call_kwargs = mock_search.search.call_args.kwargs
         assert call_kwargs["limit"] == 25
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     @patch("cis_bench.cli.commands.catalog.CatalogSearch")
-    @patch("cis_bench.cli.commands.catalog.Config")
-    def test_search_failure(self, mock_config, mock_search_class, mock_get_db, runner, mock_db):
+    def test_search_failure(self, mock_search_class, mock_get_db, runner, mock_db, monkeypatch):
         """Test search failure (lines 225-227)."""
         mock_get_db.return_value = mock_db
         mock_search = MagicMock()
         mock_search.search.side_effect = RuntimeError("Database error")
         mock_search_class.return_value = mock_search
-        mock_config.get_search_default_limit.return_value = 1000
+        monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "1000")
 
         result = runner.invoke(cli, ["catalog", "search", "ubuntu"])
 
         assert result.exit_code == 1
         assert "Search failed" in result.output
+
+    @patch("cis_bench.cli.commands.catalog.get_catalog_db")
+    @patch("cis_bench.cli.commands.catalog.CatalogSearch")
+    def test_search_escapes_rich_markup_in_query(
+        self, mock_search_class, mock_get_db, runner, mock_db, monkeypatch
+    ):
+        """Bracketed queries in catalog search do not raise MarkupError."""
+        mock_get_db.return_value = mock_db
+        mock_search = MagicMock()
+        mock_search.search.return_value = []
+        mock_search_class.return_value = mock_search
+        monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "1000")
+
+        result = runner.invoke(cli, ["catalog", "search", "[/opt]"])
+
+        assert result.exit_code == 0
+        assert "No benchmarks found matching: [/opt]" in result.output
+
+    def test_search_status_all_forwards_raw_value_and_returns_all_statuses(self, runner, tmp_path):
+        """catalog search passes --status through untouched; the database treats 'all' as unfiltered."""
+        import json
+
+        from cis_bench.catalog.database import CatalogDatabase
+        from cis_bench.catalog.search import CatalogSearch
+
+        real_db = CatalogDatabase(tmp_path / "catalog.db")
+        real_db.initialize_schema()
+        for bid, status in [
+            ("601", "Published"),
+            ("602", "Archived"),
+            ("603", "Draft"),
+            ("604", "Final Update"),
+        ]:
+            real_db.insert_benchmark(
+                {
+                    "benchmark_id": bid,
+                    "title": f"CIS Multi Status Catalog Benchmark {bid}",
+                    "version": "v1.0.0",
+                    "url": f"https://workbench.cisecurity.org/benchmarks/{bid}",
+                    "status": status,
+                }
+            )
+
+        real_search = CatalogSearch(real_db)
+
+        with (
+            patch("cis_bench.cli.commands.catalog.get_catalog_db", return_value=real_db),
+            patch(
+                "cis_bench.cli.commands.catalog.CatalogSearch",
+                side_effect=lambda _db: real_search,
+            ),
+            patch.object(real_search, "search", wraps=real_search.search) as search_spy,
+        ):
+            for flag_val in ("all", "ALL"):
+                res = runner.invoke(
+                    cli, ["catalog", "search", "multi", "--status", flag_val, "-o", "json"]
+                )
+                assert res.exit_code == 0
+                payload = json.loads(res.stdout)
+                assert sorted(item["benchmark_id"] for item in payload) == [
+                    "601",
+                    "602",
+                    "603",
+                    "604",
+                ]
+                assert search_spy.call_args.kwargs["status"] == flag_val
+        real_db.engine.dispose()
 
 
 class TestCatalogListCommand:
@@ -457,7 +692,7 @@ class TestCatalogListCommand:
         result = runner.invoke(cli, ["catalog", "list", "--platform", "Operating System"])
 
         assert result.exit_code == 0
-        mock_search.list_by_platform.assert_called_once()
+        assert mock_search.search.call_args.kwargs["platform"] == "Operating System"
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     @patch("cis_bench.cli.commands.catalog.CatalogSearch")
@@ -465,7 +700,7 @@ class TestCatalogListCommand:
         """Test list with no results (lines 258-260)."""
         mock_get_db.return_value = mock_db
         mock_search = MagicMock()
-        mock_search.list_all_published.return_value = []
+        mock_search.search.return_value = []
         mock_search_class.return_value = mock_search
 
         result = runner.invoke(cli, ["catalog", "list"])
@@ -488,11 +723,25 @@ class TestCatalogListCommand:
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     @patch("cis_bench.cli.commands.catalog.CatalogSearch")
+    def test_list_prints_result_text_verbatim(
+        self, mock_search_class, mock_get_db, runner, mock_db, mock_search
+    ):
+        mock_get_db.return_value = mock_db
+        mock_search.format_result_for_display.return_value = "[23598] CIS Benchmark [/t] v1"
+        mock_search_class.return_value = mock_search
+
+        result = runner.invoke(cli, ["catalog", "list"])
+
+        assert result.exit_code == 0, result.output
+        assert "[23598] CIS Benchmark [/t] v1" in result.output
+
+    @patch("cis_bench.cli.commands.catalog.get_catalog_db")
+    @patch("cis_bench.cli.commands.catalog.CatalogSearch")
     def test_list_failure(self, mock_search_class, mock_get_db, runner, mock_db):
         """Test list failure (lines 269-271)."""
         mock_get_db.return_value = mock_db
         mock_search = MagicMock()
-        mock_search.list_all_published.side_effect = RuntimeError("Database error")
+        mock_search.search.side_effect = RuntimeError("Database error")
         mock_search_class.return_value = mock_search
 
         result = runner.invoke(cli, ["catalog", "list"])
@@ -601,6 +850,35 @@ class TestCatalogInfoCommand:
         assert "Security configuration benchmark" in result.output
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
+    def test_info_prints_catalog_fields_verbatim(self, mock_get_db, runner, mock_db):
+        mock_db.get_benchmark.return_value = {
+            **mock_db.get_benchmark.return_value,
+            "title": "CIS Benchmark [/t]",
+            "version": "v1 [/v]",
+            "status": "Published [/s]",
+            "platform": "OS [/p]",
+            "community": "Linux [/c]",
+            "owner": "admin [/o]",
+            "published_date": "2024 [/d]",
+            "url": "https://workbench.cisecurity.org/x[/u]",
+            "description": "About [/x] it",
+        }
+        mock_get_db.return_value = mock_db
+
+        result = runner.invoke(cli, ["catalog", "info", "23598"])
+
+        assert result.exit_code == 0, result.output
+        assert "CIS Benchmark [/t]" in result.output
+        assert "Version: v1 [/v]" in result.output
+        assert "Status: Published [/s]" in result.output
+        assert "Platform: OS [/p]" in result.output
+        assert "Community: Linux [/c]" in result.output
+        assert "Owner: admin [/o]" in result.output
+        assert "Published: 2024 [/d]" in result.output
+        assert "URL: https://workbench.cisecurity.org/x[/u]" in result.output
+        assert "About [/x] it" in result.output
+
+    @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     def test_info_failure(self, mock_get_db, runner, mock_db):
         """Test info failure (lines 337-339)."""
         mock_db.get_benchmark.side_effect = RuntimeError("Database error")
@@ -683,6 +961,16 @@ class TestCatalogPlatformsCommand:
         assert "50" in result.output
         assert "Cloud" in result.output
         assert "30" in result.output
+
+    @patch("cis_bench.cli.commands.catalog.get_catalog_db")
+    def test_platforms_table_prints_names_verbatim(self, mock_get_db, runner, mock_db):
+        mock_db.list_platforms.return_value = [{"name": "Cloud [/n]", "count": 3}]
+        mock_get_db.return_value = mock_db
+
+        result = runner.invoke(cli, ["catalog", "platforms"])
+
+        assert result.exit_code == 0, result.output
+        assert "Cloud [/n]" in result.output
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     def test_platforms_failure(self, mock_get_db, runner, mock_db):
@@ -810,17 +1098,25 @@ class TestCatalogDownloadCommand:
         assert "Catalog not found" in result.output
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
-    @patch("cis_bench.cli.commands.catalog.AuthManager")
-    @patch("cis_bench.cli.commands.catalog.WorkbenchScraper")
-    @patch("cis_bench.cli.commands.catalog.CatalogDownloader")
+    @patch("cis_bench.fetcher.auth.AuthManager")
+    @patch("cis_bench.fetcher.workbench.WorkbenchScraper")
+    @patch("cis_bench.catalog.downloader.CatalogDownloader")
     def test_download_by_id_success(
-        self, mock_downloader_class, mock_scraper_class, mock_auth, mock_get_db, runner, mock_db
+        self,
+        mock_downloader_class,
+        mock_scraper_class,
+        mock_auth,
+        mock_get_db,
+        runner,
+        mock_db,
+        monkeypatch,
     ):
-        """Test download by numeric ID (lines 478-481)."""
+        """Test download by numeric ID uses get_or_create_session."""
         mock_get_db.return_value = mock_db
+        monkeypatch.setenv("CIS_BENCH_VERIFY_SSL", "true")
 
         mock_session = Mock()
-        mock_auth.load_cookies_from_browser.return_value = mock_session
+        mock_auth.return_value.get_or_create_session.return_value = mock_session
 
         mock_downloader = Mock()
         mock_downloader.download_by_id.return_value = {
@@ -836,20 +1132,45 @@ class TestCatalogDownloadCommand:
         assert result.exit_code == 0
         assert "Downloaded benchmark 23598" in result.output
         assert "Recommendations: 150" in result.output
+        assert mock_auth.call_args.kwargs["verify_ssl"] is True
+        mock_auth.return_value.get_or_create_session.assert_called_once_with(browser="chrome")
+        mock_auth.return_value.load_cookies_from_browser.assert_not_called()
+        mock_scraper_class.assert_called_once_with(
+            mock_session,
+            base_url="https://workbench.cisecurity.org",
+            timeout=(10.0, 30.0),
+            max_workers=5,
+            batch_size=10,
+        )
         mock_downloader.download_by_id.assert_called_once_with("23598", force=False)
 
+    @pytest.mark.parametrize(
+        ("extra_args", "expected_force"),
+        [
+            (["--interactive"], False),
+            (["--interactive", "--force"], True),
+        ],
+    )
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
-    @patch("cis_bench.cli.commands.catalog.AuthManager")
-    @patch("cis_bench.cli.commands.catalog.WorkbenchScraper")
-    @patch("cis_bench.cli.commands.catalog.CatalogDownloader")
+    @patch("cis_bench.fetcher.auth.AuthManager")
+    @patch("cis_bench.fetcher.workbench.WorkbenchScraper")
+    @patch("cis_bench.catalog.downloader.CatalogDownloader")
     def test_download_by_name(
-        self, mock_downloader_class, mock_scraper_class, mock_auth, mock_get_db, runner, mock_db
+        self,
+        mock_downloader_class,
+        mock_scraper_class,
+        mock_auth,
+        mock_get_db,
+        extra_args,
+        expected_force,
+        runner,
+        mock_db,
     ):
-        """Test download by name (lines 482-487)."""
+        """Test download by name forwards interactive and force flags."""
         mock_get_db.return_value = mock_db
 
         mock_session = Mock()
-        mock_auth.load_cookies_from_browser.return_value = mock_session
+        mock_auth.return_value.get_or_create_session.return_value = mock_session
 
         mock_downloader = Mock()
         mock_downloader.download_by_name.return_value = {
@@ -860,17 +1181,17 @@ class TestCatalogDownloadCommand:
         }
         mock_downloader_class.return_value = mock_downloader
 
-        result = runner.invoke(cli, ["catalog", "download", "ubuntu 20.04", "--interactive"])
+        result = runner.invoke(cli, ["catalog", "download", "ubuntu 20.04", *extra_args])
 
         assert result.exit_code == 0
         mock_downloader.download_by_name.assert_called_once_with(
-            "ubuntu 20.04", latest=True, interactive=True
+            "ubuntu 20.04", latest=True, interactive=True, force=expected_force
         )
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
-    @patch("cis_bench.cli.commands.catalog.AuthManager")
-    @patch("cis_bench.cli.commands.catalog.WorkbenchScraper")
-    @patch("cis_bench.cli.commands.catalog.CatalogDownloader")
+    @patch("cis_bench.fetcher.auth.AuthManager")
+    @patch("cis_bench.fetcher.workbench.WorkbenchScraper")
+    @patch("cis_bench.catalog.downloader.CatalogDownloader")
     def test_download_already_current(
         self, mock_downloader_class, mock_scraper_class, mock_auth, mock_get_db, runner, mock_db
     ):
@@ -878,7 +1199,7 @@ class TestCatalogDownloadCommand:
         mock_get_db.return_value = mock_db
 
         mock_session = Mock()
-        mock_auth.load_cookies_from_browser.return_value = mock_session
+        mock_auth.return_value.get_or_create_session.return_value = mock_session
 
         mock_downloader = Mock()
         mock_downloader.download_by_id.return_value = {
@@ -893,9 +1214,9 @@ class TestCatalogDownloadCommand:
         assert "already up-to-date" in result.output
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
-    @patch("cis_bench.cli.commands.catalog.AuthManager")
-    @patch("cis_bench.cli.commands.catalog.WorkbenchScraper")
-    @patch("cis_bench.cli.commands.catalog.CatalogDownloader")
+    @patch("cis_bench.fetcher.auth.AuthManager")
+    @patch("cis_bench.fetcher.workbench.WorkbenchScraper")
+    @patch("cis_bench.catalog.downloader.CatalogDownloader")
     def test_download_unchanged(
         self, mock_downloader_class, mock_scraper_class, mock_auth, mock_get_db, runner, mock_db
     ):
@@ -903,7 +1224,7 @@ class TestCatalogDownloadCommand:
         mock_get_db.return_value = mock_db
 
         mock_session = Mock()
-        mock_auth.load_cookies_from_browser.return_value = mock_session
+        mock_auth.return_value.get_or_create_session.return_value = mock_session
 
         mock_downloader = Mock()
         mock_downloader.download_by_id.return_value = {
@@ -918,9 +1239,9 @@ class TestCatalogDownloadCommand:
         assert "No changes detected" in result.output
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
-    @patch("cis_bench.cli.commands.catalog.AuthManager")
-    @patch("cis_bench.cli.commands.catalog.WorkbenchScraper")
-    @patch("cis_bench.cli.commands.catalog.CatalogDownloader")
+    @patch("cis_bench.fetcher.auth.AuthManager")
+    @patch("cis_bench.fetcher.workbench.WorkbenchScraper")
+    @patch("cis_bench.catalog.downloader.CatalogDownloader")
     def test_download_with_force(
         self, mock_downloader_class, mock_scraper_class, mock_auth, mock_get_db, runner, mock_db
     ):
@@ -928,7 +1249,7 @@ class TestCatalogDownloadCommand:
         mock_get_db.return_value = mock_db
 
         mock_session = Mock()
-        mock_auth.load_cookies_from_browser.return_value = mock_session
+        mock_auth.return_value.get_or_create_session.return_value = mock_session
 
         mock_downloader = Mock()
         mock_downloader.download_by_id.return_value = {
@@ -945,9 +1266,9 @@ class TestCatalogDownloadCommand:
         mock_downloader.download_by_id.assert_called_once_with("23598", force=True)
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
-    @patch("cis_bench.cli.commands.catalog.AuthManager")
-    @patch("cis_bench.cli.commands.catalog.WorkbenchScraper")
-    @patch("cis_bench.cli.commands.catalog.CatalogDownloader")
+    @patch("cis_bench.fetcher.auth.AuthManager")
+    @patch("cis_bench.fetcher.workbench.WorkbenchScraper")
+    @patch("cis_bench.catalog.downloader.CatalogDownloader")
     def test_download_value_error(
         self, mock_downloader_class, mock_scraper_class, mock_auth, mock_get_db, runner, mock_db
     ):
@@ -955,7 +1276,7 @@ class TestCatalogDownloadCommand:
         mock_get_db.return_value = mock_db
 
         mock_session = Mock()
-        mock_auth.load_cookies_from_browser.return_value = mock_session
+        mock_auth.return_value.get_or_create_session.return_value = mock_session
 
         mock_downloader = Mock()
         mock_downloader.download_by_name.side_effect = ValueError(
@@ -969,9 +1290,9 @@ class TestCatalogDownloadCommand:
         assert "Multiple matches found" in result.output
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
-    @patch("cis_bench.cli.commands.catalog.AuthManager")
-    @patch("cis_bench.cli.commands.catalog.WorkbenchScraper")
-    @patch("cis_bench.cli.commands.catalog.CatalogDownloader")
+    @patch("cis_bench.fetcher.auth.AuthManager")
+    @patch("cis_bench.fetcher.workbench.WorkbenchScraper")
+    @patch("cis_bench.catalog.downloader.CatalogDownloader")
     def test_download_generic_error(
         self, mock_downloader_class, mock_scraper_class, mock_auth, mock_get_db, runner, mock_db
     ):
@@ -979,16 +1300,56 @@ class TestCatalogDownloadCommand:
         mock_get_db.return_value = mock_db
 
         mock_session = Mock()
-        mock_auth.load_cookies_from_browser.return_value = mock_session
+        mock_auth.return_value.get_or_create_session.return_value = mock_session
 
         mock_downloader = Mock()
-        mock_downloader.download_by_id.side_effect = RuntimeError("Network error")
+        mock_downloader.download_by_id.side_effect = RuntimeError("Network error [/e]")
         mock_downloader_class.return_value = mock_downloader
 
         result = runner.invoke(cli, ["catalog", "download", "23598"])
 
         assert result.exit_code == 1
-        assert "Download failed" in result.output
+        assert result.output.count("Download failed: Network error [/e]") == 1
+        assert "Traceback" not in result.output
+
+    @patch("cis_bench.cli.commands.catalog.get_catalog_db")
+    @patch("cis_bench.fetcher.auth.AuthManager")
+    @patch("cis_bench.fetcher.workbench.WorkbenchScraper")
+    @patch("cis_bench.catalog.downloader.CatalogDownloader")
+    def test_download_error_traceback_is_written_with_verbose(
+        self, mock_downloader_class, mock_scraper_class, mock_auth, mock_get_db, runner, mock_db
+    ):
+        mock_get_db.return_value = mock_db
+        mock_auth.return_value.get_or_create_session.return_value = Mock()
+        mock_downloader_class.return_value.download_by_id.side_effect = RuntimeError("boom")
+
+        result = runner.invoke(cli, ["--verbose", "catalog", "download", "23598"])
+
+        assert result.exit_code == 1
+        assert "Traceback" in result.output
+
+    @patch("cis_bench.cli.commands.catalog.get_catalog_db")
+    @patch("cis_bench.fetcher.auth.AuthManager")
+    @patch("cis_bench.fetcher.workbench.WorkbenchScraper")
+    @patch("cis_bench.catalog.downloader.CatalogDownloader")
+    def test_download_escapes_rich_markup_in_query_and_error(
+        self, mock_downloader_class, mock_scraper_class, mock_auth, mock_get_db, runner, mock_db
+    ):
+        """Bracketed queries in catalog download render literally without MarkupError."""
+        mock_get_db.return_value = mock_db
+        mock_auth.return_value.get_or_create_session.return_value = Mock()
+        mock_downloader = Mock()
+        mock_downloader.download_by_name.side_effect = ValueError(
+            "No benchmarks found matching: [/opt]"
+        )
+        mock_downloader_class.return_value = mock_downloader
+
+        result = runner.invoke(cli, ["catalog", "download", "[/opt]"])
+
+        assert result.exit_code == 1
+        assert isinstance(result.exception, SystemExit)
+        assert "Searching for: [/opt]" in result.output
+        assert "No benchmarks found matching: [/opt]" in result.output
 
 
 class TestCatalogCheckUpdatesCommand:
@@ -1008,56 +1369,121 @@ class TestCatalogCheckUpdatesCommand:
         assert "Catalog not found" in result.output
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
-    def test_check_updates_no_updates(self, mock_get_db, runner, mock_db):
-        """Test check-updates with no updates available (lines 527-529)."""
+    def test_check_updates_offline_skips_enrichment_and_reports_up_to_date(
+        self, mock_get_db, runner, mock_db
+    ):
+        mock_db.check_updates_available.return_value = []
         mock_get_db.return_value = mock_db
+        with (
+            patch("cis_bench.fetcher.auth.AuthManager.get_or_create_session") as mock_auth,
+            patch("cis_bench.catalog.scraper.CatalogScraper") as mock_scraper_cls,
+        ):
+            result = runner.invoke(cli, ["catalog", "check-updates", "--offline"])
 
-        result = runner.invoke(cli, ["catalog", "check-updates"])
-
-        assert result.exit_code == 0
+        assert result.exit_code == 0, result.output
         assert "All downloaded benchmarks are up-to-date" in result.output
+        mock_auth.assert_not_called()
+        mock_scraper_cls.assert_not_called()
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
-    def test_check_updates_with_updates(self, mock_get_db, runner):
-        """Test check-updates with updates available (lines 531-539)."""
+    def test_check_updates_refreshes_dates_then_lists_version_and_date_reasons(
+        self, mock_get_db, runner, monkeypatch, auth_manager_class
+    ):
+        monkeypatch.delenv("CIS_BENCH_VERIFY_SSL", raising=False)
         mock_db = MagicMock()
-        mock_db.db_path = MagicMock()
         mock_db.db_path.exists.return_value = True
         mock_db.check_updates_available.return_value = [
             {
                 "benchmark_id": "23598",
                 "title": "CIS Ubuntu Linux 20.04 LTS Benchmark",
-                "version": "v2.0.1",
+                "downloaded_version": "v1.0.0",
+                "catalog_version": "v2.0.1",
                 "downloaded_at": "2024-07-15",
-                "last_revision_date": "2024-08-01",
+                "published_date": None,
+                "reason": "newer version in catalog",
             },
             {
                 "benchmark_id": "23599",
                 "title": "CIS CentOS Linux 8 Benchmark",
-                "version": "v1.0.0",
+                "downloaded_version": "v1.0.0",
+                "catalog_version": "v1.0.0",
                 "downloaded_at": "2024-06-01",
-                "last_revision_date": "2024-07-15",
+                "published_date": "2024-07-15",
+                "reason": "published after download",
+            },
+        ]
+        mock_get_db.return_value = mock_db
+        mock_auth = auth_manager_class.return_value.get_or_create_session
+        with patch("cis_bench.catalog.scraper.CatalogScraper") as mock_scraper_cls:
+            mock_scraper_cls.return_value.refresh_downloaded_revision_dates.return_value = 2
+            result = runner.invoke(cli, ["catalog", "check-updates"])
+
+        assert result.exit_code == 0, result.output
+        assert auth_manager_class.call_args.kwargs["verify_ssl"] is True
+        mock_auth.assert_called_once_with()
+        mock_scraper_cls.return_value.refresh_downloaded_revision_dates.assert_called_once()
+        flat = " ".join(result.output.split())
+        assert "Updates available for 2 benchmarks" in flat
+        assert "23598" in flat and "v1.0.0 -> v2.0.1" in flat
+        assert "23599" in flat and "published 2024-07-15" in flat
+        assert "cis-bench catalog download <id> --force" in flat
+
+    @patch("cis_bench.cli.commands.catalog.get_catalog_db")
+    def test_check_updates_prints_titles_versions_and_dates_verbatim(self, mock_get_db, runner):
+        mock_db = MagicMock()
+        mock_db.db_path.exists.return_value = True
+        mock_db.check_updates_available.return_value = [
+            {
+                "benchmark_id": "23598",
+                "title": "CIS Benchmark [/t]",
+                "downloaded_version": "v1 [/a]",
+                "catalog_version": "v2 [/b]",
+                "downloaded_at": "2024-07-15",
+                "published_date": None,
+                "reason": "newer version in catalog",
+            },
+            {
+                "benchmark_id": "23599",
+                "title": "CIS Other",
+                "downloaded_version": "v1",
+                "catalog_version": "v1",
+                "downloaded_at": "2024-06-01",
+                "published_date": "2024 [/d]",
+                "reason": "published after download",
             },
         ]
         mock_get_db.return_value = mock_db
 
-        result = runner.invoke(cli, ["catalog", "check-updates"])
+        result = runner.invoke(cli, ["catalog", "check-updates", "--offline"])
 
-        assert result.exit_code == 0
-        assert "Updates available for 2 benchmarks" in result.output
-        assert "23598" in result.output
-        assert "CIS Ubuntu Linux 20.04 LTS Benchmark" in result.output
-        assert "Downloaded: 2024-07-15" in result.output
-        assert "Latest: 2024-08-01" in result.output
-        assert "cis-bench catalog download <id> --force" in result.output
+        assert result.exit_code == 0, result.output
+        assert "[23598] CIS Benchmark [/t]" in result.output
+        assert "Version: v1 [/a] -> v2 [/b]" in result.output
+        assert "WorkBench published 2024 [/d]" in result.output
+
+    @patch("cis_bench.cli.commands.catalog.get_catalog_db")
+    def test_check_updates_without_a_session_prints_login_instruction(
+        self, mock_get_db, runner, mock_db
+    ):
+        mock_get_db.return_value = mock_db
+        with patch(
+            "cis_bench.fetcher.auth.AuthManager.get_or_create_session",
+            side_effect=NoSavedSessionError("session.cookies is missing"),
+        ):
+            result = runner.invoke(cli, ["catalog", "check-updates"])
+
+        assert result.exit_code == 1
+        assert "Authentication required" in result.output
+        assert "cis-bench auth login" in result.output
+        assert "--offline" in result.output
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     def test_check_updates_failure(self, mock_get_db, runner, mock_db):
-        """Test check-updates failure (lines 541-543)."""
+        """A database failure during the comparison is reported, not swallowed."""
         mock_db.check_updates_available.side_effect = RuntimeError("Database error")
         mock_get_db.return_value = mock_db
 
-        result = runner.invoke(cli, ["catalog", "check-updates"])
+        result = runner.invoke(cli, ["catalog", "check-updates", "--offline"])
 
         assert result.exit_code == 1
         assert "Check updates failed" in result.output
@@ -1066,20 +1492,372 @@ class TestCatalogCheckUpdatesCommand:
 class TestGetCatalogDb:
     """Tests for get_catalog_db helper function."""
 
-    @patch("cis_bench.cli.commands.catalog.Config")
     @patch("cis_bench.cli.commands.catalog.CatalogDatabase")
-    def test_get_catalog_db_creates_db(self, mock_db_class, mock_config, tmp_path):
-        """Test get_catalog_db creates database instance."""
+    def test_get_catalog_db_creates_db(self, mock_db_class, tmp_path, monkeypatch):
+        """get_catalog_db creates the data folder and opens catalog.db in it."""
+        import click
+
         from cis_bench.cli.commands.catalog import get_catalog_db
 
-        db_path = tmp_path / "test.db"
-        mock_config.ensure_directories = Mock()
-        mock_config.get_catalog_db_path.return_value = db_path
+        data_dir = tmp_path / "data"
+        monkeypatch.setenv("CIS_BENCH_HOME", str(data_dir))
         mock_db = Mock()
         mock_db_class.return_value = mock_db
 
-        result = get_catalog_db()
+        with click.Context(click.Command("catalog")):
+            result = get_catalog_db()
 
-        mock_config.ensure_directories.assert_called_once()
-        mock_db_class.assert_called_once_with(db_path)
+        assert data_dir.is_dir()
+        mock_db_class.assert_called_once_with(data_dir / "catalog.db")
         assert result == mock_db
+
+    def test_require_catalog_db_returns_existing_db_or_aborts(self, tmp_path):
+        """require_catalog_db returns an initialized CatalogDatabase and raises click.Abort when absent."""
+        import click
+
+        from cis_bench.catalog.database import CatalogDatabase
+        from cis_bench.cli.commands.catalog import require_catalog_db
+
+        missing_db = CatalogDatabase(tmp_path / "missing.db")
+        with patch("cis_bench.cli.commands.catalog.get_catalog_db", return_value=missing_db):
+            with pytest.raises(click.Abort):
+                require_catalog_db()
+        missing_db.engine.dispose()
+
+        ready_db = CatalogDatabase(tmp_path / "ready.db")
+        ready_db.initialize_schema()
+        with patch("cis_bench.cli.commands.catalog.get_catalog_db", return_value=ready_db):
+            assert require_catalog_db() is ready_db
+        ready_db.engine.dispose()
+
+    @pytest.mark.parametrize(
+        ("subcommand_args", "expected_message", "forbidden_banner"),
+        [
+            (
+                ["update"],
+                "Catalog not initialized. Run 'cis-bench catalog refresh' first.",
+                "Update failed",
+            ),
+            (
+                ["search", "ubuntu"],
+                "Catalog not found. Run 'cis-bench catalog refresh' first.",
+                "Search failed",
+            ),
+            (["list"], "Catalog not found. Run 'cis-bench catalog refresh' first.", "List failed"),
+            (
+                ["info", "23598"],
+                "Catalog not found. Run 'cis-bench catalog refresh' first.",
+                "Info failed",
+            ),
+            (
+                ["platforms"],
+                "Catalog not found. Run 'cis-bench catalog refresh' first.",
+                "Platforms list failed",
+            ),
+            (
+                ["stats"],
+                "Catalog not found. Run 'cis-bench catalog refresh' first.",
+                "Stats failed",
+            ),
+            (
+                ["download", "23598"],
+                "Catalog not found. Run 'cis-bench catalog refresh' first.",
+                "Download failed",
+            ),
+            (
+                ["check-updates"],
+                "Catalog not found. Run 'cis-bench catalog refresh' first.",
+                "Check updates failed",
+            ),
+        ],
+    )
+    def test_missing_catalog_aborts_cleanly_across_all_subcommands(
+        self, runner, tmp_path, subcommand_args, expected_message, forbidden_banner
+    ):
+        """Every catalog-consuming subcommand aborts cleanly without catching click.Abort as a generic failure."""
+        from cis_bench.catalog.database import CatalogDatabase
+
+        missing_db = CatalogDatabase(tmp_path / "absent.db")
+        with patch("cis_bench.cli.commands.catalog.get_catalog_db", return_value=missing_db):
+            result = runner.invoke(cli, ["catalog", *subcommand_args])
+        missing_db.engine.dispose()
+
+        assert result.exit_code == 1
+        assert expected_message in result.output
+        assert forbidden_banner not in result.output
+
+    def test_refresh_invalid_session_and_info_missing_benchmark_do_not_emit_failed_banner(
+        self, runner, tmp_path
+    ):
+        """click.Abort raised for invalid session or missing benchmark ID is not caught by except Exception."""
+        from cis_bench.catalog.database import CatalogDatabase
+
+        real_db = CatalogDatabase(tmp_path / "catalog.db")
+        real_db.initialize_schema()
+
+        with (
+            patch("cis_bench.cli.commands.catalog.get_catalog_db", return_value=real_db),
+            patch(
+                "cis_bench.fetcher.auth.AuthManager.get_or_create_session",
+                side_effect=AuthenticationError(
+                    "Failed to authenticate. Please ensure you are logged into "
+                    "workbench.cisecurity.org in chrome"
+                ),
+            ),
+        ):
+            refresh_res = runner.invoke(cli, ["catalog", "refresh"])
+
+        assert refresh_res.exit_code == 1
+        assert "Authentication required" in refresh_res.output
+        assert "cis-bench auth login" in refresh_res.output
+        assert "Catalog refresh failed" not in refresh_res.output
+
+        with patch("cis_bench.cli.commands.catalog.get_catalog_db", return_value=real_db):
+            info_res = runner.invoke(cli, ["catalog", "info", "99999"])
+
+        real_db.engine.dispose()
+        assert info_res.exit_code == 1
+        assert "Benchmark 99999 not found in catalog." in info_res.output
+        assert "Info failed" not in info_res.output
+
+
+class TestVerifiedTLSByDefault:
+    """refresh, update and download verify certificates unless CIS_BENCH_VERIFY_SSL opts out."""
+
+    @patch("cis_bench.cli.commands.catalog.get_catalog_db")
+    @patch("cis_bench.fetcher.auth.AuthManager")
+    @patch("cis_bench.catalog.scraper.CatalogScraper")
+    def test_refresh_defaults_to_verified_tls(
+        self, mock_scraper_class, mock_auth, mock_get_db, runner, mock_db, monkeypatch
+    ):
+        monkeypatch.delenv("CIS_BENCH_VERIFY_SSL", raising=False)
+        mock_get_db.return_value = mock_db
+        mock_auth.return_value.get_or_create_session.return_value = Mock()
+        mock_scraper = Mock()
+        mock_scraper.scrape_full_catalog.return_value = {
+            "total_benchmarks": 1,
+            "pages_scraped": 1,
+            "failed_pages": [],
+        }
+        mock_scraper_class.return_value = mock_scraper
+
+        result = runner.invoke(cli, ["catalog", "refresh"])
+
+        assert result.exit_code == 0, result.output
+        assert mock_auth.call_args.kwargs["verify_ssl"] is True
+        assert mock_auth.call_args.kwargs["request_policy"].requests_per_second == 3.0
+        mock_auth.return_value.get_or_create_session.assert_called_once_with(browser="chrome")
+        mock_auth.return_value.validate_session.assert_not_called()
+
+    @patch("cis_bench.cli.commands.catalog.get_catalog_db")
+    @patch("cis_bench.fetcher.auth.AuthManager")
+    @patch("cis_bench.catalog.scraper.CatalogScraper")
+    def test_update_defaults_to_verified_tls(
+        self, mock_scraper_class, mock_auth, mock_get_db, runner, mock_db, monkeypatch
+    ):
+        monkeypatch.delenv("CIS_BENCH_VERIFY_SSL", raising=False)
+        mock_get_db.return_value = mock_db
+        mock_auth.return_value.get_or_create_session.return_value = Mock()
+        mock_scraper = Mock()
+        mock_scraper.scrape_page_one_update.return_value = {"new_count": 0, "updated_count": 0}
+        mock_scraper_class.return_value = mock_scraper
+
+        result = runner.invoke(cli, ["catalog", "update"])
+
+        assert result.exit_code == 0, result.output
+        assert mock_auth.call_args.kwargs["verify_ssl"] is True
+        mock_auth.return_value.get_or_create_session.assert_called_once_with(browser="chrome")
+
+    @patch("cis_bench.cli.commands.catalog.get_catalog_db")
+    @patch("cis_bench.fetcher.auth.AuthManager")
+    @patch("cis_bench.fetcher.workbench.WorkbenchScraper")
+    @patch("cis_bench.catalog.downloader.CatalogDownloader")
+    def test_download_defaults_to_verified_tls(
+        self,
+        mock_downloader_class,
+        mock_scraper_class,
+        mock_auth,
+        mock_get_db,
+        runner,
+        mock_db,
+        monkeypatch,
+    ):
+        monkeypatch.delenv("CIS_BENCH_VERIFY_SSL", raising=False)
+        mock_get_db.return_value = mock_db
+        mock_auth.return_value.get_or_create_session.return_value = Mock()
+        mock_downloader = Mock()
+        mock_downloader.download_by_id.return_value = {
+            "status": "downloaded",
+            "benchmark_id": "23598",
+            "recommendation_count": 1,
+            "file_size": 10,
+        }
+        mock_downloader_class.return_value = mock_downloader
+
+        result = runner.invoke(cli, ["catalog", "download", "23598"])
+
+        assert result.exit_code == 0, result.output
+        assert mock_auth.call_args.kwargs["verify_ssl"] is True
+        mock_auth.return_value.get_or_create_session.assert_called_once_with(browser="chrome")
+
+
+class TestCatalogCommandsNoSavedSession:
+    """Every catalog command that needs a session reports a missing one with the login instruction."""
+
+    @pytest.mark.parametrize("args", [["catalog", "update"], ["catalog", "download", "23598"]])
+    @patch("cis_bench.cli.commands.catalog.get_catalog_db")
+    def test_missing_session_prints_login_instruction_without_a_failure_banner(
+        self, mock_get_db, runner, mock_db, args
+    ):
+        mock_get_db.return_value = mock_db
+        with patch(
+            "cis_bench.fetcher.auth.AuthManager.get_or_create_session",
+            side_effect=NoSavedSessionError("session.cookies is missing"),
+        ):
+            result = runner.invoke(cli, args)
+
+        assert result.exit_code == 1
+        assert "Authentication required" in result.output
+        assert "cis-bench auth login" in result.output
+        assert "failed" not in result.output.lower()
+
+
+class TestCatalogRequestTimeoutSetting:
+    """A bad CIS_BENCH_REQUEST_TIMEOUT is refused before the catalog commands authenticate."""
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ["catalog", "refresh"],
+            ["catalog", "update"],
+            ["catalog", "check-updates"],
+            ["catalog", "download", "23598"],
+        ],
+    )
+    def test_network_catalog_commands_reject_a_bad_timeout_before_auth(
+        self, runner, mock_db, monkeypatch, args
+    ):
+        monkeypatch.setenv("CIS_BENCH_REQUEST_TIMEOUT", "inf")
+        with (
+            patch("cis_bench.cli.commands.catalog.get_catalog_db", return_value=mock_db),
+            patch("cis_bench.cli.commands.catalog.require_catalog_db", return_value=mock_db),
+            patch.object(AuthManager, "get_or_create_session") as mock_auth,
+        ):
+            result = runner.invoke(cli, args)
+
+        assert result.exit_code == 1
+        assert "Configuration Error" in result.output
+        assert "CIS_BENCH_REQUEST_TIMEOUT" in result.output
+        mock_auth.assert_not_called()
+
+    def test_check_updates_offline_still_refuses_a_bad_timeout(self, runner, mock_db, monkeypatch):
+        # Every setting is checked at startup, whether or not the command uses it.
+        monkeypatch.setenv("CIS_BENCH_REQUEST_TIMEOUT", "inf")
+        mock_db.check_updates_available.return_value = []
+        with (
+            patch("cis_bench.cli.commands.catalog.require_catalog_db", return_value=mock_db),
+            patch.object(AuthManager, "get_or_create_session") as mock_auth,
+        ):
+            result = runner.invoke(cli, ["catalog", "check-updates", "--offline"])
+
+        assert result.exit_code == 1, result.output
+        assert "Configuration Error" in result.output
+        assert "CIS_BENCH_REQUEST_TIMEOUT" in result.output
+        mock_db.check_updates_available.assert_not_called()
+        mock_auth.assert_not_called()
+
+    def test_catalog_download_reports_a_configuration_error_with_its_heading(
+        self, runner, mock_db, monkeypatch
+    ):
+        monkeypatch.delenv("CIS_BENCH_REQUEST_TIMEOUT", raising=False)
+        monkeypatch.setenv("CIS_BENCH_WORKBENCH_URL", "http://workbench.cisecurity.org")
+        with (
+            patch("cis_bench.cli.commands.catalog.require_catalog_db", return_value=mock_db),
+            patch.object(AuthManager, "get_or_create_session") as mock_auth,
+        ):
+            result = runner.invoke(cli, ["catalog", "download", "23598"])
+
+        assert result.exit_code != 0
+        assert "Configuration Error" in result.output
+        assert "CIS_BENCH_WORKBENCH_URL" in result.output
+        assert "must be an https://*.cisecurity.org origin" in result.output
+        mock_auth.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "args",
+        [["refresh"], ["update"], ["download", "23598"], ["check-updates"]],
+        ids=["refresh", "update", "download", "check-updates"],
+    )
+    def test_an_unreachable_workbench_is_reported_as_such_not_as_a_login_problem(
+        self, runner, args
+    ):
+        from cis_bench.exceptions import FetchError
+
+        with (
+            patch("cis_bench.cli.commands.catalog.get_catalog_db"),
+            patch("cis_bench.cli.commands.catalog.require_catalog_db"),
+            patch.object(
+                AuthManager,
+                "get_or_create_session",
+                side_effect=FetchError(
+                    "https://workbench.cisecurity.org/benchmarks", 3, "Read timed out"
+                ),
+            ),
+        ):
+            result = runner.invoke(cli, ["catalog", *args])
+
+        assert result.exit_code == 1
+        assert "Could not reach WorkBench" in result.output
+        assert "saved session was kept" in result.output
+        assert "auth login" not in result.output
+        assert "Traceback" not in result.output
+
+    @pytest.mark.parametrize("rate", ["nan", "inf", "-1", "0", "1e-309", "5e-324"])
+    def test_refresh_rejects_a_bad_rate_limit_before_any_network_call(self, runner, rate):
+        # 1e-309 and 5e-324 are finite and above 0, but 1 / them is an infinite request rate
+        with (
+            patch("cis_bench.cli.commands.catalog.get_catalog_db") as mock_get_db,
+            patch.object(AuthManager, "get_or_create_session") as mock_auth,
+        ):
+            result = runner.invoke(cli, ["catalog", "refresh", "--rate-limit", rate])
+
+        assert result.exit_code == 2  # Click usage error
+        assert "--rate-limit" in result.output
+        mock_auth.assert_not_called()
+        mock_get_db.assert_not_called()
+
+
+class TestCatalogListingsShowWhatTheLimitCutOff:
+    @pytest.mark.parametrize(
+        "args",
+        [["catalog", "search", "sample", "--limit", "2"], ["catalog", "list", "--limit", "2"]],
+        ids=["catalog-search", "catalog-list"],
+    )
+    def test_a_cut_off_list_says_how_many_matched(self, runner, small_catalog, args, monkeypatch):
+        monkeypatch.setenv("CIS_BENCH_HOME", str(small_catalog.parent))
+        result = runner.invoke(cli, args)
+
+        assert result.exit_code == 0, result.output
+        assert "Showing 2 of 5 results; use --limit to see more" in result.output
+
+    def test_catalog_list_takes_its_default_limit_from_the_search_limit_setting(
+        self, runner, small_catalog, monkeypatch
+    ):
+        monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "3")
+        monkeypatch.setenv("CIS_BENCH_HOME", str(small_catalog.parent))
+        result = runner.invoke(cli, ["catalog", "list"])
+
+        assert result.exit_code == 0, result.output
+        assert "Showing 3 of 5 results; use --limit to see more" in result.output
+
+    @patch("cis_bench.cli.commands.catalog.get_catalog_db")
+    @patch("cis_bench.cli.commands.catalog.CatalogSearch")
+    def test_catalog_list_latest_applies_without_a_platform(
+        self, mock_search_class, mock_get_db, runner, mock_db
+    ):
+        mock_get_db.return_value = mock_db
+        mock_search_class.return_value.search.return_value = []
+
+        runner.invoke(cli, ["catalog", "list", "--latest"])
+
+        assert mock_search_class.return_value.search.call_args.kwargs["latest_only"] is True

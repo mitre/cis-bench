@@ -49,12 +49,12 @@ rule_defaults:
   role: "full"
 
 # Default ID templates (can be overridden by child configs)
-# Variables available: {platform}, {ref}, {ref_normalized}, {version_padded}
+# Variables available: {ref}, {ref_normalized}, {stig_number}
 rule_id:
-  template: "xccdf_org.cisecurity_rule_{platform}_{ref_normalized}"
+  template: "xccdf_org.cisecurity_rule_{ref_normalized}"
 
 group_id:
-  template: "xccdf_org.cisecurity_group_{platform}_{ref_normalized}"
+  template: "xccdf_org.cisecurity_group_{ref_normalized}"
 
 # Common validation rules
 validation:

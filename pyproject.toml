@@ -38,19 +38,21 @@ dependencies = [
     "sqlmodel>=0.0.16",
     "alembic>=1.13.0",
     # CLI
-    "click>=8.1.0",
+    "click>=8.1.0,<9",  # cli/app.py reads Click's option parser, slated for removal in 9.0
     "rich>=13.7.0",
     "questionary>=2.0.0",
     # Authentication
     "browser-cookie3>=0.19.0",
     # SSL/TLS - Use system certificate stores
     "truststore>=0.8.0",
-    # Configuration
-    "python-dotenv>=1.0.0",
+    # Configuration (reads the environment and config.toml; brings python-dotenv, but .env
+    # files are not read)
+    "pydantic-settings>=2.16.0",
     # Export formats
     "PyYAML>=6.0.0",
     "xsdata[cli,lxml]>=24.0.0",
     "lxml>=5.0.0",
+    "requests-ratelimiter>=0.10.0",
 ]
 
 [project.optional-dependencies]
@@ -74,6 +76,7 @@ dev = [
     "twine>=5.0.0",
     # Documentation
     "mkdocs-material>=9.5.0",
+    "mkdocs-autorefs>=1.0.0",
 ]
 
 [project.urls]
@@ -187,14 +190,21 @@ select = [
     "C4",  # flake8-comprehensions
     "UP",  # pyupgrade
     "S",   # flake8-bandit (security)
+    "TID251",  # banned APIs: settings are read only through cis_bench.config
 ]
 ignore = [
     "E501",  # line too long (handled by formatter)
     "S101",  # Allow assert in tests
 ]
 
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"os.getenv".msg = "Read settings from cis_bench.config.Settings; only config.py reads the environment."
+"os.environ".msg = "Read settings from cis_bench.config.Settings; only config.py reads the environment."
+"dotenv".msg = "cis-bench reads no .env file; settings come from the environment and config.toml through cis_bench.config.Settings."
+
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["S101", "S105", "S603", "S607", "B023", "F841"]  # Allow test-specific patterns
+"tests/**/*.py" = ["S101", "S105", "S603", "S607", "B023", "F841", "TID251"]  # Allow test-specific patterns; tests set the environment
+"src/cis_bench/config.py" = ["TID251"]  # the one module that reads the environment
 "src/cis_bench/models/xccdf/*.py" = ["S105"]  # PASS/FAIL are test result enums, not passwords
 "src/cis_bench/models/xccdf_v1_1/*.py" = ["S105"]  # PASS/FAIL are test result enums, not passwords
 "fetch.py" = ["B023"]  # Legacy script - not fixing
@@ -207,6 +217,10 @@ python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false  # Gradually enable
+
+[[tool.mypy.overrides]]
+module = ["browser_cookie3", "lxml", "lxml.*"]
+ignore_missing_imports = true
 
 [tool.bandit]
 # Bandit security scanner configuration

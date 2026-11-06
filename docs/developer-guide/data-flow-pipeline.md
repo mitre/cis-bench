@@ -45,7 +45,7 @@ Each stage performs specific transformations, validates data, and handles errors
 
 When you run `cis-bench download 23598`, the system:
 
-1. **Authenticates** using saved [session](../about/glossary.md#session) from `~/.cis-bench/session.cookies`
+1. **Authenticates** using saved [session](../about/glossary.md#session) from `~/.local/state/cis-bench/session.cookies`
 2. **Fetches HTML** from `https://workbench.cisecurity.org/benchmarks/23598`
 3. **Detects HTML version** using `StrategyDetector`
 4. **Applies [strategy](../about/glossary.md#strategy)** (currently `v1_current.py`) to parse HTML
@@ -910,13 +910,12 @@ SUPPORTED_STYLES = {
 
 ### Parallel Processing
 
-Only catalog scraping uses parallelism:
+Catalog refresh and benchmark download both fetch in batches with `utils/parallel.py`, and every request goes through the session's adapter from `fetcher/http.py`:
 
-- 10 pages per batch
-- 5 concurrent threads
-- ~2 minutes for 1,300+ benchmarks
-
-Individual benchmark processing is sequential (fast enough).
+- Pages per batch and concurrent threads from the `CIS_BENCH_BATCH_SIZE` and `CIS_BENCH_MAX_CONCURRENT_REQUESTS` settings, passed to the scrapers by `cli/helpers/services.py`
+- At most `CIS_BENCH_REQUESTS_PER_SECOND` requests per second per WorkBench host, enforced by requests-ratelimiter across all threads
+- Retries by urllib3's `Retry` from the `RequestPolicy` the session was built with (`CIS_BENCH_REQUEST_RETRIES`, backoff factor, jitter); the retryable statuses and the `Retry-After` cap are constants in `config.py`
+- Full catalog (about 80 pages): under a minute; one benchmark's recommendation pages (for example 322): about two minutes
 
 ---
 

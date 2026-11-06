@@ -422,6 +422,42 @@ class TestXCCDFPostProcessor:
 # ============================================================================
 
 
+class TestNCNameSlug:
+    """Tests for ncname_slug: text to an XML NCName-safe identifier segment."""
+
+    def test_cis_title_becomes_underscored_segment(self):
+        from cis_bench.utils.xml_utils import ncname_slug
+
+        assert (
+            ncname_slug("CIS Ubuntu Linux 22.04 LTS Benchmark")
+            == "CIS_Ubuntu_Linux_22.04_LTS_Benchmark"
+        )
+
+    def test_ncname_safe_text_is_unchanged(self):
+        from cis_bench.utils.xml_utils import ncname_slug
+
+        assert ncname_slug("v1.0.0") == "v1.0.0"
+        assert ncname_slug("Release-2_final") == "Release-2_final"
+
+    def test_runs_of_unsafe_characters_collapse_to_one_underscore(self):
+        from cis_bench.utils.xml_utils import ncname_slug
+
+        assert ncname_slug("a  b\t/c:d") == "a_b_c_d"
+        assert ncname_slug("v7.1.0 (vNext)") == "v7.1.0_vNext"
+
+    def test_leading_and_trailing_separators_are_dropped(self):
+        from cis_bench.utils.xml_utils import ncname_slug
+
+        assert ncname_slug("  Title  ") == "Title"
+        assert ncname_slug("(draft)") == "draft"
+
+    def test_empty_text_gives_empty_slug(self):
+        from cis_bench.utils.xml_utils import ncname_slug
+
+        assert ncname_slug("") == ""
+        assert ncname_slug(" / ") == ""
+
+
 class TestHTMLCleanerStripHtml:
     """Tests for HTMLCleaner.strip_html."""
 
@@ -833,3 +869,35 @@ class TestHTMLValidatorExtractAllIds:
         result = HTMLValidator.extract_all_ids(html)
 
         assert "deeply-nested" in result
+
+
+class TestAttributeText:
+    """attribute_text reads one attribute of a tag as text, whatever bs4 stored it as."""
+
+    @staticmethod
+    def _tag(html):
+        from bs4 import BeautifulSoup
+
+        return BeautifulSoup(html, "html.parser").find("wb-x")
+
+    def test_a_single_valued_attribute_is_returned_as_written(self):
+        from cis_bench.utils.html_parser import attribute_text
+
+        assert attribute_text(self._tag("<wb-x profiles='[{\"a\": 1}]'></wb-x>"), "profiles") == (
+            '[{"a": 1}]'
+        )
+
+    def test_a_missing_attribute_is_none(self):
+        from cis_bench.utils.html_parser import attribute_text
+
+        assert attribute_text(self._tag("<wb-x></wb-x>"), "profiles") is None
+
+    def test_an_empty_attribute_is_an_empty_string(self):
+        from cis_bench.utils.html_parser import attribute_text
+
+        assert attribute_text(self._tag('<wb-x id=""></wb-x>'), "id") == ""
+
+    def test_a_multi_valued_attribute_is_joined_as_it_was_written(self):
+        from cis_bench.utils.html_parser import attribute_text
+
+        assert attribute_text(self._tag('<wb-x class="one  two"></wb-x>'), "class") == "one two"

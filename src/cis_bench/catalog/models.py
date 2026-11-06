@@ -23,6 +23,7 @@ class BenchmarkStatus(str, Enum):
     DRAFT = "Draft"
     ARCHIVED = "Archived"
     REJECTED = "Rejected"
+    FINAL_UPDATE = "Final Update"
 
 
 # ============================================================================
@@ -181,9 +182,13 @@ class DownloadedBenchmark(SQLModel, table=True):
     file_size: int | None = None
     recommendation_count: int | None = None
 
+    # Version string of the downloaded benchmark, compared against the catalog on check-updates
+    version: str | None = None
+
     # Timestamps
     downloaded_at: datetime = Field(default_factory=utcnow)
     last_accessed: datetime = Field(default_factory=utcnow)
+    # ISO date (YYYY-MM-DD) WorkBench reports for the benchmark, refreshed by check-updates
     workbench_last_modified: str | None = None
 
 

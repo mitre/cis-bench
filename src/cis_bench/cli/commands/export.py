@@ -1,14 +1,14 @@
 """Export command for CIS Benchmark CLI."""
 
-import json
 import logging
 import os
 import sys
 
 import click
 from rich.console import Console
+from rich.markup import escape
 
-from cis_bench.config import Config
+from cis_bench.cli.helpers.services import settings_from
 from cis_bench.exporters import ExporterFactory
 from cis_bench.exporters.xccdf_unified_exporter import XCCDFExporter
 from cis_bench.models.benchmark import Benchmark
@@ -40,7 +40,7 @@ def _load_benchmark_from_db(identifier, catalog_db_path):
     Returns:
         tuple: (Benchmark, benchmark_id) or (None, error_message)
     """
-    from cis_bench.catalog.database import CatalogDatabase
+    from cis_bench.catalog.database import CatalogDatabase, deserialize_benchmark_json
 
     db = CatalogDatabase(catalog_db_path)
     downloaded = db.get_downloaded(identifier)
@@ -48,8 +48,7 @@ def _load_benchmark_from_db(identifier, catalog_db_path):
     if not downloaded:
         return None, f"Benchmark {identifier} not downloaded"
 
-    benchmark_data = json.loads(downloaded["content_json"])
-    benchmark = Benchmark(**benchmark_data)
+    benchmark = deserialize_benchmark_json(downloaded["content_json"])
     return benchmark, identifier
 
 
@@ -106,7 +105,7 @@ def _export_single_benchmark(
     if identifier.isdigit():
         logger.info(f"Loading benchmark {identifier} from database")
 
-        catalog_db_path = Config.get_catalog_db_path()
+        catalog_db_path = settings_from().catalog_db_path
 
         if not catalog_db_path.exists():
             console.print(f"{prefix} [red]Error: Catalog database not found[/red]")
@@ -118,18 +117,18 @@ def _export_single_benchmark(
         try:
             benchmark, result = _load_benchmark_from_db(identifier, catalog_db_path)
             if benchmark is None:
-                console.print(f"{prefix} [red]Error: {result}[/red]")
+                console.print(f"{prefix} [red]Error: {escape(str(result))}[/red]")
                 console.print(
                     f"[yellow]Hint: Run 'cis-bench download {identifier}' to download it first[/yellow]"
                 )
                 return False, None
 
             benchmark_id_for_filename = result
-            console.print(f"{prefix} [green]✓[/green] Loaded from cache: {benchmark.title}")
+            console.print(f"{prefix} [green]✓[/green] Loaded from cache: {escape(benchmark.title)}")
 
         except Exception as e:
-            logger.error(f"Failed to load benchmark from database: {e}", exc_info=True)
-            console.print(f"{prefix} [red]Error loading from database: {e}[/red]")
+            logger.debug("Failed to load benchmark from database", exc_info=True)
+            console.print(f"{prefix} [red]Error loading from database: {escape(str(e))}[/red]")
             return False, None
 
     else:
@@ -139,14 +138,14 @@ def _export_single_benchmark(
         try:
             benchmark, error = _load_benchmark_from_file(identifier, input_dir)
             if benchmark is None:
-                console.print(f"{prefix} [red]Error: {error}[/red]")
+                console.print(f"{prefix} [red]Error: {escape(str(error))}[/red]")
                 return False, None
 
-            console.print(f"{prefix} [green]✓[/green] Loaded: {benchmark.title}")
+            console.print(f"{prefix} [green]✓[/green] Loaded: {escape(benchmark.title)}")
 
         except Exception as e:
-            logger.error(f"Failed to load benchmark: {e}", exc_info=True)
-            console.print(f"{prefix} [red]Error loading benchmark: {e}[/red]")
+            logger.debug("Failed to load benchmark", exc_info=True)
+            console.print(f"{prefix} [red]Error loading benchmark: {escape(str(e))}[/red]")
             return False, None
 
     # Determine exporter parameters
@@ -182,7 +181,7 @@ def _export_single_benchmark(
 
         console.print(
             f"{prefix} [green]✓[/green] Exported {len(benchmark.recommendations)} "
-            f"recommendations to [bold]{actual_output_file}[/bold]"
+            f"recommendations to [bold]{escape(str(actual_output_file))}[/bold]"
         )
         console.print(f"      Format: [cyan]{exporter.format_name()}[/cyan]")
         console.print(f"      Size: [yellow]{file_size:.1f} KB[/yellow]")
@@ -190,8 +189,8 @@ def _export_single_benchmark(
         return True, actual_output_file
 
     except Exception as e:
-        logger.error(f"Export failed: {e}", exc_info=True)
-        console.print(f"{prefix} [red]✗ Export failed: {e}[/red]")
+        logger.debug("Export failed", exc_info=True)
+        console.print(f"{prefix} [red]✗ Export failed: {escape(str(e))}[/red]")
         return False, None
 
 
@@ -224,12 +223,12 @@ def _export_single_benchmark(
 )
 @click.option(
     "--input-dir",
-    default="./benchmarks",
-    help="Input directory where benchmark JSON files are stored",
+    help="Input directory where benchmark JSON files are stored (default: <data dir>/benchmarks)",
 )
 def export_cmd(identifiers, export_format, style, output_file, output_dir, input_dir):
     """Export benchmarks to different formats.
 
+    \b
     IDENTIFIERS can be one or more of:
     - Benchmark IDs (e.g., 23598) - loads from catalog database
     - File paths (e.g., benchmark.json) - loads from file
@@ -240,10 +239,12 @@ def export_cmd(identifiers, export_format, style, output_file, output_dir, input
         cis-bench export 23598 --format xccdf --style cis
         cis-bench export benchmark.json --format yaml
 
+    \b
         # Batch export multiple benchmarks
         cis-bench export 23598 22605 18208 --format yaml
         cis-bench export 23598 22605 --format xccdf --style disa
 
+    \b
         # Export to specific directory
         cis-bench export 23598 22605 --format xccdf --output-dir ./stig_exports
     """
@@ -256,6 +257,9 @@ def export_cmd(identifiers, export_format, style, output_file, output_dir, input
         console.print("[red]Error: --output cannot be used with multiple identifiers[/red]")
         console.print("[yellow]Hint: Use --output-dir for batch exports[/yellow]")
         sys.exit(1)
+
+    if input_dir is None:
+        input_dir = settings_from().benchmarks_dir
 
     total = len(identifiers)
     success_count = 0

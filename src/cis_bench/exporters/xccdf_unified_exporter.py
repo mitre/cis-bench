@@ -8,9 +8,10 @@ a new YAML config file - no Python code changes needed.
 import logging
 from pathlib import Path
 
+from cis_bench.exceptions import ExportError
 from cis_bench.exporters.base import BaseExporter, ExporterFactory
 from cis_bench.exporters.mapping_engine import ConfigLoader, MappingEngine
-from cis_bench.models.benchmark import Benchmark
+from cis_bench.models.benchmark import Benchmark, Recommendation
 from cis_bench.utils.xml_utils import DublinCoreInjector, XCCDFPostProcessor, XCCDFSerializer
 
 logger = logging.getLogger(__name__)
@@ -104,19 +105,43 @@ class XCCDFExporter(BaseExporter):
         The mapping engine handles all style-specific logic based on the
         loaded YAML configuration.
         """
-        platform = benchmark.title.lower().split()[0] if benchmark.title else "CIS"
         context = {
-            "platform": platform,
             "benchmark": benchmark,
             "recommendations": benchmark.recommendations,  # Needed for profile generation
         }
 
-        # Build all Groups (each contains one Rule)
+        # Reset per-export metadata state so repeated exports and rules without
+        # metadata stay aligned 1-to-1 by Rule ID
+        self.engine._metadata_for_post_processing = []
+        self._rule_metadata_by_id: dict[str, list[object]] = {}
+
+        # Build all Groups (each contains one Rule). Rule ids must be unique:
+        # XCCDF forbids duplicates and per-Rule metadata is keyed by id, so a
+        # collision would silently merge two recommendations into one Rule.
         groups = []
+        recommendations_by_rule_id: dict[str, list[Recommendation]] = {}
         for rec in benchmark.recommendations:
+            before_count = len(self.engine._metadata_for_post_processing)
             rule = self.engine.map_rule(rec, context)
+            new_metadata = self.engine._metadata_for_post_processing[before_count:]
+            if new_metadata and getattr(rule, "id", None):
+                self._rule_metadata_by_id[str(rule.id)] = list(new_metadata)
+            recommendations_by_rule_id.setdefault(str(rule.id), []).append(rec)
             group = self.engine.map_group(rec, rule, context)
             groups.append(group)
+
+        collisions = {
+            rule_id: recs for rule_id, recs in recommendations_by_rule_id.items() if len(recs) > 1
+        }
+        if collisions:
+            details = "; ".join(
+                f"{rule_id} <- " + ", ".join(f"{rec.ref} ({rec.title})" for rec in recs)
+                for rule_id, recs in collisions.items()
+            )
+            raise ExportError(
+                f"Duplicate Rule ids in style '{self.style}': {details}. "
+                "XCCDF requires unique Rule ids; fix the colliding recommendations."
+            )
 
         # Build Benchmark (will generate Profiles if configured)
         xccdf_bench = self.engine.map_benchmark(benchmark, groups, context)
@@ -197,7 +222,7 @@ class XCCDFExporter(BaseExporter):
                 logger.warning(f"Unknown post-processing handler: {handler}")
 
         # Build namespace map for lxml (convert "default" key to None)
-        nsmap_for_lxml = {}
+        nsmap_for_lxml: dict[str | None, str] = {}
         for key, value in namespaces_config.items():
             if key == "default":
                 nsmap_for_lxml[None] = value
@@ -232,9 +257,24 @@ class XCCDFExporter(BaseExporter):
         """
         from lxml import etree
 
+        # Rule children must stay in schema order, so metadata goes before the
+        # first element the schema places after it. The order comes from the
+        # XCCDF model of this style's version; a version whose Rule has no
+        # metadata element (1.1.4) cannot carry injected metadata at all, so
+        # enabling this handler on such a style is a configuration error even
+        # when nothing happens to be queued.
+        element_order = self.engine.rule_element_order()
+        if "metadata" not in element_order:
+            raise ExportError(
+                f"XCCDF {self.engine.xccdf_version} Rules have no metadata element; "
+                f"the metadata_injection handler is not valid for style '{self.style}'"
+            )
+        elements_after_metadata = set(element_order[element_order.index("metadata") + 1 :])
+
+        metadata_by_rule_id = getattr(self, "_rule_metadata_by_id", None)
         metadata_elements = getattr(self.engine, "_metadata_for_post_processing", [])
 
-        if not metadata_elements:
+        if not metadata_elements and not metadata_by_rule_id:
             logger.debug("No metadata for post-processing")
             return xml_output
 
@@ -242,24 +282,33 @@ class XCCDFExporter(BaseExporter):
 
         root = etree.fromstring(xml_output.encode("utf-8"))
         rules = root.xpath(".//*[local-name()='Rule']")
+        xccdf_ns = root.nsmap.get(None) or root.nsmap.get("default")
 
-        # Inject metadata into corresponding rules
         for i, rule in enumerate(rules):
-            if i >= len(metadata_elements):
+            rule_id = rule.get("id")
+            if metadata_by_rule_id is not None:
+                rule_metas = metadata_by_rule_id.get(rule_id or "", [])
+            elif i < len(metadata_elements):
+                rule_metas = [metadata_elements[i]]
+            else:
                 break
 
-            metadata_elem = metadata_elements[i]
+            if not rule_metas:
+                continue
 
-            # Wrap in xccdf:metadata element
-            xccdf_ns = root.nsmap.get(None) or root.nsmap.get("default")
-            if xccdf_ns:
-                metadata_wrapper = etree.SubElement(rule, f"{{{xccdf_ns}}}metadata")
-            else:
-                metadata_wrapper = etree.SubElement(rule, "metadata")
+            insert_idx = len(rule)
+            for child_idx, child in enumerate(rule):
+                if etree.QName(child).localname in elements_after_metadata:
+                    insert_idx = child_idx
+                    break
 
-            metadata_wrapper.append(metadata_elem)
+            for offset, metadata_elem in enumerate(rule_metas):
+                metadata_tag = f"{{{xccdf_ns}}}metadata" if xccdf_ns else "metadata"
+                metadata_wrapper = etree.Element(metadata_tag)
+                metadata_wrapper.append(metadata_elem)
+                rule.insert(insert_idx + offset, metadata_wrapper)
 
-        return etree.tostring(root, encoding="unicode", pretty_print=True)
+        return str(etree.tostring(root, encoding="unicode", pretty_print=True))
 
     def _add_cis_controls_ident_uris(
         self, xml_str: str, xccdf_ns: str, cc7_ns: str, cc8_ns: str
@@ -293,7 +342,7 @@ class XCCDFExporter(BaseExporter):
             safeguards = cis_controls.xpath(".//controls:safeguard", namespaces=ns_controls)
 
             # Build control URI mapping from safeguard URNs
-            control_uris_by_version = {}
+            control_uris_by_version: dict[str, list[str]] = {}
             for safeguard in safeguards:
                 urn = safeguard.get("urn")
                 if not urn:
@@ -338,7 +387,7 @@ class XCCDFExporter(BaseExporter):
                     added_count += 1
 
         logger.info(f"Added cc7/cc8 controlURI attributes to {added_count} ident elements")
-        return etree.tostring(root, encoding="unicode", pretty_print=True)
+        return str(etree.tostring(root, encoding="unicode", pretty_print=True))
 
     def format_name(self) -> str:
         """Return format name with style."""

@@ -26,12 +26,14 @@ Adding PCI-DSS, ISO 27001, HIPAA, etc. MUST require ZERO code changes (YAML only
 import logging
 import re
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 import yaml
 
+from cis_bench.exceptions import ExportError
 from cis_bench.models.benchmark import Benchmark, Recommendation
 
 # Import XCCDF types for element creation (XCCDF 1.2 - for type hints only)
@@ -39,6 +41,7 @@ from cis_bench.models.benchmark import Benchmark, Recommendation
 from cis_bench.utils.cci_lookup import get_cci_service
 from cis_bench.utils.html_parser import HTMLCleaner
 from cis_bench.utils.xhtml_formatter import XHTMLFormatter
+from cis_bench.utils.xml_utils import ncname_slug
 
 # Set up logger
 logger = logging.getLogger(__name__)
@@ -194,10 +197,10 @@ class ConfigLoader:
 
             # Check for inheritance
             if "extends" in config_data:
-                extends_path = config_data.pop("extends")
+                extends_path = Path(config_data.pop("extends"))
 
                 # Resolve relative to current file's directory
-                if not Path(extends_path).is_absolute():
+                if not extends_path.is_absolute():
                     extends_path = config_path.parent / extends_path
 
                 # Recursively load parent configuration
@@ -323,6 +326,8 @@ class MappingEngine:
         Args:
             version: XCCDF version ('1.1.4' or '1.2')
         """
+        self.xccdf_models: ModuleType
+        self.dc_models: ModuleType | None
         if version == "1.1.4":
             # Import XCCDF 1.1.4 models
             from cis_bench.models.xccdf_v1_1 import dc, xccdf_1_1_4
@@ -354,6 +359,22 @@ class MappingEngine:
             Class from appropriate XCCDF module
         """
         return getattr(self.xccdf_models, class_name)
+
+    def rule_element_order(self) -> list[str]:
+        """Return the Rule child-element names in the order the XCCDF schema requires.
+
+        The xsdata models are generated from the NIST XSD of this engine's
+        version, so their field order is the schema sequence (itemType, then
+        selectableItemType, then ruleType) and their metadata carries the XML
+        names. The schema is therefore the single source of element order; no
+        list is kept in code or config.
+        """
+        rule_class = self.get_xccdf_class("Rule")
+        return [
+            f.metadata.get("name") or f.name
+            for f in fields(rule_class)
+            if f.metadata.get("type") == "Element"
+        ]
 
     def get_dc_class(self, class_name: str):
         """Get Dublin Core class by name.
@@ -502,14 +523,43 @@ class MappingEngine:
     def create_notice(self, benchmark: Benchmark):
         """Create notice element from config (version-agnostic).
 
-        Per DISA conventions: Required but can be empty.
+        Resolves notice id, xml:lang, and optional variable-substituted text
+        content from the style's benchmark.notice configuration while keeping
+        content empty when omitted or blank.
         """
-        notice_config = self.config.benchmark.get("notice", {})
-        NoticeType = self.get_xccdf_class("NoticeType")
+        raw_notice = self.config.benchmark.get("notice")
+        notice_config = raw_notice if isinstance(raw_notice, dict) else {}
+        raw_attrs = notice_config.get("attributes")
+        attributes = raw_attrs if isinstance(raw_attrs, dict) else {}
+
+        type_name = notice_config.get("xccdf_type", "NoticeType")
+        NoticeType = self.get_xccdf_class(type_name)
+
+        substitution_context = {"benchmark": benchmark}
+
+        raw_id = notice_config.get("id") or attributes.get("id") or "terms-of-use"
+        notice_id = str(VariableSubstituter.substitute(str(raw_id), substitution_context))
+
+        raw_lang = notice_config.get("lang") or attributes.get("xml:lang")
+        notice_lang = (
+            str(VariableSubstituter.substitute(str(raw_lang), substitution_context))
+            if raw_lang
+            else None
+        )
+
+        raw_content = notice_config.get("content")
+        content: list[object] = []
+        if isinstance(raw_content, str) and raw_content.strip():
+            resolved = str(
+                VariableSubstituter.substitute(raw_content, substitution_context)
+            ).strip()
+            if resolved:
+                content = [resolved]
 
         return NoticeType(
-            id=notice_config.get("id", "terms-of-use"),
-            content=[],  # Empty per config
+            id=notice_id,
+            lang=notice_lang,
+            content=content,
         )
 
     def create_front_matter(self, benchmark: Benchmark):
@@ -788,7 +838,6 @@ class MappingEngine:
                 "ref_normalized": ref_norm,
                 "stig_number": stig_number,
                 "rec": rec,
-                "platform": context.get("platform", ""),
             }
         )
 
@@ -1039,7 +1088,7 @@ class MappingEngine:
         )
 
         # Use config-driven template with fallback for backward compatibility
-        default_template = "xccdf_org.cisecurity_group_{platform}{ref_normalized}"
+        default_template = "xccdf_org.cisecurity_group_{ref_normalized}"
         group_id = VariableSubstituter.substitute(
             self.config.group_id.get("template", default_template), context
         )
@@ -1094,14 +1143,23 @@ class MappingEngine:
         XCCDFBenchmark = self.get_xccdf_class("Benchmark")
         Status = self.get_xccdf_class("Status")
 
-        # Generate Benchmark ID
-        platform = context.get("platform", "")
-        bench_id_template = self.config.benchmark.get(
-            "id_template", "CIS_{platform}_{benchmark_id}"
-        )
+        # Generate Benchmark ID from the style's template. Substitution values
+        # that come from free text are reduced to NCName-safe segments so the
+        # result satisfies XCCDF's benchmarkIdType whatever the title or
+        # version contains.
+        bench_id_template = self.config.benchmark.get("id_template")
+        if not bench_id_template:
+            raise ExportError(
+                f"Style '{self.config.metadata.get('style_name', '?')}' has no "
+                "benchmark.id_template; every style must name its Benchmark"
+            )
         bench_id = VariableSubstituter.substitute(
             bench_id_template,
-            {"platform": platform.title(), "benchmark_id": benchmark.benchmark_id},
+            {
+                "benchmark_id": benchmark.benchmark_id,
+                "version": ncname_slug(benchmark.version),
+                "title_slug": ncname_slug(benchmark.title),
+            },
         )
 
         # Start with required fields
@@ -1369,7 +1427,6 @@ class MappingEngine:
                     rule_context = {
                         "ref_normalized": ref_normalized,
                         "stig_number": stig_number,
-                        "platform": "",  # Platform not needed for profile select idrefs
                     }
                     rule_id = VariableSubstituter.substitute(
                         self.config.rule_id.get("template", "CIS-{ref_normalized}_rule"),

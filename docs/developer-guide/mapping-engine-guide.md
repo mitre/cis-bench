@@ -98,7 +98,7 @@ description: "My custom XCCDF format"
 
 # Benchmark-level settings
 benchmark:
-id_template: "xccdf_custom_benchmark_{benchmark_id}"
+id_template: "xccdf_custom_benchmark_{version}_{title_slug}"
 title:
 source: "title"
 transform: "strip_html"
@@ -133,6 +133,33 @@ extract: "primary"
 | `rule_defaults` | Default attributes for all rules | No |
 | `transformations` | Custom transformation definitions | No |
 | `validation` | Validation rules and constraints | No |
+
+### Benchmark ID
+
+`benchmark.id_template` names the `<Benchmark>` element. It is required: a style
+without one fails with `ExportError` at export time. The engine substitutes three
+variables:
+
+| Variable | Value |
+|----------|-------|
+| `{benchmark_id}` | CIS WorkBench benchmark ID, as stored (e.g. `23598`) |
+| `{version}` | `benchmark.version` reduced to an NCName-safe segment (`v1.0.0` stays `v1.0.0`; `v7.1.0 (vNext)` becomes `v7.1.0_vNext`) |
+| `{title_slug}` | `benchmark.title` with every run of whitespace or other non-NCName characters replaced by one `_` (`CIS Ubuntu Linux 22.04 LTS Benchmark` becomes `CIS_Ubuntu_Linux_22.04_LTS_Benchmark`) |
+
+The two shipped styles:
+
+```yaml
+# cis.yaml — the form CIS publishes:
+# xccdf_org.cisecurity.benchmarks_benchmark_1.0.0_CIS_Ubuntu_Linux_22.04_LTS_Benchmark
+id_template: "xccdf_org.cisecurity.benchmarks_benchmark_{version}_{title_slug}"
+
+# disa.yaml — short form; Vulcan shows it in the STIG ID column
+id_template: "CIS_{benchmark_id}"
+```
+
+XCCDF 1.2 requires Benchmark ids to match `xccdf_<namespace>_benchmark_<name>` and
+to be an NCName, so a 1.2 style's template must start with `xccdf_`, contain
+`_benchmark_`, and use only the variables above after it.
 
 ---
 
@@ -375,10 +402,14 @@ Use `{variable}` syntax to insert dynamic values:
 - `{benchmark.url}` - Benchmark URL
 - `{benchmark_id}` - Numeric ID
 
+**Benchmark ID template only** (see [Benchmark ID](#benchmark-id)):
+
+- `{version}` - Benchmark version reduced to an NCName-safe segment
+- `{title_slug}` - Benchmark title reduced to an NCName-safe segment
+
 **Generated:**
 
 - `{download_date}` - Current date
-- `{platform}` - Inferred platform name
 
 ### Example: Dynamic Attributes
 
@@ -752,6 +783,36 @@ Uninstall or Disable Unnecessary Services
 </controls:control>
 </metadata>
 ```
+
+### Post-processing: metadata injection
+
+Elements marked `requires_post_processing: true` are built as lxml elements and
+inserted into the serialized XML by the `metadata_injection` handler, which a
+style enables under `post_processing.handlers`:
+
+```yaml
+post_processing:
+  handlers: [dublin_core_injection, metadata_injection]
+```
+
+Where the `<metadata>` lands is not configured. XCCDF fixes the order of a
+Rule's children, and the xsdata models in `cis_bench.models` are generated from
+the NIST schemas, so the exporter asks `MappingEngine.rule_element_order()` for
+the element sequence of the style's XCCDF version and inserts metadata before
+the first child the schema places after it (`rationale`, `platform`, `requires`,
+`conflicts`, `ident`, `impact-metric`, `profile-note`, `fixtext`, `fix`, `check`,
+`complex-check`, `signature` in 1.2). The schema is the single source of that
+order; there is no list to keep in sync.
+
+Two conditions stop an export with `ExportError`:
+
+- **Duplicate Rule ids.** Metadata is keyed by Rule id, and XCCDF requires ids
+  to be unique, so two recommendations whose `rule_id` template yields the same
+  id are reported with their refs and titles. No file is written.
+
+- **A version without Rule metadata.** XCCDF 1.1.4 allows `<metadata>` only on
+  the Benchmark, not inside a Rule, so enabling `metadata_injection` on a 1.1.4
+  style (such as DISA) is a configuration error.
 
 ---
 

@@ -14,14 +14,6 @@ def runner():
     return CliRunner()
 
 
-@pytest.fixture
-def isolated_catalog(runner, tmp_path):
-    """Create isolated catalog database for testing."""
-    # Use tmp_path for catalog to avoid polluting real catalog
-    with runner.isolated_filesystem(temp_dir=tmp_path):
-        yield tmp_path
-
-
 class TestCatalogHelp:
     """Test catalog help and command discovery."""
 
@@ -54,17 +46,16 @@ class TestCatalogRefresh:
         assert result.exit_code == 0
         assert "refresh" in result.output.lower()
 
-    @patch("cis_bench.cli.commands.catalog.AuthManager")
-    @patch("cis_bench.cli.commands.catalog.CatalogScraper")
+    @patch("cis_bench.fetcher.auth.AuthManager")
+    @patch("cis_bench.catalog.scraper.CatalogScraper")
     def test_refresh_with_mocked_scraper(self, mock_scraper_class, mock_auth, runner):
         """Test refresh command with mocked dependencies."""
         # Mock auth
         mock_session = Mock()
-        mock_auth.load_cookies_from_browser.return_value = mock_session
+        mock_auth.return_value.load_cookies_from_browser.return_value = mock_session
 
         # Mock scraper
         mock_scraper = Mock()
-        mock_scraper.test_connection.return_value = True
         mock_scraper.scrape_full_catalog.return_value = {
             "total_benchmarks": 20,
             "pages_scraped": 1,

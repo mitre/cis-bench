@@ -16,12 +16,17 @@ under the License.
 
 ## Third-Party Content
 
-**CIS Benchmarks.** Please visit www.cisecurity.org for full terms of use.
+**CIS Benchmarks.** Please visit https://www.cisecurity.org and
+https://workbench.cisecurity.org/terms-of-use for full terms of use.
 
 This tool processes CIS Benchmark content obtained through CIS WorkBench.
 CIS Benchmarks are copyright of the Center for Internet Security, Inc.
-and are licensed under CC BY-NC-SA 4.0. Users must comply with CIS's
-terms of use when accessing and using CIS Benchmark content.
+Depending on how a user accesses CIS Benchmarks, content usage is governed
+by the CIS WorkBench Terms of Use (https://workbench.cisecurity.org/terms-of-use),
+applicable CIS SecureSuite Membership terms, and/or Creative Commons
+Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0).
+Users must comply with the applicable CIS terms when accessing and using
+CIS Benchmark content.
 
 The Apache License for this software code does not grant rights to CIS
 Benchmark content. Tool license and content license are separate.

@@ -48,10 +48,15 @@ Q --> S[SQLite + FTS5]
 
 ```mermaid
 graph LR
-A[cis-bench] --> B[download]
+A[cis-bench] --> G[auth]
+A --> B[download]
+A --> H[get]
 A --> C[export]
 A --> D[list]
 A --> E[info]
+A --> I[search]
+A --> J[remove]
+A --> K[config]
 A --> F[catalog]
 
 F --> F1[refresh]
@@ -62,11 +67,29 @@ F --> F4[update]
 
 **Commands:**
 
+- `auth` - Log in with browser cookies, show or clear the saved session
 - `download` - Fetch benchmarks from WorkBench
+- `get` - Search the catalog, download and export in one step
 - `export` - Convert to formats (JSON, YAML, CSV, MD, XCCDF)
 - `list` - Show downloaded benchmarks
 - `info` - Display benchmark details
-- `catalog` - Manage catalog (8 subcommands)
+- `search` - Search the local catalog
+- `remove` - Delete a downloaded benchmark from the local cache
+- `config` - Settings and folders (`config migrate`)
+- `catalog` - Manage catalog (9 subcommands)
+
+**Command loading:** `cli` is a `LazyGroup` (`src/cis_bench/cli/lazy_group.py`), Click's
+documented pattern for CLIs with slow imports. `app.py` maps each command name to an import
+path in `LAZY_SUBCOMMANDS`; the command module is imported when the command is invoked,
+when root `--help` renders its one-line description, or on shell completion. Running one
+command never imports another command's dependencies, and `cis-bench --version` or
+`export --help` never load the scraper, catalog or exporter stacks. To add a command, add
+its import path to `LAZY_SUBCOMMANDS`; the structure tests run `--help` on every command so
+a wrong path fails fast. Inside `catalog`, the scraper, downloader and auth modules are
+imported by the subcommands that need them (`refresh`, `update`, `download`), so
+database-only subcommands such as `search` and `stats` stay light. The package root
+`cis_bench/__init__.py` resolves its public re-exports on first access (PEP 562
+`__getattr__`) for the same reason.
 
 ---
 
@@ -95,9 +118,15 @@ J --> L[Recommendation]
 **Components:**
 
 - `WorkbenchScraper` - Main scraper class
-- `AuthManager` - Cookie extraction
+- `AuthManager` - Cookie extraction and the saved session. Built with the WorkBench URL, the TLS setting, the session file and an optional `requests_per_second`; every session it makes is paced at that rate from the session check on (`catalog refresh --rate-limit` uses it)
+- `fetcher/http.py` - the request mechanism: `new_workbench_session` (every WorkBench session; mounts one `WorkBenchAdapter`, a requests-ratelimiter `LimiterAdapter` carrying a urllib3 `Retry` subclass at the configured or given rate, whose limit also covers the retries urllib3 makes inside a send, and sets the User-Agent), `ThreadSessions` (per-thread copies that share that adapter, so one limiter covers all threads) and `get_with_retry` (timeout; turns a failure left after the retries into `FetchError`)
+- `config.py` - the fixed request policy (retryable statuses, `Retry-After` cap, User-Agent, SSO hosts) and `RequestPolicy`, the tunable part (rate, retries, backoff, jitter) that `Settings.request_policy` builds and every session is created with (it raises `ValueError` when built with a value outside the bounds of the matching Settings fields); concurrency and batch size are Settings fields the scrapers take as arguments
+- `utils/workbench_urls.py` - every WorkBench URL (benchmark page, catalog listing, navtree, recommendation page), on the origin the caller passes as `base_url`, with numeric ids only
+- `utils/parallel.py` - `parallel_execute_batched` runs the recommendation fetches in batches with the given worker count and batch size, results returned in input (navtree) order, and `stop_on` to end the run after a batch that hit an expired session; `iter_batches` yields each batch to the caller before the next one starts. It does no pacing.
 - `Strategy Pattern` - Adapts to HTML changes
 - `HTMLParser` - Extract data from HTML
+
+**Concurrent fetch:** `download_benchmark` fetches recommendation pages from worker threads. `requests.Session` is not documented as thread-safe, and WorkBench re-issues its `XSRF-TOKEN` and `workbench_session` cookies on every response, so the thread that created the scraper keeps the session it was given and every other thread gets its own copy (same cookies, headers, auth and TLS settings; shared mounted adapters, so one urllib3 connection pool). Strategy detection is locked so it runs once. Progress messages (`[n/N] Fetching ...`) are sent from the calling thread as each page finishes.
 
 **Output:** Validated Pydantic models (19 fields per recommendation)
 
@@ -211,13 +240,15 @@ M --> H
 **Database Schema (3NF):**
 
 - `platforms` - Operating System, Cloud, Database
-- `benchmark_statuses` - Published, Draft, Archived
+- `benchmark_statuses` - Published, Accepted, Draft, Archived, Rejected, Final Update (plus dynamically registered WorkBench statuses)
 - `communities` - Development communities
 - `collections` - Categories/tags
 - `owners` - Authors
 - `catalog_benchmarks` - Main table with FKs
 - `downloaded_benchmarks` - Cached content
 - `scrape_metadata` - Tracking
+
+**Refresh fetch:** `CatalogScraper.scrape_full_catalog` fetches page 1 on the calling thread, then pages 2..N through `utils/parallel.py` `iter_batches`. Each batch is yielded back to the calling thread, which writes it to SQLite (one writer), updates the progress count and checks the >10% failure threshold before the next batch starts; a login page ends the run after its batch. Requests go through the session's adapter from `fetcher/http.py` (rate limit and retries) and `get_with_retry` (timeout), the same plumbing `WorkbenchScraper` uses.
 
 **FTS5 Search:**
 
@@ -280,7 +311,7 @@ CatalogScraper->>Parser: parse_catalog_page()
 Parser-->>CatalogScraper: List[benchmark_data]
 CatalogScraper->>Database: insert_benchmark()
 Database->>SQLite: INSERT + FTS5 update
-Note over CatalogScraper,SQLite: Repeat for 68 pages
+Note over CatalogScraper,SQLite: Remaining pages in batches of 10 at most 3 requests/s, saved after each batch
 CatalogScraper-->>CLI: Stats
 
 User->>CLI: cis-bench catalog search "ubuntu"
@@ -417,6 +448,7 @@ src/cis_bench/
 │ └── commands/ # Command modules
 ├── fetcher/ # WorkBench scraper
 │ ├── workbench.py # Main scraper
+│ ├── http.py # WorkBench sessions: rate limit, retries, per-thread copies
 │ ├── auth.py # Authentication
 │ └── strategies/ # HTML strategies
 ├── exporters/ # Format exporters
@@ -441,6 +473,7 @@ src/cis_bench/
 │ ├── xml_utils.py # XCCDF processing
 │ ├── html_parser.py # HTML cleaning
 │ ├── logging_config.py # Logging setup
+│ ├── parallel.py # Paced thread-pool execution
 │ └── ...
 ├── validators/ # XCCDF validators
 └── config.py # Environment config
@@ -450,34 +483,29 @@ src/cis_bench/
 
 ## Configuration System
 
-### Environment-Based Config
+### One Settings Class
+
+`src/cis_bench/config.py` declares every setting once in `Settings` (pydantic-settings): its
+type, default and accepted values. `load_settings()` builds it from, highest first:
 
 ```mermaid
 graph TD
-A[Config.py] --> B{Environment?}
-B -->|test| C[/tmp/cis-bench-test/]
-B -->|dev| D[~/.cis-bench-dev/]
-B -->|production| E[~/.cis-bench/]
-
-F[pytest] --> G[Set CIS_BENCH_ENV=test]
-H[Developer] --> I[export CIS_BENCH_ENV=dev]
-J[User] --> K[Default production]
+A[CLI flag, passed in] --> B[Environment CIS_BENCH_*]
+B --> D[config folder/config.toml]
+D --> E[Default in Settings]
 ```
 
-**Environment variable:** `CIS_BENCH_ENV`
+- **Folders:** `xdg_folders()` in `config.py` is a pure function of the environment, the home folder and the platform, resolving config, data and state the way the GitHub CLI does (`CIS_BENCH_CONFIG_DIR` > `CIS_BENCH_HOME` > `XDG_*_HOME` > AppData on Windows > `~/.config`, `~/.local/share`, `~/.local/state`). `resolve_folders()` applies it to the real environment and keeps an earlier version's `~/.cis-bench` in use, reported through `Folders.legacy`, until `config migrate` moves it. The folders ride on `Settings.folders`, fed only through the init source: the environment source skips the field and `config.toml` may not set it. `CIS_BENCH_DATA_DIR` and `CIS_BENCH_ENV` are refused.
+- **Startup check:** the root command (`cli/app.py`) builds the settings once per run and keeps them on the Click context (`ctx.obj["settings"]`). An invalid value prints one Configuration Error and exits 1 before any command runs; `--help` still works.
+- **Settings stay at the edge:** only the CLI reads `Settings`. `cli/helpers/services.py` turns them into the objects commands use (`auth_manager`, `workbench_scraper`, `catalog_scraper`); library code takes plain values (`base_url`, `timeout`, `verify_ssl`, `session_file`, `limit`) and never loads settings itself.
+- **Nothing else reads the environment:** ruff's banned-API rule (TID251) refuses `os.getenv`, `os.environ` and `dotenv` outside `config.py`. `config.toml` never reaches `os.environ`; there is no `.env` source.
+- **Not cis-bench settings:** `HTTPS_PROXY`, `NO_PROXY`, `REQUESTS_CA_BUNDLE`, `SSL_CERT_FILE` stay with requests.
 
-- `test` - Pytest (automatic)
-- `dev` - Development work
-- `production` - Default
-
-**Optional .env file:**
-```bash
-# ~/.cis-bench/.env
-CIS_BENCH_ENV=dev
-CIS_BENCH_SSL_VERIFY=false
+**Optional file:**
+```toml
+# ~/.config/cis-bench/config.toml
+verify_ssl = false
 ```
-
-Loaded automatically via python-dotenv.
 
 ---
 
@@ -705,24 +733,21 @@ tests/
 ```mermaid
 graph TD
 A[pytest] --> B[test_environment fixture]
-B --> C[Set CIS_BENCH_ENV=test]
-C --> D[Config.get_data_dir]
-D --> E[/tmp/cis-bench-test/]
+B --> C[Set CIS_BENCH_HOME to a temporary folder]
+C --> D[Settings.folders]
 
-F[Developer] --> G[export CIS_BENCH_ENV=dev]
+F[Developer] --> G[export CIS_BENCH_HOME=~/cis-bench-dev]
 G --> D
-D --> H[~/.cis-bench-dev/]
 
-I[Production] --> J[No env var]
+I[User] --> J[Not set]
 J --> D
-D --> K[~/.cis-bench/]
+D --> K[XDG folders by default]
 ```
 
 **Automatic isolation:**
 
-- pytest sets `CIS_BENCH_ENV=test`
-- All tests use `/tmp/cis-bench-test/`
-- Production data never touched
+- pytest sets `CIS_BENCH_HOME` to a new temporary folder per run
+- the developer's own folders are never touched by tests
 
 **405 tests** across all layers, all properly isolated.
 

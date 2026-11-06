@@ -17,7 +17,7 @@
 The following features were originally planned as "future" but are now complete:
 
 - **Catalog System** - SQLite database with FTS5 search (`catalog refresh`, `search` command)
-- **Session Persistence** - Login once with `auth login`, session saved to `~/.cis-bench/session.cookies`
+- **Session Persistence** - Login once with `auth login`, session saved to `~/.local/state/cis-bench/session.cookies`
 - **Search and Discovery** - `search` command with platform filtering
 - **Get Command** - Unified `get` command (search + download + export in one)
 - **Interactive Mode** - questionary-based selection in `get` command
@@ -25,7 +25,7 @@ The following features were originally planned as "future" but are now complete:
 - **Output Formats** - JSON/CSV/YAML on all query commands
 - **Progress Bars** - Rich progress bars on downloads and catalog refresh
 - **Platform Taxonomy** - Two-field system (platform_type + platform)
-- **Parallel Scraping** - Catalog refresh in ~2 min (was ~10 min)
+- **Parallel Scraping** - Catalog refresh in under a minute
 
 ---
 
@@ -57,7 +57,7 @@ cis-bench download 23598 --offline # ERROR: requires network
 
 ### 2. Background Catalog Refresh
 
-**Problem**: Catalog refresh takes ~2 minutes, blocks user
+**Problem**: Catalog refresh blocks the terminal while it runs (under a minute for about 80 pages)
 
 **Solution**: Optional background refresh with notifications:
 
@@ -67,7 +67,7 @@ cis-bench catalog refresh --background
 
 # Check status
 cis-bench catalog status
-# Output: Refreshing catalog... 45/66 pages (2 min remaining)
+# Output: Refreshing catalog... 45/80 pages
 
 # Use catalog while refreshing (uses last complete refresh)
 cis-bench search "ubuntu" # Works immediately
@@ -76,7 +76,7 @@ cis-bench search "ubuntu" # Works immediately
 **Implementation**:
 
 - Use multiprocessing for true background
-- Store PID in ~/.cis-bench/refresh.pid
+- Store PID in the state folder (~/.local/state/cis-bench/refresh.pid)
 - Show progress when user checks status
 - Atomic database updates (don't corrupt active catalog)
 

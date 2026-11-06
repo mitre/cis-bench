@@ -9,6 +9,8 @@ Tests the core helper functions that power the mapping engine:
 - HTMLCleaner: HTML transformation methods
 """
 
+from pathlib import Path
+
 import pytest
 
 from cis_bench.exporters.mapping_engine import (
@@ -722,6 +724,38 @@ class TestWorkbenchParser:
         result = WorkbenchParser.extract_assessment_status(None)
         assert result == "Unknown"
 
+    def test_parent_link_whose_text_is_the_label(self):
+        html = '<a href="https://workbench.cisecurity.org/sections/1">Parent: Initial Setup</a>'
+        parent = WorkbenchParser.parse_parent_link(html)
+        assert parent is not None
+        assert str(parent.url) == "https://workbench.cisecurity.org/sections/1"
+        assert parent.title == "Initial Setup"
+
+    def test_parent_link_found_by_its_icon(self):
+        html = (
+            '<a href="https://workbench.cisecurity.org/sections/2">'
+            '<i class="fa-level-up"></i> PARENT : Filesystem</a>'
+        )
+        parent = WorkbenchParser.parse_parent_link(html)
+        assert parent is not None
+        assert str(parent.url) == "https://workbench.cisecurity.org/sections/2"
+        assert parent.title == "Filesystem"
+
+    def test_the_first_labelled_link_wins_over_other_links(self):
+        html = (
+            '<a href="https://workbench.cisecurity.org/other">Home</a>'
+            '<a href="https://workbench.cisecurity.org/sections/3">PARENT : Services</a>'
+        )
+        parent = WorkbenchParser.parse_parent_link(html)
+        assert parent is not None
+        assert str(parent.url) == "https://workbench.cisecurity.org/sections/3"
+
+    def test_a_parent_link_without_href_is_no_parent(self):
+        assert WorkbenchParser.parse_parent_link("<a>PARENT : Services</a>") is None
+
+    def test_no_parent_link_is_none(self):
+        assert WorkbenchParser.parse_parent_link('<a href="/x">Home</a>') is None
+
 
 # ============================================================================
 # TEST: HTMLCleaner
@@ -1086,7 +1120,7 @@ class TestIDFormatValidation:
         """map_rule() with DISA config should produce SV- prefixed rule ID."""
         import re
 
-        context = {"platform": "eks", "benchmark": None}
+        context = {"benchmark": None}
         rule = disa_engine.map_rule(sample_recommendation, context)
 
         assert rule.id.startswith("SV-"), f"DISA Rule ID should start with SV-, got: {rule.id}"
@@ -1096,7 +1130,7 @@ class TestIDFormatValidation:
         """map_group() with DISA config should produce V- prefixed group ID."""
         import re
 
-        context = {"platform": "eks", "benchmark": None}
+        context = {"benchmark": None}
         rule = disa_engine.map_rule(sample_recommendation, context)
         group = disa_engine.map_group(sample_recommendation, rule, context)
 
@@ -1105,7 +1139,7 @@ class TestIDFormatValidation:
 
     def test_cis_map_rule_produces_benchmarks_id(self, cis_engine, sample_recommendation):
         """map_rule() with CIS config should produce cisecurity.benchmarks rule ID."""
-        context = {"platform": "eks", "benchmark": None}
+        context = {"benchmark": None}
         rule = cis_engine.map_rule(sample_recommendation, context)
 
         assert "cisecurity.benchmarks" in rule.id, (
@@ -1118,7 +1152,7 @@ class TestIDFormatValidation:
 
     def test_cis_map_group_produces_benchmarks_id(self, cis_engine, sample_recommendation):
         """map_group() with CIS config should produce cisecurity.benchmarks group ID."""
-        context = {"platform": "eks", "benchmark": None}
+        context = {"benchmark": None}
         rule = cis_engine.map_rule(sample_recommendation, context)
         group = cis_engine.map_group(sample_recommendation, rule, context)
 
@@ -1132,7 +1166,7 @@ class TestIDFormatValidation:
 
     def test_disa_rule_and_group_ids_correspond(self, disa_engine, sample_recommendation):
         """DISA Rule and Group IDs should use same stig_number."""
-        context = {"platform": "eks", "benchmark": None}
+        context = {"benchmark": None}
         rule = disa_engine.map_rule(sample_recommendation, context)
         group = disa_engine.map_group(sample_recommendation, rule, context)
 
@@ -1146,14 +1180,14 @@ class TestIDFormatValidation:
 
     # --- Profile Select Element ID Tests ---
 
-    def test_disa_profile_selects_use_sv_rule_ids(self, disa_engine, almalinux_complete_benchmark):
+    def test_disa_profile_selects_use_sv_rule_ids(self, disa_engine, synthetic_complete_benchmark):
         """Profile select elements should reference SV- rule IDs in DISA style."""
         # Get profile config from engine config (not context)
         profile_config = disa_engine.config.benchmark.get("profiles", {})
 
         # Generate profiles
         profiles = disa_engine.generate_profiles_from_rules(
-            almalinux_complete_benchmark.recommendations, profile_config
+            synthetic_complete_benchmark.recommendations, profile_config
         )
 
         # Check at least one profile has selects
@@ -1167,7 +1201,7 @@ class TestIDFormatValidation:
                 )
 
     def test_cis_profile_selects_use_benchmarks_rule_ids(
-        self, cis_engine, almalinux_complete_benchmark
+        self, cis_engine, synthetic_complete_benchmark
     ):
         """Profile select elements should reference cisecurity.benchmarks rule IDs in CIS style."""
         # Get profile config from engine config (not context)
@@ -1175,7 +1209,7 @@ class TestIDFormatValidation:
 
         # Generate profiles
         profiles = cis_engine.generate_profiles_from_rules(
-            almalinux_complete_benchmark.recommendations, profile_config
+            synthetic_complete_benchmark.recommendations, profile_config
         )
 
         # Check at least one profile has selects
@@ -1235,7 +1269,7 @@ class TestDISAVulcanCompatibility:
         )
 
         # Should produce short readable ID using benchmark_id
-        context = {"platform": "AlmaLinux", "benchmark_id": "23598"}
+        context = {"benchmark_id": "23598"}
         bench_id = VariableSubstituter.substitute(id_template, context)
 
         assert len(bench_id) < 50, "Benchmark ID should be reasonably short"
@@ -1270,17 +1304,17 @@ class TestDISAVulcanCompatibility:
         assert source is not None, "DISA group description should have a source field"
         assert source == "title", "DISA group description source should be 'title'"
 
-    def test_disa_map_group_uses_ref_as_title(self, disa_config_path, almalinux_complete_benchmark):
+    def test_disa_map_group_uses_ref_as_title(self, disa_config_path, synthetic_complete_benchmark):
         """map_group should use CIS ref as group title."""
         engine = MappingEngine(disa_config_path)
-        benchmark = almalinux_complete_benchmark
+        benchmark = synthetic_complete_benchmark
         rec = benchmark.recommendations[0]
-        context = {"platform": "test", "benchmark": benchmark}
+        context = {"benchmark": benchmark}
 
         rule = engine.map_rule(rec, context)
         group = engine.map_group(rec, rule, context)
 
-        # Group title should contain the ref (e.g., "6.1.1")
+        # Group title should contain the ref (e.g., "1.1.1")
         assert group.title, "Group should have title"
         title_content = (
             group.title[0].content[0]
@@ -1296,13 +1330,13 @@ class TestDISAVulcanCompatibility:
         )
 
     def test_disa_map_group_uses_rule_title_as_description(
-        self, disa_config_path, almalinux_complete_benchmark
+        self, disa_config_path, synthetic_complete_benchmark
     ):
         """map_group should use rule title as group description."""
         engine = MappingEngine(disa_config_path)
-        benchmark = almalinux_complete_benchmark
+        benchmark = synthetic_complete_benchmark
         rec = benchmark.recommendations[0]
-        context = {"platform": "test", "benchmark": benchmark}
+        context = {"benchmark": benchmark}
 
         rule = engine.map_rule(rec, context)
         group = engine.map_group(rec, rule, context)
@@ -1377,3 +1411,166 @@ class TestEdgeCases:
         # Should handle duplicates gracefully
         assert isinstance(ccis, list)
         assert isinstance(extra_nist, list)
+
+
+# ============================================================================
+# TEST: Config-Driven XCCDF Notice Creation
+# ============================================================================
+
+
+class TestNoticeCreation:
+    """Unit tests for config-driven XCCDF <notice> construction in MappingEngine."""
+
+    def test_create_notice_populates_content_id_and_lang_from_style_config(
+        self, cis_config_path, synthetic_complete_benchmark
+    ):
+        """create_notice resolves direct id, lang, and variable-substituted content."""
+        engine = MappingEngine(cis_config_path)
+        engine.config.benchmark["notice"] = {
+            "id": "custom-notice",
+            "lang": "en-US",
+            "xccdf_type": "NoticeType",
+            "content": "Exported from {benchmark.title} ({benchmark.url})",
+        }
+
+        notice = engine.create_notice(synthetic_complete_benchmark)
+
+        assert notice.id == "custom-notice"
+        assert notice.lang == "en-US"
+        assert notice.content == [
+            f"Exported from {synthetic_complete_benchmark.title} ({synthetic_complete_benchmark.url})"
+        ]
+
+    def test_create_notice_resolves_attributes_dict_and_default_id(
+        self, disa_config_path, synthetic_complete_benchmark
+    ):
+        """create_notice resolves attributes.id and attributes['xml:lang'] and normalizes HttpUrl."""
+        engine = MappingEngine(disa_config_path)
+        engine.config.benchmark["notice"] = {
+            "element": "notice",
+            "xccdf_type": "NoticeType",
+            "attributes": {
+                "id": "attr-notice-id",
+                "xml:lang": "en",
+            },
+            "content": "{benchmark.url}",
+        }
+
+        notice = engine.create_notice(synthetic_complete_benchmark)
+
+        assert notice.id == "attr-notice-id"
+        assert notice.lang == "en"
+        assert notice.content == [str(synthetic_complete_benchmark.url)]
+        assert isinstance(notice.content[0], str)
+
+        engine.config.benchmark["notice"] = {
+            "xccdf_type": "NoticeType",
+            "content": "Plain notice without explicit id or lang",
+        }
+        fallback_notice = engine.create_notice(synthetic_complete_benchmark)
+        assert fallback_notice.id == "terms-of-use"
+        assert fallback_notice.lang is None
+        assert fallback_notice.content == ["Plain notice without explicit id or lang"]
+
+    def test_create_notice_preserves_empty_content_when_omitted_or_blank(
+        self, cis_config_path, synthetic_complete_benchmark
+    ):
+        """Custom styles with empty or omitted notice content preserve content=[]."""
+        engine = MappingEngine(cis_config_path)
+
+        engine.config.benchmark["notice"] = {
+            "id": "empty-str",
+            "lang": "en",
+            "content": "",
+        }
+        empty_notice = engine.create_notice(synthetic_complete_benchmark)
+        assert empty_notice.id == "empty-str"
+        assert empty_notice.lang == "en"
+        assert empty_notice.content == []
+
+        engine.config.benchmark["notice"] = {"id": "omitted-content"}
+        omitted_notice = engine.create_notice(synthetic_complete_benchmark)
+        assert omitted_notice.id == "omitted-content"
+        assert omitted_notice.lang is None
+        assert omitted_notice.content == []
+
+        engine.config.benchmark.pop("notice", None)
+        missing_section_notice = engine.create_notice(synthetic_complete_benchmark)
+        assert missing_section_notice.id == "terms-of-use"
+        assert missing_section_notice.lang is None
+        assert missing_section_notice.content == []
+
+
+class TestBenchmarkIdTemplate:
+    """Benchmark/@id comes from the style's id_template and the engine's substitution values."""
+
+    def test_missing_id_template_is_an_export_error(
+        self, styles_dir, synthetic_complete_benchmark, tmp_path
+    ):
+        """A style without benchmark.id_template cannot name its Benchmark; the engine says so."""
+        from cis_bench.exceptions import ExportError
+
+        config = tmp_path / "no_id.yaml"
+        config.write_text(
+            f"extends: {Path(styles_dir).parent / 'base.yaml'}\n"
+            'metadata:\n  style_name: "no_id"\n  xccdf_version: "1.2"\n'
+        )
+        engine = MappingEngine(config)
+
+        with pytest.raises(ExportError, match="benchmark.id_template"):
+            engine.map_benchmark(
+                synthetic_complete_benchmark, [], {"benchmark": synthetic_complete_benchmark}
+            )
+
+    def test_cis_template_substitutes_version_and_title_slug(
+        self, cis_config_path, synthetic_complete_benchmark
+    ):
+        engine = MappingEngine(cis_config_path)
+        bench = synthetic_complete_benchmark.model_copy(
+            update={"title": "CIS Red Hat Enterprise Linux 9 Benchmark", "version": "v2.0.0"}
+        )
+
+        xccdf_bench = engine.map_benchmark(bench, [], {"benchmark": bench, "recommendations": []})
+
+        assert xccdf_bench.id == (
+            "xccdf_org.cisecurity.benchmarks_benchmark_v2.0.0_CIS_Red_Hat_Enterprise_Linux_9_Benchmark"
+        )
+
+
+class TestRuleElementOrder:
+    """The engine reports the Rule child-element order of its XCCDF version's schema."""
+
+    def test_xccdf_1_2_order_matches_the_schema_sequence(self, cis_config_path):
+        """schemas/xccdf/1.2/xccdf_1.2.xsd: itemType, then selectableItemType, then ruleType."""
+        engine = MappingEngine(cis_config_path)
+        assert engine.rule_element_order() == [
+            "status",
+            "dc-status",
+            "version",
+            "title",
+            "description",
+            "warning",
+            "question",
+            "reference",
+            "metadata",
+            "rationale",
+            "platform",
+            "requires",
+            "conflicts",
+            "ident",
+            "impact-metric",
+            "profile-note",
+            "fixtext",
+            "fix",
+            "check",
+            "complex-check",
+            "signature",
+        ]
+
+    def test_xccdf_1_1_4_order_has_no_metadata(self, disa_config_path):
+        """schemas/xccdf-1.1.4.xsd itemType (717-745) has no metadata element."""
+        engine = MappingEngine(disa_config_path)
+        order = engine.rule_element_order()
+        assert "metadata" not in order
+        assert order[:3] == ["status", "version", "title"]
+        assert order[-1] == "signature"

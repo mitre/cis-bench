@@ -4,10 +4,27 @@ Helpers for XML namespace handling, serialization, and post-processing.
 """
 
 import logging
+import re
 
 from lxml import etree
 
 logger = logging.getLogger(__name__)
+
+# Characters allowed inside an XML NCName segment, as used in XCCDF ids. Letters,
+# digits, '.', '-' and '_'; everything else (whitespace, ':', '(', '/', ...) is
+# a separator. Restricted to ASCII so ids are stable across tools.
+_NCNAME_SEPARATORS = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+def ncname_slug(text: str) -> str:
+    """Reduce text to an XML NCName-safe identifier segment.
+
+    Runs of characters that may not appear in an NCName become one underscore,
+    and leading or trailing underscores are dropped, so "CIS Ubuntu Linux 22.04
+    LTS Benchmark" becomes "CIS_Ubuntu_Linux_22.04_LTS_Benchmark" and
+    "v7.1.0 (vNext)" becomes "v7.1.0_vNext". NCName-safe text is returned as is.
+    """
+    return _NCNAME_SEPARATORS.sub("_", text).strip("_")
 
 
 class XCCDFNamespaceFixer:
@@ -40,9 +57,10 @@ class XCCDFNamespaceFixer:
             if elem.tag and not elem.tag.startswith("{"):
                 elem.tag = f"{{{xccdf_namespace}}}{elem.tag}"
 
-        return etree.tostring(
+        xml_bytes: bytes = etree.tostring(
             root, pretty_print=True, xml_declaration=True, encoding="UTF-8"
-        ).decode("utf-8")
+        )
+        return xml_bytes.decode("utf-8")
 
 
 class XCCDFSerializer:
@@ -90,9 +108,10 @@ class XCCDFSerializer:
         Note:
             Used for post-processed XML (after namespace fixes, DC injection, etc.).
         """
-        return etree.tostring(
+        xml_bytes: bytes = etree.tostring(
             tree, pretty_print=pretty, xml_declaration=True, encoding="UTF-8"
-        ).decode("utf-8")
+        )
+        return xml_bytes.decode("utf-8")
 
 
 class DublinCoreInjector:
@@ -362,7 +381,7 @@ class XCCDFPostProcessor:
             # Determine which namespaces to include
             if preserve_ns_list is not None:
                 # Only include specified namespaces
-                final_nsmap = {}
+                final_nsmap: dict[str | None, str] = {}
                 for key in preserve_ns_list:
                     if key == "default":
                         # Default namespace uses None key in lxml

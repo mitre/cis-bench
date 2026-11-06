@@ -1,20 +1,25 @@
 """List command for CIS Benchmark CLI."""
 
+import logging
 import os
 
 import click
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 from cis_bench.cli.helpers.output import output_data
+from cis_bench.cli.helpers.services import settings_from
 from cis_bench.models.benchmark import Benchmark
 
 console = Console()
+logger = logging.getLogger(__name__)
 
 
 @click.command(name="list")
 @click.option(
-    "--output-dir", default="./benchmarks", help="Directory containing downloaded benchmarks"
+    "--output-dir",
+    help="Directory containing downloaded benchmarks (default: <data dir>/benchmarks)",
 )
 @click.option(
     "--output-format",
@@ -31,9 +36,12 @@ def list_benchmarks(output_dir, output_format):
         cis-bench list
         cis-bench list --output-dir ./my_benchmarks
     """
+    if output_dir is None:
+        output_dir = settings_from().benchmarks_dir
+
     if not os.path.exists(output_dir):
         if output_format == "table":
-            console.print(f"[yellow]Directory not found: {output_dir}[/yellow]")
+            console.print(f"[yellow]Directory not found: {escape(str(output_dir))}[/yellow]")
         else:
             output_data([], output_format)
         return
@@ -42,7 +50,7 @@ def list_benchmarks(output_dir, output_format):
 
     if not json_files:
         if output_format == "table":
-            console.print(f"[yellow]No benchmarks found in {output_dir}[/yellow]")
+            console.print(f"[yellow]No benchmarks found in {escape(str(output_dir))}[/yellow]")
         else:
             output_data([], output_format)
         return
@@ -74,6 +82,7 @@ def list_benchmarks(output_dir, output_format):
                 }
             )
         except Exception:
+            logger.debug(f"Could not load benchmark file {filename}", exc_info=True)
             benchmarks_data.append({"file": filename, "error": "Failed to load"})
 
     # Output in requested format
@@ -93,11 +102,11 @@ def list_benchmarks(output_dir, output_format):
 
         for item in data:
             if "error" in item:
-                table.add_row(item["file"], "?", "?", "?", "?", "[red]Error[/red]")
+                table.add_row(escape(item["file"]), "?", "?", "?", "?", "[red]Error[/red]")
             else:
                 table.add_row(
-                    item["title"],
-                    item["version"],
+                    escape(item["title"]),
+                    escape(item["version"]),
                     str(item["recommendations"]),
                     str(item["cis_v8"]) if item["cis_v8"] > 0 else "-",
                     str(item["mitre"]) if item["mitre"] > 0 else "-",

@@ -6,12 +6,19 @@ import sys
 import click
 import questionary
 from rich.console import Console
+from rich.markup import escape
 
-from cis_bench.config import Config
+from cis_bench.cli.helpers.errors import report_expired_session, report_unreachable
+from cis_bench.cli.helpers.services import auth_manager, settings_from, workbench_scraper
+from cis_bench.exceptions import (
+    AuthenticationError,
+    FetchError,
+    NoSavedSessionError,
+    TLSVerificationError,
+)
 from cis_bench.exporters import ExporterFactory
 from cis_bench.exporters.xccdf_unified_exporter import XCCDFExporter
-from cis_bench.fetcher.auth import AuthManager
-from cis_bench.fetcher.workbench import WorkbenchScraper
+from cis_bench.utils.workbench_urls import resolve_benchmark_reference
 
 console = Console()
 logger = logging.getLogger(__name__)
@@ -81,17 +88,19 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
 
     logger.debug(f"Get command: query='{query}', format={export_format}, style={style}")
 
+    settings = settings_from()
+
     # Step 1: Check catalog exists
-    catalog_db_path = Config.get_catalog_db_path()
+    catalog_db_path = settings.catalog_db_path
 
     if not catalog_db_path.exists():
         console.print("[bold red]Catalog not found[/bold red]\n")
         console.print("The 'get' command requires a catalog database to search.\n")
         console.print("[bold cyan]First, initialize the catalog:[/bold cyan]")
         console.print("  cis-bench catalog refresh --browser chrome")
-        console.print("\n[dim]This is a one-time setup (~10 minutes)[/dim]\n")
+        console.print("\n[dim]This is a one-time setup (under a minute)[/dim]\n")
         console.print("[cyan]After initialization, you can use:[/cyan]")
-        console.print(f'  cis-bench get "{query}" --format {export_format}')
+        console.print(f'  cis-bench get "{escape(query)}" --format {export_format}')
         sys.exit(1)
 
     # Step 2: Search catalog
@@ -100,13 +109,17 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
         from cis_bench.catalog.search import CatalogSearch
 
         logger.debug(f"Searching catalog for: {query}")
-        console.print(f"[cyan]Searching for:[/cyan] {query}\n")
+        console.print(f"[cyan]Searching for:[/cyan] {escape(query)}\n")
 
         db = CatalogDatabase(catalog_db_path)
         search = CatalogSearch(db)
 
-        # Search with Published filter by default
-        results = search.search(query, status="Published", latest_only=True, limit=50)
+        # Search with Published filter by default; CIS_BENCH_SEARCH_LIMIT caps the candidates
+        filters = {"status": "Published", "latest_only": True}
+        limit = settings.search_limit
+        results = search.search(query, limit=limit, **filters)
+        # A list shorter than the limit is complete; only a full one may have been cut off.
+        total = search.count(query, **filters) if len(results) >= limit else len(results)
 
         if not results:
             console.print("[yellow]No results found[/yellow]\n")
@@ -117,39 +130,24 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
         logger.debug(f"Found {len(results)} results")
 
     except Exception as e:
-        logger.error(f"Search failed: {e}", exc_info=True)
-        console.print(f"[red]✗ Search failed: {e}[/red]")
+        logger.debug("Search failed", exc_info=True)
+        console.print(f"[red]✗ Search failed: {escape(str(e))}[/red]")
         sys.exit(1)
 
     # Step 3: Select benchmark
     if len(results) == 1:
         selected = results[0]
-        console.print(f"[green]✓[/green] Found: {selected['title']}\n")
+        console.print(f"[green]✓[/green] Found: {escape(str(selected['title']))}\n")
     else:
         # Multiple results
-        console.print(f"[yellow]Found {len(results)} benchmarks matching '{query}'[/yellow]\n")
+        cut_off = f" (showing the first {len(results)})" if total > len(results) else ""
+        console.print(
+            f"[yellow]Found {total} benchmarks matching '{escape(query)}'{cut_off}[/yellow]\n"
+        )
 
-        from rich.table import Table
+        from cis_bench.cli.helpers.output import benchmark_table
 
-        table = Table(show_header=True, header_style="bold cyan")
-        table.add_column("ID", style="yellow", width=8)
-        table.add_column("Title", style="white", width=90)
-        table.add_column("Version", style="cyan", width=12)
-        table.add_column("Status", style="green", width=12)
-
-        for r in results:
-            title = r["title"]
-            if len(title) > 87:
-                title = title[:84] + "..."
-
-            table.add_row(
-                str(r["benchmark_id"]),
-                title,
-                r.get("version", "N/A"),
-                r.get("status", "N/A"),
-            )
-
-        console.print(table)
+        console.print(benchmark_table(results, title_width=settings.table_title_width))
 
         # Interactive selection (if not disabled)
         if not non_interactive:
@@ -170,7 +168,7 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
                 selected_id = answer.split(":")[0]
                 selected = next(r for r in results if str(r["benchmark_id"]) == selected_id)
 
-                console.print(f"\n[green]✓[/green] Selected: {selected['title']}\n")
+                console.print(f"\n[green]✓[/green] Selected: {escape(str(selected['title']))}\n")
 
             except Exception as e:
                 logger.warning(f"Interactive selection failed: {e}")
@@ -184,8 +182,10 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
             console.print(
                 "  2. Or use ID directly: [bold]cis-bench download <ID> --format xccdf[/bold]"
             )
+            console.print("\n[dim]Example: cis-bench download 23598 --format xccdf[/dim]")
             console.print(
-                "\n[dim]Example: cis-bench download 23598 --format xccdf --style cis[/dim]"
+                "[dim]         cis-bench export 23598 --format xccdf --style cis"
+                "   # choose the XCCDF style[/dim]"
             )
             sys.exit(0)
 
@@ -205,30 +205,36 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
         console.print("[cyan]Downloading benchmark...[/cyan]\n")
 
         try:
+            # The catalog row's ID becomes a canonical WorkBench URL on the configured origin
+            _, benchmark_url = resolve_benchmark_reference(
+                str(benchmark_id), base_url=settings.workbench_url
+            )
+        except ValueError as e:
+            console.print(f"[red]✗ {escape(str(e))}[/red]")
+            sys.exit(1)
+
+        try:
             # Get authenticated session (uses saved session only)
             logger.debug("Getting authenticated session for download")
-            session = AuthManager.get_or_create_session()
+            session = auth_manager(settings).get_or_create_session()
 
             # Download with progress bar
-            import hashlib
-
+            from cis_bench.catalog.database import serialize_benchmark_json
             from cis_bench.cli.helpers.download_helper import download_with_progress
-            from cis_bench.models.benchmark import Benchmark
 
-            scraper = WorkbenchScraper(session)
-            benchmark_url = f"https://workbench.cisecurity.org/benchmarks/{benchmark_id}"
+            scraper = workbench_scraper(settings, session)
 
             benchmark = download_with_progress(scraper, benchmark_url, prefix="  ")
 
-            console.print(f"[green]✓[/green] Downloaded: {benchmark.title}")
+            console.print(f"[green]✓[/green] Downloaded: {escape(benchmark.title)}")
             console.print(f"  Recommendations: {benchmark.total_recommendations}\n")
 
             # Save to database
-            content_json = benchmark.model_dump_json()
-            content_hash = hashlib.sha256(content_json.encode()).hexdigest()
+            content_json, content_hash = serialize_benchmark_json(benchmark)
             recommendation_count = len(benchmark.recommendations)
 
             db.save_downloaded(
+                version=benchmark.version,
                 benchmark_id=benchmark_id,
                 content_json=content_json,
                 content_hash=content_hash,
@@ -237,7 +243,7 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
 
             logger.debug(f"Saved benchmark {benchmark_id} to database")
 
-        except ValueError:
+        except NoSavedSessionError:
             console.print("\n[bold red]Authentication Required[/bold red]\n")
             console.print("[cyan]Please log in first:[/cyan]")
             console.print("  cis-bench auth login --browser chrome")
@@ -245,23 +251,32 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
                 "\n[dim]Windows users: If Chrome fails, try Firefox or --cookies option.[/dim]"
             )
             sys.exit(1)
+        except TLSVerificationError as e:
+            # The server could not be trusted; the message carries the remediation.
+            console.print(f"\n[red]✗ {escape(str(e))}[/red]")
+            sys.exit(1)
+        except AuthenticationError as e:
+            report_expired_session(console, e)
+            sys.exit(1)
+        except FetchError as e:
+            report_unreachable(console, e)
+            sys.exit(1)
         except Exception as e:
-            logger.error(f"Download failed: {e}", exc_info=True)
-            console.print(f"[red]✗ Download failed: {e}[/red]")
+            logger.debug("Download failed", exc_info=True)
+            console.print(f"[red]✗ Download failed: {escape(str(e))}[/red]")
             sys.exit(1)
 
     # Step 6: Export to requested format
     try:
-        import json
-
-        from cis_bench.models.benchmark import Benchmark
+        from cis_bench.catalog.database import deserialize_benchmark_json
 
         console.print(f"[cyan]Exporting to {export_format}...[/cyan]")
 
         # Load from database
         downloaded = db.get_downloaded(benchmark_id)
-        benchmark_data = json.loads(downloaded["content_json"])
-        benchmark = Benchmark(**benchmark_data)
+        if not downloaded:
+            raise ValueError(f"Benchmark {benchmark_id} not found in catalog cache")
+        benchmark = deserialize_benchmark_json(downloaded["content_json"])
 
         # Create exporter
         exporter_kwargs = {}
@@ -285,12 +300,12 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
 
         console.print("\n[bold green]✓ Success![/bold green]")
         console.print(f"  Format: {exporter.format_name()}")
-        console.print(f"  Output: [bold]{output}[/bold]")
+        console.print(f"  Output: [bold]{escape(str(output))}[/bold]")
         console.print(f"  Size: {file_size:.1f} KB")
 
         logger.debug(f"Export complete: {output}")
 
     except Exception as e:
-        logger.error(f"Export failed: {e}", exc_info=True)
-        console.print(f"[red]✗ Export failed: {e}[/red]")
+        logger.debug("Export failed", exc_info=True)
+        console.print(f"[red]✗ Export failed: {escape(str(e))}[/red]")
         sys.exit(1)
