@@ -56,6 +56,7 @@ def auth(temp_session_path):
         verify_ssl=True,
         session_file=temp_session_path,
         request_policy=POLICY,
+        timeout=(10.0, 30.0),
     )
 
 
@@ -86,6 +87,7 @@ class TestSaveSession:
             verify_ssl=True,
             session_file=session_path,
             request_policy=POLICY,
+            timeout=(10.0, 30.0),
         )
 
         auth.save_session(session)
@@ -118,6 +120,7 @@ class TestLoadSavedSession:
             verify_ssl=False,
             session_file=temp_session_path,
             request_policy=POLICY,
+            timeout=(10.0, 30.0),
         )
 
         session = auth.load_saved_session()
@@ -177,6 +180,7 @@ class TestValidateSession:
             verify_ssl=False,
             session_file=temp_session_path,
             request_policy=POLICY,
+            timeout=(10.0, 30.0),
         )
         session = requests.Session()
         session.cookies.set("test", "value")
@@ -202,6 +206,7 @@ class TestValidateSession:
             verify_ssl=False,
             session_file=temp_session_path,
             request_policy=POLICY,
+            timeout=(10.0, 30.0),
         )
         session = requests.Session()
         session.cookies.set("test", "value")
@@ -223,6 +228,7 @@ class TestValidateSession:
             verify_ssl=False,
             session_file=temp_session_path,
             request_policy=POLICY,
+            timeout=(10.0, 30.0),
         )
         session = requests.Session()
         session.cookies.set("test", "value")
@@ -244,6 +250,7 @@ class TestValidateSession:
             verify_ssl=False,
             session_file=temp_session_path,
             request_policy=POLICY,
+            timeout=(10.0, 30.0),
         )
         session = requests.Session()
         session.cookies.set("test", "value")
@@ -316,6 +323,7 @@ class TestValidateSession:
             verify_ssl=False,
             session_file=temp_session_path,
             request_policy=POLICY,
+            timeout=(10.0, 30.0),
         )
         session = requests.Session()
         session.cookies.set("auth0", "sso-cookie", domain="auth.portal.cisecurity.org")
@@ -407,6 +415,7 @@ class TestValidateSession:
             verify_ssl=False,
             session_file=temp_session_path,
             request_policy=POLICY,
+            timeout=(10.0, 30.0),
         )
         session = requests.Session()
         session.cookies.set("auth0", "qa-sso", domain="auth.portal.qa.cisecurity.org")
@@ -472,15 +481,147 @@ class TestValidateSession:
         assert "CIS_BENCH_VERIFY_SSL=false" in message
         assert isinstance(exc_info.value.__cause__, requests.exceptions.SSLError)
 
-    def test_validate_session_still_returns_false_on_non_tls_connection_errors(self, auth):
-        """Network failures other than TLS trust keep the existing False contract."""
+    @pytest.mark.parametrize(
+        "failure",
+        [
+            requests.exceptions.ConnectionError("connection refused"),
+            requests.exceptions.Timeout("Read timed out"),
+            requests.exceptions.ChunkedEncodingError("connection broken"),
+        ],
+        ids=["connection", "timeout", "broken-body"],
+    )
+    def test_a_network_failure_is_a_fetch_error_naming_the_url_not_a_rejection(self, auth, failure):
+        """WorkBench could not be asked, so nothing is known about the session."""
+        from cis_bench.exceptions import FetchError
+
         session = requests.Session()
         session.cookies.set("test", "value")
 
-        with patch.object(session, "get") as mock_get:
-            mock_get.side_effect = requests.exceptions.ConnectionError("connection refused")
+        with patch.object(session, "get", side_effect=failure):
+            with pytest.raises(FetchError) as raised:
+                auth.validate_session(session)
 
+        assert raised.value.url == f"{WORKBENCH_URL}/benchmarks"
+        assert raised.value.__cause__ is failure
+        assert not isinstance(raised.value, AuthenticationError)
+
+    @pytest.mark.parametrize("status", [429, 500, 502, 503, 504, 404])
+    def test_an_error_status_is_a_fetch_error_not_a_rejection(self, auth, status):
+        """A server error says nothing about whether the session is still accepted."""
+        from cis_bench.exceptions import FetchError
+
+        session = requests.Session()
+        session.cookies.set("test", "value")
+        answer = Mock(status_code=status, headers={}, text="")
+
+        with patch.object(session, "get", return_value=answer):
+            with pytest.raises(FetchError) as raised:
+                auth.validate_session(session)
+
+        assert raised.value.url == f"{WORKBENCH_URL}/benchmarks"
+        assert f"HTTP {status}" in str(raised.value)
+
+    @pytest.mark.parametrize(("status", "attempts"), [(503, 3), (429, 3), (500, 1), (404, 1)])
+    def test_the_error_counts_the_attempts_the_sessions_adapter_made(self, auth, status, attempts):
+        """A status the adapter retries was tried retries + 1 times; any other status once."""
+        from cis_bench.exceptions import FetchError
+        from cis_bench.fetcher.http import new_workbench_session
+
+        session = new_workbench_session(POLICY)  # POLICY retries twice
+        session.cookies.set("test", "value")
+        answer = Mock(status_code=status, headers={}, text="")
+
+        with patch.object(session, "get", return_value=answer):
+            with pytest.raises(FetchError) as raised:
+                auth.validate_session(session)
+
+        assert raised.value.attempts == attempts
+
+    @pytest.mark.parametrize("status", [401, 403])
+    def test_a_401_or_403_is_a_rejection(self, auth, status):
+        session = requests.Session()
+        session.cookies.set("test", "value")
+        answer = Mock(status_code=status, headers={}, text="")
+
+        with patch.object(session, "get", return_value=answer):
             assert auth.validate_session(session) is False
+
+    @pytest.mark.parametrize(
+        ("status", "outcome"),
+        [(503, "unanswered"), (500, "unanswered"), (302, "rejected"), (403, "rejected")],
+    )
+    def test_the_benchmarks_request_after_the_sso_handshake_is_judged_the_same_way(
+        self, auth, status, outcome
+    ):
+        """After SSO lands on the dashboard, /benchmarks is asked once more."""
+        from cis_bench.exceptions import FetchError
+
+        session = requests.Session()
+        session.cookies.set("test", "value")
+        answers = [
+            Mock(status_code=302, headers={"Location": f"{WORKBENCH_URL}/dashboard"}, text=""),
+            Mock(status_code=200, headers={}, text="<html>dashboard</html>"),
+            Mock(status_code=status, headers={"Location": "/login"}, text=""),
+        ]
+
+        with patch.object(session, "get", side_effect=answers):
+            if outcome == "rejected":
+                assert auth.validate_session(session) is False
+            else:
+                with pytest.raises(FetchError) as raised:
+                    auth.validate_session(session)
+                assert raised.value.url == f"{WORKBENCH_URL}/benchmarks"
+                assert f"HTTP {status}" in str(raised.value)
+
+    def test_a_failure_part_way_through_the_sso_walk_names_the_url_that_failed(self, auth):
+        from cis_bench.exceptions import FetchError
+
+        session = requests.Session()
+        session.cookies.set("test", "value")
+        dashboard = f"{WORKBENCH_URL}/dashboard"
+        to_dashboard = Mock(status_code=302, headers={"Location": dashboard}, text="")
+
+        with patch.object(
+            session,
+            "get",
+            side_effect=[to_dashboard, requests.exceptions.Timeout("Read timed out")],
+        ):
+            with pytest.raises(FetchError) as at_the_second_hop:
+                auth.validate_session(session)
+        assert at_the_second_hop.value.url == dashboard
+
+        landed = Mock(status_code=200, headers={}, text="<html>dashboard</html>")
+        with patch.object(
+            session,
+            "get",
+            side_effect=[to_dashboard, landed, requests.exceptions.ConnectionError("reset")],
+        ):
+            with pytest.raises(FetchError) as at_the_last_request:
+                auth.validate_session(session)
+        assert at_the_last_request.value.url == f"{WORKBENCH_URL}/benchmarks"
+
+    def test_every_request_of_the_check_uses_the_given_timeout(self, temp_session_path):
+        """The SSO walk and the final /benchmarks request all wait as long as the caller says."""
+        auth = AuthManager(
+            workbench_url=WORKBENCH_URL,
+            verify_ssl=True,
+            session_file=temp_session_path,
+            request_policy=POLICY,
+            timeout=(4.0, 7.0),
+        )
+        session = requests.Session()
+        session.cookies.set("test", "value")
+        answers = [
+            Mock(status_code=302, headers={"Location": f"{WORKBENCH_URL}/dashboard"}, text=""),
+            Mock(status_code=200, headers={}, text="<html>dashboard</html>"),
+            Mock(status_code=200, headers={}, text="<html>benchmarks</html>"),
+        ]
+
+        with patch.object(session, "get", side_effect=answers) as mock_get:
+            assert auth.validate_session(session) is True
+
+        assert mock_get.call_count == 3
+        assert [call.kwargs["timeout"] for call in mock_get.call_args_list] == [(4.0, 7.0)] * 3
 
 
 class TestGetOrCreateSession:
@@ -575,6 +716,50 @@ class TestGetOrCreateSession:
         mock_save.assert_not_called()
 
 
+class TestTheSavedSessionSurvivesAnUnreachableWorkBench:
+    """Only WorkBench rejecting the session deletes it; a failure to ask leaves the file alone."""
+
+    @staticmethod
+    def _save_a_session(auth):
+        saved = requests.Session()
+        saved.cookies.set("sid", "value", domain="workbench.cisecurity.org")
+        auth.save_session(saved)
+
+    def test_a_network_failure_raises_and_keeps_the_session_file(self, auth, temp_session_path):
+        from cis_bench.exceptions import FetchError
+
+        self._save_a_session(auth)
+
+        with patch(
+            "requests.Session.get", side_effect=requests.exceptions.ConnectionError("no route")
+        ):
+            with pytest.raises(FetchError):
+                auth.get_or_create_session()
+
+        assert temp_session_path.exists()
+
+    def test_a_server_error_raises_and_keeps_the_session_file(self, auth, temp_session_path):
+        from cis_bench.exceptions import FetchError
+
+        self._save_a_session(auth)
+
+        with patch("requests.Session.get", return_value=Mock(status_code=503, headers={}, text="")):
+            with pytest.raises(FetchError):
+                auth.get_or_create_session()
+
+        assert temp_session_path.exists()
+
+    def test_a_rejected_session_is_deleted(self, auth, temp_session_path):
+        self._save_a_session(auth)
+        to_login = Mock(status_code=302, headers={"Location": "/login"}, text="")
+
+        with patch("requests.Session.get", return_value=to_login):
+            with pytest.raises(NoSavedSessionError):
+                auth.get_or_create_session()
+
+        assert not temp_session_path.exists()
+
+
 class TestSessionsCarryTheGivenVerifySsl:
     """Every session an AuthManager makes carries the verify_ssl it was built with."""
 
@@ -587,6 +772,7 @@ class TestSessionsCarryTheGivenVerifySsl:
             verify_ssl=verify_ssl,
             session_file=temp_session_path,
             request_policy=POLICY,
+            timeout=(10.0, 30.0),
         )
         cj = http.cookiejar.MozillaCookieJar(str(temp_session_path))
         cj.set_cookie(_workbench_cookie())

@@ -11,10 +11,11 @@ import click
 from rich.console import Console
 from rich.markup import escape
 
+from cis_bench.cli.helpers.errors import report_unreachable
 from cis_bench.cli.helpers.output import output_data
 from cis_bench.cli.helpers.services import auth_manager, settings_from, settings_with_flags
 from cis_bench.config import BROWSERS, is_cis_domain
-from cis_bench.exceptions import TLSVerificationError
+from cis_bench.exceptions import FetchError, TLSVerificationError
 
 console = Console()
 logger = logging.getLogger(__name__)
@@ -217,6 +218,9 @@ def login(browser, cookies, open, no_verify_ssl):
         # The server could not be trusted; the message carries the remediation.
         console.print(f"[red]✗ {escape(str(e))}[/red]")
         sys.exit(1)
+    except FetchError as e:
+        report_unreachable(console, e)
+        sys.exit(1)
     except ValueError as e:
         console.print(f"[red]✗ {escape(str(e))}[/red]")
         sys.exit(1)
@@ -297,6 +301,9 @@ def status(output_format):
             console.print("  cis-bench auth login --browser chrome")
             sys.exit(1)
 
+    except FetchError as e:
+        report_unreachable(console, e)
+        sys.exit(1)
     except Exception as e:
         logger.debug("Status check failed", exc_info=True)
         console.print(f"[red]✗ Status check failed: {escape(str(e))}[/red]")

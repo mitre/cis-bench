@@ -80,6 +80,17 @@ pipx install cis-bench
 3. Log in
 4. Try CLI command again
 
+### "Could not reach WorkBench"
+
+**Cause:** WorkBench did not answer: no network, a timeout, or a server error that lasted
+through the retries. This is not an expired login. cis-bench learned nothing about the
+session, so the saved session is kept.
+
+**Solution:**
+
+- Check the network connection and any proxy settings, then run the command again
+- On a slow link, raise `CIS_BENCH_REQUEST_TIMEOUT` (see [Configuration](configuration.md#settings))
+
 ### "Failed to extract cookies"
 
 **Cause:** Browser database locked or no cookies found.

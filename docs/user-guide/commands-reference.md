@@ -119,6 +119,10 @@ cis-bench auth status --output-format json
 }
 ```
 
+**Exit code:** `0` when WorkBench accepts the saved session. `1` when WorkBench rejects it
+(the session expired), and `1` when WorkBench could not be reached; in that case the saved
+session is kept and nothing is known about whether it is still valid.
+
 ---
 
 ### `cis-bench auth logout`

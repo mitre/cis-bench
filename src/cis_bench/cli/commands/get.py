@@ -8,10 +8,11 @@ import questionary
 from rich.console import Console
 from rich.markup import escape
 
-from cis_bench.cli.helpers.errors import report_expired_session
+from cis_bench.cli.helpers.errors import report_expired_session, report_unreachable
 from cis_bench.cli.helpers.services import auth_manager, settings_from, workbench_scraper
 from cis_bench.exceptions import (
     AuthenticationError,
+    FetchError,
     NoSavedSessionError,
     TLSVerificationError,
 )
@@ -254,6 +255,9 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
             sys.exit(1)
         except AuthenticationError as e:
             report_expired_session(console, e)
+            sys.exit(1)
+        except FetchError as e:
+            report_unreachable(console, e)
             sys.exit(1)
         except Exception as e:
             logger.debug("Download failed", exc_info=True)

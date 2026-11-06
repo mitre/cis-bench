@@ -24,6 +24,7 @@ def auth(tmp_path):
         verify_ssl=True,
         session_file=tmp_path / "session.cookies",
         request_policy=POLICY,
+        timeout=(10.0, 30.0),
     )
 
 

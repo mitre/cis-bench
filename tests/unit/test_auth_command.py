@@ -249,6 +249,26 @@ class TestAuthStatusCommand:
             or "✗" in result.output
         )
 
+    def test_status_with_workbench_unreachable_does_not_say_expired(
+        self, mock_auth_manager, runner, session_file
+    ):
+        """A network failure leaves the session's state unknown; status says so and exits 1."""
+        from cis_bench.exceptions import FetchError
+
+        session_file.touch()
+        mock_auth_manager.load_saved_session.return_value = MagicMock()
+        mock_auth_manager.validate_session.side_effect = FetchError(
+            "https://workbench.cisecurity.org/benchmarks", 3, "Read timed out"
+        )
+
+        result = runner.invoke(cli, ["auth", "status"])
+
+        assert result.exit_code == 1
+        assert "Could not reach WorkBench" in result.output
+        assert "saved session was kept" in result.output
+        assert "expired" not in result.output.lower()
+        assert "no longer valid" not in result.output
+
     def test_status_no_session(self, mock_auth_manager, runner, session_file):
         """auth status should show not logged in when no saved session."""
         session_file.touch()
@@ -500,6 +520,24 @@ class TestAuthLoginTLSFailureReporting:
         assert "Session validation failed" in result.output
         assert "--no-verify-ssl" not in result.output
         assert "CIS_BENCH_VERIFY_SSL=false" not in result.output
+
+    def test_login_reports_an_unreachable_workbench_as_such(self, mock_auth, runner):
+        from cis_bench.exceptions import FetchError
+
+        mock_session = MagicMock()
+        mock_session.cookies = [MagicMock()]
+        mock_auth.load_cookies_from_browser.return_value = mock_session
+        mock_auth.validate_session.side_effect = FetchError(
+            "https://workbench.cisecurity.org/benchmarks", 3, "Read timed out"
+        )
+        mock_auth._is_windows_permission_error.return_value = False
+
+        result = runner.invoke(cli, ["auth", "login", "--browser", "chrome"])
+
+        assert result.exit_code == 1
+        assert "Could not reach WorkBench" in result.output
+        assert "Login failed" not in result.output
+        mock_auth.save_session.assert_not_called()
 
     def test_login_reports_tls_failure_with_remediation(self, mock_auth, runner, monkeypatch):
         """A certificate trust failure surfaces its own message and remediation, exit 1."""

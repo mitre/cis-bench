@@ -296,7 +296,7 @@ def auth_manager_class():
 
     The CLI builds its AuthManager from the run's settings. The instance this mock class builds
     keeps the values it was built with (workbench_url, verify_ssl, session_file,
-    request_policy, workbench_host), so a command prints and checks real ones; every
+    request_policy, timeout, workbench_host), so a command prints and checks real ones; every
     method is a mock the test configures on ``auth_manager_class.return_value``. The constructor
     arguments are on ``auth_manager_class.call_args``.
     """
@@ -307,11 +307,12 @@ def auth_manager_class():
 
     instance = MagicMock(spec=AuthManager)
 
-    def build(*, workbench_url, verify_ssl, session_file, request_policy):
+    def build(*, workbench_url, verify_ssl, session_file, request_policy, timeout):
         instance.workbench_url = workbench_url
         instance.verify_ssl = verify_ssl
         instance.session_file = session_file
         instance.request_policy = request_policy
+        instance.timeout = timeout
         instance.workbench_host = urlparse(workbench_url).netloc
         return instance
 

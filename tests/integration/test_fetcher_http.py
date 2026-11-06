@@ -263,6 +263,7 @@ class TestALoweredRateCoversTheSessionCheck:
                 verify_ssl=True,
                 session_file=session_file,
                 request_policy=ONE_PER_SECOND,
+                timeout=(10.0, 30.0),
             )
             with patch(
                 "cis_bench.fetcher.auth.browser_cookie3.firefox", return_value=browser_cookies
@@ -283,6 +284,7 @@ class TestALoweredRateCoversTheSessionCheck:
             verify_ssl=True,
             session_file=tmp_path / "session.cookies",
             request_policy=ONE_PER_SECOND,
+            timeout=(10.0, 30.0),
         )
         with (
             patch("platform.system", return_value="Windows"),
@@ -307,6 +309,7 @@ def _auth(tmp_path):
         verify_ssl=True,
         session_file=tmp_path / "session.cookies",
         request_policy=POLICY,
+        timeout=(10.0, 30.0),
     )
 
 

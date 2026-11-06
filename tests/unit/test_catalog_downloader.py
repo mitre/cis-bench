@@ -468,6 +468,7 @@ class TestCatalogPackageExportsAndBoundaries:
             verify_ssl=True,
             session_file=tmp_path / "session.cookies",
             request_policy=POLICY,
+            timeout=(10.0, 30.0),
         )
         session.get.return_value = login_resp
         assert auth.validate_session(session) is False

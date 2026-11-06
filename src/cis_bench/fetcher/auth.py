@@ -23,12 +23,18 @@ except ImportError:
 from cis_bench.config import (
     CIS_ROOT_DOMAIN,
     MAX_SSO_REDIRECTS,
+    RETRYABLE_STATUS_CODES,
     TRUSTED_SSO_HOSTS,
     RequestPolicy,
     is_cis_domain,
 )
-from cis_bench.exceptions import AuthenticationError, NoSavedSessionError, TLSVerificationError
-from cis_bench.fetcher.http import new_workbench_session
+from cis_bench.exceptions import (
+    AuthenticationError,
+    FetchError,
+    NoSavedSessionError,
+    TLSVerificationError,
+)
+from cis_bench.fetcher.http import attempts_allowed, new_workbench_session
 from cis_bench.utils.workbench_urls import catalog_listing_url
 
 logger = logging.getLogger(__name__)
@@ -48,6 +54,22 @@ def is_workbench_login_page(html: str) -> bool:
         soup.find(string=re.compile(r"E-Mail or Username", re.I)),
     ]
     return any(indicator is not None for indicator in login_indicators)
+
+
+def _is_a_rejection(status: int) -> bool:
+    """Whether this answer to the session check means WorkBench does not accept the session.
+
+    A redirect (to the login page, or one more after the SSO handshake) and 401/403 do; any
+    other error status only means WorkBench did not answer the question.
+    """
+    return 300 <= status < 400 or status in (401, 403)
+
+
+def _no_answer(session: requests.Session, url: str, response: requests.Response) -> FetchError:
+    """The error for a session check WorkBench answered with an error status."""
+    retried = response.status_code in RETRYABLE_STATUS_CODES
+    attempts = attempts_allowed(session, url) if retried else 1
+    return FetchError(url, attempts, f"HTTP {response.status_code}")
 
 
 class AuthManager:
@@ -77,6 +99,7 @@ class AuthManager:
         verify_ssl: bool,
         session_file: Path,
         request_policy: RequestPolicy,
+        timeout: tuple[float, float],
     ):
         """
         Args:
@@ -85,11 +108,13 @@ class AuthManager:
             session_file: Where the saved session's cookies live
             request_policy: Pacing and retries of every session it makes, from the session
                 check on
+            timeout: (connect, read) seconds each request of the session check may take
         """
         self.workbench_url = workbench_url
         self.verify_ssl = verify_ssl
         self.session_file = session_file
         self.request_policy = request_policy
+        self.timeout = timeout
 
     @property
     def workbench_host(self) -> str:
@@ -334,12 +359,16 @@ Workarounds:
             session: Session to validate
 
         Returns:
-            True if session is valid on this manager's WorkBench host, False otherwise
+            True if WorkBench accepts the session on this manager's host; False if WorkBench
+            rejected it (a login page or a redirect to login, 401 or 403)
 
         Raises:
             TLSVerificationError: If the server certificate cannot be verified. This is
                 raised rather than returned as False so callers never report a trust
                 failure as an expired session.
+            FetchError: If WorkBench could not be asked (a timeout or connection failure
+                after the retries, or an error status). Nothing is known about the session
+                then, so this is never reported as False.
         """
         if not session or not session.cookies:
             return False
@@ -348,13 +377,15 @@ Workarounds:
         benchmarks_url = catalog_listing_url(base_url=self.workbench_url)
         trusted_hosts = TRUSTED_SSO_HOSTS | {workbench_host}
 
+        requested = benchmarks_url
         try:
             current_url = benchmarks_url
 
             for _ in range(MAX_SSO_REDIRECTS + 1):
+                requested = current_url
                 response = session.get(
                     current_url,
-                    timeout=10,
+                    timeout=self.timeout,
                     allow_redirects=False,
                     verify=self.verify_ssl,
                 )
@@ -395,13 +426,16 @@ Workarounds:
                         return False
 
                     if current_url != benchmarks_url:
+                        requested = benchmarks_url
                         bench_response = session.get(
                             benchmarks_url,
-                            timeout=10,
+                            timeout=self.timeout,
                             allow_redirects=False,
                             verify=self.verify_ssl,
                         )
                         if not (200 <= bench_response.status_code < 300):
+                            if not _is_a_rejection(bench_response.status_code):
+                                raise _no_answer(session, benchmarks_url, bench_response)
                             logger.debug(
                                 "Session invalid - /benchmarks inaccessible after SSO handshake"
                             )
@@ -413,7 +447,9 @@ Workarounds:
                     logger.debug("Session validated successfully")
                     return True
 
-                logger.warning(f"Session validation returned status {response.status_code}")
+                if not _is_a_rejection(response.status_code):
+                    raise _no_answer(session, current_url, response)
+                logger.debug(f"Session invalid - WorkBench answered {response.status_code}")
                 return False
 
             logger.debug("Session invalid - exceeded maximum SSO redirects")
@@ -427,8 +463,8 @@ Workarounds:
                 "bundle; to skip verification entirely set CIS_BENCH_VERIFY_SSL=false."
             ) from e
         except requests.exceptions.RequestException as e:
-            logger.warning(f"Session validation failed: {e}")
-            return False
+            # WorkBench could not be asked; that says nothing about the session.
+            raise FetchError(requested, attempts_allowed(session, requested), str(e)) from e
 
     def get_or_create_session(
         self, browser: str | None = None, force_refresh: bool = False
@@ -449,6 +485,8 @@ Workarounds:
             NoSavedSessionError: If no saved session exists and no browser was given
             AuthenticationError: If freshly extracted browser cookies are not accepted by WorkBench
             TLSVerificationError: If the WorkBench certificate cannot be verified
+            FetchError: If WorkBench could not be reached to check a session; the saved
+                session is left as it is
         """
         # If force refresh, skip saved session
         if not force_refresh:

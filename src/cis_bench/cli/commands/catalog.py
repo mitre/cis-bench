@@ -10,6 +10,7 @@ from rich.table import Table
 
 from cis_bench.catalog.database import CatalogDatabase
 from cis_bench.catalog.search import CatalogSearch
+from cis_bench.cli.helpers.errors import report_unreachable
 from cis_bench.cli.helpers.output import output_data, showing_line
 from cis_bench.cli.helpers.services import (
     auth_manager,
@@ -17,7 +18,7 @@ from cis_bench.cli.helpers.services import (
     settings_from,
     workbench_scraper,
 )
-from cis_bench.exceptions import AuthenticationError
+from cis_bench.exceptions import AuthenticationError, FetchError
 
 console = Console()
 logger = logging.getLogger(__name__)
@@ -152,6 +153,9 @@ def refresh(browser, max_pages, rate_limit):
 
     except click.Abort:
         raise
+    except FetchError as e:
+        report_unreachable(console, e)
+        raise click.Abort() from e
     except AuthenticationError as e:
         console.print("[red]✗ Authentication required[/red]")
         console.print(f"[yellow]{escape(str(e))}[/yellow]")
@@ -195,6 +199,9 @@ def update(browser):
 
     except click.Abort:
         raise
+    except FetchError as e:
+        report_unreachable(console, e)
+        raise click.Abort() from e
     except AuthenticationError as e:
         console.print("[red]✗ Authentication required[/red]")
         console.print(f"[yellow]{escape(str(e))}[/yellow]")
@@ -557,6 +564,9 @@ def download(benchmark_id_or_name, browser, force, interactive):
 
     except click.Abort:
         raise
+    except FetchError as e:
+        report_unreachable(console, e)
+        raise click.Abort() from e
     except AuthenticationError as e:
         console.print("[red]✗ Authentication required[/red]")
         console.print(f"[yellow]{escape(str(e))}[/yellow]")
@@ -622,6 +632,9 @@ def check_updates(offline):
 
     except click.Abort:
         raise
+    except FetchError as e:
+        report_unreachable(console, e)
+        raise click.Abort() from e
     except AuthenticationError as e:
         console.print("[red]✗ Authentication required[/red]")
         console.print(f"[yellow]{escape(str(e))}[/yellow]")

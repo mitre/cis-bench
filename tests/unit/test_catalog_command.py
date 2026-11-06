@@ -1787,6 +1787,35 @@ class TestCatalogRequestTimeoutSetting:
         assert "must be an https://*.cisecurity.org origin" in result.output
         mock_auth.assert_not_called()
 
+    @pytest.mark.parametrize(
+        "args",
+        [["refresh"], ["update"], ["download", "23598"], ["check-updates"]],
+        ids=["refresh", "update", "download", "check-updates"],
+    )
+    def test_an_unreachable_workbench_is_reported_as_such_not_as_a_login_problem(
+        self, runner, args
+    ):
+        from cis_bench.exceptions import FetchError
+
+        with (
+            patch("cis_bench.cli.commands.catalog.get_catalog_db"),
+            patch("cis_bench.cli.commands.catalog.require_catalog_db"),
+            patch.object(
+                AuthManager,
+                "get_or_create_session",
+                side_effect=FetchError(
+                    "https://workbench.cisecurity.org/benchmarks", 3, "Read timed out"
+                ),
+            ),
+        ):
+            result = runner.invoke(cli, ["catalog", *args])
+
+        assert result.exit_code == 1
+        assert "Could not reach WorkBench" in result.output
+        assert "saved session was kept" in result.output
+        assert "auth login" not in result.output
+        assert "Traceback" not in result.output
+
     @pytest.mark.parametrize("rate", ["nan", "inf", "-1", "0", "1e-309", "5e-324"])
     def test_refresh_rejects_a_bad_rate_limit_before_any_network_call(self, runner, rate):
         # 1e-309 and 5e-324 are finite and above 0, but 1 / them is an infinite request rate

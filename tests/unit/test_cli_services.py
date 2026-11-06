@@ -79,6 +79,12 @@ class TestFactories:
             requests_per_second=3.0, retries=2, backoff_factor=1.0, jitter_seconds=0.5
         )
 
+    def test_auth_manager_checks_the_session_with_the_request_timeout(self, monkeypatch):
+        from cis_bench.config import load_settings
+
+        monkeypatch.setenv("CIS_BENCH_REQUEST_TIMEOUT", "90")
+        assert auth_manager(load_settings()).timeout == (10.0, 90.0)
+
     def test_auth_manager_takes_a_run_specific_rate(self, settings):
         policy = auth_manager(settings, requests_per_second=0.5).request_policy
         assert policy == replace(settings.request_policy, requests_per_second=0.5)

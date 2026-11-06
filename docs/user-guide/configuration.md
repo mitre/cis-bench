@@ -113,9 +113,9 @@ export REQUESTS_CA_BUNDLE=/etc/ssl/corporate-ca-bundle.crt
 ```
 
 **`CIS_BENCH_REQUEST_TIMEOUT`** is the read timeout of every request cis-bench makes to
-WorkBench: benchmark downloads (benchmark page, navigation tree, each recommendation page)
-and the catalog (`catalog refresh` and `catalog update` listing pages, `catalog
-check-updates` detail pages). The connect timeout is 10 seconds, or the read timeout if that
+WorkBench: the check of the saved session that runs before a command uses it, benchmark
+downloads (benchmark page, navigation tree, each recommendation page) and the catalog
+(`catalog refresh` and `catalog update` listing pages, `catalog check-updates` detail pages). The connect timeout is 10 seconds, or the read timeout if that
 is shorter. A slow network wants a longer value:
 ```bash
 export CIS_BENCH_REQUEST_TIMEOUT=90

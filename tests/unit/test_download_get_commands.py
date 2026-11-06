@@ -1373,6 +1373,31 @@ class TestVerifiedTLSByDefault:
         assert "session may have expired" not in result.output
         assert "Authentication Failed" not in result.output
 
+    def test_download_reports_an_unreachable_workbench_without_session_hint(
+        self, runner, tmp_path, monkeypatch
+    ):
+        """A network failure during the session check is not an expired session."""
+        from cis_bench.exceptions import FetchError
+
+        with patch(
+            "cis_bench.fetcher.auth.AuthManager.get_or_create_session",
+            side_effect=FetchError(
+                "https://workbench.cisecurity.org/benchmarks", 3, "Read timed out"
+            ),
+        ):
+            monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path / "missing"))
+            result = runner.invoke(cli, ["download", "12345"])
+
+        assert result.exit_code == 1
+        assert "Could not reach WorkBench" in result.output
+        assert "https://workbench.cisecurity.org/benchmarks: Read timed out after 3 attempts" in (
+            result.output.replace("\n", "")
+        )
+        assert "saved session was kept" in result.output
+        assert "may have expired" not in result.output
+        assert "auth login" not in result.output
+        assert "Traceback" not in result.output
+
     def test_get_defaults_to_verified_tls(self, runner, sample_benchmark, tmp_path, monkeypatch):
         monkeypatch.delenv("CIS_BENCH_VERIFY_SSL", raising=False)
         catalog_path = tmp_path / "catalog.db"
@@ -1450,6 +1475,37 @@ class TestVerifiedTLSByDefault:
         assert "TLS certificate verification failed for workbench.cisecurity.org" in result.output
         assert "REQUESTS_CA_BUNDLE" in result.output
         assert "Download failed" not in result.output
+
+    def test_get_reports_an_unreachable_workbench_as_such(self, runner, tmp_path, monkeypatch):
+        from cis_bench.exceptions import FetchError
+
+        catalog_path = tmp_path / "catalog.db"
+        catalog_path.touch()
+        with (
+            patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class,
+            patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class,
+            patch("cis_bench.fetcher.auth.AuthManager") as mock_auth,
+        ):
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
+            mock_db = Mock()
+            mock_db_class.return_value = mock_db
+            mock_db.get_downloaded.return_value = None
+            mock_search = Mock()
+            mock_search_class.return_value = mock_search
+            mock_search.search.return_value = [
+                {"benchmark_id": "12345", "title": "Test", "version": "v1", "status": "Published"}
+            ]
+            mock_auth.return_value.get_or_create_session.side_effect = FetchError(
+                "https://workbench.cisecurity.org/benchmarks", 3, "Read timed out"
+            )
+
+            result = runner.invoke(cli, ["get", "test", "--non-interactive"])
+
+        assert result.exit_code == 1
+        assert "Could not reach WorkBench" in result.output
+        assert "saved session was kept" in result.output
+        assert "may have expired" not in result.output
+        assert "Traceback" not in result.output
 
 
 class TestDownloadReferenceValidation:

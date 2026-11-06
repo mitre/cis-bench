@@ -59,7 +59,8 @@ def settings_with_flags(**flags: object) -> Settings:
 
 
 def auth_manager(settings: Settings, *, requests_per_second: float | None = None) -> AuthManager:
-    """An AuthManager for the configured WorkBench, TLS setting, session file and request policy.
+    """An AuthManager for the configured WorkBench, TLS setting, session file, request policy
+    and request timeout.
 
     requests_per_second replaces the configured rate for every session it makes, from the
     session check on (a run's --rate-limit); None keeps the configured rate.
@@ -74,6 +75,7 @@ def auth_manager(settings: Settings, *, requests_per_second: float | None = None
         verify_ssl=settings.verify_ssl,
         session_file=settings.session_file_path,
         request_policy=policy,
+        timeout=settings.request_timeouts,
     )
 
 

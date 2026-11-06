@@ -26,6 +26,7 @@ def auth(tmp_path):
         verify_ssl=True,
         session_file=tmp_path / "session.cookies",
         request_policy=POLICY,
+        timeout=(10.0, 30.0),
     )
 
 
@@ -175,6 +176,7 @@ class TestWindowsErrorMessages:
             verify_ssl=True,
             session_file=tmp_path / "session.cookies",
             request_policy=POLICY,
+            timeout=(10.0, 30.0),
         )
         message = staging._format_windows_cookie_error("chrome", Exception("requires admin"))
         assert "Export cookies for workbench-staging.cisecurity.org" in message
