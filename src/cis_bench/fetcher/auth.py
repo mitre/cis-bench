@@ -295,8 +295,9 @@ Workarounds:
         session_path = self.session_file
 
         try:
-            # Ensure directory exists
-            session_path.parent.mkdir(parents=True, exist_ok=True)
+            # The folder holds login cookies: when it has to be created, it is the owner's
+            # alone. A folder that already exists keeps the mode its owner gave it.
+            session_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
 
             # Create cookie jar and save
             cj = http.cookiejar.MozillaCookieJar(str(session_path))

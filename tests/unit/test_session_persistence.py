@@ -96,6 +96,47 @@ class TestSaveSession:
         assert session_path.parent.exists()
 
 
+class TestTheStateFolderIsPrivateToTheUser:
+    """The folder that holds the session cookies is created for its owner only."""
+
+    @staticmethod
+    def _auth(session_file):
+        return AuthManager(
+            workbench_url=WORKBENCH_URL,
+            verify_ssl=True,
+            session_file=session_file,
+            request_policy=POLICY,
+            timeout=(10.0, 30.0),
+        )
+
+    @staticmethod
+    def _session():
+        session = requests.Session()
+        session.cookies.set("sid", "value", domain="workbench.cisecurity.org")
+        return session
+
+    def test_save_session_creates_its_folder_for_the_owner_only(self, tmp_path):
+        import stat
+
+        folder = tmp_path / "state" / "cis-bench"
+
+        self._auth(folder / "session.cookies").save_session(self._session())
+
+        assert stat.S_IMODE(folder.stat().st_mode) == 0o700
+        assert stat.S_IMODE((folder / "session.cookies").stat().st_mode) == 0o600
+
+    def test_save_session_leaves_the_mode_of_an_existing_folder_alone(self, tmp_path):
+        import stat
+
+        folder = tmp_path / "already-there"
+        folder.mkdir()
+        folder.chmod(0o755)
+
+        self._auth(folder / "session.cookies").save_session(self._session())
+
+        assert stat.S_IMODE(folder.stat().st_mode) == 0o755
+
+
 # ============================================================================
 # Tests: Load Saved Session
 # ============================================================================

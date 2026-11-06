@@ -682,7 +682,10 @@ cis-bench config migrate
 1. Does nothing, exit 0, when the run is not using an earlier version's folder
 2. Stops with exit 1 before moving anything if a destination file already exists
 3. Prints each move; leaves any other file in `~/.cis-bench` in place and names it
-4. Removes `~/.cis-bench` once it is empty
+4. If a move fails (for example a folder that cannot be written), stops with exit 1 and names
+   the file and the reason. What was moved stays moved; run the command again to move the
+   rest (`catalog.db` moves last, so the old folder stays in use until everything is across)
+5. Removes `~/.cis-bench` once it is empty
 
 ---
 

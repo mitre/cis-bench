@@ -29,12 +29,16 @@ def config():
 
 
 def _moves(legacy: Path, targets: Folders) -> list[tuple[Path, Path]]:
-    """Each file of an earlier version's folder that exists, and where this version keeps it."""
+    """Each file of an earlier version's folder that exists, and where this version keeps it.
+
+    catalog.db goes last: once it is in the new data folder the old folder is no longer in
+    use, so a run that failed before that point can simply be run again.
+    """
     planned = [
         (legacy / CONFIG_FILE_NAME, targets.config / CONFIG_FILE_NAME),
-        (legacy / CATALOG_DB_FILE_NAME, targets.data / CATALOG_DB_FILE_NAME),
         (legacy / BENCHMARKS_FOLDER_NAME, targets.data / BENCHMARKS_FOLDER_NAME),
         (legacy / SESSION_FILE_NAME, targets.state / SESSION_FILE_NAME),
+        (legacy / CATALOG_DB_FILE_NAME, targets.data / CATALOG_DB_FILE_NAME),
     ]
     return [(source, target) for source, target in planned if source.exists()]
 
@@ -64,8 +68,18 @@ def migrate():
         sys.exit(1)
 
     for source, target in moves:
-        target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        shutil.move(source, target)
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            shutil.move(source, target)
+        except OSError as error:
+            # What was moved is listed above; catalog.db moves last, so the old folder is
+            # still the one in use and the next run picks up from here.
+            console.print(
+                f"[red]✗ Could not move {escape(source.name)}: {escape(str(error))}[/red]",
+                soft_wrap=True,
+            )
+            console.print("Fix that, then run `cis-bench config migrate` again to move the rest.")
+            sys.exit(1)
         logger.info(f"Moved {source} to {target}")
         console.print(
             f"[green]✓[/green] {escape(source.name)} -> {escape(str(target))}", soft_wrap=True

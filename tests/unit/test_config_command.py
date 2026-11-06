@@ -92,6 +92,50 @@ class TestConfigMigrate:
         assert (home / ".cis-bench" / "catalog.db").read_bytes() == b"catalog"
         assert not (data / "catalog.db").exists()
 
+    @pytest.mark.parametrize(
+        ("fails_on", "moved_before"),
+        [
+            ("config.toml", []),
+            ("benchmarks", ["config.toml"]),
+            ("session.cookies", ["config.toml", "benchmarks"]),
+            ("catalog.db", ["config.toml", "benchmarks", "session.cookies"]),
+        ],
+    )
+    def test_a_failed_move_is_one_error_and_a_second_run_moves_what_is_left(
+        self, cli_runner, home, monkeypatch, fails_on, moved_before
+    ):
+        import shutil
+
+        config, data, state = _targets(home)
+        real_move = shutil.move
+
+        def failing_move(source, target):
+            if source.name == fails_on:
+                raise PermissionError(13, "Permission denied", str(target))
+            return real_move(source, target)
+
+        monkeypatch.setattr("cis_bench.cli.commands.config.shutil.move", failing_move)
+        first = cli_runner.invoke(cli, ["config", "migrate"])
+
+        assert first.exit_code == 1
+        assert isinstance(first.exception, SystemExit), repr(first.exception)  # not a traceback
+        assert f"Could not move {fails_on}" in first.output
+        assert "Permission denied" in first.output
+        for name in moved_before:
+            assert f"{name} ->" in first.output
+        assert "cis-bench config migrate" in first.output
+        assert (home / ".cis-bench" / fails_on).exists()
+
+        monkeypatch.setattr("cis_bench.cli.commands.config.shutil.move", real_move)
+        second = cli_runner.invoke(cli, ["config", "migrate"])
+
+        assert second.exit_code == 0, second.output
+        assert (config / "config.toml").read_text() == "search_limit = 5\n"
+        assert (data / "catalog.db").read_bytes() == b"catalog"
+        assert (data / "benchmarks" / "one.json").read_text() == "{}"
+        assert (state / "session.cookies").read_bytes() == b"cookies"
+        assert not (home / ".cis-bench").exists()
+
     def test_a_second_run_has_nothing_to_do_and_no_notice(self, cli_runner, home):
         first = cli_runner.invoke(cli, ["config", "migrate"])
         assert first.exit_code == 0, first.output

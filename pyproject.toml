@@ -45,7 +45,8 @@ dependencies = [
     "browser-cookie3>=0.19.0",
     # SSL/TLS - Use system certificate stores
     "truststore>=0.8.0",
-    # Configuration (reads the environment, .env and config.toml; brings python-dotenv)
+    # Configuration (reads the environment and config.toml; brings python-dotenv, but .env
+    # files are not read)
     "pydantic-settings>=2.16.0",
     # Export formats
     "PyYAML>=6.0.0",
@@ -199,7 +200,7 @@ ignore = [
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 "os.getenv".msg = "Read settings from cis_bench.config.Settings; only config.py reads the environment."
 "os.environ".msg = "Read settings from cis_bench.config.Settings; only config.py reads the environment."
-"dotenv".msg = "pydantic-settings reads .env for cis_bench.config.Settings; never load it into os.environ."
+"dotenv".msg = "cis-bench reads no .env file; settings come from the environment and config.toml through cis_bench.config.Settings."
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["S101", "S105", "S603", "S607", "B023", "F841", "TID251"]  # Allow test-specific patterns; tests set the environment
