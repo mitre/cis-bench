@@ -48,6 +48,7 @@ def mock_db():
     db.get_catalog_stats.return_value = {
         "total_benchmarks": 100,
         "published_benchmarks": 90,
+        "withdrawn_benchmarks": 4,
         "downloaded_benchmarks": 5,
         "platforms": 10,
         "communities": 8,
@@ -119,6 +120,7 @@ class TestTheBrowserSettingIsTheDefaultBrowser:
                 "total_benchmarks": 1,
                 "pages_scraped": 1,
                 "failed_pages": [],
+                "withdrawn": 0,
             }
             scraper_class.return_value.scrape_incremental.return_value = {
                 "new_benchmarks": 0,
@@ -180,6 +182,7 @@ class TestCatalogRefreshCommand:
                 "total_benchmarks": 1,
                 "pages_scraped": 1,
                 "failed_pages": [],
+                "withdrawn": None,  # --max-pages: the refresh is not complete
             }
             result = runner.invoke(cli, ["catalog", "refresh", "--max-pages", "1", *args])
 
@@ -214,6 +217,7 @@ class TestCatalogRefreshCommand:
             "total_benchmarks": 100,
             "pages_scraped": 68,
             "failed_pages": [],
+            "withdrawn": 0,
         }
         mock_scraper_class.return_value = mock_scraper
 
@@ -222,6 +226,43 @@ class TestCatalogRefreshCommand:
         assert result.exit_code == 0
         assert "complete" in result.output.lower()
         mock_db.initialize_schema.assert_called_once()
+
+    @pytest.mark.parametrize(
+        ("withdrawn", "line"),
+        [
+            (3, "Withdrawn: 3"),
+            (0, "Withdrawn: 0"),
+            (None, "Withdrawn: not checked (the refresh was not complete)"),
+        ],
+    )
+    @patch("cis_bench.cli.commands.catalog.get_catalog_db")
+    @patch("cis_bench.fetcher.auth.AuthManager")
+    @patch("cis_bench.catalog.scraper.CatalogScraper")
+    def test_refresh_reports_how_many_benchmarks_were_withdrawn(
+        self,
+        mock_scraper_class,
+        mock_auth,
+        mock_get_db,
+        runner,
+        mock_db,
+        monkeypatch,
+        withdrawn,
+        line,
+    ):
+        mock_get_db.return_value = mock_db
+        monkeypatch.setenv("CIS_BENCH_VERIFY_SSL", "false")
+        mock_auth.return_value.get_or_create_session.return_value = Mock()
+        mock_scraper_class.return_value.scrape_full_catalog.return_value = {
+            "total_benchmarks": 100,
+            "pages_scraped": 68,
+            "failed_pages": [],
+            "withdrawn": withdrawn,
+        }
+
+        result = runner.invoke(cli, ["catalog", "refresh"])
+
+        assert result.exit_code == 0, result.output
+        assert line in result.output
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     @patch("cis_bench.catalog.scraper.CatalogScraper")
@@ -238,6 +279,7 @@ class TestCatalogRefreshCommand:
             "total_benchmarks": 1,
             "pages_scraped": 1,
             "failed_pages": [],
+            "withdrawn": 0,
         }
         mock_scraper_class.return_value = mock_scraper
 
@@ -297,6 +339,7 @@ class TestCatalogRefreshCommand:
             "total_benchmarks": 95,
             "pages_scraped": 68,
             "failed_pages": [3, 15, 42],  # Some pages failed
+            "withdrawn": None,
         }
         mock_scraper_class.return_value = mock_scraper
 
@@ -1030,6 +1073,7 @@ class TestCatalogStatsCommand:
         assert "100" in result.output
         assert "Published" in result.output
         assert "90" in result.output
+        assert "Withdrawn: 4" in result.output
         assert "Downloaded" in result.output
         assert "5" in result.output
         assert "Platforms" in result.output
@@ -1057,6 +1101,7 @@ class TestCatalogStatsCommand:
         mock_db.get_catalog_stats.return_value = {
             "total_benchmarks": 0,
             "published_benchmarks": 0,
+            "withdrawn_benchmarks": 0,
             "downloaded_benchmarks": 0,
             "platforms": 0,
             "communities": 0,
@@ -1638,6 +1683,7 @@ class TestVerifiedTLSByDefault:
             "total_benchmarks": 1,
             "pages_scraped": 1,
             "failed_pages": [],
+            "withdrawn": 0,
         }
         mock_scraper_class.return_value = mock_scraper
 

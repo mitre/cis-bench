@@ -20,6 +20,11 @@ from cis_bench.utils.workbench_urls import catalog_listing_url, resolve_benchmar
 logger = logging.getLogger(__name__)
 
 
+def _listed_ids(benchmarks: list[dict]) -> set[str]:
+    """The benchmark IDs a listing page shows, whether or not each row was valid."""
+    return {str(bench["benchmark_id"]) for bench in benchmarks if bench.get("benchmark_id")}
+
+
 class CatalogScraper:
     """Scrape CIS WorkBench catalog and populate database.
 
@@ -91,6 +96,7 @@ class CatalogScraper:
 
         pagination = WorkBenchCatalogParser.extract_pagination_info(first_page_html)
         total_pages = pagination.get("total_pages")
+        pages_counted = total_pages is not None
 
         if total_pages is None:
             logger.warning(
@@ -106,6 +112,9 @@ class CatalogScraper:
         # Save first page
         total_benchmarks = self._insert_page_benchmarks(first_page_benchmarks, page_num=1)
         failed_pages = []
+        empty_pages = []
+        # Every benchmark listed, valid or not: a complete refresh marks the others withdrawn
+        seen_ids = _listed_ids(first_page_benchmarks)
 
         # Progress bar with additional info
         with Progress(
@@ -147,7 +156,9 @@ class CatalogScraper:
                 for page_num, benchmarks in batch.results:
                     if not benchmarks:
                         logger.warning(f"Page {page_num} returned no benchmarks")
+                        empty_pages.append(page_num)
                         continue
+                    seen_ids |= _listed_ids(benchmarks)
                     try:
                         inserted_count = self._insert_page_benchmarks(benchmarks, page_num)
                     except OperationalError:
@@ -175,6 +186,11 @@ class CatalogScraper:
                         f"This may indicate authentication issues or WorkBench problems."
                     )
 
+        # Only a complete refresh can say a benchmark is gone: every page counted and
+        # fetched, none failed or empty, no --max-pages
+        complete = pages_counted and not max_pages and not failed_pages and not empty_pages
+        withdrawn = self.db.mark_withdrawn_except(seen_ids) if complete else None
+
         # Mark latest versions
         self.db.mark_latest_versions()
 
@@ -188,6 +204,7 @@ class CatalogScraper:
             "total_benchmarks": total_benchmarks,
             "pages_scraped": total_pages,
             "failed_pages": failed_pages,
+            "withdrawn": withdrawn,
             "success_rate": (
                 (total_pages - len(failed_pages)) / total_pages if total_pages > 0 else 0
             ),

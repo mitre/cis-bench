@@ -240,7 +240,7 @@ M --> H
 **Database Schema (3NF):**
 
 - `platforms` - Operating System, Cloud, Database
-- `benchmark_statuses` - Published, Accepted, Draft, Archived, Rejected, Final Update (plus dynamically registered WorkBench statuses)
+- `benchmark_statuses` - Published, Accepted, Draft, Archived, Rejected, Final Update, Withdrawn (set by a complete catalog refresh, not by WorkBench), plus dynamically registered WorkBench statuses
 - `communities` - Development communities
 - `collections` - Categories/tags
 - `owners` - Authors

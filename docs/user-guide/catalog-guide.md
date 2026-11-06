@@ -52,6 +52,7 @@ cis-bench catalog refresh
 - Parallel processing (10 pages/batch, 5 threads)
 - Builds searchable database
 - Infers platform taxonomy automatically
+- Marks benchmarks WorkBench no longer lists `Withdrawn` (only when every page was fetched; see [catalog refresh](commands-reference.md#cis-bench-catalog-refresh))
 - Takes under a minute
 - Stored in: `~/.local/share/cis-bench/catalog.db`
 

@@ -133,6 +133,10 @@ def refresh(browser, max_pages, rate_limit):
         console.print("\n[green]✓[/green] Catalog refresh complete!")
         console.print(f"  Benchmarks: [yellow]{stats['total_benchmarks']}[/yellow]")
         console.print(f"  Pages: [yellow]{stats['pages_scraped']}[/yellow]")
+        if stats["withdrawn"] is None:
+            console.print("  Withdrawn: not checked (the refresh was not complete)")
+        else:
+            console.print(f"  Withdrawn: [yellow]{stats['withdrawn']}[/yellow]")
 
         if stats["failed_pages"]:
             console.print(
@@ -142,7 +146,10 @@ def refresh(browser, max_pages, rate_limit):
         # Show database stats
         db_stats = db.get_catalog_stats()
         console.print("\n[cyan]Catalog statistics:[/cyan]")
-        console.print(f"  Total benchmarks: {db_stats['total_benchmarks']}")
+        console.print(
+            f"  Total benchmarks: {db_stats['total_benchmarks']} "
+            f"(of which withdrawn: {db_stats['withdrawn_benchmarks']})"
+        )
         console.print(f"  Platforms: {db_stats['platforms']}")
         console.print(f"  Communities: {db_stats['communities']}")
 
@@ -213,7 +220,7 @@ def update(browser):
 @click.option(
     "--status",
     default="Published",
-    help="Filter by status (Published, Archived, Draft, Final Update, or all)",
+    help="Filter by status (Published, Accepted, Draft, Archived, Rejected, Final Update, Withdrawn, or all)",
 )
 @click.option("--latest", is_flag=True, help="Latest versions only")
 @click.option("--limit", type=int, help="Max results (default: CIS_BENCH_SEARCH_LIMIT, 100)")
@@ -489,6 +496,7 @@ def stats(output_format):
         console.print("\n[bold]Catalog Statistics[/bold]\n")
         console.print(f"Total benchmarks: [yellow]{catalog_stats['total_benchmarks']}[/yellow]")
         console.print(f"Published: [yellow]{catalog_stats['published_benchmarks']}[/yellow]")
+        console.print(f"Withdrawn: [yellow]{catalog_stats['withdrawn_benchmarks']}[/yellow]")
         console.print(f"Downloaded: [yellow]{catalog_stats['downloaded_benchmarks']}[/yellow]")
         console.print(f"Platforms: [yellow]{catalog_stats['platforms']}[/yellow]")
         console.print(f"Communities: [yellow]{catalog_stats['communities']}[/yellow]")

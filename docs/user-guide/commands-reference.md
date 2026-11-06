@@ -165,7 +165,7 @@ cis-bench search [QUERY] [OPTIONS]
 
 - `--platform` - Filter by specific platform (e.g., ubuntu, aws, oracle-database)
 - `--platform-type` - Filter by category (cloud, os, database, container, application)
-- `--status` - Filter by status (`Published`, `Accepted`, `Draft`, `Archived`, `Rejected`, `Final Update`, or `all`) - default: `Published`
+- `--status` - Filter by status (`Published`, `Accepted`, `Draft`, `Archived`, `Rejected`, `Final Update`, `Withdrawn`, or `all`) - default: `Published`. `Withdrawn` is not a WorkBench status: a complete `catalog refresh` gives it to benchmarks WorkBench no longer lists
 - `--latest` - Show only latest version of each benchmark
 - `--limit` - Maximum results to show (default: `CIS_BENCH_SEARCH_LIMIT`, 100). When the limit cuts the list short, the output says how many matched: `Showing 100 of 349 results; use --limit to see more`
 
@@ -576,7 +576,8 @@ cis-bench catalog refresh --rate-limit 1.0
 3. Detects the page count from page 1 (about 80 pages)
 4. Builds searchable database with about 1,500 benchmarks
 5. Creates FTS5 full-text search index
-6. Takes under a minute for the full catalog
+6. After a complete refresh (every page counted and fetched, none failed or empty, no `--max-pages`), marks the benchmarks WorkBench no longer lists `Withdrawn`: they leave the default search results (`--status all` or `--status Withdrawn` shows them), are never the latest release, and keep any downloaded copy; the summary says how many. A refresh that is not complete marks nothing and says "Withdrawn: not checked". A withdrawn benchmark that WorkBench lists again gets its WorkBench status back
+7. Takes under a minute for the full catalog
 
 **Performance:**
 

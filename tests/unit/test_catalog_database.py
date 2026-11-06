@@ -123,6 +123,7 @@ class TestDatabaseInitialization:
         ("Archived", False, 4),
         ("Rejected", False, 5),
         ("Final Update", False, 6),
+        ("Withdrawn", False, 7),
     ]
 
     @staticmethod
@@ -607,7 +608,7 @@ class TestLookupTables:
             created = temp_db.get_or_create_status("  Community Review  ", session)
             assert created.name == "Community Review"
             assert created.is_active is False
-            assert created.sort_order == 7
+            assert created.sort_order == 8  # after the seven default statuses
             assert created.status_id is not None
             created_id = created.status_id
             session.commit()
@@ -1040,6 +1041,7 @@ class TestStatistics:
         assert stats == {
             "total_benchmarks": 3,
             "published_benchmarks": 2,
+            "withdrawn_benchmarks": 0,
             "downloaded_benchmarks": 2,
             "platforms": 2,
             "communities": 2,
@@ -1047,7 +1049,7 @@ class TestStatistics:
         select_statements = [
             stmt for stmt in statements if stmt.lstrip().upper().startswith("SELECT")
         ]
-        assert len(select_statements) == 5
+        assert len(select_statements) == 6  # one COUNT per figure
         assert all("COUNT(" in stmt.upper() for stmt in select_statements)
         assert all("content_json" not in stmt.lower() for stmt in select_statements)
 
@@ -1682,3 +1684,75 @@ class TestOpeningAnOlderCatalog:
             assert con.execute("SELECT count(*) FROM sqlite_master").fetchone()[0] == 0
         finally:
             con.close()
+
+
+class TestMarkingWithdrawnBenchmarks:
+    """Rows a complete refresh did not see become Withdrawn; Withdrawn rows are never latest."""
+
+    def _insert(self, db, bid, title, version, status="Published"):
+        db.insert_benchmark(
+            {
+                "benchmark_id": bid,
+                "title": title,
+                "version": version,
+                "url": f"https://workbench.cisecurity.org/benchmarks/{bid}",
+                "status": status,
+            }
+        )
+
+    def test_rows_not_seen_become_withdrawn_and_are_counted_once(self, temp_db):
+        self._insert(temp_db, "1", "CIS Foo Benchmark", "v1.0.0")
+        self._insert(temp_db, "2", "CIS Bar Benchmark", "v1.0.0")
+        self._insert(temp_db, "3", "CIS Baz Benchmark", "v1.0.0", status="Archived")
+        temp_db.mark_latest_versions()
+        assert temp_db.get_benchmark("1")["is_latest"] is True
+
+        assert temp_db.mark_withdrawn_except({"2"}) == 2
+        assert temp_db.mark_withdrawn_except({"2"}) == 0
+
+        assert temp_db.get_benchmark("1")["status"] == "Withdrawn"
+        assert temp_db.get_benchmark("1")["is_latest"] is False
+        assert temp_db.get_benchmark("2")["status"] == "Published"
+        assert temp_db.get_benchmark("2")["is_latest"] is True
+        assert temp_db.get_benchmark("3")["status"] == "Withdrawn"
+
+    def test_the_statistics_count_withdrawn_rows_separately(self, temp_db):
+        self._insert(temp_db, "1", "CIS Foo Benchmark", "v1.0.0")
+        self._insert(temp_db, "2", "CIS Bar Benchmark", "v1.0.0")
+        temp_db.mark_withdrawn_except({"2"})
+
+        stats = temp_db.get_catalog_stats()
+
+        assert stats["total_benchmarks"] == 2
+        assert stats["published_benchmarks"] == 1
+        assert stats["withdrawn_benchmarks"] == 1
+
+    def test_a_withdrawn_row_is_never_the_latest_release(self, temp_db):
+        self._insert(temp_db, "1", "CIS Foo Benchmark", "v2.0.0")
+        self._insert(temp_db, "2", "CIS Foo Benchmark", "v1.0.0")
+        temp_db.mark_withdrawn_except({"2"})
+
+        temp_db.mark_latest_versions()
+
+        assert temp_db.get_benchmark("1")["is_latest"] is False
+        assert temp_db.get_benchmark("2")["is_latest"] is True
+
+    def test_the_withdrawn_status_is_backfilled_into_an_older_catalog(self, tmp_path):
+        import sqlite3
+
+        db = CatalogDatabase(tmp_path / "older.db")
+        db.initialize_schema()
+        db.engine.dispose()
+        con = sqlite3.connect(tmp_path / "older.db")
+        con.execute("DELETE FROM benchmark_statuses WHERE name = 'Withdrawn'")
+        con.commit()
+        con.close()
+
+        db = CatalogDatabase(tmp_path / "older.db")
+        db.initialize_schema()
+        try:
+            self._insert(db, "1", "CIS Foo Benchmark", "v1.0.0")
+            assert db.mark_withdrawn_except(set()) == 1
+            assert db.get_benchmark("1")["status"] == "Withdrawn"
+        finally:
+            db.engine.dispose()

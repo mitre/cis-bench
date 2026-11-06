@@ -24,6 +24,9 @@ class BenchmarkStatus(str, Enum):
     ARCHIVED = "Archived"
     REJECTED = "Rejected"
     FINAL_UPDATE = "Final Update"
+    # Not a WorkBench status: set by a complete catalog refresh on rows WorkBench no longer
+    # lists, and replaced by the WorkBench status the next time the benchmark is listed.
+    WITHDRAWN = "Withdrawn"
 
 
 # ============================================================================

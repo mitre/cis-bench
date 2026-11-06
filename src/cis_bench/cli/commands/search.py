@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 @click.option(
     "--status",
     default="Published",
-    help="Filter by status (Published, Archived, Draft, Final Update, or all)",
+    help="Filter by status (Published, Accepted, Draft, Archived, Rejected, Final Update, Withdrawn, or all)",
 )
 @click.option("--latest", is_flag=True, help="Show only latest version of each benchmark")
 @click.option(

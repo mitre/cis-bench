@@ -8,7 +8,7 @@ import logging
 import re
 import sqlite3
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from datetime import date
 from pathlib import Path
 from typing import TypeVar
@@ -64,6 +64,7 @@ DEFAULT_BENCHMARK_STATUSES: tuple[tuple[str, bool, int], ...] = (
     (BenchmarkStatus.ARCHIVED.value, False, 4),
     (BenchmarkStatus.REJECTED.value, False, 5),
     (BenchmarkStatus.FINAL_UPDATE.value, False, 6),
+    (BenchmarkStatus.WITHDRAWN.value, False, 7),
 )
 
 _TRAILING_VERSION_RE = re.compile(r"\s+v\d+(?:\.[\w-]+)*\s*$", re.IGNORECASE)
@@ -760,6 +761,33 @@ class CatalogDatabase:
                 for c in communities
             ]
 
+    def mark_withdrawn_except(self, seen_ids: Iterable[str]) -> int:
+        """Mark every benchmark not in ``seen_ids`` Withdrawn; return how many were changed.
+
+        Called after a complete catalog refresh with the IDs it listed. A row that is
+        already Withdrawn is not counted again; a Withdrawn benchmark that WorkBench lists
+        again gets its WorkBench status back through insert_benchmark.
+        """
+        seen = {str(benchmark_id) for benchmark_id in seen_ids}
+        with Session(self.engine) as session:
+            withdrawn_id = self.get_status_id(BenchmarkStatus.WITHDRAWN.value, session)
+            to_mark = [
+                benchmark_id
+                for benchmark_id, status_id in session.exec(
+                    select(CatalogBenchmark.benchmark_id, CatalogBenchmark.status_id)
+                ).all()
+                if benchmark_id not in seen and status_id != withdrawn_id
+            ]
+            for start in range(0, len(to_mark), 500):
+                session.execute(
+                    update(CatalogBenchmark)
+                    .where(col(CatalogBenchmark.benchmark_id).in_(to_mark[start : start + 500]))
+                    .values(status_id=withdrawn_id, is_latest=False)
+                )
+            session.commit()
+        logger.info(f"Marked {len(to_mark)} benchmarks withdrawn")
+        return len(to_mark)
+
     def mark_latest_versions(self) -> None:
         """Mark the latest version of each benchmark per (base title, status).
 
@@ -768,15 +796,17 @@ class CatalogDatabase:
         whose parsed version equals the group maximum are latest. Unversioned
         strings (``vNext``, ``vDev``) sort below every numbered version, so they
         are latest only when the whole group is unversioned. Ties stay latest.
+        A Withdrawn row is never latest.
         """
         with Session(self.engine) as session:
+            withdrawn_id = self.get_status_id(BenchmarkStatus.WITHDRAWN.value, session)
             rows = session.exec(
                 select(
                     CatalogBenchmark.benchmark_id,
                     CatalogBenchmark.title,
                     CatalogBenchmark.status_id,
                     CatalogBenchmark.version,
-                )
+                ).where(col(CatalogBenchmark.status_id) != withdrawn_id)
             ).all()
 
             group_max: dict[tuple[str, int], VersionSortKey] = {}
@@ -957,6 +987,12 @@ class CatalogDatabase:
                 .join(BenchmarkStatusModel)
                 .where(col(BenchmarkStatusModel.name) == BenchmarkStatus.PUBLISHED.value)
             ).one()
+            withdrawn_benchmarks = session.exec(
+                select(func.count())
+                .select_from(CatalogBenchmark)
+                .join(BenchmarkStatusModel)
+                .where(col(BenchmarkStatusModel.name) == BenchmarkStatus.WITHDRAWN.value)
+            ).one()
             downloaded_benchmarks = session.exec(
                 select(func.count()).select_from(DownloadedBenchmark)
             ).one()
@@ -966,6 +1002,7 @@ class CatalogDatabase:
             return {
                 "total_benchmarks": int(total_benchmarks),
                 "published_benchmarks": int(published_benchmarks),
+                "withdrawn_benchmarks": int(withdrawn_benchmarks),
                 "downloaded_benchmarks": int(downloaded_benchmarks),
                 "platforms": int(platforms),
                 "communities": int(communities),
