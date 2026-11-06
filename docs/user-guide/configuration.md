@@ -122,12 +122,15 @@ export CIS_BENCH_REQUEST_TIMEOUT=90
 ```
 
 **Pacing and retries.** `CIS_BENCH_REQUESTS_PER_SECOND` caps the requests sent to one
-WorkBench host per second, across every worker thread; `catalog refresh --rate-limit SECONDS`
-overrides it for one run. `CIS_BENCH_MAX_CONCURRENT_REQUESTS` is how many recommendation or
+WorkBench host, across every worker thread and counting retries. The cap is held over a
+window: `3` allows three requests in any one second (they may go out together, then the next
+waits), `0.5` one request in any two seconds, `1.5` three in any two seconds.
+`catalog refresh --rate-limit SECONDS` overrides it for one run with a rate of one request
+per `SECONDS`. `CIS_BENCH_MAX_CONCURRENT_REQUESTS` is how many recommendation or
 listing pages are fetched at once and `CIS_BENCH_BATCH_SIZE` how many make one batch of
 parallel work; a run stops after the batch that hit an expired session. A request that
 times out, fails to connect, or gets a 429, 502, 503 or 504 is retried
-`CIS_BENCH_REQUEST_RETRIES` times: the first retry at once, the next after
+`CIS_BENCH_REQUEST_RETRIES` times: the first retry as soon as the rate allows, the next after
 `CIS_BENCH_RETRY_BACKOFF_FACTOR` × 2 seconds, each plus up to
 `CIS_BENCH_RETRY_JITTER_SECONDS` of random jitter. When WorkBench sends a `Retry-After`
 header, cis-bench waits that long instead, up to 60 seconds. A request that still fails is

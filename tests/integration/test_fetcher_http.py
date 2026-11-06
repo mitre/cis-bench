@@ -243,6 +243,122 @@ class TestRateLimit:
         assert time.monotonic() - started >= 1.9
 
 
+class TestRetriesCountAgainstTheRate:
+    """A retry is a request like any other: it takes a slot of its host's rate limit.
+
+    The limit is a number of requests in any one second (they may go out together); with no
+    backoff, only the rate limit can hold a retry back.
+    """
+
+    TWO_PER_SECOND = RequestPolicy(
+        requests_per_second=2.0, retries=2, backoff_factor=0.0, jitter_seconds=0.0
+    )
+
+    def test_retries_after_a_retryable_status_are_held_to_the_rate(self):
+        with _ScriptedServer([(503, {}, 0), (503, {}, 0), (200, {}, 0)]) as server:
+            get_with_retry(
+                new_workbench_session(self.TWO_PER_SECOND), server.base_url + "/p", timeout=TIMEOUT
+            )
+
+        first, second, third = server.arrivals
+        assert second - first < 0.5  # two requests fit in the second
+        assert third - first >= 0.9  # the third waits for the next one
+
+    def test_retries_after_a_read_failure_are_held_to_the_rate(self):
+        # The first two answers come later than the 0.1 s read timeout, so each is retried.
+        with _ScriptedServer([(200, {}, 0.3), (200, {}, 0.3), (200, {}, 0)]) as server:
+            get_with_retry(
+                new_workbench_session(self.TWO_PER_SECOND),
+                server.base_url + "/p",
+                timeout=(5, 0.1),
+            )
+
+        first, _, third = server.arrivals
+        assert third - first >= 0.9
+
+    def test_the_slot_is_taken_when_the_retry_is_sent_not_before_its_wait(self):
+        """A retry that waited for Retry-After counts in the second it is sent in."""
+        session = new_workbench_session(self.TWO_PER_SECOND)
+        with _ScriptedServer([(503, {"Retry-After": "1"}, 0)]) as server:
+            url = server.base_url + "/p"
+            get_with_retry(session, url, timeout=TIMEOUT)  # 503, a second's wait, then 200
+            get_with_retry(session, url, timeout=TIMEOUT)
+            get_with_retry(session, url, timeout=TIMEOUT)
+
+        _, retry, second, third = server.arrivals
+        assert second - retry < 0.5  # the retry and one more request fit in that second
+        assert third - retry >= 0.9  # so the next one waits
+
+    def test_threads_whose_first_attempts_all_fail_stay_within_the_rate(self):
+        four_per_second = RequestPolicy(
+            requests_per_second=4.0, retries=2, backoff_factor=0.0, jitter_seconds=0.0
+        )
+        arrivals: list[float] = []
+        seen: set[str] = set()
+        lock = threading.Lock()
+
+        def fail_the_first_request_for_each_path(handler):
+            with lock:
+                arrivals.append(time.monotonic())
+                first_time = handler.path not in seen
+                seen.add(handler.path)
+            body = b"ok"
+            handler.send_response(503 if first_time else 200)
+            handler.send_header("Content-Length", str(len(body)))
+            handler.end_headers()
+            handler.wfile.write(body)
+
+        errors: list[Exception] = []
+
+        def fetch(sessions, url):
+            try:
+                get_with_retry(sessions.current(), url, timeout=TIMEOUT)
+            except Exception as error:  # reported by the assertion below
+                errors.append(error)
+
+        with LocalHTTPServer(fail_the_first_request_for_each_path) as server:
+            sessions = ThreadSessions(new_workbench_session(four_per_second))
+            threads = [
+                threading.Thread(target=fetch, args=(sessions, f"{server.base_url}/p/{number}"))
+                for number in range(3)
+            ]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+
+        assert errors == []
+        arrivals.sort()
+        assert len(arrivals) == 6  # each thread: one failed first attempt, one retry
+        # Four requests fit in the first second; the fifth and sixth wait for the next.
+        assert arrivals[4] - arrivals[0] >= 0.9, [round(t - arrivals[0], 2) for t in arrivals]
+
+    def test_one_hosts_retry_does_not_delay_a_request_to_another_host(self):
+        one_per_second = RequestPolicy(
+            requests_per_second=1.0, retries=2, backoff_factor=0.0, jitter_seconds=0.0
+        )
+        session = new_workbench_session(one_per_second)
+        with (
+            _ScriptedServer([(503, {}, 0), (200, {}, 0)]) as retried_host,
+            _ScriptedServer([]) as other_host,
+        ):
+            sessions = ThreadSessions(session)
+            retrying = threading.Thread(
+                target=lambda: get_with_retry(
+                    sessions.current(), retried_host.base_url + "/p", timeout=TIMEOUT
+                )
+            )
+            retrying.start()
+            time.sleep(0.2)  # the first host's retry is now waiting for its slot
+            started = time.monotonic()
+            get_with_retry(session, other_host.base_url + "/p", timeout=TIMEOUT)
+            took = time.monotonic() - started
+            retrying.join()
+
+        assert took < 0.5
+        assert retried_host.arrivals[1] - retried_host.arrivals[0] >= 0.9
+
+
 class TestALoweredRateCoversTheSessionCheck:
     """A rate given to AuthManager paces the session check and every later request."""
 

@@ -94,8 +94,10 @@ _NON_NEGATIVE_INT = "an integer of 0 or more"
 class RequestPolicy:
     """How a WorkBench session paces and retries its requests.
 
-    requests_per_second is the most requests sent to one host per second. retries counts the
-    attempts after the first; urllib3's backoff makes the first retry immediate, then waits
+    requests_per_second caps the requests sent to one host, retries included. The limiter
+    holds it over a window: 3 allows three requests in any one second (together if need be),
+    0.5 one in any two seconds, 1.5 three in any two seconds. retries counts the attempts after the first; urllib3's backoff adds no wait to
+    the first retry (it goes as soon as the rate allows), then waits
     backoff_factor * 2 seconds plus up to jitter_seconds of random jitter. Retryable statuses
     and the Retry-After cap are fixed (RETRYABLE_STATUS_CODES, RETRY_AFTER_MAX_SECONDS).
     """
@@ -311,7 +313,10 @@ class Settings(BaseSettings):
         default=3.0,
         gt=0,
         allow_inf_nan=False,
-        description="Most requests sent to one WorkBench host per second, across all threads",
+        description=(
+            "Request rate cap per WorkBench host, across all threads and counting retries "
+            "(3 allows three in any one second; 0.5 allows one in any two seconds)"
+        ),
         json_schema_extra={"accepted": _POSITIVE_NUMBER},
     )
     max_concurrent_requests: int = Field(
@@ -336,7 +341,10 @@ class Settings(BaseSettings):
         default=1.0,
         ge=0,
         allow_inf_nan=False,
-        description="Backoff factor: the first retry is immediate, the next waits factor x 2 seconds",
+        description=(
+            "Backoff factor: no wait is added before the first retry, "
+            "the next waits factor x 2 seconds"
+        ),
         json_schema_extra={"accepted": _NON_NEGATIVE_NUMBER},
     )
     retry_jitter_seconds: float = Field(

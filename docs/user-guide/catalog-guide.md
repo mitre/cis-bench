@@ -274,8 +274,8 @@ A benchmark is listed when the catalog carries a newer version than you download
 
 - Batches: `CIS_BENCH_BATCH_SIZE` pages per batch, saved before the next batch starts
 - Threads: `CIS_BENCH_MAX_CONCURRENT_REQUESTS` requests at a time
-- Rate limit: at most `CIS_BENCH_REQUESTS_PER_SECOND` requests per second to WorkBench, shared by every thread
-- Retry: `CIS_BENCH_REQUEST_RETRIES` retries on timeouts, dropped connections and 429/502/503/504 (at once, then after `CIS_BENCH_RETRY_BACKOFF_FACTOR` × 2 s plus jitter; WorkBench's `Retry-After` is honored up to 60 s); a missing page is not retried
+- Rate limit: at most `CIS_BENCH_REQUESTS_PER_SECOND` requests per second to WorkBench, shared by every thread and counting retries
+- Retry: `CIS_BENCH_REQUEST_RETRIES` retries on timeouts, dropped connections and 429/502/503/504 (the first as soon as the rate limit allows, the next after `CIS_BENCH_RETRY_BACKOFF_FACTOR` × 2 s plus jitter; WorkBench's `Retry-After` is honored up to 60 s); a missing page is not retried
 - Failure threshold: Aborts if >10% of pages fail
 
 **Performance:**

@@ -3,7 +3,9 @@
 Retries and pacing come from established libraries instead of hand-written loops and sleeps:
 urllib3's Retry (exponential backoff with jitter, Retry-After) and requests-ratelimiter's
 per-host limiter, both on one adapter that new_workbench_session mounts. Per-thread copies of
-a session share that adapter, so one limiter covers every worker thread. The tunable policy
+a session share that adapter, so one limiter covers every worker thread. The limiter takes a
+slot for each request the adapter sends and, through WorkBenchRetry, for each retry urllib3
+makes inside it, so retries count against the rate too. The tunable policy
 (rate, retries, backoff, jitter) arrives as a RequestPolicy from the caller; the fixed part
 (retryable statuses, Retry-After cap, User-Agent) is constants in cis_bench.config.
 """
@@ -12,6 +14,8 @@ import copy
 import logging
 import threading
 from collections import OrderedDict
+from collections.abc import Callable, Mapping
+from typing import Any, Self
 
 import requests
 from requests.structures import CaseInsensitiveDict
@@ -44,13 +48,31 @@ def attempts_allowed(session: requests.Session, url: str) -> int:
 
 
 class WorkBenchRetry(Retry):
-    """urllib3 Retry that logs each retry and caps the server's Retry-After.
+    """urllib3 Retry that logs each retry, caps the server's Retry-After and paces retries.
 
     One WARNING per retry names the URL, the attempt and the wait about to be slept. The wait
     is computed once per attempt and cached, so the logged figure is the one urllib3 sleeps.
+    After that wait, take_slot (the adapter's rate limiter) is asked for a slot, so a retry is
+    counted against the request rate like a first attempt.
     """
 
     _backoff_time: float | None = None
+
+    def __init__(
+        self, *args: Any, take_slot: Callable[[], None] | None = None, **kwargs: Any
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self.take_slot = take_slot
+
+    def new(self, **kw: Any) -> Self:
+        # urllib3 builds a fresh Retry for every attempt; keep the limiter with it.
+        kw.setdefault("take_slot", self.take_slot)
+        return super().new(**kw)
+
+    def sleep(self, response: Any = None) -> None:
+        super().sleep(response)
+        if self.take_slot is not None:
+            self.take_slot()
 
     def get_backoff_time(self) -> float:
         if self._backoff_time is None:
@@ -80,9 +102,15 @@ class WorkBenchRetry(Retry):
         return retry
 
 
-def workbench_retry(policy: RequestPolicy) -> WorkBenchRetry:
-    """The retry behaviour for WorkBench GETs: connect, read and 429/502/503/504 failures."""
+def workbench_retry(
+    policy: RequestPolicy, *, take_slot: Callable[[], None] | None = None
+) -> WorkBenchRetry:
+    """The retry behaviour for WorkBench GETs: connect, read and 429/502/503/504 failures.
+
+    take_slot is called before each retry is sent, after its backoff or Retry-After wait.
+    """
     return WorkBenchRetry(
+        take_slot=take_slot,
         total=policy.retries,
         status_forcelist=RETRYABLE_STATUS_CODES,
         allowed_methods=frozenset({"GET", "HEAD"}),
@@ -93,14 +121,58 @@ def workbench_retry(policy: RequestPolicy) -> WorkBenchRetry:
     )
 
 
+class WorkBenchAdapter(LimiterAdapter):
+    """The rate-limited adapter for WorkBench, whose limit also covers retries.
+
+    LimiterAdapter takes one slot of the host's limit per send, and urllib3 then makes its
+    retries inside that send. This adapter remembers the request each thread is sending, and
+    its WorkBenchRetry calls take_retry_slot before every retry, so a retry waits for a slot
+    of the same host as the first attempt did.
+    """
+
+    def __init__(self, policy: RequestPolicy) -> None:
+        super().__init__(per_second=policy.requests_per_second, burst=1, per_host=True)
+        self.max_retries = workbench_retry(policy, take_slot=self.take_retry_slot)
+        self._sending = threading.local()
+
+    def send(
+        self,
+        request: requests.PreparedRequest,
+        stream: bool | None = False,
+        timeout: None | float | tuple[float | None, float | None] = None,
+        verify: bool | str | None = True,
+        cert: None | bytes | str | tuple[bytes | str, bytes | str] = None,
+        proxies: Mapping[str, str] | None = None,
+        **kwargs: Any,
+    ) -> requests.Response:
+        # The parameters are HTTPAdapter.send's. Their types and **kwargs are widened to what
+        # LimiterMixin.send declares (the library types its mixin as a requests.Session).
+        self._sending.request = request
+        try:
+            return super().send(
+                request,
+                stream=stream,
+                timeout=timeout,
+                verify=verify,
+                cert=cert,
+                proxies=proxies,
+                **kwargs,
+            )
+        finally:
+            self._sending.request = None
+
+    def take_retry_slot(self) -> None:
+        """Wait for a slot of the rate limit for the request this thread is sending."""
+        request = getattr(self._sending, "request", None)
+        if request is not None:
+            # The library names a host's bucket in _bucket_name; using it keeps retries in
+            # the bucket its own send() used for the first attempt.
+            self.limiter.try_acquire(self._bucket_name(request), weight=1, blocking=True)
+
+
 def mount_workbench_adapter(session: requests.Session, policy: RequestPolicy) -> None:
-    """Mount the WorkBench adapter (rate limit per host, then retries) on session."""
-    adapter = LimiterAdapter(
-        per_second=policy.requests_per_second,
-        burst=1,
-        per_host=True,
-        max_retries=workbench_retry(policy),
-    )
+    """Mount the WorkBench adapter (rate limit per host, covering retries) on session."""
+    adapter = WorkBenchAdapter(policy)
     for prefix in ("https://", "http://"):
         session.mount(prefix, adapter)
 
