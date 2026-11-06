@@ -31,6 +31,13 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 logger = logging.getLogger(__name__)
 
 
+def _login_page_error(url: str) -> AuthenticationError:
+    """The error for a request WorkBench answered with its login page: the session expired."""
+    return AuthenticationError(
+        f"WorkBench returned the login page for {url}; the saved session has expired"
+    )
+
+
 class WorkbenchScraper:
     """Scraper for CIS WorkBench with auto-adapting HTML strategies.
 
@@ -120,9 +127,7 @@ class WorkbenchScraper:
         """
         html = self._request(url).text
         if is_workbench_login_page(html):
-            raise AuthenticationError(
-                f"WorkBench returned the login page for {url}; the saved session has expired"
-            )
+            raise _login_page_error(url)
         return html
 
     def fetch_json(self, url: str) -> dict[str, Any]:
@@ -136,9 +141,21 @@ class WorkbenchScraper:
 
         Raises:
             FetchError: If the request still fails after every retry
+            AuthenticationError: If WorkBench answered with its login page (an
+                expired session)
+            ValueError: If the answer is not JSON, or not a JSON object
             requests.HTTPError: For a non-retryable HTTP status
         """
-        payload = self._request(url).json()
+        response = self._request(url)
+        try:
+            payload = response.json()
+        except requests.JSONDecodeError as error:
+            # An expired session is answered with the HTML login page, status 200.
+            if is_workbench_login_page(response.text):
+                raise _login_page_error(url) from None
+            raise ValueError(
+                f"Expected JSON from {url}, got a response that is not JSON"
+            ) from error
         if not isinstance(payload, dict):
             raise ValueError(f"Expected JSON object from {url}, got {type(payload).__name__}")
         return payload
@@ -325,7 +342,10 @@ class WorkbenchScraper:
                 # Every further fetch would get the login page too.
                 raise error
         for rec_meta, error in fetched.failed:
-            logger.error(f"Failed to fetch {rec_meta['url']}: {error}")
+            # Several errors already name the URL (FetchError, requests.HTTPError): say it once.
+            detail = str(error)
+            where = "" if rec_meta["url"] in detail else f"{rec_meta['url']}: "
+            logger.error(f"Failed to fetch {where}{detail}")
         recommendations = fetched.results
 
         # Create Benchmark (Pydantic validates automatically)

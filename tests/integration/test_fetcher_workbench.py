@@ -20,12 +20,17 @@ from cis_bench.fetcher.strategies.base import ScraperStrategy
 from cis_bench.fetcher.workbench import WorkbenchScraper
 from cis_bench.models.benchmark import Benchmark
 from cis_bench.utils.parallel import parallel_execute
+from cis_bench.utils.workbench_urls import navtree_url
 from tests.conftest import LocalHTTPServer
 
 BASE = "https://workbench.cisecurity.org"
 TIMEOUT = (10.0, 30.0)
 WORKERS = 5
 BATCH = 10
+LOGIN_PAGE = (
+    '<html><body><div class="index-signin-wrapper"><form action="/login">'
+    '<input name="login"><input name="password"></form></div></body></html>'
+)
 
 # ============ Fixtures: Real HTML Samples ============
 
@@ -417,7 +422,9 @@ class TestWorkbenchScraperBasicOperations:
         """Test handling of invalid JSON response."""
         # Setup
         mock_response = Mock()
-        mock_response.json.side_effect = json.JSONDecodeError("Invalid JSON", "", 0)
+        # What a real Response raises for a body that is not JSON
+        mock_response.json.side_effect = requests.JSONDecodeError("Invalid JSON", "", 0)
+        mock_response.text = "not json"
         mock_response.raise_for_status = Mock()
         mock_session.get.return_value = mock_response
 
@@ -426,7 +433,9 @@ class TestWorkbenchScraperBasicOperations:
         )
 
         # Execute and verify
-        with pytest.raises(json.JSONDecodeError):
+        with pytest.raises(
+            ValueError, match="^Expected JSON from https://workbench.cisecurity.org/api/bad"
+        ):
             scraper.fetch_json("https://workbench.cisecurity.org/api/bad")
 
     def test_fetch_json_non_object_raises_value_error(self, mock_session):
@@ -565,6 +574,36 @@ class TestWorkbenchScraperNavtree:
         mock_session.get.assert_called_once_with(
             "https://workbench.cisecurity.org/api/v1/benchmarks/18528/navtree", timeout=(10.0, 30.0)
         )
+
+    def test_a_login_page_at_the_navtree_is_an_authentication_error(self, stub_session):
+        """An expired session gets the login page (HTML, status 200) where the navtree JSON is due."""
+        from cis_bench.exceptions import AuthenticationError
+
+        session, _ = stub_session(lambda url: LOGIN_PAGE)
+        scraper = WorkbenchScraper(
+            session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
+        url = navtree_url("23598", base_url=BASE)
+
+        with pytest.raises(AuthenticationError) as raised:
+            scraper.fetch_navtree("23598")
+
+        assert str(raised.value) == (
+            f"WorkBench returned the login page for {url}; the saved session has expired"
+        )
+
+    def test_a_navtree_answer_that_is_not_json_is_an_error_naming_the_url(self, stub_session):
+        session, _ = stub_session(lambda url: "<html><body>Down for maintenance</body></html>")
+        scraper = WorkbenchScraper(
+            session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
+        url = navtree_url("23598", base_url=BASE)
+
+        with pytest.raises(ValueError) as raised:
+            scraper.fetch_navtree("23598")
+
+        assert str(raised.value).startswith(f"Expected JSON from {url}, ")
+        assert not isinstance(raised.value, json.JSONDecodeError)
 
     def test_parse_navtree_flat_structure(self, mock_session):
         """Test parsing navtree with recommendations at top level."""
@@ -1060,6 +1099,66 @@ class TestWorkbenchScraperFullDownload:
         assert benchmark.total_recommendations == 2
         errors = [r.getMessage() for r in caplog.records if r.levelno == logging.ERROR]
         assert any(stalled_url in line and "timed out" in line for line in errors), errors
+
+    @pytest.mark.parametrize(
+        ("make_error", "detail"),
+        [
+            (lambda url: requests.Timeout("Read timed out"), "Read timed out"),
+            (
+                lambda url: requests.HTTPError(f"404 Client Error: Not Found for url: {url}"),
+                "404 Client Error",
+            ),
+            (lambda url: RuntimeError("page could not be read"), "page could not be read"),
+        ],
+        ids=["error-that-starts-with-the-url", "error-that-ends-with-the-url", "error-without-it"],
+    )
+    @patch("cis_bench.fetcher.workbench.StrategyDetector.detect_strategy")
+    def test_the_failure_line_names_the_recommendation_url_exactly_once(
+        self,
+        mock_detector,
+        make_error,
+        detail,
+        mock_strategy,
+        sample_benchmark_title_html,
+        sample_benchmark_navtree,
+        caplog,
+        stub_session,
+    ):
+        mock_detector.return_value = mock_strategy
+        failed_url = WorkbenchScraper(
+            requests.Session(),
+            base_url=BASE,
+            timeout=TIMEOUT,
+            max_workers=WORKERS,
+            batch_size=BATCH,
+        ).parse_navtree(sample_benchmark_navtree)[0]["url"]
+
+        def handler(url):
+            if url == failed_url:
+                raise make_error(url)
+            if "navtree" in url:
+                return sample_benchmark_navtree
+            if "/benchmarks/" in url:
+                return sample_benchmark_title_html
+            return "<html>recommendation</html>"
+
+        session, _ = stub_session(handler)
+        scraper = WorkbenchScraper(
+            session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
+
+        with caplog.at_level(logging.ERROR, logger="cis_bench.fetcher.workbench"):
+            scraper.download_benchmark("https://workbench.cisecurity.org/benchmarks/18528")
+
+        lines = [
+            r.getMessage()
+            for r in caplog.records
+            if r.name == "cis_bench.fetcher.workbench" and r.levelno == logging.ERROR
+        ]
+        assert len(lines) == 1, lines
+        assert lines[0].startswith("Failed to fetch ")
+        assert lines[0].count(failed_url) == 1, lines[0]
+        assert detail in lines[0]
 
     @patch("cis_bench.fetcher.workbench.StrategyDetector.detect_strategy")
     def test_download_benchmark_aborts_when_the_session_expires(
