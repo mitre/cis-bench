@@ -269,7 +269,7 @@ def _benchmark_matching(
     search: "CatalogSearch", query: str, settings: "Settings", non_interactive: bool
 ) -> dict:
     """The benchmark a word query means: the only match, the best-ranked match, or the one
-    chosen from a menu. Exit 1 when nothing matches, 0 when the menu is left."""
+    chosen from a menu. Exit 1 when nothing matches or the menu is left without a choice."""
     console.print(f"[cyan]Searching for:[/cyan] {escape(query)}\n")
     logger.debug(f"Searching catalog for: {query}")
 
@@ -317,8 +317,9 @@ def _benchmark_matching(
         logger.warning(f"Interactive selection failed: {e}")
         return _best_match(results, total, query)
     if not answer:
+        # Nothing was exported; a script must not take this for success
         console.print("\n[yellow]Cancelled[/yellow]")
-        sys.exit(0)
+        sys.exit(1)
 
     selected_id = answer.split(":")[0]
     selected = next(r for r in results if str(r["benchmark_id"]) == selected_id)

@@ -145,6 +145,30 @@ class TestExportFromFile:
         assert result.exit_code == 0
         assert Path("benchmark.xml").exists()
 
+    def test_a_batch_with_one_failed_export_exits_1(
+        self, runner, sample_benchmark_json, working_dir
+    ):
+        """One good and one missing benchmark: exit 1, the good export still written."""
+        result = runner.invoke(
+            cli, ["export", str(sample_benchmark_json), "nonexistent.json", "--format", "yaml"]
+        )
+
+        assert result.exit_code == 1, result.output
+        assert "Export complete with errors." in result.output
+        assert "1 succeeded, 1 failed." in result.output
+        assert [path.suffix for path in working_dir.iterdir()] == [".yaml"]
+
+    def test_a_batch_where_every_export_succeeds_exits_0(
+        self, runner, sample_benchmark_json, working_dir
+    ):
+        result = runner.invoke(
+            cli,
+            ["export", str(sample_benchmark_json), str(sample_benchmark_json), "--format", "yaml"],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "Export complete!" in result.output
+
     def test_export_file_not_found(self, runner):
         """Export fails gracefully when file not found."""
         result = runner.invoke(cli, ["export", "nonexistent.json", "--format", "yaml"])

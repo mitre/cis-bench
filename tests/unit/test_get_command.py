@@ -466,13 +466,13 @@ class TestGetTitleWidthSetting:
         with patch("cis_bench.cli.commands.get.questionary.select", return_value=_cancelled()):
             monkeypatch.delenv("CIS_BENCH_TABLE_TITLE_WIDTH", raising=False)
             default = runner.invoke(cli, ["get", "sample"])
-            assert default.exit_code == 0, default.output
+            assert default.exit_code == 1, default.output
             assert max(len(cell) - 2 for cell in self._title_cells(default.output)) > 30
 
             monkeypatch.setenv("CIS_BENCH_TABLE_TITLE_WIDTH", "30")
             capped = runner.invoke(cli, ["get", "sample"])
 
-        assert capped.exit_code == 0, capped.output
+        assert capped.exit_code == 1, capped.output
         assert max(len(cell) - 2 for cell in self._title_cells(capped.output)) == 30
 
 

@@ -641,7 +641,8 @@ class TestGetInteractiveSelection:
 
                     result = runner.invoke(cli, ["get", "test"])
 
-                    assert result.exit_code == 0
+                    # Nothing was exported, so a script must not take it for success
+                    assert result.exit_code == 1
                     assert "Cancelled" in result.output
 
     def test_get_interactive_selection_exception_falls_back(

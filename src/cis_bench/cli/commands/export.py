@@ -310,6 +310,6 @@ def export_cmd(identifiers, export_format, style, output_file, output_dir, input
         console.print("[dim]Note: XCCDF output validates against NIST XCCDF 1.2 schema[/dim]")
         console.print("[dim]Compatible with OpenSCAP, SCC, and other SCAP tools[/dim]")
 
-    # Exit with error if all failed
-    if success_count == 0:
+    # A command exits 0 only when everything it was asked to do succeeded
+    if failed_count:
         sys.exit(1)

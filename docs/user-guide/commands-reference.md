@@ -899,9 +899,14 @@ cis-bench list --output-format csv > inventory.csv
 
 ## Exit Codes
 
+A command exits `0` only when everything it was asked to do succeeded.
+
 - `0` - Success
-- `1` - Error (authentication failed, file not found, etc.)
+- `1` - Error (authentication failed, file not found, nothing matched, etc.)
+- `2` - Usage error on the command line (an unknown option, a bad option value); a bad `CIS_BENCH_*` setting is reported as a Configuration Error with exit `1`
 - `cis-bench download` exits `1` if any requested benchmark or export failed, even when others succeeded
+- `cis-bench export` with several benchmarks exits `1` if any export failed; the others are still written and the summary says how many succeeded
+- `cis-bench get` exits `1` when nothing matched the query, when the ID is not in the catalog, or when the interactive menu is left without a choice
 
 ---
 
