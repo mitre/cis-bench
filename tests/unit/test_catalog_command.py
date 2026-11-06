@@ -1787,8 +1787,9 @@ class TestCatalogRequestTimeoutSetting:
         assert "must be an https://*.cisecurity.org origin" in result.output
         mock_auth.assert_not_called()
 
-    @pytest.mark.parametrize("rate", ["nan", "inf", "-1", "0"])
+    @pytest.mark.parametrize("rate", ["nan", "inf", "-1", "0", "1e-309", "5e-324"])
     def test_refresh_rejects_a_bad_rate_limit_before_any_network_call(self, runner, rate):
+        # 1e-309 and 5e-324 are finite and above 0, but 1 / them is an infinite request rate
         with (
             patch("cis_bench.cli.commands.catalog.get_catalog_db") as mock_get_db,
             patch.object(AuthManager, "get_or_create_session") as mock_auth,

@@ -17,6 +17,7 @@ Nothing is copied into the process environment. Variables that belong to the HTT
 such as HTTPS_PROXY, NO_PROXY, REQUESTS_CA_BUNDLE and SSL_CERT_FILE, stay with requests.
 """
 
+import math
 import os
 import tomllib
 from collections.abc import Mapping
@@ -103,6 +104,19 @@ class RequestPolicy:
     retries: int
     backoff_factor: float
     jitter_seconds: float
+
+    def __post_init__(self) -> None:
+        """Refuse a value a session cannot pace or retry with (the bounds of the Settings fields)."""
+        if not (math.isfinite(self.requests_per_second) and self.requests_per_second > 0):
+            raise ValueError(
+                f"requests_per_second must be {_POSITIVE_NUMBER}, got {self.requests_per_second}"
+            )
+        if self.retries < 0:
+            raise ValueError(f"retries must be {_NON_NEGATIVE_INT}, got {self.retries}")
+        for name in ("backoff_factor", "jitter_seconds"):
+            value = getattr(self, name)
+            if not (math.isfinite(value) and value >= 0):
+                raise ValueError(f"{name} must be {_NON_NEGATIVE_NUMBER}, got {value}")
 
 
 def is_cis_domain(host: str) -> bool:

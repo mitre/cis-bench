@@ -5,6 +5,7 @@ Settings come from, highest first: a value passed in (a CLI flag), the environme
 the way the GitHub CLI resolves them; CIS_BENCH_HOME puts everything in one folder.
 """
 
+import dataclasses
 import os
 from pathlib import Path
 from unittest.mock import patch
@@ -323,6 +324,44 @@ class TestTheRequestTunablesAndTheBrowserAreSettings:
         assert load_settings().request_policy == RequestPolicy(
             requests_per_second=1.0, retries=4, backoff_factor=1.0, jitter_seconds=0.5
         )
+
+
+class TestARequestPolicyRefusesValuesASessionCannotUse:
+    """RequestPolicy checks its own values, so no caller can hand the rate limiter a bad one."""
+
+    GOOD = {"requests_per_second": 3.0, "retries": 2, "backoff_factor": 1.0, "jitter_seconds": 0.5}
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("requests_per_second", float("inf")),
+            ("requests_per_second", float("nan")),
+            ("requests_per_second", 0),
+            ("requests_per_second", -1.0),
+            ("backoff_factor", float("inf")),
+            ("backoff_factor", float("nan")),
+            ("backoff_factor", -0.1),
+            ("jitter_seconds", float("inf")),
+            ("jitter_seconds", float("nan")),
+            ("jitter_seconds", -0.1),
+            ("retries", -1),
+        ],
+    )
+    def test_a_bad_value_is_a_value_error_naming_the_field(self, field, value):
+        with pytest.raises(ValueError, match=f"^{field} must be"):
+            RequestPolicy(**{**self.GOOD, field: value})
+
+    def test_replace_applies_the_same_check(self):
+        policy = RequestPolicy(**self.GOOD)
+        with pytest.raises(ValueError, match="^requests_per_second must be"):
+            dataclasses.replace(policy, requests_per_second=float("inf"))
+
+    def test_the_lowest_values_settings_accepts_still_build(self):
+        policy = RequestPolicy(
+            requests_per_second=0.001, retries=0, backoff_factor=0.0, jitter_seconds=0.0
+        )
+        assert (policy.retries, policy.backoff_factor, policy.jitter_seconds) == (0, 0.0, 0.0)
+        assert policy.requests_per_second == 0.001
 
 
 class TestTheFixedValuesAreNotSettings:

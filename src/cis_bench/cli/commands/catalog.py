@@ -29,9 +29,14 @@ BROWSER_HELP = "Browser to read cookies from (default: the CIS_BENCH_BROWSER set
 def _validate_rate_limit(
     _ctx: click.Context, _param: click.Parameter, value: float | None
 ) -> float | None:
-    """Click callback: refuse a gap between requests that is not a finite number above zero."""
-    if value is not None and (not math.isfinite(value) or value <= 0):
+    """Click callback: refuse a gap between requests that is not a finite number above zero,
+    or so small that the request rate it stands for (1 / gap) is not a finite number."""
+    if value is None:
+        return None
+    if not math.isfinite(value) or value <= 0:
         raise click.BadParameter(f"must be a finite number of seconds greater than 0, got {value}")
+    if not math.isfinite(1 / value):
+        raise click.BadParameter(f"is too small to be a gap between requests, got {value}")
     return value
 
 
