@@ -452,16 +452,15 @@ class TestAuthLoginOpenFlag:
 class TestAuthLoginCookieFileErrors:
     """Tests for cookie file loading error handling (lines 160-162)."""
 
-    def test_login_cookie_file_load_failure(self, mock_auth, runner, tmp_path):
+    def test_login_cookie_file_load_failure(self, mock_auth, runner, working_dir):
         """Should handle cookie file loading errors gracefully."""
-        with runner.isolated_filesystem(temp_dir=tmp_path):
-            cookie_file = Path("c[/p]") / "cookies.txt"
-            cookie_file.parent.mkdir(parents=True)  # "c[" / "p]"
-            cookie_file.write_text("invalid content\n")
+        cookie_file = Path("c[/p]") / "cookies.txt"
+        cookie_file.parent.mkdir(parents=True)  # "c[" / "p]"
+        cookie_file.write_text("invalid content\n")
 
-            mock_auth.load_cookies_from_file.side_effect = Exception("Invalid cookie format [/e]")
+        mock_auth.load_cookies_from_file.side_effect = Exception("Invalid cookie format [/e]")
 
-            result = runner.invoke(cli, ["auth", "login", "--cookies", str(cookie_file)])
+        result = runner.invoke(cli, ["auth", "login", "--cookies", str(cookie_file)])
 
         assert result.exit_code == 1
         assert "Loading cookies from c[/p]/cookies.txt" in result.output

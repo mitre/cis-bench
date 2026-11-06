@@ -49,7 +49,9 @@ def _asks_for_help(command: click.Command, ctx: click.Context, args: list[str]) 
         options, rest, _ = command.make_parser(ctx).parse_args(list(args))
     except click.UsageError:
         return False  # Click reports the usage error itself, not help
-    if options.get("help"):
+    # Click names the parameter that holds the help flag (it renamed it in 8.5), so ask it.
+    help_option = command.get_help_option(ctx)
+    if help_option is not None and options.get(help_option.name):
         return True
     if not isinstance(command, click.Group) or not rest:
         return False

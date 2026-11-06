@@ -370,7 +370,7 @@ cis-bench search --platform-type os --platform ubuntu
 
 **Retry logic:**
 
-- Automatically retries a page that timed out, dropped its connection or got 429/502/503/504 (3 attempts)
+- Automatically retries a page that timed out, dropped its connection or got 429/502/503/504 (`CIS_BENCH_REQUEST_RETRIES` retries, two by default)
 - Continues if failure rate is low (<10%)
 - Aborts if too many failures (indicates bigger issue)
 

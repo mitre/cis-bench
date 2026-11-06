@@ -236,28 +236,26 @@ class TestDownloadCommand:
                 mock_auth.assert_called_once()
                 mock_download.assert_called_once()
 
-    def test_export_to_markdown(self, runner, sample_benchmark_json):
+    def test_export_to_markdown(self, runner, sample_benchmark_json, working_dir):
         """Export benchmark to Markdown format (real export, no mocks)."""
-        with runner.isolated_filesystem():
-            import shutil
+        import shutil
 
-            shutil.copy(str(sample_benchmark_json), "benchmark.json")
+        shutil.copy(str(sample_benchmark_json), "benchmark.json")
 
-            # Run real export
-            result = runner.invoke(cli, ["export", "benchmark.json", "--format", "md"])
+        # Run real export
+        result = runner.invoke(cli, ["export", "benchmark.json", "--format", "md"])
 
         assert result.exit_code == 0, f"Export failed: {result.output}"
         assert "Loaded:" in result.output
 
-    def test_export_to_xccdf(self, runner, sample_benchmark_json):
+    def test_export_to_xccdf(self, runner, sample_benchmark_json, working_dir):
         """Export benchmark to XCCDF format (real export, no mocks)."""
-        with runner.isolated_filesystem():
-            import shutil
+        import shutil
 
-            shutil.copy(str(sample_benchmark_json), "benchmark.json")
+        shutil.copy(str(sample_benchmark_json), "benchmark.json")
 
-            # Run real export
-            result = runner.invoke(cli, ["export", "benchmark.json", "--format", "xccdf"])
+        # Run real export
+        result = runner.invoke(cli, ["export", "benchmark.json", "--format", "xccdf"])
 
         assert result.exit_code == 0, f"Export failed: {result.output}"
         assert "Loaded:" in result.output
@@ -289,25 +287,24 @@ class TestDownloadCommand:
         assert result.exit_code == 1
         assert "Error loading benchmark" in result.output
 
-    def test_export_with_custom_output_file(self, runner, sample_benchmark_json):
+    def test_export_with_custom_output_file(self, runner, sample_benchmark_json, working_dir):
         """Export with custom output filename."""
-        with runner.isolated_filesystem():
-            import os
-            import shutil
+        import os
+        import shutil
 
-            shutil.copy(str(sample_benchmark_json), "benchmark.json")
+        shutil.copy(str(sample_benchmark_json), "benchmark.json")
 
-            result = runner.invoke(
-                cli,
-                ["export", "benchmark.json", "--format", "yaml", "--output", "custom_output.yaml"],
-            )
+        result = runner.invoke(
+            cli,
+            ["export", "benchmark.json", "--format", "yaml", "--output", "custom_output.yaml"],
+        )
 
-            assert result.exit_code == 0, f"Export failed: {result.output}"
-            assert "Loaded:" in result.output
-            # Verify the custom output file was created
-            assert os.path.exists("custom_output.yaml"), "Custom output file was not created"
+        assert result.exit_code == 0, f"Export failed: {result.output}"
+        assert "Loaded:" in result.output
+        # Verify the custom output file was created
+        assert os.path.exists("custom_output.yaml"), "Custom output file was not created"
 
-    def test_export_with_input_dir(self, runner, sample_benchmark_json, tmp_path):
+    def test_export_with_input_dir(self, runner, sample_benchmark_json, tmp_path, working_dir):
         """Export finds file in specified input directory."""
         benchmarks_dir = tmp_path / "benchmarks"
         benchmarks_dir.mkdir()
@@ -323,48 +320,46 @@ class TestDownloadCommand:
 
         assert result.exit_code == 0
 
-    def test_export_default_format(self, runner, sample_benchmark_json):
+    def test_export_default_format(self, runner, sample_benchmark_json, working_dir):
         """Export uses YAML as default format when not specified."""
-        with runner.isolated_filesystem():
-            import os
-            import shutil
+        import os
+        import shutil
 
-            shutil.copy(str(sample_benchmark_json), "benchmark.json")
+        shutil.copy(str(sample_benchmark_json), "benchmark.json")
 
-            result = runner.invoke(cli, ["export", "benchmark.json"])
+        result = runner.invoke(cli, ["export", "benchmark.json"])
 
-            assert result.exit_code == 0, f"Export failed: {result.output}"
-            assert "Loaded:" in result.output
-            # Should default to YAML - verify .yaml file was created
-            yaml_files = [f for f in os.listdir(".") if f.endswith(".yaml") or f.endswith(".yml")]
-            assert len(yaml_files) > 0, "No YAML file was created (default format should be YAML)"
+        assert result.exit_code == 0, f"Export failed: {result.output}"
+        assert "Loaded:" in result.output
+        # Should default to YAML - verify .yaml file was created
+        yaml_files = [f for f in os.listdir(".") if f.endswith(".yaml") or f.endswith(".yml")]
+        assert len(yaml_files) > 0, "No YAML file was created (default format should be YAML)"
 
-    def test_export_failure(self, runner, sample_benchmark_json):
+    def test_export_failure(self, runner, sample_benchmark_json, working_dir):
         """Export handles exporter failures gracefully."""
-        with runner.isolated_filesystem():
-            import shutil
+        import shutil
 
-            shutil.copy(str(sample_benchmark_json), "benchmark.json")
+        shutil.copy(str(sample_benchmark_json), "benchmark.json")
 
-            # Mock the exporter's export method to raise an exception
-            # (not the factory, since factory is called twice - once for extension, once for export)
-            mock_exporter = Mock()
-            mock_exporter.export.side_effect = Exception("Simulated export failure")
-            mock_exporter.get_file_extension.return_value = "yaml"
-            mock_exporter.format_name.return_value = "YAML"
+        # Mock the exporter's export method to raise an exception
+        # (not the factory, since factory is called twice - once for extension, once for export)
+        mock_exporter = Mock()
+        mock_exporter.export.side_effect = Exception("Simulated export failure")
+        mock_exporter.get_file_extension.return_value = "yaml"
+        mock_exporter.format_name.return_value = "YAML"
 
-            with patch(
-                "cis_bench.cli.commands.export.ExporterFactory.create", return_value=mock_exporter
-            ):
-                result = runner.invoke(
-                    cli, ["export", "benchmark.json", "--format", "yaml", "--output", "test.yaml"]
-                )
-
-            # Verify the failure was handled gracefully
-            assert result.exit_code == 1, f"Expected exit code 1, got {result.exit_code}"
-            assert "Export failed" in result.output, (
-                f"Expected 'Export failed' in output: {result.output}"
+        with patch(
+            "cis_bench.cli.commands.export.ExporterFactory.create", return_value=mock_exporter
+        ):
+            result = runner.invoke(
+                cli, ["export", "benchmark.json", "--format", "yaml", "--output", "test.yaml"]
             )
+
+        # Verify the failure was handled gracefully
+        assert result.exit_code == 1, f"Expected exit code 1, got {result.exit_code}"
+        assert "Export failed" in result.output, (
+            f"Expected 'Export failed' in output: {result.output}"
+        )
 
 
 # ============================================================================
@@ -375,14 +370,13 @@ class TestDownloadCommand:
 class TestInfoCommand:
     """Tests for the 'info' command."""
 
-    def test_info_displays_benchmark_details(self, runner, sample_benchmark_json):
+    def test_info_displays_benchmark_details(self, runner, sample_benchmark_json, working_dir):
         """Info command displays comprehensive benchmark information."""
-        with runner.isolated_filesystem():
-            import shutil
+        import shutil
 
-            shutil.copy(str(sample_benchmark_json), "benchmark.json")
+        shutil.copy(str(sample_benchmark_json), "benchmark.json")
 
-            result = runner.invoke(cli, ["info", "benchmark.json"])
+        result = runner.invoke(cli, ["info", "benchmark.json"])
 
         assert result.exit_code == 0
         assert "CIS AlmaLinux OS 8 Benchmark" in result.output
@@ -391,28 +385,26 @@ class TestInfoCommand:
         assert "Total Recommendations" in result.output
         assert "3" in result.output  # Total recommendations count
 
-    def test_info_displays_compliance_statistics(self, runner, sample_benchmark_json):
+    def test_info_displays_compliance_statistics(self, runner, sample_benchmark_json, working_dir):
         """Info command shows compliance mapping statistics."""
-        with runner.isolated_filesystem():
-            import shutil
+        import shutil
 
-            shutil.copy(str(sample_benchmark_json), "benchmark.json")
+        shutil.copy(str(sample_benchmark_json), "benchmark.json")
 
-            result = runner.invoke(cli, ["info", "benchmark.json"])
+        result = runner.invoke(cli, ["info", "benchmark.json"])
 
         assert result.exit_code == 0
         assert "CIS Controls v8" in result.output
         assert "MITRE Mappings" in result.output
         assert "NIST Controls" in result.output
 
-    def test_info_displays_sample_recommendations(self, runner, sample_benchmark_json):
+    def test_info_displays_sample_recommendations(self, runner, sample_benchmark_json, working_dir):
         """Info command shows sample recommendations."""
-        with runner.isolated_filesystem():
-            import shutil
+        import shutil
 
-            shutil.copy(str(sample_benchmark_json), "benchmark.json")
+        shutil.copy(str(sample_benchmark_json), "benchmark.json")
 
-            result = runner.invoke(cli, ["info", "benchmark.json"])
+        result = runner.invoke(cli, ["info", "benchmark.json"])
 
         assert result.exit_code == 0
         assert "Sample Recommendations" in result.output
@@ -426,15 +418,16 @@ class TestInfoCommand:
         assert result.exit_code == 1
         assert "File not found" in result.output
 
-    def test_info_prints_benchmark_and_recommendation_text_verbatim(self, runner, sample_benchmark):
+    def test_info_prints_benchmark_and_recommendation_text_verbatim(
+        self, runner, sample_benchmark, working_dir
+    ):
         sample_benchmark.title = "CIS T [/t]"
         sample_benchmark.version = "v1 [/v]"
         sample_benchmark.recommendations[0].title = "Rec [/r]"
         sample_benchmark.recommendations[0].profiles = ["level 1"]
-        with runner.isolated_filesystem():
-            sample_benchmark.to_json_file("b.json")
+        sample_benchmark.to_json_file("b.json")
 
-            result = runner.invoke(cli, ["info", "b.json"])
+        result = runner.invoke(cli, ["info", "b.json"])
 
         assert result.exit_code == 0, result.output
         assert "CIS T [/t]" in result.output

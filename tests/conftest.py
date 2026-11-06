@@ -245,10 +245,15 @@ def cli_runner():
 
 
 @pytest.fixture
-def isolated_filesystem(cli_runner):
-    """Isolated filesystem for CLI file operations."""
-    with cli_runner.isolated_filesystem():
-        yield Path.cwd()
+def working_dir(tmp_path_factory, monkeypatch):
+    """An empty current directory, for a command that reads or writes relative paths.
+
+    It is a directory of its own, apart from tmp_path, so what a command wrote to the
+    current directory is never mixed with the folders a test set up.
+    """
+    path = tmp_path_factory.mktemp("cwd")
+    monkeypatch.chdir(path)
+    return path
 
 
 # ============================================================================

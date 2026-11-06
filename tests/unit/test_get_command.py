@@ -87,7 +87,7 @@ class TestGetCommandSingleResult:
     """Test get command when search returns single result."""
 
     def test_get_with_single_match_downloads_and_exports(
-        self, runner, sample_benchmark, tmp_path, monkeypatch
+        self, runner, sample_benchmark, tmp_path, monkeypatch, working_dir
     ):
         """Get with single search match downloads and exports automatically."""
         catalog_path = tmp_path / "catalog.db"
@@ -209,7 +209,7 @@ class TestGetCommandSingleResult:
             )
 
     def test_get_with_cached_benchmark_skips_download(
-        self, runner, sample_benchmark, tmp_path, monkeypatch
+        self, runner, sample_benchmark, tmp_path, monkeypatch, working_dir
     ):
         """Get uses cached benchmark if already downloaded."""
         catalog_path = tmp_path / "catalog.db"
@@ -378,17 +378,16 @@ class TestGetRequestTimeoutSetting:
             "content_json": sample_benchmark.model_dump_json(),
             "downloaded_at": datetime.now(),
         }
-        with runner.isolated_filesystem():
-            with (
-                patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class,
-                patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class,
-                patch("cis_bench.fetcher.auth.AuthManager") as mock_auth,
-            ):
-                monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
-                self._one_match(mock_search_class, mock_db_class, cached=cached)
-                result = runner.invoke(
-                    cli, ["get", "ubuntu 22", "--format", "json", "--non-interactive"]
-                )
+        with (
+            patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class,
+            patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class,
+            patch("cis_bench.fetcher.auth.AuthManager") as mock_auth,
+        ):
+            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
+            self._one_match(mock_search_class, mock_db_class, cached=cached)
+            result = runner.invoke(
+                cli, ["get", "ubuntu 22", "--format", "json", "--non-interactive"]
+            )
 
         assert result.exit_code == 1, result.output
         assert "Configuration Error" in result.output

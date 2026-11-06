@@ -116,6 +116,7 @@ All test data via fixtures in `tests/conftest.py`. NO hardcoded paths.
 - `fixtures_dir`, `benchmark_fixtures`, `xccdf_fixtures` - Test data paths
 - `sample_recommendation_minimal/complete` - Test data objects
 - `cli_runner` - Click test runner
+- `working_dir` - Empty current directory for commands that read or write relative paths
 
 ## Configuration
 

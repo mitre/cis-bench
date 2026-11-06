@@ -154,27 +154,26 @@ class TestDownloadAuthErrors:
     ):
         """Download builds its AuthManager with CIS_BENCH_VERIFY_SSL and surfaces invalid URL errors."""
         auth = auth_manager_class.return_value
-        with runner.isolated_filesystem():
-            with patch("cis_bench.fetcher.workbench.WorkbenchScraper") as mock_scraper_cls:
-                monkeypatch.setenv("CIS_BENCH_VERIFY_SSL", "false")
-                monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path / "missing"))
-                auth.get_or_create_session.return_value = Mock()
-                mock_scraper = Mock()
-                mock_scraper.download_benchmark.return_value = sample_benchmark
-                mock_scraper_cls.return_value = mock_scraper
+        with patch("cis_bench.fetcher.workbench.WorkbenchScraper") as mock_scraper_cls:
+            monkeypatch.setenv("CIS_BENCH_VERIFY_SSL", "false")
+            monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path / "missing"))
+            auth.get_or_create_session.return_value = Mock()
+            mock_scraper = Mock()
+            mock_scraper.download_benchmark.return_value = sample_benchmark
+            mock_scraper_cls.return_value = mock_scraper
 
-                ok_result = runner.invoke(cli, ["download", "12345"])
-                assert ok_result.exit_code == 0, ok_result.output
-                assert auth_manager_class.call_args.kwargs["verify_ssl"] is False
-                auth.get_or_create_session.assert_called_once_with()
-
-            monkeypatch.setenv("CIS_BENCH_WORKBENCH_URL", "http://workbench.cisecurity.org")
-            bad_url_result = runner.invoke(cli, ["download", "12345"])
-            assert bad_url_result.exit_code == 1
-            assert "Configuration Error" in bad_url_result.output
-            assert "CIS_BENCH_WORKBENCH_URL" in bad_url_result.output
-            assert "Authentication Required" not in bad_url_result.output
+            ok_result = runner.invoke(cli, ["download", "12345"])
+            assert ok_result.exit_code == 0, ok_result.output
+            assert auth_manager_class.call_args.kwargs["verify_ssl"] is False
             auth.get_or_create_session.assert_called_once_with()
+
+        monkeypatch.setenv("CIS_BENCH_WORKBENCH_URL", "http://workbench.cisecurity.org")
+        bad_url_result = runner.invoke(cli, ["download", "12345"])
+        assert bad_url_result.exit_code == 1
+        assert "Configuration Error" in bad_url_result.output
+        assert "CIS_BENCH_WORKBENCH_URL" in bad_url_result.output
+        assert "Authentication Required" not in bad_url_result.output
+        auth.get_or_create_session.assert_called_once_with()
 
 
 class TestDownloadRequestTimeoutSetting:
@@ -182,12 +181,11 @@ class TestDownloadRequestTimeoutSetting:
 
     def test_download_rejects_bad_request_timeout_before_auth(self, runner, tmp_path, monkeypatch):
         monkeypatch.setenv("CIS_BENCH_REQUEST_TIMEOUT", "abc")
-        with runner.isolated_filesystem():
-            with (
-                patch("cis_bench.fetcher.auth.AuthManager.get_or_create_session") as mock_auth,
-            ):
-                monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path / "missing"))
-                result = runner.invoke(cli, ["download", "12345"])
+        with (
+            patch("cis_bench.fetcher.auth.AuthManager.get_or_create_session") as mock_auth,
+        ):
+            monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path / "missing"))
+            result = runner.invoke(cli, ["download", "12345"])
 
         assert result.exit_code == 1
         assert "Configuration Error" in result.output
@@ -198,7 +196,9 @@ class TestDownloadRequestTimeoutSetting:
 class TestDownloadFileInput:
     """Test download command file-based URL input (lines 112-119, 125)."""
 
-    def test_download_from_file_with_urls(self, runner, sample_benchmark, tmp_path, monkeypatch):
+    def test_download_from_file_with_urls(
+        self, runner, sample_benchmark, tmp_path, monkeypatch, working_dir
+    ):
         """Download reads full URLs from file."""
         # Create URL file
         url_file = tmp_path / "urls.txt"
@@ -207,77 +207,78 @@ class TestDownloadFileInput:
             "https://workbench.cisecurity.org/benchmarks/67890\n"
         )
 
-        with runner.isolated_filesystem():
-            with patch("cis_bench.fetcher.auth.AuthManager.get_or_create_session") as mock_auth:
-                mock_session = Mock()
-                mock_auth.return_value = mock_session
+        with patch("cis_bench.fetcher.auth.AuthManager.get_or_create_session") as mock_auth:
+            mock_session = Mock()
+            mock_auth.return_value = mock_session
 
-                with patch("cis_bench.fetcher.workbench.WorkbenchScraper") as mock_scraper_class:
-                    mock_scraper = Mock()
-                    mock_scraper_class.return_value = mock_scraper
-                    mock_scraper.download_benchmark.return_value = sample_benchmark
+            with patch("cis_bench.fetcher.workbench.WorkbenchScraper") as mock_scraper_class:
+                mock_scraper = Mock()
+                mock_scraper_class.return_value = mock_scraper
+                mock_scraper.download_benchmark.return_value = sample_benchmark
 
-                    # A data folder with no catalog.db: no cache check
-                    monkeypatch.setenv("CIS_BENCH_HOME", "no-catalog")
+                # A data folder with no catalog.db: no cache check
+                monkeypatch.setenv("CIS_BENCH_HOME", "no-catalog")
 
-                    result = runner.invoke(cli, ["download", "--file", str(url_file)])
+                result = runner.invoke(cli, ["download", "--file", str(url_file)])
 
-                    assert result.exit_code == 0
-                    # Should download both benchmarks
-                    assert mock_scraper.download_benchmark.call_count == 2
+                assert result.exit_code == 0
+                # Should download both benchmarks
+                assert mock_scraper.download_benchmark.call_count == 2
 
-    def test_download_from_file_with_ids(self, runner, sample_benchmark, tmp_path, monkeypatch):
+    def test_download_from_file_with_ids(
+        self, runner, sample_benchmark, tmp_path, monkeypatch, working_dir
+    ):
         """Download reads benchmark IDs from file and constructs URLs."""
         # Create ID file
         id_file = tmp_path / "ids.txt"
         id_file.write_text("12345\n67890\n# This is a comment\n")
 
-        with runner.isolated_filesystem():
-            with patch("cis_bench.fetcher.auth.AuthManager.get_or_create_session") as mock_auth:
-                mock_session = Mock()
-                mock_auth.return_value = mock_session
+        with patch("cis_bench.fetcher.auth.AuthManager.get_or_create_session") as mock_auth:
+            mock_session = Mock()
+            mock_auth.return_value = mock_session
 
-                with patch("cis_bench.fetcher.workbench.WorkbenchScraper") as mock_scraper_class:
-                    mock_scraper = Mock()
-                    mock_scraper_class.return_value = mock_scraper
-                    mock_scraper.download_benchmark.return_value = sample_benchmark
+            with patch("cis_bench.fetcher.workbench.WorkbenchScraper") as mock_scraper_class:
+                mock_scraper = Mock()
+                mock_scraper_class.return_value = mock_scraper
+                mock_scraper.download_benchmark.return_value = sample_benchmark
 
-                    # A data folder with no catalog.db: no cache check
-                    monkeypatch.setenv("CIS_BENCH_HOME", "no-catalog")
+                # A data folder with no catalog.db: no cache check
+                monkeypatch.setenv("CIS_BENCH_HOME", "no-catalog")
 
-                    result = runner.invoke(cli, ["download", "--file", str(id_file)])
+                result = runner.invoke(cli, ["download", "--file", str(id_file)])
 
-                    assert result.exit_code == 0
-                    # Should download 2 benchmarks (comment ignored)
-                    assert mock_scraper.download_benchmark.call_count == 2
+                assert result.exit_code == 0
+                # Should download 2 benchmarks (comment ignored)
+                assert mock_scraper.download_benchmark.call_count == 2
 
-    def test_download_url_argument_passed_through(self, runner, sample_benchmark, monkeypatch):
+    def test_download_url_argument_passed_through(
+        self, runner, sample_benchmark, monkeypatch, working_dir
+    ):
         """Download passes through full URLs from arguments."""
-        with runner.isolated_filesystem():
-            with patch("cis_bench.fetcher.auth.AuthManager.get_or_create_session") as mock_auth:
-                mock_session = Mock()
-                mock_auth.return_value = mock_session
+        with patch("cis_bench.fetcher.auth.AuthManager.get_or_create_session") as mock_auth:
+            mock_session = Mock()
+            mock_auth.return_value = mock_session
 
-                with patch("cis_bench.fetcher.workbench.WorkbenchScraper") as mock_scraper_class:
-                    mock_scraper = Mock()
-                    mock_scraper_class.return_value = mock_scraper
-                    mock_scraper.download_benchmark.return_value = sample_benchmark
+            with patch("cis_bench.fetcher.workbench.WorkbenchScraper") as mock_scraper_class:
+                mock_scraper = Mock()
+                mock_scraper_class.return_value = mock_scraper
+                mock_scraper.download_benchmark.return_value = sample_benchmark
 
-                    # A data folder with no catalog.db: no cache check
-                    monkeypatch.setenv("CIS_BENCH_HOME", "no-catalog")
+                # A data folder with no catalog.db: no cache check
+                monkeypatch.setenv("CIS_BENCH_HOME", "no-catalog")
 
-                    result = runner.invoke(
-                        cli,
-                        [
-                            "download",
-                            "https://workbench.cisecurity.org/benchmarks/12345",
-                        ],
-                    )
+                result = runner.invoke(
+                    cli,
+                    [
+                        "download",
+                        "https://workbench.cisecurity.org/benchmarks/12345",
+                    ],
+                )
 
-                    assert result.exit_code == 0
-                    # Verify URL was passed through (not modified)
-                    call_args = mock_scraper.download_benchmark.call_args
-                    assert "12345" in call_args[0][0]
+                assert result.exit_code == 0
+                # Verify URL was passed through (not modified)
+                call_args = mock_scraper.download_benchmark.call_args
+                assert "12345" in call_args[0][0]
 
 
 class TestDownloadMissingArgs:
@@ -351,27 +352,26 @@ class TestDownloadCacheSkip:
         catalog_path = tmp_path / "catalog.db"
         catalog_path.touch()
 
-        with runner.isolated_filesystem():
-            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
+        monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
 
-            with patch("cis_bench.fetcher.auth.AuthManager.get_or_create_session") as mock_auth:
-                mock_session = Mock()
-                mock_auth.return_value = mock_session
+        with patch("cis_bench.fetcher.auth.AuthManager.get_or_create_session") as mock_auth:
+            mock_session = Mock()
+            mock_auth.return_value = mock_session
 
-                with patch("cis_bench.fetcher.workbench.WorkbenchScraper") as mock_scraper_class:
-                    mock_scraper = Mock()
-                    mock_scraper_class.return_value = mock_scraper
-                    mock_scraper.download_benchmark.return_value = sample_benchmark
+            with patch("cis_bench.fetcher.workbench.WorkbenchScraper") as mock_scraper_class:
+                mock_scraper = Mock()
+                mock_scraper_class.return_value = mock_scraper
+                mock_scraper.download_benchmark.return_value = sample_benchmark
 
-                    with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
-                        mock_db = Mock()
-                        mock_db_class.return_value = mock_db
+                with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
+                    mock_db = Mock()
+                    mock_db_class.return_value = mock_db
 
-                        result = runner.invoke(cli, ["download", "12345", "--force"])
+                    result = runner.invoke(cli, ["download", "12345", "--force"])
 
-                        assert result.exit_code == 0
-                        # Should have called download despite cache check
-                        mock_scraper.download_benchmark.assert_called()
+                    assert result.exit_code == 0
+                    # Should have called download despite cache check
+                    mock_scraper.download_benchmark.assert_called()
 
 
 class TestDownloadExportErrors:
@@ -381,31 +381,30 @@ class TestDownloadExportErrors:
         self, runner, sample_benchmark, tmp_path, monkeypatch
     ):
         """Download continues after export failure for a format."""
-        with runner.isolated_filesystem():
-            monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path / "nonexistent"))
+        monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path / "nonexistent"))
 
-            with patch("cis_bench.fetcher.auth.AuthManager.get_or_create_session") as mock_auth:
-                mock_session = Mock()
-                mock_auth.return_value = mock_session
+        with patch("cis_bench.fetcher.auth.AuthManager.get_or_create_session") as mock_auth:
+            mock_session = Mock()
+            mock_auth.return_value = mock_session
 
-                with patch("cis_bench.fetcher.workbench.WorkbenchScraper") as mock_scraper_class:
-                    mock_scraper = Mock()
-                    mock_scraper_class.return_value = mock_scraper
-                    mock_scraper.download_benchmark.return_value = sample_benchmark
+            with patch("cis_bench.fetcher.workbench.WorkbenchScraper") as mock_scraper_class:
+                mock_scraper = Mock()
+                mock_scraper_class.return_value = mock_scraper
+                mock_scraper.download_benchmark.return_value = sample_benchmark
 
-                    with patch("cis_bench.cli.commands.download.ExporterFactory") as mock_factory:
-                        mock_exporter = Mock()
-                        mock_exporter.export.side_effect = Exception("Disk full [/x]")
-                        mock_exporter.format_name.return_value = "JSON"
-                        mock_exporter.get_file_extension.return_value = "json"
-                        mock_factory.create.return_value = mock_exporter
+                with patch("cis_bench.cli.commands.download.ExporterFactory") as mock_factory:
+                    mock_exporter = Mock()
+                    mock_exporter.export.side_effect = Exception("Disk full [/x]")
+                    mock_exporter.format_name.return_value = "JSON"
+                    mock_exporter.get_file_extension.return_value = "json"
+                    mock_factory.create.return_value = mock_exporter
 
-                        result = runner.invoke(cli, ["download", "12345"])
+                    result = runner.invoke(cli, ["download", "12345"])
 
-                        assert result.exit_code == 1
-                        assert result.output.count("export failed: Disk full [/x]") == 1
-                        assert "Traceback" not in result.output
-                        assert "Download complete!" not in result.output
+                    assert result.exit_code == 1
+                    assert result.output.count("export failed: Disk full [/x]") == 1
+                    assert "Traceback" not in result.output
+                    assert "Download complete!" not in result.output
 
 
 class TestDownloadBenchmarkErrors:
@@ -415,70 +414,68 @@ class TestDownloadBenchmarkErrors:
         self, runner, sample_benchmark, tmp_path, monkeypatch
     ):
         """Download continues to next benchmark after failure."""
-        with runner.isolated_filesystem():
-            monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path / "nonexistent"))
+        monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path / "nonexistent"))
 
-            with patch("cis_bench.fetcher.auth.AuthManager.get_or_create_session") as mock_auth:
-                mock_session = Mock()
-                mock_auth.return_value = mock_session
+        with patch("cis_bench.fetcher.auth.AuthManager.get_or_create_session") as mock_auth:
+            mock_session = Mock()
+            mock_auth.return_value = mock_session
 
-                with patch("cis_bench.fetcher.workbench.WorkbenchScraper") as mock_scraper_class:
-                    mock_scraper = Mock()
-                    mock_scraper_class.return_value = mock_scraper
+            with patch("cis_bench.fetcher.workbench.WorkbenchScraper") as mock_scraper_class:
+                mock_scraper = Mock()
+                mock_scraper_class.return_value = mock_scraper
 
-                    # First fails, second succeeds
-                    mock_scraper.download_benchmark.side_effect = [
-                        Exception("Network error [/x]"),
-                        sample_benchmark,
-                    ]
+                # First fails, second succeeds
+                mock_scraper.download_benchmark.side_effect = [
+                    Exception("Network error [/x]"),
+                    sample_benchmark,
+                ]
 
-                    with patch("cis_bench.cli.commands.download.ExporterFactory") as mock_factory:
-                        mock_exporter = Mock()
-                        mock_exporter.format_name.return_value = "JSON"
-                        mock_exporter.get_file_extension.return_value = "json"
-                        # A real exporter writes the file; the command then reports its size.
-                        mock_exporter.export.side_effect = lambda _benchmark, path: open(
-                            path, "w"
-                        ).close()
-                        mock_factory.create.return_value = mock_exporter
+                with patch("cis_bench.cli.commands.download.ExporterFactory") as mock_factory:
+                    mock_exporter = Mock()
+                    mock_exporter.format_name.return_value = "JSON"
+                    mock_exporter.get_file_extension.return_value = "json"
+                    # A real exporter writes the file; the command then reports its size.
+                    mock_exporter.export.side_effect = lambda _benchmark, path: open(
+                        path, "w"
+                    ).close()
+                    mock_factory.create.return_value = mock_exporter
 
-                        result = runner.invoke(cli, ["download", "12345", "67890"])
+                    result = runner.invoke(cli, ["download", "12345", "67890"])
 
-                        # The second benchmark is still downloaded, but the run reports failure.
-                        assert mock_scraper.download_benchmark.call_count == 2
-                        assert result.exit_code == 1
-                        assert "Error" in result.output
-                        assert result.output.count("Error: Network error [/x]") == 1
-                        assert "Download complete!" not in result.output
-                        assert "1 of 2" in result.output
-                        # A failed benchmark is reported in one line; the traceback is debug detail.
-                        assert "Traceback" not in result.output
+                    # The second benchmark is still downloaded, but the run reports failure.
+                    assert mock_scraper.download_benchmark.call_count == 2
+                    assert result.exit_code == 1
+                    assert "Error" in result.output
+                    assert result.output.count("Error: Network error [/x]") == 1
+                    assert "Download complete!" not in result.output
+                    assert "1 of 2" in result.output
+                    # A failed benchmark is reported in one line; the traceback is debug detail.
+                    assert "Traceback" not in result.output
 
     def test_download_stops_at_an_expired_session_and_exits_1(
         self, runner, sample_benchmark, tmp_path, monkeypatch
     ):
         from cis_bench.exceptions import AuthenticationError
 
-        with runner.isolated_filesystem():
-            monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path / "nonexistent"))
-            with (
-                patch(
-                    "cis_bench.fetcher.auth.AuthManager.get_or_create_session",
-                    return_value=Mock(),
+        monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path / "nonexistent"))
+        with (
+            patch(
+                "cis_bench.fetcher.auth.AuthManager.get_or_create_session",
+                return_value=Mock(),
+            ),
+            patch("cis_bench.fetcher.workbench.WorkbenchScraper") as mock_scraper_class,
+        ):
+            mock_scraper = Mock()
+            mock_scraper_class.return_value = mock_scraper
+            mock_scraper.download_benchmark.side_effect = [
+                AuthenticationError(
+                    "WorkBench returned the login page for https://workbench.cisecurity.org/"
+                    "benchmarks/12345; the saved session has expired [/x]"
                 ),
-                patch("cis_bench.fetcher.workbench.WorkbenchScraper") as mock_scraper_class,
-            ):
-                mock_scraper = Mock()
-                mock_scraper_class.return_value = mock_scraper
-                mock_scraper.download_benchmark.side_effect = [
-                    AuthenticationError(
-                        "WorkBench returned the login page for https://workbench.cisecurity.org/"
-                        "benchmarks/12345; the saved session has expired [/x]"
-                    ),
-                    sample_benchmark,
-                ]
+                sample_benchmark,
+            ]
 
-                result = runner.invoke(cli, ["download", "12345", "67890"])
+            result = runner.invoke(cli, ["download", "12345", "67890"])
 
         assert result.exit_code == 1
         assert mock_scraper.download_benchmark.call_count == 1  # 67890 never attempted
@@ -675,54 +672,53 @@ class TestGetInteractiveSelection:
                     assert "Multiple matches found" in result.output
 
     def test_get_interactive_selection_success(
-        self, runner, sample_benchmark, tmp_path, monkeypatch
+        self, runner, sample_benchmark, tmp_path, monkeypatch, working_dir
     ):
         """Get with interactive selection proceeds to download."""
         catalog_path = tmp_path / "catalog.db"
         catalog_path.touch()
 
-        with runner.isolated_filesystem():
-            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
-            monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "100")
+        monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
+        monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "100")
 
-            with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
-                mock_db = Mock()
-                mock_db_class.return_value = mock_db
+        with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
+            mock_db = Mock()
+            mock_db_class.return_value = mock_db
 
-                with patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class:
-                    mock_search = Mock()
-                    mock_search_class.return_value = mock_search
-                    mock_search.search.return_value = [
-                        {
-                            "benchmark_id": "12345",
-                            "title": "CIS Test A",
-                            "version": "v1",
-                            "status": "Published",
-                        },
-                        {
-                            "benchmark_id": "67890",
-                            "title": "CIS Test B",
-                            "version": "v2",
-                            "status": "Published",
-                        },
-                    ]
-
-                    # Mock already downloaded
-                    mock_db.get_downloaded.return_value = {
+            with patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class:
+                mock_search = Mock()
+                mock_search_class.return_value = mock_search
+                mock_search.search.return_value = [
+                    {
                         "benchmark_id": "12345",
-                        "content_json": sample_benchmark.model_dump_json(),
-                        "downloaded_at": datetime.now(),
-                    }
+                        "title": "CIS Test A",
+                        "version": "v1",
+                        "status": "Published",
+                    },
+                    {
+                        "benchmark_id": "67890",
+                        "title": "CIS Test B",
+                        "version": "v2",
+                        "status": "Published",
+                    },
+                ]
 
-                    with patch("cis_bench.cli.commands.get.questionary") as mock_q:
-                        mock_select = Mock()
-                        mock_select.ask.return_value = "12345: CIS Test A (v1)"
-                        mock_q.select.return_value = mock_select
+                # Mock already downloaded
+                mock_db.get_downloaded.return_value = {
+                    "benchmark_id": "12345",
+                    "content_json": sample_benchmark.model_dump_json(),
+                    "downloaded_at": datetime.now(),
+                }
 
-                        result = runner.invoke(cli, ["get", "test", "-f", "json"])
+                with patch("cis_bench.cli.commands.get.questionary") as mock_q:
+                    mock_select = Mock()
+                    mock_select.ask.return_value = "12345: CIS Test A (v1)"
+                    mock_q.select.return_value = mock_select
 
-                        assert result.exit_code == 0
-                        assert "Selected: CIS Test A" in result.output
+                    result = runner.invoke(cli, ["get", "test", "-f", "json"])
+
+                    assert result.exit_code == 0
+                    assert "Selected: CIS Test A" in result.output
 
 
 class TestGetDownloadErrors:
@@ -907,109 +903,107 @@ class TestGetXccdfExport:
         catalog_path = tmp_path / "catalog.db"
         catalog_path.touch()
 
-        with runner.isolated_filesystem():
-            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
-            monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "100")
+        monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
+        monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "100")
 
-            with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
-                mock_db = Mock()
-                mock_db_class.return_value = mock_db
+        with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
+            mock_db = Mock()
+            mock_db_class.return_value = mock_db
 
-                with patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class:
-                    mock_search = Mock()
-                    mock_search_class.return_value = mock_search
-                    mock_search.search.return_value = [
-                        {
-                            "benchmark_id": "12345",
-                            "title": "Test",
-                            "version": "v1",
-                            "status": "Published",
-                        }
-                    ]
-
-                    # Already downloaded
-                    mock_db.get_downloaded.return_value = {
+            with patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class:
+                mock_search = Mock()
+                mock_search_class.return_value = mock_search
+                mock_search.search.return_value = [
+                    {
                         "benchmark_id": "12345",
-                        "content_json": sample_benchmark.model_dump_json(),
-                        "downloaded_at": datetime.now(),
+                        "title": "Test",
+                        "version": "v1",
+                        "status": "Published",
                     }
+                ]
 
-                    with patch("cis_bench.cli.commands.get.ExporterFactory") as mock_factory:
-                        mock_exporter = Mock()
-                        mock_exporter.format_name.return_value = "XCCDF"
-                        mock_exporter.get_file_extension.return_value = "xml"
-                        mock_factory.create.return_value = mock_exporter
+                # Already downloaded
+                mock_db.get_downloaded.return_value = {
+                    "benchmark_id": "12345",
+                    "content_json": sample_benchmark.model_dump_json(),
+                    "downloaded_at": datetime.now(),
+                }
 
-                        result = runner.invoke(
-                            cli,
-                            [
-                                "get",
-                                "test",
-                                "-f",
-                                "xccdf",
-                                "--style",
-                                "cis",
-                                "--non-interactive",
-                            ],
-                        )
+                with patch("cis_bench.cli.commands.get.ExporterFactory") as mock_factory:
+                    mock_exporter = Mock()
+                    mock_exporter.format_name.return_value = "XCCDF"
+                    mock_exporter.get_file_extension.return_value = "xml"
+                    mock_factory.create.return_value = mock_exporter
 
-                        # Verify style was passed to factory
-                        mock_factory.create.assert_called_once_with("xccdf", style="cis")
+                    result = runner.invoke(
+                        cli,
+                        [
+                            "get",
+                            "test",
+                            "-f",
+                            "xccdf",
+                            "--style",
+                            "cis",
+                            "--non-interactive",
+                        ],
+                    )
+
+                    # Verify style was passed to factory
+                    mock_factory.create.assert_called_once_with("xccdf", style="cis")
 
     def test_get_auto_generates_output_filename(
-        self, runner, sample_benchmark, tmp_path, monkeypatch
+        self, runner, sample_benchmark, tmp_path, monkeypatch, working_dir
     ):
         """Get auto-generates output filename when not specified."""
         catalog_path = tmp_path / "catalog.db"
         catalog_path.touch()
 
-        with runner.isolated_filesystem():
-            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
-            monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "100")
+        monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
+        monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "100")
 
-            with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
-                mock_db = Mock()
-                mock_db_class.return_value = mock_db
+        with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
+            mock_db = Mock()
+            mock_db_class.return_value = mock_db
 
-                with patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class:
-                    mock_search = Mock()
-                    mock_search_class.return_value = mock_search
-                    mock_search.search.return_value = [
-                        {
-                            "benchmark_id": "12345",
-                            "title": "Test",
-                            "version": "v1",
-                            "status": "Published",
-                        }
-                    ]
-
-                    mock_db.get_downloaded.return_value = {
+            with patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class:
+                mock_search = Mock()
+                mock_search_class.return_value = mock_search
+                mock_search.search.return_value = [
+                    {
                         "benchmark_id": "12345",
-                        "content_json": sample_benchmark.model_dump_json(),
-                        "downloaded_at": datetime.now(),
+                        "title": "Test",
+                        "version": "v1",
+                        "status": "Published",
                     }
+                ]
 
-                    with patch("cis_bench.cli.commands.get.ExporterFactory") as mock_factory:
-                        mock_exporter = Mock()
-                        mock_exporter.format_name.return_value = "YAML"
-                        mock_exporter.get_file_extension.return_value = "yaml"
+                mock_db.get_downloaded.return_value = {
+                    "benchmark_id": "12345",
+                    "content_json": sample_benchmark.model_dump_json(),
+                    "downloaded_at": datetime.now(),
+                }
 
-                        # Make export create the file so os.path.getsize works
-                        def create_file(benchmark, output_path):
-                            Path(output_path).write_text("test content")
+                with patch("cis_bench.cli.commands.get.ExporterFactory") as mock_factory:
+                    mock_exporter = Mock()
+                    mock_exporter.format_name.return_value = "YAML"
+                    mock_exporter.get_file_extension.return_value = "yaml"
 
-                        mock_exporter.export.side_effect = create_file
-                        mock_factory.create.return_value = mock_exporter
+                    # Make export create the file so os.path.getsize works
+                    def create_file(benchmark, output_path):
+                        Path(output_path).write_text("test content")
 
-                        result = runner.invoke(
-                            cli,
-                            ["get", "test", "-f", "yaml", "--non-interactive"],
-                        )
+                    mock_exporter.export.side_effect = create_file
+                    mock_factory.create.return_value = mock_exporter
 
-                        assert result.exit_code == 0
-                        # Should have used auto-generated filename
-                        call_args = mock_exporter.export.call_args
-                        assert "benchmark_12345.yaml" in str(call_args)
+                    result = runner.invoke(
+                        cli,
+                        ["get", "test", "-f", "yaml", "--non-interactive"],
+                    )
+
+                    assert result.exit_code == 0
+                    # Should have used auto-generated filename
+                    call_args = mock_exporter.export.call_args
+                    assert "benchmark_12345.yaml" in str(call_args)
 
 
 class TestGetExportErrors:
@@ -1020,48 +1014,43 @@ class TestGetExportErrors:
         catalog_path = tmp_path / "catalog.db"
         catalog_path.touch()
 
-        with runner.isolated_filesystem():
-            monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
-            monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "100")
+        monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
+        monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "100")
 
-            with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
-                mock_db = Mock()
-                mock_db_class.return_value = mock_db
+        with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
+            mock_db = Mock()
+            mock_db_class.return_value = mock_db
 
-                with patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class:
-                    mock_search = Mock()
-                    mock_search_class.return_value = mock_search
-                    mock_search.search.return_value = [
-                        {
-                            "benchmark_id": "12345",
-                            "title": "Test",
-                            "version": "v1",
-                            "status": "Published",
-                        }
-                    ]
-
-                    mock_db.get_downloaded.return_value = {
+            with patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class:
+                mock_search = Mock()
+                mock_search_class.return_value = mock_search
+                mock_search.search.return_value = [
+                    {
                         "benchmark_id": "12345",
-                        "content_json": sample_benchmark.model_dump_json(),
-                        "downloaded_at": datetime.now(),
+                        "title": "Test",
+                        "version": "v1",
+                        "status": "Published",
                     }
+                ]
 
-                    with patch("cis_bench.cli.commands.get.ExporterFactory") as mock_factory:
-                        mock_exporter = Mock()
-                        mock_exporter.format_name.return_value = "JSON"
-                        mock_exporter.get_file_extension.return_value = "json"
-                        mock_exporter.export.side_effect = Exception("Write permission denied [/x]")
-                        mock_factory.create.return_value = mock_exporter
+                mock_db.get_downloaded.return_value = {
+                    "benchmark_id": "12345",
+                    "content_json": sample_benchmark.model_dump_json(),
+                    "downloaded_at": datetime.now(),
+                }
 
-                        result = runner.invoke(
-                            cli, ["get", "test", "-f", "json", "--non-interactive"]
-                        )
+                with patch("cis_bench.cli.commands.get.ExporterFactory") as mock_factory:
+                    mock_exporter = Mock()
+                    mock_exporter.format_name.return_value = "JSON"
+                    mock_exporter.get_file_extension.return_value = "json"
+                    mock_exporter.export.side_effect = Exception("Write permission denied [/x]")
+                    mock_factory.create.return_value = mock_exporter
 
-                        assert result.exit_code == 1
-                        assert (
-                            result.output.count("Export failed: Write permission denied [/x]") == 1
-                        )
-                        assert "Traceback" not in result.output
+                    result = runner.invoke(cli, ["get", "test", "-f", "json", "--non-interactive"])
+
+                    assert result.exit_code == 1
+                    assert result.output.count("Export failed: Write permission denied [/x]") == 1
+                    assert "Traceback" not in result.output
 
 
 class TestOutsideTextIsPrintedVerbatim:
@@ -1076,12 +1065,11 @@ class TestOutsideTextIsPrintedVerbatim:
         return exporter
 
     def test_get_prints_query_title_and_output_path_verbatim(
-        self, runner, sample_benchmark, tmp_path, monkeypatch
+        self, runner, sample_benchmark, tmp_path, monkeypatch, working_dir
     ):
         catalog_path = tmp_path / "catalog.db"
         catalog_path.touch()
         with (
-            runner.isolated_filesystem(temp_dir=tmp_path),
             patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class,
             patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class,
             patch("cis_bench.cli.commands.get.ExporterFactory") as mock_factory,
@@ -1143,13 +1131,12 @@ class TestOutsideTextIsPrintedVerbatim:
         assert 'cis-bench get "web[x]"' in result.output
 
     def test_get_prints_downloaded_title_verbatim(
-        self, runner, sample_benchmark, tmp_path, monkeypatch
+        self, runner, sample_benchmark, tmp_path, monkeypatch, working_dir
     ):
         sample_benchmark.title = "CIS T [/t]"
         catalog_path = tmp_path / "catalog.db"
         catalog_path.touch()
         with (
-            runner.isolated_filesystem(temp_dir=tmp_path),
             patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class,
             patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class,
             patch("cis_bench.fetcher.auth.AuthManager"),
@@ -1175,10 +1162,11 @@ class TestOutsideTextIsPrintedVerbatim:
         assert result.exit_code == 0, result.output
         assert "Downloaded: CIS T [/t]" in result.output
 
-    def test_download_prints_title_verbatim(self, runner, sample_benchmark, tmp_path, monkeypatch):
+    def test_download_prints_title_verbatim(
+        self, runner, sample_benchmark, tmp_path, monkeypatch, working_dir
+    ):
         sample_benchmark.title = "CIS T [/t]"
         with (
-            runner.isolated_filesystem(temp_dir=tmp_path),
             patch("cis_bench.fetcher.auth.AuthManager.get_or_create_session"),
             patch("cis_bench.fetcher.workbench.WorkbenchScraper") as mock_scraper_class,
             patch("cis_bench.cli.commands.download.ExporterFactory") as mock_factory,
@@ -1239,7 +1227,7 @@ class TestCanonicalContentHashConsistency:
     """Verify catalog download, cli download, and cli get write identical canonical JSON and hashes."""
 
     def test_download_get_and_catalog_downloader_share_identical_content_hash_and_validate_json(
-        self, runner, sample_benchmark, tmp_path, monkeypatch
+        self, runner, sample_benchmark, tmp_path, monkeypatch, working_dir
     ):
         """All three download paths store identical content_json and content_hash, and get reads via model_validate_json."""
         from unittest.mock import create_autospec
@@ -1277,53 +1265,52 @@ class TestCanonicalContentHashConsistency:
             row_catalog = db_catalog.get_downloaded("12345")
             assert row_catalog is not None
 
-            with runner.isolated_filesystem():
-                with (
-                    patch(
-                        "cis_bench.fetcher.auth.AuthManager.get_or_create_session",
-                        return_value=Mock(),
-                    ),
-                    patch(
-                        "cis_bench.fetcher.workbench.WorkbenchScraper",
-                        return_value=scraper,
-                    ),
-                ):
-                    monkeypatch.setenv("CIS_BENCH_HOME", str(db_download.db_path.parent))
-                    dl_res = runner.invoke(cli, ["download", "12345", "--force"])
-                assert dl_res.exit_code == 0, dl_res.output
+            with (
+                patch(
+                    "cis_bench.fetcher.auth.AuthManager.get_or_create_session",
+                    return_value=Mock(),
+                ),
+                patch(
+                    "cis_bench.fetcher.workbench.WorkbenchScraper",
+                    return_value=scraper,
+                ),
+            ):
+                monkeypatch.setenv("CIS_BENCH_HOME", str(db_download.db_path.parent))
+                dl_res = runner.invoke(cli, ["download", "12345", "--force"])
+            assert dl_res.exit_code == 0, dl_res.output
 
-                out_yaml = Path("exported_from_get.yaml")
-                with (
-                    patch(
-                        "cis_bench.fetcher.auth.AuthManager.get_or_create_session",
-                        return_value=Mock(),
-                    ),
-                    patch(
-                        "cis_bench.fetcher.workbench.WorkbenchScraper",
-                        return_value=scraper,
-                    ),
-                    patch.object(
-                        Benchmark,
-                        "model_validate_json",
-                        wraps=Benchmark.model_validate_json,
-                    ) as validate_spy,
-                ):
-                    monkeypatch.setenv("CIS_BENCH_HOME", str(db_get.db_path.parent))
-                    monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "100")
-                    get_res = runner.invoke(
-                        cli,
-                        [
-                            "get",
-                            "CIS Test Benchmark",
-                            "--format",
-                            "yaml",
-                            "--output",
-                            str(out_yaml),
-                            "--non-interactive",
-                        ],
-                    )
-                assert get_res.exit_code == 0, get_res.output
-                assert out_yaml.exists()
+            out_yaml = Path("exported_from_get.yaml")
+            with (
+                patch(
+                    "cis_bench.fetcher.auth.AuthManager.get_or_create_session",
+                    return_value=Mock(),
+                ),
+                patch(
+                    "cis_bench.fetcher.workbench.WorkbenchScraper",
+                    return_value=scraper,
+                ),
+                patch.object(
+                    Benchmark,
+                    "model_validate_json",
+                    wraps=Benchmark.model_validate_json,
+                ) as validate_spy,
+            ):
+                monkeypatch.setenv("CIS_BENCH_HOME", str(db_get.db_path.parent))
+                monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "100")
+                get_res = runner.invoke(
+                    cli,
+                    [
+                        "get",
+                        "CIS Test Benchmark",
+                        "--format",
+                        "yaml",
+                        "--output",
+                        str(out_yaml),
+                        "--non-interactive",
+                    ],
+                )
+            assert get_res.exit_code == 0, get_res.output
+            assert out_yaml.exists()
 
             row_download = db_download.get_downloaded("12345")
             row_get = db_get.get_downloaded("12345")
@@ -1350,37 +1337,35 @@ class TestVerifiedTLSByDefault:
     ):
         monkeypatch.delenv("CIS_BENCH_VERIFY_SSL", raising=False)
         auth = auth_manager_class.return_value
-        with runner.isolated_filesystem():
-            with patch("cis_bench.fetcher.workbench.WorkbenchScraper") as mock_scraper_cls:
-                monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path / "missing"))
-                auth.get_or_create_session.return_value = Mock()
-                mock_scraper = Mock()
-                mock_scraper.download_benchmark.return_value = sample_benchmark
-                mock_scraper_cls.return_value = mock_scraper
+        with patch("cis_bench.fetcher.workbench.WorkbenchScraper") as mock_scraper_cls:
+            monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path / "missing"))
+            auth.get_or_create_session.return_value = Mock()
+            mock_scraper = Mock()
+            mock_scraper.download_benchmark.return_value = sample_benchmark
+            mock_scraper_cls.return_value = mock_scraper
 
-                result = runner.invoke(cli, ["download", "12345"])
+            result = runner.invoke(cli, ["download", "12345"])
 
-                assert result.exit_code == 0, result.output
-                assert auth_manager_class.call_args.kwargs["verify_ssl"] is True
-                auth.get_or_create_session.assert_called_once_with()
+            assert result.exit_code == 0, result.output
+            assert auth_manager_class.call_args.kwargs["verify_ssl"] is True
+            auth.get_or_create_session.assert_called_once_with()
 
     def test_download_reports_tls_failure_without_session_hint(self, runner, tmp_path, monkeypatch):
         """A certificate trust failure is not an expired session; say what it is and stop."""
         monkeypatch.delenv("CIS_BENCH_VERIFY_SSL", raising=False)
-        with runner.isolated_filesystem():
-            with (
-                patch(
-                    "cis_bench.fetcher.auth.AuthManager.get_or_create_session",
-                    side_effect=TLSVerificationError(
-                        "TLS certificate verification failed for workbench.cisecurity.org: "
-                        "unable to get local issuer certificate. If a proxy re-signs HTTPS "
-                        "traffic, point REQUESTS_CA_BUNDLE at its CA bundle; to skip "
-                        "verification entirely set CIS_BENCH_VERIFY_SSL=false."
-                    ),
+        with (
+            patch(
+                "cis_bench.fetcher.auth.AuthManager.get_or_create_session",
+                side_effect=TLSVerificationError(
+                    "TLS certificate verification failed for workbench.cisecurity.org: "
+                    "unable to get local issuer certificate. If a proxy re-signs HTTPS "
+                    "traffic, point REQUESTS_CA_BUNDLE at its CA bundle; to skip "
+                    "verification entirely set CIS_BENCH_VERIFY_SSL=false."
                 ),
-            ):
-                monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path / "missing"))
-                result = runner.invoke(cli, ["download", "12345"])
+            ),
+        ):
+            monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path / "missing"))
+            result = runner.invoke(cli, ["download", "12345"])
 
         assert result.exit_code == 1
         assert "TLS certificate verification failed for workbench.cisecurity.org" in result.output
@@ -1509,28 +1494,27 @@ class TestDownloadReferenceValidation:
     def test_accepts_id_canonical_url_and_decorated_url(
         self, runner, sample_benchmark, tmp_path, monkeypatch
     ):
-        with runner.isolated_filesystem():
-            with (
-                patch(
-                    "cis_bench.fetcher.auth.AuthManager.get_or_create_session",
-                    return_value=Mock(),
-                ),
-                patch("cis_bench.fetcher.workbench.WorkbenchScraper") as mock_scraper_cls,
-            ):
-                monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path / "missing"))
-                mock_scraper = Mock()
-                mock_scraper.download_benchmark.return_value = sample_benchmark
-                mock_scraper_cls.return_value = mock_scraper
+        with (
+            patch(
+                "cis_bench.fetcher.auth.AuthManager.get_or_create_session",
+                return_value=Mock(),
+            ),
+            patch("cis_bench.fetcher.workbench.WorkbenchScraper") as mock_scraper_cls,
+        ):
+            monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path / "missing"))
+            mock_scraper = Mock()
+            mock_scraper.download_benchmark.return_value = sample_benchmark
+            mock_scraper_cls.return_value = mock_scraper
 
-                result = runner.invoke(
-                    cli,
-                    [
-                        "download",
-                        "23598",
-                        "https://workbench.cisecurity.org/benchmarks/22605",
-                        "https://workbench.cisecurity.org/benchmarks/11111?tab=overview#top",
-                    ],
-                )
+            result = runner.invoke(
+                cli,
+                [
+                    "download",
+                    "23598",
+                    "https://workbench.cisecurity.org/benchmarks/22605",
+                    "https://workbench.cisecurity.org/benchmarks/11111?tab=overview#top",
+                ],
+            )
 
         assert result.exit_code == 0, result.output
         downloaded = [c.args[0] for c in mock_scraper.download_benchmark.call_args_list]

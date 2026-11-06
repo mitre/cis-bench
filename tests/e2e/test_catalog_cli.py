@@ -14,14 +14,6 @@ def runner():
     return CliRunner()
 
 
-@pytest.fixture
-def isolated_catalog(runner, tmp_path):
-    """Create isolated catalog database for testing."""
-    # Use tmp_path for catalog to avoid polluting real catalog
-    with runner.isolated_filesystem(temp_dir=tmp_path):
-        yield tmp_path
-
-
 class TestCatalogHelp:
     """Test catalog help and command discovery."""
 
