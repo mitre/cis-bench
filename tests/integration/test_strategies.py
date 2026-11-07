@@ -7,10 +7,10 @@ Demonstrates strategy pattern flexibility for handling HTML structure changes.
 import pytest
 from bs4 import BeautifulSoup
 
-from cis_bench.fetcher.strategies.base import ScraperStrategy
+from cis_bench.fetcher.strategies.base import ExtractedRecommendation, ScraperStrategy
 from cis_bench.fetcher.strategies.detector import StrategyDetector
 from cis_bench.fetcher.strategies.v1_current import WorkbenchV1Strategy
-from cis_bench.models.benchmark import Artifact, MITREMapping
+from cis_bench.models.benchmark import Artifact, MITREMapping, Recommendation
 
 # ============ Fixtures: Real HTML Samples ============
 
@@ -917,3 +917,23 @@ class TestFutureStrategyMigration:
         # Data extraction should be identical
         assert data_after["description"] == data_before["description"]
         assert data_after["assessment_status"] == data_before["assessment_status"]
+
+
+class TestExtractedRecommendationContract:
+    """What a strategy extracts is exactly what the Recommendation model needs beyond the
+    navigation tree (ref, title, url); a model field without an extraction, or an extraction
+    the model cannot take, is a defect at the HTML-to-model boundary."""
+
+    NAVTREE_FIELDS = {"ref", "title", "url"}
+
+    def test_the_contract_names_every_model_field_the_navtree_does_not_supply(self):
+        expected = set(Recommendation.model_fields) - self.NAVTREE_FIELDS
+
+        assert set(ExtractedRecommendation.__required_keys__) == expected
+        assert set(ExtractedRecommendation.__optional_keys__) == set()
+
+    def test_v1_extracts_exactly_the_contract_keys(self, v1_complete_html):
+        data = WorkbenchV1Strategy().extract_recommendation(v1_complete_html)
+
+        assert set(data) == set(ExtractedRecommendation.__required_keys__)
+        Recommendation(ref="1.1", title="t", url="https://workbench.cisecurity.org/x", **data)

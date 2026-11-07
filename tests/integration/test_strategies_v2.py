@@ -13,6 +13,7 @@ CIS WorkBench Vue migration:
 
 import pytest
 
+from cis_bench.fetcher.strategies.base import ExtractedRecommendation
 from cis_bench.fetcher.strategies.detector import StrategyDetector
 from cis_bench.fetcher.strategies.v1_current import WorkbenchV1Strategy
 from cis_bench.fetcher.strategies.v2_2026 import WorkbenchV2Strategy, _decode_vue_payload
@@ -191,6 +192,12 @@ class TestDecodeVuePayload:
 
 
 class TestV2ExtractRecommendation:
+    def test_extracts_exactly_the_contract_keys(self, v2_full_html):
+        data = WorkbenchV2Strategy().extract_recommendation(v2_full_html)
+
+        assert set(data) == set(ExtractedRecommendation.__required_keys__)
+        Recommendation(ref="1.1", title="t", url="https://workbench.cisecurity.org/x", **data)
+
     def test_extracts_all_text_fields(self, v2_full_html):
         data = WorkbenchV2Strategy().extract_recommendation(v2_full_html)
 

@@ -19,7 +19,7 @@ from pydantic import HttpUrl
 from cis_bench.exceptions import AuthenticationError
 from cis_bench.fetcher.auth import is_workbench_login_page
 from cis_bench.fetcher.http import ThreadSessions, get_with_retry
-from cis_bench.fetcher.strategies.base import ScraperStrategy
+from cis_bench.fetcher.strategies.base import ExtractedRecommendation, ScraperStrategy
 from cis_bench.fetcher.strategies.detector import StrategyDetector
 from cis_bench.models.benchmark import Benchmark, Recommendation
 from cis_bench.utils.parallel import parallel_execute_batched
@@ -249,14 +249,14 @@ class WorkbenchScraper:
         parse_subsections(navtree, parsed_data)
         return parsed_data
 
-    def fetch_recommendation(self, rec_url: str) -> dict[str, Any]:
+    def fetch_recommendation(self, rec_url: str) -> ExtractedRecommendation:
         """Fetch and parse a single recommendation page.
 
         Args:
             rec_url: URL to recommendation page
 
         Returns:
-            Dictionary with all extracted fields
+            The fields the page supplies, as the strategy extracted them
         """
         html = self.fetch_html(rec_url)
         strategy = self._get_strategy(html)
