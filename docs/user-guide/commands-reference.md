@@ -241,7 +241,7 @@ cis-bench get <QUERY> [OPTIONS]
 
 - `-f, --format` - Export format (yaml|csv|markdown|md|xccdf|xml|json) - default: yaml
 - `--style` - XCCDF style (disa|cis) - default: disa, only for xccdf format
-- `-o, --output` - Output file path (default: auto-generated)
+- `-o, --output PATH` - Output file (a file path, not a folder; default: auto-generated). A folder is refused with a usage error
 
 **Behavior Options:**
 
@@ -383,7 +383,7 @@ cis-bench export <IDENTIFIER> [IDENTIFIER...] [OPTIONS]
 
 - `-f, --format` - Format (yaml|csv|markdown|md|xccdf|xml) - default: yaml
 - `--style` - XCCDF style (disa|cis) - default: disa, only for xccdf
-- `-o, --output PATH` - Output file (single export only)
+- `-o, --output PATH` - Output file (single export only; a folder is refused with a usage error, use `--output-dir` for a folder)
 - `--output-dir PATH` - Output directory for batch exports (creates if needed)
 
 **Input Options:**
@@ -422,6 +422,48 @@ cis-bench export 23598 local_benchmark.json --format yaml
 
 - `disa` - DISA/DoD STIG format (XCCDF 1.1.4, CCIs, VulnDiscussion)
 - `cis` - CIS native format (XCCDF 1.2, CIS Controls, MITRE ATT&CK)
+
+---
+
+### `cis-bench validate`
+
+Check XCCDF files against the NIST XCCDF schema, with the schemas shipped in cis-bench.
+
+**Syntax:**
+```bash
+cis-bench validate <FILE>...
+```
+
+**Arguments:**
+
+- `FILE...` - One or more XCCDF files: an export, or any XCCDF 1.1 or 1.2 document
+
+**Examples:**
+```bash
+# Validate an export
+cis-bench export 23598 --format xccdf --style cis
+cis-bench validate benchmark_23598.xml
+
+# Several at once
+cis-bench validate exports/*.xml
+```
+
+**What it does:**
+
+1. Reads each file with a parser that expands no entities and touches no network
+2. Picks the schema from the root element's namespace: `http://checklists.nist.gov/xccdf/1.1` (DISA-style exports) or `http://checklists.nist.gov/xccdf/1.2` (CIS-style exports)
+3. Validates against that schema and lists every error with its line
+
+**Exit codes** (the same as `oscap xccdf validate`): `0` every file is valid; `2` a file is not valid; `1` a file could not be validated (missing, not XML, carrying a DOCTYPE, not XCCDF, or an XCCDF version with no shipped schema).
+
+Schema validity means the document is well-formed XCCDF. It is not DISA or CIS convention compliance.
+
+**The schemas:** the package ships OpenSCAP's XCCDF 1.1 and 1.2 schema files (`cis_bench/schemas/xccdf/`, with the `common/` and `cpe/` files they import). From a repository checkout the same check with xmllint is:
+
+```bash
+xmllint --noout --schema src/cis_bench/schemas/xccdf/1.2/xccdf_1.2.xsd benchmark_23598.xml   # CIS style, XCCDF 1.2
+xmllint --noout --schema src/cis_bench/schemas/xccdf/1.1/xccdf-schema.xsd benchmark_23598.xml # DISA style, XCCDF 1.1
+```
 
 ---
 
@@ -915,6 +957,7 @@ A command exits `0` only when everything it was asked to do succeeded.
 - `cis-bench download` exits `1` if any requested benchmark or export failed, even when others succeeded
 - `cis-bench export` with several benchmarks exits `1` if any export failed; the others are still written and the summary says how many succeeded
 - `cis-bench get` exits `1` when nothing matched the query, when the ID is not in the catalog, or when the interactive menu is left without a choice
+- `cis-bench validate` exits `2` when a file is not valid XCCDF (here `2` is the validation result, as with `oscap xccdf validate`) and `1` when a file could not be validated at all (missing, not XML, not XCCDF)
 
 ---
 

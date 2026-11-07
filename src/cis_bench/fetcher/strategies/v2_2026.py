@@ -26,11 +26,10 @@ from typing import Any
 
 from bs4 import BeautifulSoup
 
-from cis_bench.models.benchmark import CISControl, MITREMapping
+from cis_bench.fetcher.strategies.base import ExtractedRecommendation, ScraperStrategy
+from cis_bench.models.benchmark import Artifact, CISControl, MITREMapping
 from cis_bench.utils.html_parser import attribute_text
 from cis_bench.utils.parsers import WorkbenchParser
-
-from .base import ScraperStrategy
 
 _UNICODE_ESCAPE_RE = re.compile(r"\\u([0-9a-fA-F]{4})")
 _JSON_PARSE_RE = re.compile(r"^JSON\.parse\('(.+)'\)$", re.DOTALL)
@@ -95,34 +94,40 @@ class WorkbenchV2Strategy(ScraperStrategy):
                 return True
         return False
 
-    def extract_recommendation(self, html: str) -> dict[str, Any]:
+    def extract_recommendation(self, html: str) -> ExtractedRecommendation:
         """Extract every field the Pydantic ``Recommendation`` model needs."""
         soup = BeautifulSoup(html, "html.parser")
-        data: dict[str, Any] = {}
 
-        for field, attr_value in self._DATA_ATTRIBUTES.items():
-            el = soup.find("wb-recommendation-data", attrs={"attribute": attr_value})
-            data[field] = self._clean_text(attribute_text(el, "text") if el else None)
-
-        status_el = soup.find("wb-recommendation-data", attrs={"attribute": "automated_scoring"})
-        status_text = (
-            self._clean_text(attribute_text(status_el, "text") if status_el else None) or ""
+        text = {
+            field: self._data_text(soup, attr_value)
+            for field, attr_value in self._DATA_ATTRIBUTES.items()
+        }
+        profiles_text = self._data_text(soup, "profiles")
+        return ExtractedRecommendation(
+            assessment_status=self._normalize_status(
+                self._data_text(soup, "automated_scoring") or ""
+            ),
+            profiles=[profiles_text] if profiles_text else [],
+            cis_controls=self._extract_cis_controls(soup),
+            mitre_mapping=self._extract_mitre(soup),
+            nist_controls=WorkbenchParser.parse_nist_controls(text["references"]),
+            parent=WorkbenchParser.parse_parent_link(html),
+            artifacts=self._extract_artifacts(soup),
+            description=text["description"],
+            rationale=text["rationale"],
+            impact=text["impact"],
+            audit=text["audit"],
+            remediation=text["remediation"],
+            additional_info=text["additional_info"],
+            default_value=text["default_value"],
+            artifact_equation=text["artifact_equation"],
+            references=text["references"],
         )
-        data["assessment_status"] = self._normalize_status(status_text)
 
-        profiles_el = soup.find("wb-recommendation-data", attrs={"attribute": "profiles"})
-        profiles_text = self._clean_text(
-            attribute_text(profiles_el, "text") if profiles_el else None
-        )
-        data["profiles"] = [profiles_text] if profiles_text else []
-
-        data["cis_controls"] = self._extract_cis_controls(soup)
-        data["mitre_mapping"] = self._extract_mitre(soup)
-        data["nist_controls"] = WorkbenchParser.parse_nist_controls(data.get("references"))
-        data["artifacts"] = self._extract_artifacts(soup)
-        data["parent"] = WorkbenchParser.parse_parent_link(html)
-
-        return data
+    def _data_text(self, soup: BeautifulSoup, attribute: str) -> str | None:
+        """The text of the ``wb-recommendation-data`` element for one attribute, cleaned."""
+        el = soup.find("wb-recommendation-data", attrs={"attribute": attribute})
+        return self._clean_text(attribute_text(el, "text") if el else None)
 
     @staticmethod
     def _clean_text(value: str | None) -> str | None:
@@ -219,7 +224,7 @@ class WorkbenchV2Strategy(ScraperStrategy):
             mitigations=list(mitigations),
         )
 
-    def _extract_artifacts(self, soup: BeautifulSoup) -> list:
+    def _extract_artifacts(self, soup: BeautifulSoup) -> list[Artifact]:
         el = soup.find("wb-recommendation-artifacts")
         if not el:
             return []

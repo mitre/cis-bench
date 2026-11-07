@@ -144,8 +144,8 @@ cis-bench auth login --browser chrome
 
 **Issue:** "OpenSCAP can't parse XCCDF"
 ```bash
-# Verify XCCDF structure
-xmllint --schema schemas/xccdf-1.2.xsd almalinux10-cis.xml
+# Verify XCCDF structure against the NIST schema
+cis-bench validate almalinux10-cis.xml
 
 # Try DISA style instead (XCCDF 1.1.4, more compatible)
 cis-bench export 23598 --format xccdf --style disa -o almalinux10-disa.xml
@@ -535,25 +535,15 @@ You're importing CIS benchmarks into DISA SCC (SCAP Compliance Checker). SCC is 
 cis-bench download 18208
 cis-bench export 18208 --format xccdf --style disa -o rhel9-disa.xml
 
-# 2. Validate XML syntax
-xmllint --noout rhel9-disa.xml
-if [ $? -eq 0 ]; then
-echo " Valid XML syntax"
-else
-echo " XML syntax error"
-exit 1
-fi
-
-# 3. Validate against XCCDF schema
-xmllint --schema schemas/xccdf-1.1.4.xsd --noout rhel9-disa.xml
-if [ $? -eq 0 ]; then
-echo " Valid XCCDF 1.1.4 structure"
+# 2. Validate against the XCCDF schema (also checks the XML is well-formed)
+if cis-bench validate rhel9-disa.xml; then
+echo " Valid XCCDF 1.1 structure"
 else
 echo " XCCDF schema validation failed"
 exit 1
 fi
 
-# 4. Check DISA conventions
+# 3. Check DISA conventions
 python3 << EOF
 from cis_bench.validators.disa_conventions import validate_disa_conventions
 issues = validate_disa_conventions('rhel9-disa.xml')

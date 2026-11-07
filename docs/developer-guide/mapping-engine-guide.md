@@ -978,8 +978,8 @@ assert len(xccdf.group[0].rule) > 0
 # Export
 cis-bench export 23598 --format xccdf --style custom -o test.xml
 
-# Validate against schema
-xmllint --schema schemas/xccdf-1.2.xsd test.xml
+# Validate against the XCCDF schema
+cis-bench validate test.xml
 
 # Check specific elements
 xmllint --xpath "//Rule/title" test.xml

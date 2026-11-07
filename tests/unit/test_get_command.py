@@ -681,6 +681,22 @@ class TestGetForce:
         mock_auth.return_value.get_or_create_session.assert_not_called()
         mock_download.assert_not_called()
 
+    def test_output_option_refuses_a_directory(self, runner, cached_match, working_dir):
+        """-o names a file; a directory is a usage error before anything is looked up."""
+        mock_db, mock_auth, mock_download = cached_match
+        (working_dir / "out").mkdir()
+
+        result = runner.invoke(cli, ["get", "ubuntu 22", "-o", "out", "--non-interactive"])
+
+        assert result.exit_code == 2, result.output
+        assert "'--output' / '-o'" in result.output
+        assert "is a directory" in result.output
+        assert "Traceback" not in result.output
+        mock_auth.return_value.get_or_create_session.assert_not_called()
+        mock_download.assert_not_called()
+        mock_db.save_downloaded.assert_not_called()
+        assert list((working_dir / "out").iterdir()) == []
+
     def test_help_lists_force(self, runner):
         result = runner.invoke(cli, ["get", "--help"])
 

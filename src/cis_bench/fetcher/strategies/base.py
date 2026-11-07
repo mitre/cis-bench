@@ -5,7 +5,36 @@ as CIS WorkBench evolves their website over time.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import TypedDict
+
+from cis_bench.models.benchmark import Artifact, CISControl, MITREMapping, ParentReference
+
+
+class ExtractedRecommendation(TypedDict):
+    """What a strategy extracts from one recommendation page.
+
+    Every ``Recommendation`` field except ``ref``, ``title`` and ``url``, which come from
+    the navigation tree; the scraper unpacks this straight into the model. Typing each
+    field is what lets the type checker catch a strategy that fills a field with the wrong
+    shape when WorkBench's markup changes.
+    """
+
+    assessment_status: str
+    profiles: list[str]
+    cis_controls: list[CISControl]
+    mitre_mapping: MITREMapping | None
+    nist_controls: list[str]
+    parent: ParentReference | None
+    artifacts: list[Artifact]
+    description: str | None
+    rationale: str | None
+    impact: str | None
+    audit: str | None
+    remediation: str | None
+    additional_info: str | None
+    default_value: str | None
+    artifact_equation: str | None
+    references: str | None
 
 
 class ScraperStrategy(ABC):
@@ -58,32 +87,16 @@ class ScraperStrategy(ABC):
         pass
 
     @abstractmethod
-    def extract_recommendation(self, html: str) -> dict[str, Any]:
+    def extract_recommendation(self, html: str) -> ExtractedRecommendation:
         """Extract recommendation data from HTML.
 
         Args:
             html: Raw HTML content from recommendation page
 
         Returns:
-            Dictionary with extracted fields matching our Pydantic model:
-            {
-                'assessment': str | None,
-                'description': str | None,
-                'rationale': str | None,
-                'impact': str | None,
-                'audit': str | None,
-                'remediation': str | None,
-                'default_value': str | None,
-                'artifact_eq': str | None,
-                'mitre_mapping': str | None,
-                'references': str | None
-            }
-
-        Raises:
-            ValueError: If HTML cannot be parsed
-
-        Note:
-            Should return None for fields not found (don't raise exceptions)
+            The fields of the Pydantic ``Recommendation`` model that the page supplies
+            (see ``ExtractedRecommendation``); a field the page does not have is None or
+            empty, never missing.
         """
         pass
 

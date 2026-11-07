@@ -1,14 +1,12 @@
 """Tests for DISA XCCDF export and validation."""
 
-import subprocess
-from pathlib import Path
-
 import pytest
 from lxml import etree
 
 from cis_bench.exporters import ExporterFactory
 from cis_bench.models.benchmark import Benchmark
 from cis_bench.validators.disa_conventions import DISAConventionsValidator
+from cis_bench.validators.xccdf_schema import validate_xccdf
 
 
 @pytest.fixture
@@ -34,19 +32,10 @@ def test_disa_export_creates_file(disa_export_file):
 
 def test_disa_export_validates_nist_schema(disa_export_file):
     """Test DISA export validates against NIST XCCDF 1.1.4 schema."""
-    schema_dir = Path(__file__).parent.parent.parent / "schemas"
-    schema_file = schema_dir / "xccdf-1.1.4.xsd"  # DISA uses 1.1.4, not 1.2
-    catalog_file = schema_dir / "catalog.xml"
+    result = validate_xccdf(disa_export_file)
 
-    result = subprocess.run(
-        ["xmllint", "--schema", str(schema_file), str(disa_export_file), "--noout"],
-        env={"XML_CATALOG_FILES": str(catalog_file)},
-        capture_output=True,
-        text=True,
-        cwd=str(schema_dir),
-    )
-
-    assert result.returncode == 0, f"NIST schema validation failed: {result.stderr}"
+    assert result.version == "1.1"
+    assert result.is_valid, f"NIST schema validation failed: {result.errors[:5]}"
 
 
 def test_disa_export_passes_conventions(disa_export_file):

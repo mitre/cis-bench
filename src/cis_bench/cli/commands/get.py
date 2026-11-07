@@ -61,7 +61,8 @@ class DynamicStyleChoice(click.Choice):
 @click.option(
     "--output",
     "-o",
-    help="Output file path (default: auto-generated)",
+    type=click.Path(dir_okay=False),
+    help="Output file (a file path, not a folder; default: auto-generated)",
 )
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose (DEBUG level) logging")
 @click.option("--debug", "-d", is_flag=True, help="Enable debug logging (same as --verbose)")

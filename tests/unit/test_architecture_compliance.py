@@ -230,7 +230,7 @@ class TestArchitectureCompliance:
 class TestRuleChildOrderComesFromTheSchema:
     """Injected metadata lands where the XCCDF schema places it, for every Rule.
 
-    Expected positions come from schemas/xccdf/1.2/xccdf_1.2.xsd, not from the
+    Expected positions come from src/cis_bench/schemas/xccdf/1.2/xccdf_1.2.xsd, not from the
     exporter: itemType ends with metadata (after reference), selectableItemType
     and ruleType follow (rationale ... signature).
     """

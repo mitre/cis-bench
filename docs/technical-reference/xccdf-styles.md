@@ -630,8 +630,7 @@ cis-bench export benchmark.json --format xccdf --style disa -o disa_output.xml
 python -c "from stig_parser import convert_xccdf; ..."
 
 # Validate structure
-cd schemas
-XML_CATALOG_FILES=catalog.xml xmllint --schema xccdf_1.2.xsd ../disa_output.xml --noout
+cis-bench validate disa_output.xml
 ```
 
 ### CIS Style Validation
@@ -640,7 +639,7 @@ XML_CATALOG_FILES=catalog.xml xmllint --schema xccdf_1.2.xsd ../disa_output.xml 
 cis-bench export benchmark.json --format xccdf --style cis -o cis_output.xml
 
 # Validate
-xmllint --schema xccdf_1.2.xsd cis_output.xml --noout
+cis-bench validate cis_output.xml
 
 # Check for CIS metadata
 grep -o '<cis-control' cis_output.xml | wc -l # Should find CIS controls

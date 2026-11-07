@@ -665,7 +665,7 @@ config = ConfigLoader.load('your_config.yaml')
 
 4. **Validate XCCDF output**: Check against NIST schema
 ```bash
-xmllint --schema xccdf_1.2.xsd output.xml --noout
+cis-bench validate output.xml
 ```
 
 ## Common Patterns

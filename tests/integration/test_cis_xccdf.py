@@ -1,6 +1,5 @@
 """Integration tests for CIS Native XCCDF export."""
 
-import subprocess
 import tempfile
 from pathlib import Path
 
@@ -9,6 +8,7 @@ from lxml import etree
 
 from cis_bench.exporters import ExporterFactory
 from cis_bench.models.benchmark import Benchmark
+from cis_bench.validators.xccdf_schema import validate_xccdf
 
 
 @pytest.fixture
@@ -319,16 +319,10 @@ class TestCISXCCDFExport:
         exporter = ExporterFactory.create("xccdf", style="cis")
         exporter.export(sample_benchmark, str(output_file))
 
-        schema_file = (
-            Path(__file__).parent.parent.parent / "schemas" / "xccdf" / "1.2" / "xccdf_1.2.xsd"
-        )
-        result = subprocess.run(
-            ["xmllint", "--noout", "--schema", str(schema_file), str(output_file)],
-            capture_output=True,
-            text=True,
-        )
+        result = validate_xccdf(output_file)
 
-        assert result.returncode == 0, f"XCCDF 1.2 schema validation failed: {result.stderr}"
+        assert result.version == "1.2"
+        assert result.is_valid, f"XCCDF 1.2 schema validation failed: {result.errors[:5]}"
 
     def test_cis_metadata_aligned_by_rule_id_and_repeatable(self, sample_benchmark, tmp_path):
         """Metadata injection aligns 1-to-1 by Rule ID and resets across repeated exports."""
