@@ -486,6 +486,35 @@ class TestHTMLCleanerStripHtml:
         assert result == text
 
 
+class TestHTMLCleanerStripHtmlDecodesEntities:
+    """strip_html treats text with and without tags alike: entities are decoded either way, and
+    text that merely looks like a URL or a path raises no parser warning."""
+
+    def test_entities_are_decoded_when_the_text_has_no_tags(self):
+        from cis_bench.utils.html_parser import HTMLCleaner
+
+        assert HTMLCleaner.strip_html("Files &amp; folders") == "Files & folders"
+        assert HTMLCleaner.strip_html("a &lt; b &gt; c") == "a < b > c"
+
+    def test_entities_are_decoded_when_the_text_has_tags(self):
+        from cis_bench.utils.html_parser import HTMLCleaner
+
+        assert HTMLCleaner.strip_html("<p>Files &amp; folders</p>") == "Files & folders"
+
+    def test_a_bare_url_or_path_warns_nothing_and_is_returned_whole(self):
+        import warnings
+
+        from cis_bench.utils.html_parser import HTMLCleaner
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            assert (
+                HTMLCleaner.strip_html("https://www.cisecurity.org/benchmark/almalinux")
+                == "https://www.cisecurity.org/benchmark/almalinux"
+            )
+            assert HTMLCleaner.strip_html("/var/lib/docker/overlay2") == "/var/lib/docker/overlay2"
+
+
 class TestHTMLCleanerHtmlToMarkdown:
     """Tests for HTMLCleaner.html_to_markdown."""
 

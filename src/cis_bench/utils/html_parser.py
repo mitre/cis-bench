@@ -40,13 +40,13 @@ class HTMLCleaner:
         if not html:
             return ""
 
-        # If no HTML tags present, return as-is (defensive programming)
-        # Avoids BeautifulSoup warning when text contains paths like /var/lib/...
-        if "<" not in html and ">" not in html:
-            return html.strip()
-
         logger.debug(f"Stripping HTML tags from content (length: {len(html)})")
-        soup = BeautifulSoup(html, "html.parser")
+        # Text with no tags still goes through the parser so its entities are decoded; a
+        # field that is only a URL or a path makes bs4 warn that the input looks like a
+        # locator, and here it is content, so that one warning is not wanted.
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", MarkupResemblesLocatorWarning)
+            soup = BeautifulSoup(html, "html.parser")
         result = soup.get_text(separator=" ", strip=True)
         logger.debug(f"Stripped result length: {len(result)}")
         return result
