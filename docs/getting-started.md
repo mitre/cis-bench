@@ -200,10 +200,14 @@ Use the unified `get` command for the easiest experience:
 ```bash
 # Search and download interactively
 cis-bench get "ubuntu"
-# Shows matching benchmarks select one downloads exports
+# One match: downloads and exports it. Several: a menu, best match first
 
-# Or skip interactive mode
+# Or skip the menu: the best match is taken when several benchmarks match
 cis-bench get "ubuntu 22.04" --format xccdf --style cis --non-interactive
+
+# Or name the benchmark by its catalog ID, or a release by its version
+cis-bench get 23598 --format xccdf --style cis
+cis-bench get "kubernetes v2.0.1" --format xccdf
 ```
 
 ### Workflow 2: Search and Download

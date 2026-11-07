@@ -35,7 +35,7 @@ class CCILookupService:
             # Use bundled mapping file
             mapping_file = Path(__file__).parent.parent / "data" / "cis-cci-mapping.json"
 
-        logger.info(f"Initializing CCI lookup service with mapping file: {mapping_file}")
+        logger.debug(f"Initializing CCI lookup service with mapping file: {mapping_file}")
 
         with open(mapping_file) as f:
             self._mapping_data = json.load(f)
@@ -191,7 +191,7 @@ class CCILookupService:
             if cited_base not in covered_nist:
                 extra_nist.append(cited)
 
-        logger.info(
+        logger.debug(
             f"Deduplication result: {len(all_ccis)} unique CCIs, {len(extra_nist)} extra NIST controls"
         )
         return all_ccis, extra_nist

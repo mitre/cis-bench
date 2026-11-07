@@ -231,7 +231,7 @@ mkdir -p xccdf-cloud-benchmarks
 
 # 4. Export all to XCCDF (DISA format for SCC)
 cis-bench list --output-format json | \
-jq -r 'select(.benchmark_id) | .benchmark_id' | \
+jq -r '.downloaded[].benchmark_id' | \
 while read id; do
 cis-bench export "$id" \
 --format xccdf \
@@ -675,7 +675,7 @@ Exported: ubuntu-22-04-cis.xml
 
 **Non-Interactive Mode:**
 ```bash
-# Skip interactive selection, show table instead
+# No menu: take the best match when several benchmarks match
 cis-bench get "ubuntu 22" --format xccdf --style cis --non-interactive
 ```
 
@@ -727,11 +727,11 @@ fi
 # Get all downloaded benchmarks
 cis-bench list --output-format json > inventory.json
 
-# Extract specific fields
-jq -r '.[] | "\(.benchmark_id),\(.title),\(.version)"' inventory.json > inventory.csv
+# Extract specific fields (or: cis-bench list --output-format csv)
+jq -r '.downloaded[] | "\(.benchmark_id),\(.title),\(.version)"' inventory.json > inventory.csv
 
 # Count by platform
-jq -r '.[] | .title' inventory.json | \
+jq -r '.downloaded[] | .title' inventory.json | \
 grep -o "AlmaLinux\|Ubuntu\|RHEL" | \
 sort | uniq -c
 ```
@@ -851,7 +851,7 @@ cis-bench catalog refresh # Network required
 | Export cached | `cis-bench export XXXXX --format xccdf --style disa` |
 | List downloaded | `cis-bench list` |
 | Check updates | `cis-bench catalog check-updates` |
-| Batch export | `cis-bench list --output-format json \| jq -r '.[].benchmark_id' \| xargs -I {} cis-bench export {} --format xccdf` |
+| Batch export | `cis-bench list --output-format json \| jq -r '.downloaded[].benchmark_id' \| xargs -I {} cis-bench export {} --format xccdf` |
 
 ---
 

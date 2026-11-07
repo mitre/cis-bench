@@ -15,6 +15,7 @@ Focus on missing coverage lines: 74-76, 99, 110-116, 131-153, 182-185, 190->193,
 199, 205-227, 246-249, 254, 262-271, 290-339, 357-393, 411-443, 461-505, 516-543
 """
 
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
@@ -23,6 +24,7 @@ from click.testing import CliRunner
 from cis_bench.cli.app import cli
 from cis_bench.exceptions import AuthenticationError, NoSavedSessionError
 from cis_bench.fetcher.auth import AuthManager
+from tests.conftest import unusable_command_hints
 
 
 @pytest.fixture
@@ -48,11 +50,12 @@ def mock_db():
     db.get_catalog_stats.return_value = {
         "total_benchmarks": 100,
         "published_benchmarks": 90,
+        "withdrawn_benchmarks": 4,
         "downloaded_benchmarks": 5,
         "platforms": 10,
         "communities": 8,
     }
-    db.get_metadata.return_value = "2025-01-01 12:00:00"
+    db.get_metadata.return_value = "2025-01-01T12:00:00+00:00"
     db.list_platforms.return_value = [
         {"name": "Operating System", "count": 50},
         {"name": "Cloud", "count": 30},
@@ -73,6 +76,7 @@ def mock_db():
         "metadata_json": None,
     }
     db.check_updates_available.return_value = []
+    db.list_downloaded_benchmark_ids.return_value = ["23598"]
     return db
 
 
@@ -119,6 +123,7 @@ class TestTheBrowserSettingIsTheDefaultBrowser:
                 "total_benchmarks": 1,
                 "pages_scraped": 1,
                 "failed_pages": [],
+                "withdrawn": 0,
             }
             scraper_class.return_value.scrape_incremental.return_value = {
                 "new_benchmarks": 0,
@@ -180,6 +185,7 @@ class TestCatalogRefreshCommand:
                 "total_benchmarks": 1,
                 "pages_scraped": 1,
                 "failed_pages": [],
+                "withdrawn": None,  # --max-pages: the refresh is not complete
             }
             result = runner.invoke(cli, ["catalog", "refresh", "--max-pages", "1", *args])
 
@@ -214,6 +220,7 @@ class TestCatalogRefreshCommand:
             "total_benchmarks": 100,
             "pages_scraped": 68,
             "failed_pages": [],
+            "withdrawn": 0,
         }
         mock_scraper_class.return_value = mock_scraper
 
@@ -222,6 +229,43 @@ class TestCatalogRefreshCommand:
         assert result.exit_code == 0
         assert "complete" in result.output.lower()
         mock_db.initialize_schema.assert_called_once()
+
+    @pytest.mark.parametrize(
+        ("withdrawn", "line"),
+        [
+            (3, "Withdrawn: 3"),
+            (0, "Withdrawn: 0"),
+            (None, "Withdrawn: not checked (the refresh was not complete)"),
+        ],
+    )
+    @patch("cis_bench.cli.commands.catalog.get_catalog_db")
+    @patch("cis_bench.fetcher.auth.AuthManager")
+    @patch("cis_bench.catalog.scraper.CatalogScraper")
+    def test_refresh_reports_how_many_benchmarks_were_withdrawn(
+        self,
+        mock_scraper_class,
+        mock_auth,
+        mock_get_db,
+        runner,
+        mock_db,
+        monkeypatch,
+        withdrawn,
+        line,
+    ):
+        mock_get_db.return_value = mock_db
+        monkeypatch.setenv("CIS_BENCH_VERIFY_SSL", "false")
+        mock_auth.return_value.get_or_create_session.return_value = Mock()
+        mock_scraper_class.return_value.scrape_full_catalog.return_value = {
+            "total_benchmarks": 100,
+            "pages_scraped": 68,
+            "failed_pages": [],
+            "withdrawn": withdrawn,
+        }
+
+        result = runner.invoke(cli, ["catalog", "refresh"])
+
+        assert result.exit_code == 0, result.output
+        assert line in result.output
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     @patch("cis_bench.catalog.scraper.CatalogScraper")
@@ -238,6 +282,7 @@ class TestCatalogRefreshCommand:
             "total_benchmarks": 1,
             "pages_scraped": 1,
             "failed_pages": [],
+            "withdrawn": 0,
         }
         mock_scraper_class.return_value = mock_scraper
 
@@ -297,6 +342,7 @@ class TestCatalogRefreshCommand:
             "total_benchmarks": 95,
             "pages_scraped": 68,
             "failed_pages": [3, 15, 42],  # Some pages failed
+            "withdrawn": None,
         }
         mock_scraper_class.return_value = mock_scraper
 
@@ -666,6 +712,56 @@ class TestCatalogSearchCommand:
 class TestCatalogListCommand:
     """Tests for catalog list command."""
 
+    @pytest.fixture
+    def published_and_withdrawn(self, tmp_path, monkeypatch):
+        """A real catalog with one Published and one Withdrawn benchmark."""
+        from cis_bench.catalog.database import CatalogDatabase
+
+        db = CatalogDatabase(tmp_path / "catalog.db")
+        try:
+            db.initialize_schema()
+            for bid, title in (("1", "CIS Kept Benchmark"), ("2", "CIS Gone Benchmark")):
+                db.insert_benchmark(
+                    {
+                        "benchmark_id": bid,
+                        "title": title,
+                        "version": "v1.0.0",
+                        "url": f"https://workbench.cisecurity.org/benchmarks/{bid}",
+                        "status": "Published",
+                    }
+                )
+            db.mark_withdrawn_except({"1"})
+        finally:
+            db.engine.dispose()
+        monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path))
+
+    @pytest.mark.parametrize(
+        ("args", "shown", "hidden"),
+        [
+            ([], "CIS Kept Benchmark", "CIS Gone Benchmark"),
+            (["--status", "Withdrawn"], "CIS Gone Benchmark", "CIS Kept Benchmark"),
+            (["--status", "all"], "CIS Gone Benchmark", None),
+        ],
+    )
+    def test_list_with_status_withdrawn_shows_withdrawn_rows(
+        self, runner, published_and_withdrawn, args, shown, hidden
+    ):
+        result = runner.invoke(cli, ["catalog", "list", *args])
+
+        assert result.exit_code == 0, result.output
+        assert shown in result.output
+        if hidden:
+            assert hidden not in result.output
+        else:
+            assert "CIS Kept Benchmark" in result.output
+
+    def test_list_help_describes_the_status_option(self, runner):
+        result = runner.invoke(cli, ["catalog", "list", "--help"])
+
+        assert result.exit_code == 0
+        assert "--status" in result.output
+        assert "Withdrawn" in result.output
+
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     @patch("cis_bench.cli.commands.catalog.CatalogSearch")
     def test_list_catalog_not_found(self, mock_search_class, mock_get_db, runner):
@@ -1030,6 +1126,7 @@ class TestCatalogStatsCommand:
         assert "100" in result.output
         assert "Published" in result.output
         assert "90" in result.output
+        assert "Withdrawn: 4" in result.output
         assert "Downloaded" in result.output
         assert "5" in result.output
         assert "Platforms" in result.output
@@ -1038,15 +1135,14 @@ class TestCatalogStatsCommand:
         assert "8" in result.output
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
-    def test_stats_with_last_scrape(self, mock_get_db, runner, mock_db):
+    def test_stats_with_last_scrape(self, mock_get_db, runner, mock_db, new_york_clock):
         """Test stats shows last scrape date (lines 438-439)."""
         mock_get_db.return_value = mock_db
 
         result = runner.invoke(cli, ["catalog", "stats"])
 
         assert result.exit_code == 0
-        assert "Last catalog refresh" in result.output
-        assert "2025-01-01" in result.output
+        assert "Last catalog refresh: 2025-01-01 07:00:00 EST" in result.output
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     def test_stats_without_last_scrape(self, mock_get_db, runner):
@@ -1057,6 +1153,7 @@ class TestCatalogStatsCommand:
         mock_db.get_catalog_stats.return_value = {
             "total_benchmarks": 0,
             "published_benchmarks": 0,
+            "withdrawn_benchmarks": 0,
             "downloaded_benchmarks": 0,
             "platforms": 0,
             "communities": 0,
@@ -1368,6 +1465,28 @@ class TestCatalogCheckUpdatesCommand:
         assert result.exit_code == 1
         assert "Catalog not found" in result.output
 
+    @pytest.mark.parametrize("args", [[], ["--offline"]])
+    @patch("cis_bench.cli.commands.catalog.get_catalog_db")
+    def test_check_updates_with_nothing_downloaded_says_so(
+        self, mock_get_db, runner, mock_db, args
+    ):
+        mock_db.list_downloaded_benchmark_ids.return_value = []
+        mock_get_db.return_value = mock_db
+        with (
+            patch("cis_bench.fetcher.auth.AuthManager.get_or_create_session") as mock_auth,
+            patch("cis_bench.catalog.scraper.CatalogScraper") as mock_scraper_cls,
+        ):
+            result = runner.invoke(cli, ["catalog", "check-updates", *args])
+
+        assert result.exit_code == 0, result.output
+        assert "No benchmarks are downloaded, so there is nothing to check" in result.output
+        assert "cis-bench download <ID>" in result.output
+        assert "up-to-date" not in result.output
+        mock_auth.assert_not_called()
+        mock_scraper_cls.assert_not_called()
+        mock_db.check_updates_available.assert_not_called()
+        assert unusable_command_hints(result.output) == []
+
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     def test_check_updates_offline_skips_enrichment_and_reports_up_to_date(
         self, mock_get_db, runner, mock_db
@@ -1387,7 +1506,7 @@ class TestCatalogCheckUpdatesCommand:
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     def test_check_updates_refreshes_dates_then_lists_version_and_date_reasons(
-        self, mock_get_db, runner, monkeypatch, auth_manager_class
+        self, mock_get_db, runner, monkeypatch, auth_manager_class, new_york_clock
     ):
         monkeypatch.delenv("CIS_BENCH_VERIFY_SSL", raising=False)
         mock_db = MagicMock()
@@ -1398,7 +1517,7 @@ class TestCatalogCheckUpdatesCommand:
                 "title": "CIS Ubuntu Linux 20.04 LTS Benchmark",
                 "downloaded_version": "v1.0.0",
                 "catalog_version": "v2.0.1",
-                "downloaded_at": "2024-07-15",
+                "downloaded_at": datetime(2024, 7, 15, 12, 0, 0, tzinfo=UTC),
                 "published_date": None,
                 "reason": "newer version in catalog",
             },
@@ -1407,7 +1526,7 @@ class TestCatalogCheckUpdatesCommand:
                 "title": "CIS CentOS Linux 8 Benchmark",
                 "downloaded_version": "v1.0.0",
                 "catalog_version": "v1.0.0",
-                "downloaded_at": "2024-06-01",
+                "downloaded_at": datetime(2024, 6, 1, 12, 0, 0, tzinfo=UTC),
                 "published_date": "2024-07-15",
                 "reason": "published after download",
             },
@@ -1426,6 +1545,7 @@ class TestCatalogCheckUpdatesCommand:
         assert "Updates available for 2 benchmarks" in flat
         assert "23598" in flat and "v1.0.0 -> v2.0.1" in flat
         assert "23599" in flat and "published 2024-07-15" in flat
+        assert "Downloaded: 2024-07-15 08:00:00 EDT" in flat
         assert "cis-bench catalog download <id> --force" in flat
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
@@ -1438,7 +1558,7 @@ class TestCatalogCheckUpdatesCommand:
                 "title": "CIS Benchmark [/t]",
                 "downloaded_version": "v1 [/a]",
                 "catalog_version": "v2 [/b]",
-                "downloaded_at": "2024-07-15",
+                "downloaded_at": datetime(2024, 7, 15, 12, 0, 0, tzinfo=UTC),
                 "published_date": None,
                 "reason": "newer version in catalog",
             },
@@ -1447,7 +1567,7 @@ class TestCatalogCheckUpdatesCommand:
                 "title": "CIS Other",
                 "downloaded_version": "v1",
                 "catalog_version": "v1",
-                "downloaded_at": "2024-06-01",
+                "downloaded_at": datetime(2024, 6, 1, 12, 0, 0, tzinfo=UTC),
                 "published_date": "2024 [/d]",
                 "reason": "published after download",
             },
@@ -1638,6 +1758,7 @@ class TestVerifiedTLSByDefault:
             "total_benchmarks": 1,
             "pages_scraped": 1,
             "failed_pages": [],
+            "withdrawn": 0,
         }
         mock_scraper_class.return_value = mock_scraper
 

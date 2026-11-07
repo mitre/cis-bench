@@ -30,6 +30,7 @@ class CatalogSearch:
         latest_only: bool = False,
         *,
         limit: int | None,
+        named_releases: bool = False,
     ) -> list[dict]:
         """Search catalog with filters.
 
@@ -40,6 +41,8 @@ class CatalogSearch:
             status: Filter by status (default: Published; None or 'all' returns all statuses)
             latest_only: Only latest versions
             limit: Max results; None returns every match
+            named_releases: With latest_only, also keep the releases the query names by
+                their version, latest or not
 
         Returns:
             List of matching benchmarks with all metadata
@@ -62,9 +65,10 @@ class CatalogSearch:
             status=status,
             latest_only=latest_only,
             limit=limit,
+            named_releases=named_releases,
         )
 
-        logger.info(f"Search returned {len(results)} results")
+        logger.debug(f"Search returned {len(results)} results")
         return results
 
     def count(
@@ -74,6 +78,8 @@ class CatalogSearch:
         platform_type: str | None = None,
         status: str | None = "Published",
         latest_only: bool = False,
+        *,
+        named_releases: bool = False,
     ) -> int:
         """Count every benchmark search() would return for these filters, ignoring any limit."""
         return self.db.count_search(
@@ -82,6 +88,7 @@ class CatalogSearch:
             platform_type=platform_type,
             status=status,
             latest_only=latest_only,
+            named_releases=named_releases,
         )
 
     def find_by_id(self, benchmark_id: str) -> dict | None:

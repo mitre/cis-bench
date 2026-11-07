@@ -463,3 +463,33 @@ class TestSearchTitleWidthSetting:
         cells = self._title_cells(capped.output)
         assert max(len(cell) - 2 for cell in cells) == 30
         assert " ".join(cell.strip() for cell in cells) == self.LONG_TITLE
+
+
+class TestSearchLogsNothingAtInfo:
+    """A search prints its results, not a log line per step."""
+
+    def test_a_search_at_the_default_level_logs_no_info_lines(self, runner, tmp_path, monkeypatch):
+        from cis_bench.catalog.database import CatalogDatabase
+
+        db = CatalogDatabase(tmp_path / "catalog.db")
+        try:
+            db.initialize_schema()
+            db.insert_benchmark(
+                {
+                    "benchmark_id": "1",
+                    "title": "CIS Ubuntu Linux 22.04 LTS Benchmark",
+                    "version": "v1.0.0",
+                    "url": "https://workbench.cisecurity.org/benchmarks/1",
+                    "status": "Published",
+                }
+            )
+        finally:
+            db.engine.dispose()
+        monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path))
+
+        result = runner.invoke(cli, ["search", "ubuntu"])
+
+        assert result.exit_code == 0, result.output
+        assert "CIS Ubuntu Linux 22.04 LTS Benchmark" in result.output
+        # The CLI's logging goes to stderr, which the runner folds into output
+        assert "INFO:" not in result.output, result.output

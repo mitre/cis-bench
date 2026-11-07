@@ -8,7 +8,7 @@ import logging
 import re
 import threading
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 import requests
@@ -359,7 +359,7 @@ class WorkbenchScraper:
             ),
             total_recommendations=len(recommendations),
             recommendations=recommendations,
-            downloaded_at=datetime.now(),
+            downloaded_at=datetime.now(UTC),
         )
 
         log(f"✓ Successfully downloaded {len(recommendations)} recommendations", level="debug")

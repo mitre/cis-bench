@@ -54,7 +54,7 @@ A blank or relative XDG value is ignored, as the specification requires. A relat
 ~/cis-bench/           # CIS_BENCH_HOME=~/cis-bench
 ├── config.toml        # optional: settings by key
 ├── catalog.db         # catalog database, including downloaded benchmarks
-├── benchmarks/        # download writes benchmark files here; export, list and info read them
+├── benchmarks/        # exported files (download --format); list shows them, info and export can read one
 └── session.cookies    # saved WorkBench session (cis-bench auth login)
 ```
 

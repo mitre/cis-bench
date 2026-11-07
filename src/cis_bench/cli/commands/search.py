@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 @click.option(
     "--status",
     default="Published",
-    help="Filter by status (Published, Archived, Draft, Final Update, or all)",
+    help="Filter by status (Published, Accepted, Draft, Archived, Rejected, Final Update, Withdrawn, or all)",
 )
 @click.option("--latest", is_flag=True, help="Show only latest version of each benchmark")
 @click.option(
@@ -42,12 +42,14 @@ def search_cmd(query, platform, platform_type, status, latest, limit, output_for
     Searches the local catalog database if it exists, otherwise provides
     instructions for building the catalog. Multi-word queries match all terms
     (boolean keywords like AND, OR, and NOT are treated as literal search words).
+    A version in the query (v2.1.0, 2.1) picks the release.
 
     \b
     Examples:
         # Basic search
         cis-bench search "ubuntu 20.04"
         cis-bench search "oracle cloud"
+        cis-bench search "kubernetes v2.1.0"
 
     \b
         # Filter by platform category
@@ -69,7 +71,7 @@ def search_cmd(query, platform, platform_type, status, latest, limit, output_for
         cis-bench catalog refresh  # Build catalog (one-time, under a minute)
         cis-bench search "ubuntu"  # Then search
     """
-    logger.info(f"Search command: query={query}, platform={platform}, status={status}")
+    logger.debug(f"Search command: query={query}, platform={platform}, status={status}")
 
     settings = settings_from()
     if limit is None:
@@ -94,7 +96,7 @@ def search_cmd(query, platform, platform_type, status, latest, limit, output_for
         from cis_bench.catalog.database import CatalogDatabase, normalize_status_filter
         from cis_bench.catalog.search import CatalogSearch
 
-        logger.info(f"Loading catalog from {catalog_db_path}")
+        logger.debug(f"Loading catalog from {catalog_db_path}")
         db = CatalogDatabase(catalog_db_path)
         search = CatalogSearch(db)
 
@@ -109,12 +111,12 @@ def search_cmd(query, platform, platform_type, status, latest, limit, output_for
 
         # Execute search
         if query:
-            logger.info(f"Searching for: {query}")
+            logger.debug(f"Searching for: {query}")
             if output_format == "table":
                 console.print(f"[cyan]Searching for:[/cyan] {escape(str(query))}\n")
             results = search.search(query, limit=limit, **filters)
         else:
-            logger.info("Listing all benchmarks")
+            logger.debug("Listing all benchmarks")
             if output_format == "table":
                 console.print("[cyan]Listing benchmarks...[/cyan]\n")
             # Use search with empty query instead of list_all

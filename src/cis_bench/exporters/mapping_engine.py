@@ -225,7 +225,7 @@ class ConfigLoader:
                 # Deep merge parent with current (current overrides parent)
                 config_data = ConfigLoader._deep_merge(parent_dict, config_data)
 
-                logger.info(f"Loaded {config_path.name} extending {extends_path.name}")
+                logger.debug(f"Loaded {config_path.name} extending {extends_path.name}")
             else:
                 logger.debug(f"Loaded {config_path.name} (no inheritance)")
 
@@ -1455,7 +1455,7 @@ class MappingEngine:
             profiles.append(profile)
             logger.debug(f"Generated profile '{profile_id}' with {len(select_list)} rules")
 
-        logger.info(f"Generated {len(profiles)} Profile elements")
+        logger.debug(f"Generated {len(profiles)} Profile elements")
         return profiles
 
     def generate_metadata_from_config(

@@ -2,6 +2,7 @@
 
 import logging
 import math
+from datetime import datetime
 
 import click
 from rich.console import Console
@@ -11,7 +12,7 @@ from rich.table import Table
 from cis_bench.catalog.database import CatalogDatabase
 from cis_bench.catalog.search import CatalogSearch
 from cis_bench.cli.helpers.errors import report_unreachable
-from cis_bench.cli.helpers.output import output_data, showing_line
+from cis_bench.cli.helpers.output import display_time, output_data, showing_line
 from cis_bench.cli.helpers.services import (
     auth_manager,
     catalog_scraper,
@@ -19,6 +20,7 @@ from cis_bench.cli.helpers.services import (
     workbench_scraper,
 )
 from cis_bench.exceptions import AuthenticationError, FetchError
+from cis_bench.utils.workbench_urls import is_benchmark_id
 
 console = Console()
 logger = logging.getLogger(__name__)
@@ -133,6 +135,10 @@ def refresh(browser, max_pages, rate_limit):
         console.print("\n[green]✓[/green] Catalog refresh complete!")
         console.print(f"  Benchmarks: [yellow]{stats['total_benchmarks']}[/yellow]")
         console.print(f"  Pages: [yellow]{stats['pages_scraped']}[/yellow]")
+        if stats["withdrawn"] is None:
+            console.print("  Withdrawn: not checked (the refresh was not complete)")
+        else:
+            console.print(f"  Withdrawn: [yellow]{stats['withdrawn']}[/yellow]")
 
         if stats["failed_pages"]:
             console.print(
@@ -142,7 +148,10 @@ def refresh(browser, max_pages, rate_limit):
         # Show database stats
         db_stats = db.get_catalog_stats()
         console.print("\n[cyan]Catalog statistics:[/cyan]")
-        console.print(f"  Total benchmarks: {db_stats['total_benchmarks']}")
+        console.print(
+            f"  Total benchmarks: {db_stats['total_benchmarks']} "
+            f"(of which withdrawn: {db_stats['withdrawn_benchmarks']})"
+        )
         console.print(f"  Platforms: {db_stats['platforms']}")
         console.print(f"  Communities: {db_stats['communities']}")
 
@@ -207,14 +216,16 @@ def update(browser):
         raise click.Abort() from e
 
 
+_STATUS_HELP = (
+    "Filter by status (Published, Accepted, Draft, Archived, Rejected, Final Update, "
+    "Withdrawn, or all)"
+)
+
+
 @catalog.command()
 @click.argument("query", required=False)
 @click.option("--platform", help="Filter by platform")
-@click.option(
-    "--status",
-    default="Published",
-    help="Filter by status (Published, Archived, Draft, Final Update, or all)",
-)
+@click.option("--status", default="Published", help=_STATUS_HELP)
 @click.option("--latest", is_flag=True, help="Latest versions only")
 @click.option("--limit", type=int, help="Max results (default: CIS_BENCH_SEARCH_LIMIT, 100)")
 @click.option(
@@ -298,15 +309,17 @@ def search(query, platform, status, latest, limit, output_format):
 
 @catalog.command(name="list")
 @click.option("--platform", help="Filter by platform")
+@click.option("--status", default="Published", help=_STATUS_HELP)
 @click.option("--latest", is_flag=True, help="Latest versions only")
 @click.option("--limit", type=int, help="Max results (default: CIS_BENCH_SEARCH_LIMIT, 100)")
-def list_cmd(platform, latest, limit):
+def list_cmd(platform, status, latest, limit):
     """List benchmarks in catalog.
 
     \b
     Examples:
         cis-bench catalog list
         cis-bench catalog list --platform "Operating System" --latest
+        cis-bench catalog list --status Withdrawn
     """
     try:
         db = require_catalog_db()
@@ -315,7 +328,7 @@ def list_cmd(platform, latest, limit):
         if limit is None:
             limit = settings_from().search_limit
 
-        filters = {"platform": platform, "status": "Published", "latest_only": latest}
+        filters = {"platform": platform, "status": status, "latest_only": latest}
         results = search_obj.search(query="", limit=limit, **filters)
 
         if not results:
@@ -489,12 +502,15 @@ def stats(output_format):
         console.print("\n[bold]Catalog Statistics[/bold]\n")
         console.print(f"Total benchmarks: [yellow]{catalog_stats['total_benchmarks']}[/yellow]")
         console.print(f"Published: [yellow]{catalog_stats['published_benchmarks']}[/yellow]")
+        console.print(f"Withdrawn: [yellow]{catalog_stats['withdrawn_benchmarks']}[/yellow]")
         console.print(f"Downloaded: [yellow]{catalog_stats['downloaded_benchmarks']}[/yellow]")
         console.print(f"Platforms: [yellow]{catalog_stats['platforms']}[/yellow]")
         console.print(f"Communities: [yellow]{catalog_stats['communities']}[/yellow]")
 
         if last_scrape:
-            console.print(f"\nLast catalog refresh: [dim]{last_scrape}[/dim]")
+            console.print(
+                f"\nLast catalog refresh: [dim]{display_time(datetime.fromisoformat(last_scrape))}[/dim]"
+            )
 
     except click.Abort:
         raise
@@ -532,12 +548,11 @@ def download(benchmark_id_or_name, browser, force, interactive):
         downloader = CatalogDownloader(db, scraper)
 
         # Determine if ID or name
-        if benchmark_id_or_name.isdigit():
+        if is_benchmark_id(benchmark_id_or_name):
             # Download by ID
-            console.print(
-                f"[cyan]Downloading benchmark {escape(str(benchmark_id_or_name))}...[/cyan]"
-            )
-            result = downloader.download_by_id(benchmark_id_or_name, force=force)
+            benchmark_id = benchmark_id_or_name.strip()
+            console.print(f"[cyan]Downloading benchmark {escape(benchmark_id)}...[/cyan]")
+            result = downloader.download_by_id(benchmark_id, force=force)
         else:
             # Download by name
             console.print(f"[cyan]Searching for: {escape(str(benchmark_id_or_name))}[/cyan]")
@@ -597,6 +612,12 @@ def check_updates(offline):
     try:
         db = require_catalog_db()
 
+        if not db.list_downloaded_benchmark_ids():
+            console.print("No benchmarks are downloaded, so there is nothing to check.")
+            console.print("[dim]Download one first:[/dim]")
+            console.print("  cis-bench download <ID>")
+            return
+
         if not offline:
             settings = settings_from()
             session = auth_manager(settings).get_or_create_session()
@@ -620,7 +641,7 @@ def check_updates(offline):
                 )
             else:
                 console.print(f"      WorkBench published {escape(str(u['published_date']))}")
-            console.print(f"      Downloaded: {u['downloaded_at']}")
+            console.print(f"      Downloaded: {display_time(u['downloaded_at'])}")
             console.print()
 
         console.print("[cyan]Use 'cis-bench catalog download <id> --force' to update.[/cyan]")

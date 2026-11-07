@@ -830,6 +830,46 @@ class TestRefreshDownloadedRevisionDates:
         assert temp_db.get_downloaded("401")["workbench_last_modified"] == "2025-08-28"
         assert temp_db.get_downloaded("402")["workbench_last_modified"] == "2025-08-28"
 
+    def test_a_benchmark_workbench_no_longer_has_is_reported_and_the_rest_are_checked(
+        self, temp_db, stub_session, caplog
+    ):
+        """WorkBench answering 404 for one downloaded benchmark does not stop the check."""
+        from tests.conftest import StubReply
+
+        self._seed(temp_db, "401")
+        self._seed(temp_db, "402")
+        page = "<html><body><span>Published 2 months ago on Aug 28th 2025</span></body></html>"
+        session, _ = stub_session(
+            lambda url: StubReply(body="gone", status=404) if url.endswith("/401") else page
+        )
+        scraper = CatalogScraper(
+            temp_db, session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
+
+        with caplog.at_level("WARNING", logger="cis_bench.catalog.scraper"):
+            refreshed = scraper.refresh_downloaded_revision_dates()
+
+        assert refreshed == 1
+        assert temp_db.get_downloaded("402")["workbench_last_modified"] == "2025-08-28"
+        assert temp_db.get_downloaded("401")["workbench_last_modified"] is None
+        assert [r.getMessage() for r in caplog.records if r.levelname == "WARNING"] == [
+            "WorkBench no longer has benchmark 401 (HTTP 404); its downloaded copy was not checked"
+        ]
+
+    def test_another_http_error_still_stops_the_check(self, temp_db, stub_session):
+        import requests
+
+        from tests.conftest import StubReply
+
+        self._seed(temp_db, "401")
+        session, _ = stub_session(lambda url: StubReply(body="forbidden", status=403))
+        scraper = CatalogScraper(
+            temp_db, session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
+
+        with pytest.raises(requests.HTTPError):
+            scraper.refresh_downloaded_revision_dates()
+
     def test_a_malformed_stored_id_is_skipped_and_never_fetched(self, temp_db, caplog):
         """The detail URL goes through the same validator as every other WorkBench URL."""
         self._seed(temp_db, "407")
@@ -890,3 +930,162 @@ class TestRefreshDownloadedRevisionDates:
             ).refresh_downloaded_revision_dates()
 
         assert session.get.call_count == 1
+
+
+def _listing(rows, total_pages, with_pager=True):
+    """A listing page with the given (benchmark_id, title, version, status) rows."""
+    body = "".join(
+        f'<tr><td><a href="/benchmarks/{bid}">{title}</a></td><td>{version}</td>'
+        f"<td>{status}</td><td>Test Community</td><td>Test Collection</td><td>testuser</td></tr>"
+        for bid, title, version, status in rows
+    )
+    pager = "".join(f"<a>{n}</a>" for n in range(1, total_pages + 1)) if with_pager else ""
+    return (
+        "<table><tr><th>Title</th><th>Version</th><th>Status</th><th>Community</th>"
+        f"<th>Collections</th><th>Owner</th></tr>{body}</table><nav>{pager}</nav>"
+    )
+
+
+def _page_number(url):
+    import re
+
+    match = re.search(r"[?&]page=(\d+)", url)
+    assert match, url
+    return int(match.group(1))
+
+
+class TestACompleteRefreshMarksWithdrawnBenchmarks:
+    """A benchmark WorkBench no longer lists is marked Withdrawn, only by a complete refresh."""
+
+    FOO = ("101", "CIS Foo Benchmark", "v1.0.0", "Published")
+    BAR = ("102", "CIS Bar Benchmark", "v2.0.0", "Published")
+    OLD_BAR = ("103", "CIS Bar Benchmark", "v1.0.0", "Published")
+
+    @staticmethod
+    def _refresh(db, stub_session, pages, with_pager=True, **kwargs):
+        """Run a full refresh of a catalog whose page n lists pages[n]; a page may raise."""
+
+        def handler(url):
+            rows = pages[_page_number(url)]
+            if isinstance(rows, Exception):
+                raise rows
+            return _listing(rows, len(pages), with_pager=with_pager)
+
+        session, _ = stub_session(handler)
+        scraper = CatalogScraper(
+            db, session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
+        return scraper.scrape_full_catalog(**kwargs)
+
+    @staticmethod
+    def _status(db, benchmark_id):
+        row = db.get_benchmark(benchmark_id)
+        return row["status"], bool(row["is_latest"])
+
+    @staticmethod
+    def _ids(db, **filters):
+        return sorted(str(r["benchmark_id"]) for r in db.search("", limit=None, **filters))
+
+    def test_a_complete_refresh_marks_a_benchmark_that_is_no_longer_listed_withdrawn(
+        self, temp_db, stub_session
+    ):
+        self._refresh(temp_db, stub_session, {1: [self.FOO, self.BAR], 2: [self.OLD_BAR]})
+        assert self._status(temp_db, "101") == ("Published", True)
+
+        stats = self._refresh(temp_db, stub_session, {1: [self.BAR], 2: [self.OLD_BAR]})
+
+        assert stats["withdrawn"] == 1
+        assert self._status(temp_db, "101") == ("Withdrawn", False)
+        assert self._ids(temp_db) == ["102", "103"]
+        assert self._ids(temp_db, status="Withdrawn") == ["101"]
+        assert self._ids(temp_db, status="all") == ["101", "102", "103"]
+        assert self._ids(temp_db, status="all", latest_only=True) == ["102"]
+
+    def test_withdrawing_the_latest_release_makes_the_older_one_latest(self, temp_db, stub_session):
+        self._refresh(temp_db, stub_session, {1: [self.FOO, self.BAR], 2: [self.OLD_BAR]})
+        assert self._status(temp_db, "103") == ("Published", False)
+
+        self._refresh(temp_db, stub_session, {1: [self.FOO], 2: [self.OLD_BAR]})
+
+        assert self._status(temp_db, "102") == ("Withdrawn", False)
+        assert self._status(temp_db, "103") == ("Published", True)
+
+    def test_a_benchmark_listed_again_gets_its_status_back(self, temp_db, stub_session):
+        self._refresh(temp_db, stub_session, {1: [self.FOO, self.BAR], 2: [self.OLD_BAR]})
+        self._refresh(temp_db, stub_session, {1: [self.BAR], 2: [self.OLD_BAR]})
+
+        stats = self._refresh(temp_db, stub_session, {1: [self.FOO, self.BAR], 2: [self.OLD_BAR]})
+
+        assert stats["withdrawn"] == 0
+        assert self._status(temp_db, "101") == ("Published", True)
+
+    def test_a_withdrawn_benchmark_keeps_its_downloaded_copy(self, temp_db, stub_session):
+        self._refresh(temp_db, stub_session, {1: [self.FOO, self.BAR], 2: [self.OLD_BAR]})
+        temp_db.save_downloaded("101", '{"version": "v1.0.0"}', "hash", 10, version="v1.0.0")
+
+        self._refresh(temp_db, stub_session, {1: [self.BAR], 2: [self.OLD_BAR]})
+
+        assert self._status(temp_db, "101") == ("Withdrawn", False)
+        assert temp_db.get_downloaded("101")["version"] == "v1.0.0"
+        assert temp_db.list_downloaded_benchmark_ids() == ["101"]
+
+    def test_a_refresh_with_a_failed_page_marks_nothing(self, temp_db, stub_session):
+        import requests
+
+        self._refresh(temp_db, stub_session, {1: [self.FOO, self.BAR], 2: [self.OLD_BAR]})
+
+        # One failed page of twelve: under the 10% abort threshold, so the refresh finishes.
+        pages = {1: [self.BAR], **{n: [self.OLD_BAR] for n in range(2, 12)}}
+        pages[12] = requests.ConnectionError("page 12 down")
+        stats = self._refresh(temp_db, stub_session, pages)
+
+        assert stats["failed_pages"] == [12]
+        assert stats["withdrawn"] is None
+        assert self._status(temp_db, "101") == ("Published", True)
+
+    def test_a_refresh_limited_to_some_pages_marks_nothing(self, temp_db, stub_session):
+        self._refresh(temp_db, stub_session, {1: [self.FOO, self.BAR], 2: [self.OLD_BAR]})
+
+        stats = self._refresh(
+            temp_db, stub_session, {1: [self.BAR], 2: [self.OLD_BAR]}, max_pages=1
+        )
+
+        assert stats["withdrawn"] is None
+        assert self._status(temp_db, "101") == ("Published", True)
+
+    def test_a_refresh_that_got_an_empty_page_marks_nothing(self, temp_db, stub_session):
+        self._refresh(temp_db, stub_session, {1: [self.FOO, self.BAR], 2: [self.OLD_BAR]})
+
+        stats = self._refresh(temp_db, stub_session, {1: [self.BAR], 2: []})
+
+        assert stats["withdrawn"] is None
+        assert self._status(temp_db, "101") == ("Published", True)
+        assert self._status(temp_db, "103") == ("Published", False)
+
+    def test_a_refresh_that_could_not_count_the_pages_marks_nothing(self, temp_db, stub_session):
+        self._refresh(temp_db, stub_session, {1: [self.FOO, self.BAR], 2: [self.OLD_BAR]})
+
+        pages = {n: [self.BAR] for n in range(1, 71)}
+        stats = self._refresh(temp_db, stub_session, pages, with_pager=False)
+
+        assert stats["withdrawn"] is None
+        assert self._status(temp_db, "101") == ("Published", True)
+
+
+class TestARefreshLogsOnlyRunLevelLinesAtInfo:
+    def test_a_full_refresh_logs_summaries_at_info_and_per_page_detail_at_debug(
+        self, temp_db, sample_html, stub_session, caplog
+    ):
+        session, _ = stub_session(lambda url: sample_html)
+        scraper = CatalogScraper(
+            temp_db, session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
+
+        with caplog.at_level("INFO", logger="cis_bench"):
+            scraper.scrape_full_catalog(max_pages=3)
+
+        info = [r.getMessage() for r in caplog.records if r.levelname == "INFO"]
+        assert not [m for m in info if m.startswith("Parsed ")]
+        assert not [m for m in info if "schema" in m.lower() or "FTS5" in m]
+        assert "Will scrape 3 pages (detected from pagination)" in info
+        assert any(m.startswith("Scrape complete: ") for m in info)

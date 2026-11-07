@@ -4,6 +4,7 @@ import pytest
 
 from cis_bench.utils.workbench_urls import (
     catalog_listing_url,
+    is_benchmark_id,
     navtree_url,
     normalize_benchmark_url,
     recommendation_url,
@@ -218,3 +219,16 @@ class TestUrlsAsTheyMayBePrinted:
             "url: /callback (err)"
         )
         assert without_query_strings("attempt #2 of 3 failed") == "attempt #2 of 3 failed"
+
+
+class TestIsBenchmarkId:
+    @pytest.mark.parametrize("reference", ["23598", " 23598 ", "1"])
+    def test_ascii_digits_are_an_id(self, reference):
+        assert is_benchmark_id(reference) is True
+
+    @pytest.mark.parametrize(
+        "reference",
+        ["\u0662\u0663\u0665\u0669\u0668", "23598a", "", "   ", "benchmarks/23598", "2.1.0"],
+    )
+    def test_anything_else_is_not(self, reference):
+        assert is_benchmark_id(reference) is False

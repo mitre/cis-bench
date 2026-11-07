@@ -12,6 +12,7 @@ from cis_bench.cli.helpers.services import settings_from
 from cis_bench.exporters import ExporterFactory
 from cis_bench.exporters.xccdf_unified_exporter import XCCDFExporter
 from cis_bench.models.benchmark import Benchmark
+from cis_bench.utils.workbench_urls import is_benchmark_id
 
 console = Console()
 logger = logging.getLogger(__name__)
@@ -102,8 +103,9 @@ def _export_single_benchmark(
     benchmark_id_for_filename = None
 
     # Check if identifier is a benchmark ID (numeric)
-    if identifier.isdigit():
-        logger.info(f"Loading benchmark {identifier} from database")
+    if is_benchmark_id(identifier):
+        identifier = identifier.strip()
+        logger.debug(f"Loading benchmark {identifier} from database")
 
         catalog_db_path = settings_from().catalog_db_path
 
@@ -133,7 +135,7 @@ def _export_single_benchmark(
 
     else:
         # Treat as file path
-        logger.info(f"Loading benchmark from file: {identifier}")
+        logger.debug(f"Loading benchmark from file: {identifier}")
 
         try:
             benchmark, error = _load_benchmark_from_file(identifier, input_dir)
@@ -177,7 +179,7 @@ def _export_single_benchmark(
         exporter.export(benchmark, actual_output_file)
 
         file_size = os.path.getsize(actual_output_file) / 1024
-        logger.info(f"Export successful: {actual_output_file} ({file_size:.1f} KB)")
+        logger.debug(f"Export successful: {actual_output_file} ({file_size:.1f} KB)")
 
         console.print(
             f"{prefix} [green]✓[/green] Exported {len(benchmark.recommendations)} "
@@ -310,6 +312,6 @@ def export_cmd(identifiers, export_format, style, output_file, output_dir, input
         console.print("[dim]Note: XCCDF output validates against NIST XCCDF 1.2 schema[/dim]")
         console.print("[dim]Compatible with OpenSCAP, SCC, and other SCAP tools[/dim]")
 
-    # Exit with error if all failed
-    if success_count == 0:
+    # A command exits 0 only when everything it was asked to do succeeded
+    if failed_count:
         sys.exit(1)

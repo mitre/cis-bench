@@ -10,18 +10,21 @@ from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 
-from cis_bench.cli.helpers.output import output_data
+from cis_bench.catalog.database import CatalogDatabase, deserialize_benchmark_json
+from cis_bench.cli.helpers.output import display_time, output_data
 from cis_bench.cli.helpers.services import settings_from
 from cis_bench.models.benchmark import Benchmark
+from cis_bench.utils.workbench_urls import is_benchmark_id
 
 console = Console()
 logger = logging.getLogger(__name__)
 
 
 @click.command()
-@click.argument("filename")
+@click.argument("benchmark")
 @click.option(
-    "--output-dir", help="Directory containing benchmarks (default: <data dir>/benchmarks)"
+    "--output-dir",
+    help="Folder a file name is looked for in (default: <data dir>/benchmarks)",
 )
 @click.option(
     "--output-format",
@@ -30,29 +33,35 @@ logger = logging.getLogger(__name__)
     default="table",
     help="Output format (default: table)",
 )
-def info(filename, output_dir, output_format):
+def info(benchmark, output_dir, output_format):
     """Show detailed information about a downloaded benchmark.
+
+    BENCHMARK is a catalog ID (the downloaded copy in the cache) or the path or name of
+    an exported JSON file.
 
     \b
     Example:
+        cis-bench info 23598
         cis-bench info cis_almalinux_os_8_benchmark_v400.json
     """
+    settings = settings_from()
     if output_dir is None:
-        output_dir = settings_from().benchmarks_dir
+        output_dir = settings.benchmarks_dir
 
-    # Find file
-    if os.path.exists(filename):
-        filepath = filename
+    if is_benchmark_id(benchmark):
+        filepath = None
     else:
-        filepath = os.path.join(output_dir, filename)
-
-    if not os.path.exists(filepath):
-        console.print(f"[red]Error: File not found: {escape(str(filepath))}[/red]")
-        sys.exit(1)
+        # A path as given, or a file name in the exports folder
+        filepath = benchmark if os.path.exists(benchmark) else os.path.join(output_dir, benchmark)
+        if not os.path.exists(filepath):
+            console.print(f"[red]Error: File not found: {escape(str(filepath))}[/red]")
+            sys.exit(1)
 
     try:
-        # Load benchmark
-        benchmark = Benchmark.from_json_file(filepath)
+        if filepath is None:
+            benchmark = _cached_benchmark(settings.catalog_db_path, benchmark.strip())
+        else:
+            benchmark = Benchmark.from_json_file(filepath)
 
         # Count compliance mappings
         cis_v8 = sum(1 for r in benchmark.recommendations for c in r.cis_controls if c.version == 8)
@@ -75,6 +84,7 @@ def info(filename, output_dir, output_format):
             "mitre_mappings": mitre_count,
             "nist_controls": nist_count,
             "total_artifacts": artifacts,
+            "source": "file" if filepath else "cache",
             "file": filepath,
         }
 
@@ -89,8 +99,9 @@ def info(filename, output_dir, output_format):
                 f"[bold]{escape(benchmark.title)}[/bold]\n"
                 f"Version: {escape(benchmark.version)}\n"
                 f"Benchmark ID: {escape(benchmark.benchmark_id)}\n"
-                f"Downloaded: {benchmark.downloaded_at.strftime('%Y-%m-%d %H:%M:%S')}\n"
-                f"Scraper Version: {escape(benchmark.scraper_version)}",
+                f"Downloaded: {display_time(benchmark.downloaded_at)}\n"
+                f"Scraper Version: {escape(benchmark.scraper_version)}\n"
+                f"Source: {'file ' + escape(str(filepath)) if filepath else 'cache'}",
                 title="Benchmark Information",
                 border_style="cyan",
             )
@@ -127,3 +138,18 @@ def info(filename, output_dir, output_format):
         logger.debug("Could not show benchmark info", exc_info=True)
         console.print(f"[red]Error: {escape(str(e))}[/red]")
         sys.exit(1)
+
+
+def _cached_benchmark(catalog_db_path, benchmark_id: str) -> Benchmark:
+    """The downloaded copy of a benchmark from the cache; exit 1 when it is not downloaded."""
+    downloaded = (
+        CatalogDatabase(catalog_db_path).get_downloaded(benchmark_id)
+        if catalog_db_path.exists()
+        else None
+    )
+    if downloaded is None:
+        console.print(f"[yellow]Benchmark {escape(benchmark_id)} is not downloaded[/yellow]")
+        console.print("[dim]Download it first:[/dim]")
+        console.print(f"  cis-bench download {escape(benchmark_id)}")
+        sys.exit(1)
+    return deserialize_benchmark_json(downloaded["content_json"])

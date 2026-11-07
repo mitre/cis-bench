@@ -1,6 +1,6 @@
 """Unit tests for get command (unified workflow)."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import Mock, patch
 
 import pytest
@@ -260,10 +260,10 @@ class TestGetCommandSingleResult:
 class TestGetCommandMultipleResults:
     """Test get command when search returns multiple results."""
 
-    def test_get_with_multiple_matches_non_interactive_shows_table(
-        self, runner, tmp_path, monkeypatch
+    def test_get_with_multiple_matches_non_interactive_takes_the_top_match(
+        self, runner, sample_benchmark, tmp_path, monkeypatch, working_dir
     ):
-        """Get with multiple matches in non-interactive mode shows table and exits."""
+        """Non-interactive get takes the first (best-ranked) match and says what else matched."""
         catalog_path = tmp_path / "catalog.db"
         catalog_path.touch()
 
@@ -273,12 +273,17 @@ class TestGetCommandMultipleResults:
         with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
             mock_db = Mock()
             mock_db_class.return_value = mock_db
+            mock_db.get_downloaded.return_value = {
+                "benchmark_id": "1",
+                "content_json": sample_benchmark.model_dump_json(),
+                "downloaded_at": datetime.now(),
+            }
 
             with patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class:
                 mock_search = Mock()
                 mock_search_class.return_value = mock_search
 
-                # Multiple results
+                # Multiple results, best-ranked first
                 mock_search.search.return_value = [
                     {
                         "benchmark_id": "1",
@@ -293,15 +298,17 @@ class TestGetCommandMultipleResults:
                         "status": "Published",
                     },
                 ]
+                mock_search.count.return_value = 2
 
                 result = runner.invoke(
                     cli, ["get", "ubuntu", "--format", "json", "--non-interactive"]
                 )
 
-                assert result.exit_code == 0
-                assert "Found 2 benchmarks" in result.output
-                assert "Multiple matches found" in result.output
-                assert "Be more specific" in result.output
+                assert result.exit_code == 0, result.output
+                assert "Chose: Ubuntu 20.04 v1" in result.output
+                assert "1 other benchmark matched" in result.output
+                assert 'cis-bench search "ubuntu"' in result.output
+                assert mock_db.get_downloaded.call_args.args == ("1",)
 
         # Outside the patches above: resolving a hinted command imports its module.
         assert unusable_command_hints(result.output) == []
@@ -408,7 +415,21 @@ class TestGetCandidateLimit:
         monkeypatch.setenv("CIS_BENCH_HOME", str(small_catalog.parent))
         result = runner.invoke(cli, ["get", "sample", "--non-interactive"])
 
-        assert "Found 5 benchmarks matching 'sample' (showing the first 3)" in result.output
+        assert "4 other benchmarks matched" in result.output
+
+
+def _cancelled():
+    """What questionary.select returns when the user leaves the menu without choosing."""
+    return Mock(ask=Mock(return_value=None))
+
+
+def _choosing(choice_text):
+    """What questionary.select returns when the user picks the menu entry that starts with text."""
+
+    def select(message, choices):
+        return Mock(ask=Mock(return_value=next(c for c in choices if c.startswith(choice_text))))
+
+    return select
 
 
 class TestGetTitleWidthSetting:
@@ -442,13 +463,226 @@ class TestGetTitleWidthSetting:
             db.engine.dispose()
         monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path))
 
-        monkeypatch.delenv("CIS_BENCH_TABLE_TITLE_WIDTH", raising=False)
-        default = runner.invoke(cli, ["get", "sample", "--non-interactive"])
-        assert default.exit_code == 0, default.output
-        assert max(len(cell) - 2 for cell in self._title_cells(default.output)) > 30
+        with patch("cis_bench.cli.commands.get.questionary.select", return_value=_cancelled()):
+            monkeypatch.delenv("CIS_BENCH_TABLE_TITLE_WIDTH", raising=False)
+            default = runner.invoke(cli, ["get", "sample"])
+            assert default.exit_code == 1, default.output
+            assert max(len(cell) - 2 for cell in self._title_cells(default.output)) > 30
 
-        monkeypatch.setenv("CIS_BENCH_TABLE_TITLE_WIDTH", "30")
-        capped = runner.invoke(cli, ["get", "sample", "--non-interactive"])
+            monkeypatch.setenv("CIS_BENCH_TABLE_TITLE_WIDTH", "30")
+            capped = runner.invoke(cli, ["get", "sample"])
 
-        assert capped.exit_code == 0, capped.output
+        assert capped.exit_code == 1, capped.output
         assert max(len(cell) - 2 for cell in self._title_cells(capped.output)) == 30
+
+
+RELEASES = (
+    ("200", "CIS Kubernetes Benchmark", "v2.0.0"),
+    ("201", "CIS Kubernetes Benchmark", "v2.0.1"),
+    ("210", "CIS Kubernetes Benchmark", "v2.1.0"),
+    ("300", "CIS Google Kubernetes Engine (GKE) Benchmark", "v2.0.0"),
+    ("401", "CIS Ubuntu Linux 22.04 LTS Benchmark", "v1.0.0"),
+    ("402", "CIS Ubuntu Linux 22.04 LTS Benchmark", "v2.0.0"),
+)
+
+
+@pytest.fixture
+def cached_releases(tmp_path, sample_benchmark, monkeypatch):
+    from cis_bench.catalog.database import CatalogDatabase, serialize_benchmark_json
+
+    content_json, content_hash = serialize_benchmark_json(sample_benchmark)
+    db = CatalogDatabase(tmp_path / "catalog.db")
+    try:
+        db.initialize_schema()
+        for benchmark_id, title, version in RELEASES:
+            db.insert_benchmark(
+                {
+                    "benchmark_id": benchmark_id,
+                    "title": title,
+                    "version": version,
+                    "url": f"https://workbench.cisecurity.org/benchmarks/{benchmark_id}",
+                    "status": "Published",
+                }
+            )
+            db.save_downloaded(benchmark_id, content_json, content_hash, 2, version=version)
+        db.mark_latest_versions()
+    finally:
+        db.engine.dispose()
+    monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path))
+
+
+class TestGetNamingAVersion:
+    """get offers the latest releases, and any release the query names by its version."""
+
+    @pytest.mark.parametrize(
+        ("query", "exported"),
+        [
+            ("kubernetes v2.0.1", "benchmark_201.json"),
+            ("kubernetes 2.0.1", "benchmark_201.json"),
+            ("kubernetes 2.1.0", "benchmark_210.json"),
+            ("gke", "benchmark_300.json"),
+            ("ubuntu 22.04", "benchmark_402.json"),
+            ("ubuntu 22.04 v1.0.0", "benchmark_401.json"),
+        ],
+    )
+    def test_get_exports_the_release_the_query_names_or_the_latest(
+        self, runner, cached_releases, working_dir, query, exported
+    ):
+        result = runner.invoke(cli, ["get", query, "--format", "json", "--non-interactive"])
+
+        assert result.exit_code == 0, result.output
+        assert [path.name for path in working_dir.iterdir()] == [exported]
+
+    def test_a_version_two_benchmarks_have_takes_the_best_match_and_names_the_rest(
+        self, runner, cached_releases, working_dir
+    ):
+        # v2.0.0 is the GKE benchmark's latest release and an older Kubernetes release; the
+        # shorter title ranks first.
+        with patch("cis_bench.cli.commands.get.questionary.select") as menu:
+            result = runner.invoke(
+                cli, ["get", "kubernetes 2.0.0", "--format", "json", "--non-interactive"]
+            )
+
+        assert result.exit_code == 0, result.output
+        menu.assert_not_called()
+        assert "Found 2 benchmarks" not in result.output
+        assert "Chose: CIS Kubernetes Benchmark v2.0.0" in result.output
+        assert "1 other benchmark matched" in result.output
+        assert 'cis-bench search "kubernetes 2.0.0"' in result.output
+        assert [path.name for path in working_dir.iterdir()] == ["benchmark_200.json"]
+
+    def test_the_menu_offers_every_match_best_first_and_exports_the_choice(
+        self, runner, cached_releases, working_dir
+    ):
+        with patch(
+            "cis_bench.cli.commands.get.questionary.select", side_effect=_choosing("300")
+        ) as menu:
+            result = runner.invoke(cli, ["get", "kubernetes 2.0.0", "--format", "json"])
+
+        assert result.exit_code == 0, result.output
+        assert "Found 2 benchmarks matching 'kubernetes 2.0.0'" in result.output
+        assert menu.call_args.kwargs["choices"] == [
+            "200: CIS Kubernetes Benchmark (v2.0.0)",
+            "300: CIS Google Kubernetes Engine (GKE) Benchmark (v2.0.0)",
+        ]
+        assert [path.name for path in working_dir.iterdir()] == ["benchmark_300.json"]
+
+    def test_get_says_so_when_no_release_has_that_version(
+        self, runner, cached_releases, working_dir
+    ):
+        result = runner.invoke(
+            cli, ["get", "kubernetes 9.9.9", "--format", "json", "--non-interactive"]
+        )
+
+        assert result.exit_code == 1
+        assert "No results found" in result.output
+        assert list(working_dir.iterdir()) == []
+
+
+class TestGetById:
+    """A catalog ID names one benchmark; no search is involved."""
+
+    @pytest.mark.parametrize("reference", ["201", " 201 "])
+    def test_get_with_an_id_exports_that_benchmark_latest_or_not(
+        self, runner, cached_releases, working_dir, reference
+    ):
+        result = runner.invoke(cli, ["get", reference, "--format", "json", "--non-interactive"])
+
+        assert result.exit_code == 0, result.output
+        assert "Found: CIS Kubernetes Benchmark v2.0.1" in result.output
+        assert [path.name for path in working_dir.iterdir()] == ["benchmark_201.json"]
+
+    def test_get_with_an_id_the_catalog_does_not_have_says_so(
+        self, runner, cached_releases, working_dir
+    ):
+        result = runner.invoke(cli, ["get", "999", "--format", "json", "--non-interactive"])
+
+        assert result.exit_code == 1
+        assert "No benchmark with ID 999 in the catalog" in result.output
+        assert "cis-bench catalog refresh" in result.output
+        assert list(working_dir.iterdir()) == []
+        assert unusable_command_hints(result.output) == []
+
+
+class TestGetForce:
+    """--force downloads again and replaces the cached copy; without it the cache is used."""
+
+    @staticmethod
+    def _cached(sample_benchmark):
+        return {
+            "benchmark_id": "23456",
+            "content_json": sample_benchmark.model_dump_json(),
+            "downloaded_at": datetime(2026, 11, 7, 2, 5, 58, tzinfo=UTC),
+        }
+
+    @pytest.fixture
+    def cached_match(self, sample_benchmark, tmp_path, monkeypatch):
+        catalog_path = tmp_path / "catalog.db"
+        catalog_path.touch()
+        monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
+        monkeypatch.setenv("CIS_BENCH_VERIFY_SSL", "false")
+        with (
+            patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class,
+            patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class,
+            patch("cis_bench.fetcher.auth.AuthManager") as mock_auth,
+            patch("cis_bench.cli.helpers.download_helper.download_with_progress") as mock_download,
+        ):
+            mock_db = mock_db_class.return_value
+            mock_db.get_downloaded.return_value = self._cached(sample_benchmark)
+            mock_search_class.return_value.search.return_value = [
+                {
+                    "benchmark_id": "23456",
+                    "title": "CIS Ubuntu Linux 22.04 Benchmark",
+                    "version": "v2.0.0",
+                    "status": "Published",
+                }
+            ]
+            mock_download.return_value = sample_benchmark
+            yield mock_db, mock_auth, mock_download
+
+    def test_force_downloads_even_when_cached(self, runner, cached_match, working_dir):
+        mock_db, mock_auth, mock_download = cached_match
+
+        result = runner.invoke(
+            cli, ["get", "ubuntu 22", "--force", "--format", "json", "--non-interactive"]
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "Downloading benchmark" in result.output
+        assert "already cached" not in result.output
+        mock_auth.return_value.get_or_create_session.assert_called_once()
+        mock_download.assert_called_once()
+        assert mock_db.save_downloaded.call_args.kwargs["benchmark_id"] == "23456"
+        assert [path.name for path in working_dir.iterdir()] == ["benchmark_23456.json"]
+
+    def test_without_force_the_cached_copy_is_used(
+        self, runner, cached_match, working_dir, new_york_clock
+    ):
+        mock_db, mock_auth, mock_download = cached_match
+
+        result = runner.invoke(cli, ["get", "ubuntu 22", "--format", "json", "--non-interactive"])
+
+        assert result.exit_code == 0, result.output
+        assert "already cached (downloaded 2026-11-06 21:05:58 EST)" in result.output
+        mock_auth.return_value.get_or_create_session.assert_not_called()
+        mock_download.assert_not_called()
+        mock_db.save_downloaded.assert_not_called()
+
+    def test_force_with_a_bad_setting_is_refused_before_authenticating(
+        self, runner, cached_match, monkeypatch
+    ):
+        mock_db, mock_auth, mock_download = cached_match
+        monkeypatch.setenv("CIS_BENCH_REQUEST_TIMEOUT", "inf")
+
+        result = runner.invoke(cli, ["get", "ubuntu 22", "--force", "--non-interactive"])
+
+        assert result.exit_code == 1
+        assert "Configuration Error" in result.output
+        mock_auth.return_value.get_or_create_session.assert_not_called()
+        mock_download.assert_not_called()
+
+    def test_help_lists_force(self, runner):
+        result = runner.invoke(cli, ["get", "--help"])
+
+        assert result.exit_code == 0
+        assert "--force" in result.output

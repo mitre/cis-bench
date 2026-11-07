@@ -159,7 +159,8 @@ class TestBenchmarksFolderIsInTheDataDir:
         result = runner.invoke(cli, ["list"])
 
         assert result.exit_code == 0, result.output
-        assert "CIS AlmaLinux OS 8 Benchmark" in result.output
+        assert f"Exported files in {benchmarks_dir} (1):" in result.output
+        assert "benchmark.json" in result.output
 
     def test_info_reads_the_data_dir(self, runner, sample_benchmark_json, folders):
         benchmarks_dir, _ = folders
@@ -518,119 +519,17 @@ class TestInfoCommand:
 
 
 class TestListCommand:
-    """Tests for the 'list' command."""
+    """'list': downloaded means in the cache; the exports folder's files are listed by name."""
 
-    def test_list_empty_directory(self, runner, tmp_path):
-        """List shows message when no benchmarks found."""
-        empty_dir = tmp_path / "empty"
-        empty_dir.mkdir()
+    @staticmethod
+    def _cache(home, title, version="v1.0.0", benchmark_id="23598"):
+        from cis_bench.catalog.database import CatalogDatabase, serialize_benchmark_json
 
-        result = runner.invoke(cli, ["list", "--output-dir", str(empty_dir)])
-
-        assert result.exit_code == 0
-        assert "No benchmarks found" in result.output
-
-    def test_list_nonexistent_directory(self, runner):
-        """List shows message when directory doesn't exist."""
-        result = runner.invoke(cli, ["list", "--output-dir", "./nonexistent[x]"])
-
-        assert result.exit_code == 0
-        assert "Directory not found: ./nonexistent[x]" in result.output
-
-    def test_list_prints_titles_versions_and_file_names_verbatim(
-        self, runner, sample_benchmark, tmp_path
-    ):
-        sample_benchmark.title = "CIS T [/t]"
-        sample_benchmark.version = "v1 [/v]"
-        sample_benchmark.to_json_file(str(tmp_path / "good.json"))
-        (tmp_path / "bad[x].json").write_text('{"invalid": "data"}')
-
-        result = runner.invoke(cli, ["list", "--output-dir", str(tmp_path)])
-
-        assert result.exit_code == 0, result.output
-        assert "CIS T [/t]" in result.output
-        assert "v1 [/v]" in result.output
-        assert "bad[x].json" in result.output
-
-    def test_list_single_benchmark(self, runner, sample_benchmark_json, tmp_path):
-        """List displays single benchmark correctly."""
-        benchmarks_dir = tmp_path / "benchmarks"
-        benchmarks_dir.mkdir()
-
-        import shutil
-
-        shutil.copy(str(sample_benchmark_json), benchmarks_dir / "benchmark.json")
-
-        result = runner.invoke(cli, ["list", "--output-dir", str(benchmarks_dir)])
-
-        assert result.exit_code == 0
-        assert "CIS AlmaLinux OS 8 Benchmark" in result.output
-        assert "v4.0.0" in result.output
-        assert "3" in result.output  # Total recommendations
-
-    def test_list_multiple_benchmarks(self, runner, tmp_path):
-        """List displays multiple benchmarks in table format."""
-        benchmarks_dir = tmp_path / "benchmarks"
-        benchmarks_dir.mkdir()
-
-        # Create two different benchmarks
-        for i in range(2):
-            benchmark = Benchmark(
-                title=f"CIS Test Benchmark {i + 1}",
-                benchmark_id=f"2359{i}",
-                url=f"https://workbench.cisecurity.org/benchmarks/2359{i}",
-                version=f"v{i + 1}.0.0",
-                downloaded_at=datetime.now(),
-                scraper_version="1.0.0",
-                total_recommendations=5,
-                recommendations=[
-                    Recommendation(
-                        ref="1.1",
-                        title="Test",
-                        url="https://workbench.cisecurity.org/sections/1/recommendations/1",
-                        assessment_status="Automated",
-                        profiles=[],
-                        cis_controls=[],
-                        nist_controls=["CM-7"],
-                    )
-                ]
-                * 5,
-            )
-            benchmark.to_json_file(str(benchmarks_dir / f"benchmark_{i}.json"))
-
-        result = runner.invoke(cli, ["list", "--output-dir", str(benchmarks_dir)])
-
-        assert result.exit_code == 0
-        assert "CIS Test Benchmark 1" in result.output
-        assert "CIS Test Benchmark 2" in result.output
-        assert "2 total" in result.output
-
-    def test_list_shows_compliance_counts(self, runner, sample_benchmark_json, tmp_path):
-        """List displays compliance mapping counts."""
-        benchmarks_dir = tmp_path / "benchmarks"
-        benchmarks_dir.mkdir()
-
-        import shutil
-
-        shutil.copy(str(sample_benchmark_json), benchmarks_dir / "benchmark.json")
-
-        result = runner.invoke(cli, ["list", "--output-dir", str(benchmarks_dir)])
-
-        assert result.exit_code == 0
-        # Should show columns for CIS v8, MITRE, NIST
-        assert "CIS v8" in result.output or "Recs" in result.output
-
-    def test_list_handles_malformed_json(self, runner, tmp_path):
-        """List shows error for malformed benchmark files."""
-        benchmarks_dir = tmp_path / "benchmarks"
-        benchmarks_dir.mkdir()
-
-        # Create one good and one bad file
-        good_benchmark = Benchmark(
-            title="Good Benchmark",
-            benchmark_id="23598",
-            url="https://workbench.cisecurity.org/benchmarks/23598",
-            version="v1.0.0",
+        benchmark = Benchmark(
+            title=title,
+            benchmark_id=benchmark_id,
+            url=f"https://workbench.cisecurity.org/benchmarks/{benchmark_id}",
+            version=version,
             downloaded_at=datetime.now(),
             scraper_version="1.0.0",
             total_recommendations=1,
@@ -641,23 +540,102 @@ class TestListCommand:
                     url="https://workbench.cisecurity.org/sections/1/recommendations/1",
                     assessment_status="Automated",
                     profiles=[],
-                    cis_controls=[],
-                    nist_controls=[],
+                    cis_controls=[
+                        CISControl(
+                            version=8, control="4.1", title="t", ig1=True, ig2=True, ig3=True
+                        )
+                    ],
+                    nist_controls=["CM-7"],
+                    mitre_mapping=MITREMapping(techniques=["T1059"]),
                 )
             ],
         )
-        good_benchmark.to_json_file(str(benchmarks_dir / "good.json"))
+        db = CatalogDatabase(home / "catalog.db")
+        try:
+            db.initialize_schema()
+            db.insert_benchmark(
+                {
+                    "benchmark_id": benchmark_id,
+                    "title": title,
+                    "version": version,
+                    "url": f"https://workbench.cisecurity.org/benchmarks/{benchmark_id}",
+                    "status": "Published",
+                }
+            )
+            content_json, content_hash = serialize_benchmark_json(benchmark)
+            db.save_downloaded(benchmark_id, content_json, content_hash, 1, version=version)
+        finally:
+            db.engine.dispose()
 
-        bad_file = benchmarks_dir / "bad.json"
-        bad_file.write_text('{"invalid": "data"}')
+    def test_list_with_nothing_downloaded_and_an_empty_folder(self, runner, tmp_path, monkeypatch):
+        monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path / "home"))
+        empty_dir = tmp_path / "empty"
+        empty_dir.mkdir()
 
-        result = runner.invoke(cli, ["list", "--output-dir", str(benchmarks_dir)])
+        result = runner.invoke(cli, ["list", "--output-dir", str(empty_dir)])
 
-        assert result.exit_code == 0
-        # Good benchmark should be listed
-        assert "Good Benchmark" in result.output
-        # Bad file should show error indicator
-        assert "Error" in result.output or "?" in result.output
+        assert result.exit_code == 0, result.output
+        assert "No benchmarks are downloaded" in result.output
+        assert f"Exported files in {empty_dir} (0):" in result.output
+        assert "none" in result.output
+
+    def test_list_names_a_folder_that_does_not_exist_verbatim(self, runner, tmp_path, monkeypatch):
+        monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path / "home"))
+
+        result = runner.invoke(cli, ["list", "--output-dir", "./nonexistent[x]"])
+
+        assert result.exit_code == 0, result.output
+        assert "Exported files in ./nonexistent[x] (0):" in result.output
+
+    def test_list_prints_titles_versions_and_file_names_verbatim(
+        self, runner, tmp_path, monkeypatch
+    ):
+        home = tmp_path / "home"
+        home.mkdir()
+        monkeypatch.setenv("CIS_BENCH_HOME", str(home))
+        self._cache(home, "CIS T [/t]", version="v1 [/v]")
+        (tmp_path / "bad[x].json").write_text('{"invalid": "data"}')
+
+        result = runner.invoke(cli, ["list", "--output-dir", str(tmp_path)])
+
+        assert result.exit_code == 0, result.output
+        assert "CIS T [/t]" in " ".join(result.output.split())
+        assert "v1 [/v]" in result.output
+        assert "bad[x].json" in result.output
+
+    def test_list_shows_the_cached_benchmark_with_its_compliance_counts(
+        self, runner, tmp_path, monkeypatch
+    ):
+        home = tmp_path / "home"
+        home.mkdir()
+        monkeypatch.setenv("CIS_BENCH_HOME", str(home))
+        self._cache(home, "CIS Counted Benchmark", version="v4.0.0")
+
+        result = runner.invoke(cli, ["list"])
+
+        assert result.exit_code == 0, result.output
+        assert "Downloaded benchmarks (1)" in result.output
+        row = next(line for line in result.output.splitlines() if "23598" in line)
+        assert "v4.0.0" in row
+        # Recs, CIS v8, MITRE, NIST: one recommendation with one of each
+        assert [cell.strip() for cell in row.split("│")[4:8]] == ["1", "1", "1", "1"]
+
+    def test_list_lists_every_file_in_the_folder_sorted_by_name(
+        self, runner, tmp_path, monkeypatch
+    ):
+        monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path / "home"))
+        exports = tmp_path / "benchmarks"
+        exports.mkdir()
+        for name in ("zebra.json", "alpha.yaml", "gamma.xml"):
+            (exports / name).write_text("x")
+        (exports / "a-folder").mkdir()
+
+        result = runner.invoke(cli, ["list", "--output-dir", str(exports)])
+
+        assert result.exit_code == 0, result.output
+        listed = [line.strip() for line in result.output.splitlines() if line.startswith("  ")]
+        assert listed[-3:] == ["alpha.yaml", "gamma.xml", "zebra.json"]
+        assert "(3)" in result.output
 
     def test_list_default_directory(self, runner, tmp_path, monkeypatch):
         """Before the first download, list names the data folder's benchmarks folder it looked in."""
@@ -666,44 +644,9 @@ class TestListCommand:
 
         result = runner.invoke(cli, ["list"])
 
-        assert result.exit_code == 0
-        assert "Directory not found: data/benchmarks" in result.output
-
-    def test_list_sorting(self, runner, tmp_path):
-        """List sorts benchmarks alphabetically."""
-        benchmarks_dir = tmp_path / "benchmarks"
-        benchmarks_dir.mkdir()
-
-        # Create benchmarks in non-alphabetical order
-        titles = ["Zebra Benchmark", "Alpha Benchmark", "Gamma Benchmark"]
-        for title in titles:
-            benchmark = Benchmark(
-                title=title,
-                benchmark_id="99999",
-                url="https://workbench.cisecurity.org/benchmarks/99999",
-                version="v1.0.0",
-                downloaded_at=datetime.now(),
-                scraper_version="1.0.0",
-                total_recommendations=1,
-                recommendations=[
-                    Recommendation(
-                        ref="1.1",
-                        title="Test",
-                        url="https://workbench.cisecurity.org/sections/1/recommendations/1",
-                        assessment_status="Automated",
-                        profiles=[],
-                        cis_controls=[],
-                        nist_controls=[],
-                    )
-                ],
-            )
-            safe_name = title.lower().replace(" ", "_")
-            benchmark.to_json_file(str(benchmarks_dir / f"{safe_name}.json"))
-
-        result = runner.invoke(cli, ["list", "--output-dir", str(benchmarks_dir)])
-
-        assert result.exit_code == 0
-        # All benchmarks should be listed (sorted filenames)
+        assert result.exit_code == 0, result.output
+        assert "No benchmarks are downloaded" in result.output
+        assert "Exported files in data/benchmarks (0):" in result.output
 
 
 # ============================================================================

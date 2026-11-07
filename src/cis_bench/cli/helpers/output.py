@@ -6,6 +6,7 @@ Provides consistent output formatting for human-friendly and JSON/CSV/YAML outpu
 import csv
 import json
 import sys
+from datetime import datetime
 from io import StringIO
 from typing import Any
 
@@ -15,6 +16,19 @@ from rich.markup import escape
 from rich.table import Table
 
 console = Console()
+
+
+def display_time(value: datetime) -> str:
+    """A time as a table shows it: in the viewer's zone, named.
+
+    Structured output carries the ISO 8601 form with its offset (``isoformat``); a table
+    converts to the local zone of the process (the system's, or ``TZ``). A time that
+    carries no zone, such as one written by an earlier version, is shown as it is and
+    marked, never guessed into a zone.
+    """
+    if value.tzinfo is None:
+        return f"{value:%Y-%m-%d %H:%M:%S} (zone not recorded)"
+    return f"{value.astimezone():%Y-%m-%d %H:%M:%S %Z}"
 
 
 def output_json(data: Any) -> None:

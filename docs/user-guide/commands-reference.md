@@ -165,7 +165,7 @@ cis-bench search [QUERY] [OPTIONS]
 
 - `--platform` - Filter by specific platform (e.g., ubuntu, aws, oracle-database)
 - `--platform-type` - Filter by category (cloud, os, database, container, application)
-- `--status` - Filter by status (`Published`, `Accepted`, `Draft`, `Archived`, `Rejected`, `Final Update`, or `all`) - default: `Published`
+- `--status` - Filter by status (`Published`, `Accepted`, `Draft`, `Archived`, `Rejected`, `Final Update`, `Withdrawn`, or `all`) - default: `Published`. `Withdrawn` is not a WorkBench status: a complete `catalog refresh` gives it to benchmarks WorkBench no longer lists
 - `--latest` - Show only latest version of each benchmark
 - `--limit` - Maximum results to show (default: `CIS_BENCH_SEARCH_LIMIT`, 100). When the limit cuts the list short, the output says how many matched: `Showing 100 of 349 results; use --limit to see more`
 
@@ -178,6 +178,10 @@ cis-bench search [QUERY] [OPTIONS]
 # Basic search
 cis-bench search "ubuntu 22.04"
 cis-bench search "oracle cloud"
+
+# One release, by version (with or without the leading v)
+cis-bench search "kubernetes v2.1.0"
+cis-bench search "kubernetes 2.1"       # 2.1 and 2.1.x, not 2.10.x
 
 # Filter by platform category
 cis-bench search --platform-type cloud
@@ -197,6 +201,13 @@ cis-bench search --platform-type cloud --output-format csv
 # List all published benchmarks
 cis-bench search
 ```
+
+**How a query matches:**
+
+- Every word must match. A word matches the start of a word in the title, platform, community or description (`ubunt` finds Ubuntu).
+- A dotted number or a `v` number (`v2.1.0`, `2.1`, `v18`) also matches a benchmark's version from its start, number by number: `2.1` finds v2.1.0 and v2.1.3, not v2.10.0 or v1.2.1.
+- A word also matches a whole word of a version (`vNext`, the `NEXT` of `v1.1.0 NEXT`), so a name pasted with its version is found.
+- A plain number (`almalinux 8`) is looked up in the same text as any other word (title, platform, community, description), never in versions.
 
 **Requirements:**
 
@@ -224,7 +235,7 @@ cis-bench get <QUERY> [OPTIONS]
 
 **Arguments:**
 
-- `QUERY` - Search query for benchmark
+- `QUERY` - Search words, or a catalog ID
 
 **Export Options:**
 
@@ -234,7 +245,8 @@ cis-bench get <QUERY> [OPTIONS]
 
 **Behavior Options:**
 
-- `--non-interactive` - Disable interactive prompts (show table instead)
+- `--non-interactive` - No menu: when several benchmarks match, take the best match and say how many others there were
+- `--force` - Download again and replace the cached copy, if there is one (as `download --force`)
 
 **Output Options:**
 
@@ -250,15 +262,24 @@ cis-bench get "ubuntu 22.04" --format xccdf --style cis
 # Get AWS benchmark
 cis-bench get "aws eks" --format yaml
 
+# Get one release by its version
+cis-bench get "kubernetes v2.0.1" --format xccdf
+
+# Get by catalog ID (any status, latest or not)
+cis-bench get 23598 --format xccdf
+
+# Replace a cached copy with a fresh download
+cis-bench get 23598 --force --format xccdf
+
 # Non-interactive mode (for CI/scripts)
 cis-bench get "oracle cloud" --format json --non-interactive
 ```
 
 **What it does:**
-1. Searches catalog for your query
+1. A catalog ID selects that benchmark. Otherwise searches the catalog among Published benchmarks: the latest release of each, plus any release the query names by its version (`kubernetes v2.0.1`)
 2. If single match: selects it automatically
-3. If multiple matches: shows interactive menu (or table if --non-interactive)
-4. Checks if already downloaded (uses cache)
+3. If multiple matches: shows a menu, best match first; with `--non-interactive` (or no usable terminal) takes the best match and prints how many others matched and the `search` command that lists them
+4. Checks if already downloaded (uses cache; `--force` skips this and downloads again)
 5. If not cached: downloads benchmark
 6. Exports to requested format
 7. Shows output file path
@@ -406,7 +427,9 @@ cis-bench export 23598 local_benchmark.json --format yaml
 
 ### `cis-bench list`
 
-List downloaded benchmarks.
+List the downloaded benchmarks, and the exported files in the benchmarks folder.
+
+A benchmark is *downloaded* when it is in the cache (`catalog.db`), where `download` and `get` put it and `remove` takes it from. The files in the benchmarks folder are *exports*: whatever `download --format` wrote. They are yours to move, rename or delete; doing so does not change what is downloaded, and `list` shows them under their own heading.
 
 **Syntax:**
 ```bash
@@ -415,8 +438,8 @@ cis-bench list [OPTIONS]
 
 **Options:**
 
-- `--output-dir PATH` - Directory to scan (default: `<data folder>/benchmarks`)
-- `-o, --output-format` - Format (table|json|csv|yaml) - default: table
+- `--output-dir PATH` - Folder whose exported files to list (default: `<data folder>/benchmarks`)
+- `-o, --output-format` - Format (table|json|csv|yaml) - default: table. `json` and `yaml` carry both parts (`downloaded`, `exported_files`); `csv` holds the downloaded benchmarks only
 
 **Examples:**
 ```bash
@@ -432,37 +455,36 @@ cis-bench list --output-format csv > inventory.csv
 
 **Output Fields:**
 
-- Title
-- Version
-- Recommendations count
-- CIS Controls v8 count
-- MITRE mappings count
-- NIST controls count
-- Filename
+Downloaded benchmarks: ID, title, version, recommendations count, CIS Controls v8 count, MITRE mappings count, NIST controls count, and when it was downloaded. Exported files: the folder and the file names.
+
+**Times:** a download is recorded once, in UTC. The table shows it in your zone and names the zone (`2026-11-06 21:05:58 EST`; set `TZ` to choose another); `json`, `yaml` and `csv` carry it in ISO 8601 with its offset (`2026-11-07T02:05:58+00:00`). A time written by an earlier version carries no zone; it is shown as it was written, marked `(zone not recorded)` in tables, and never guessed into a zone. `info`, `catalog stats` and `catalog check-updates` show times the same way.
 
 ---
 
 ### `cis-bench info`
 
-Show detailed information about a benchmark.
+Show detailed information about a downloaded benchmark, or about an exported JSON file.
 
 **Syntax:**
 ```bash
-cis-bench info <FILENAME> [OPTIONS]
+cis-bench info <BENCHMARK> [OPTIONS]
 ```
 
 **Arguments:**
 
-- `FILENAME` - Benchmark JSON file
+- `BENCHMARK` - A catalog ID (the downloaded copy in the cache), or the path or name of an exported JSON file
 
 **Options:**
 
-- `--output-dir PATH` - Directory containing benchmark (default: `<data folder>/benchmarks`)
+- `--output-dir PATH` - Folder a file name is looked for in (default: `<data folder>/benchmarks`)
 - `-o, --output-format` - Format (table|json|yaml) - default: table
 
 **Examples:**
 ```bash
-# Show benchmark details
+# The downloaded copy, by catalog ID
+cis-bench info 23598
+
+# An exported file
 cis-bench info benchmark.json
 
 # JSON output
@@ -475,7 +497,7 @@ cis-bench info benchmark.json --output-format yaml
 **Displays:**
 
 - Title, version, benchmark ID
-- Downloaded date, scraper version
+- When it was downloaded (in your zone in the table, ISO 8601 with offset in `json` and `yaml`; see `list` on times), scraper version, and the source (cache, or the file)
 - Total recommendations
 - CIS Controls counts (v7, v8)
 - MITRE mappings count
@@ -559,7 +581,8 @@ cis-bench catalog refresh --rate-limit 1.0
 3. Detects the page count from page 1 (about 80 pages)
 4. Builds searchable database with about 1,500 benchmarks
 5. Creates FTS5 full-text search index
-6. Takes under a minute for the full catalog
+6. After a complete refresh (every page counted and fetched, none failed or empty, no `--max-pages`), marks the benchmarks WorkBench no longer lists `Withdrawn`: they leave the default search results (`--status all` or `--status Withdrawn` shows them), are never the latest release, and keep any downloaded copy; the summary says how many. A refresh that is not complete marks nothing and says "Withdrawn: not checked". A withdrawn benchmark that WorkBench lists again gets its WorkBench status back
+7. Takes under a minute for the full catalog
 
 **Performance:**
 
@@ -632,6 +655,7 @@ cis-bench catalog list [OPTIONS]
 **Options:**
 
 - `--platform TEXT` - Filter by platform
+- `--status` - Filter by status (`Published`, `Accepted`, `Draft`, `Archived`, `Rejected`, `Final Update`, `Withdrawn`, or `all`) - default: `Published`
 - `--latest` - Latest versions only
 - `--limit INTEGER` - Max results (default: the `CIS_BENCH_SEARCH_LIMIT` setting, 100)
 
@@ -639,6 +663,7 @@ cis-bench catalog list [OPTIONS]
 ```bash
 cis-bench catalog list
 cis-bench catalog list --platform "Operating System" --latest
+cis-bench catalog list --status Withdrawn   # benchmarks WorkBench no longer lists
 ```
 
 ---
@@ -695,7 +720,7 @@ Report downloaded benchmarks that WorkBench has moved past.
 
 - `--offline` - Compare versions only; do not contact WorkBench
 
-**How it decides:** a benchmark is listed when the catalog now carries a newer version than the one you downloaded, or (unless `--offline`) when its WorkBench page shows a publication date after your download. Only downloaded benchmarks are fetched, one page each, so run `cis-bench catalog refresh` first if the catalog itself is stale.
+**How it decides:** a benchmark is listed when the catalog now carries a newer version than the one you downloaded, or (unless `--offline`) when its WorkBench page shows a publication date after your download. Only downloaded benchmarks are fetched, one page each, so run `cis-bench catalog refresh` first if the catalog itself is stale. With nothing downloaded it says so and contacts nothing. A downloaded benchmark whose WorkBench page answers 404 is reported as no longer on WorkBench and the others are still checked.
 
 ```bash
 cis-bench catalog check-updates
@@ -728,7 +753,7 @@ cis-bench catalog stats --output-format json
 - Downloaded benchmarks count
 - Platforms count
 - Communities count
-- Last refresh date
+- Last refresh time (in your zone; see `list` on times)
 
 ---
 
@@ -882,9 +907,14 @@ cis-bench list --output-format csv > inventory.csv
 
 ## Exit Codes
 
+A command exits `0` only when everything it was asked to do succeeded.
+
 - `0` - Success
-- `1` - Error (authentication failed, file not found, etc.)
+- `1` - Error (authentication failed, file not found, nothing matched, etc.)
+- `2` - Usage error on the command line (an unknown option, a bad option value); a bad `CIS_BENCH_*` setting is reported as a Configuration Error with exit `1`
 - `cis-bench download` exits `1` if any requested benchmark or export failed, even when others succeeded
+- `cis-bench export` with several benchmarks exits `1` if any export failed; the others are still written and the summary says how many succeeded
+- `cis-bench get` exits `1` when nothing matched the query, when the ID is not in the catalog, or when the interactive menu is left without a choice
 
 ---
 
@@ -900,8 +930,8 @@ cis-bench list --output-format csv > inventory.csv
 
 **Downloaded Benchmarks:**
 
-- Stored in: `~/.local/share/cis-bench/catalog.db` (downloaded_benchmarks table). This cached copy is what `download` checks, `get` and `export <ID>` read, and `catalog stats` counts; `cis-bench remove <ID>` deletes it and `cis-bench download <ID> --force` replaces it.
-- Also saved as: `<data folder>/benchmarks/*.json` files. These are your exported copies; `cis-bench list` and `cis-bench info` read them, and `remove` does not delete them.
+- Stored in: `~/.local/share/cis-bench/catalog.db` (downloaded_benchmarks table). This cached copy is what "downloaded" means everywhere: `download` checks it, `get`, `export <ID>`, `info <ID>` and `list` read it, `catalog stats` and `check-updates` count it; `cis-bench remove <ID>` deletes it and `cis-bench download <ID> --force` replaces it.
+- Also written: `<data folder>/benchmarks/` holds the exported files (`*.json` by default, other formats with `download --format`). They are yours to move, rename or delete; `list` shows them under their own heading, `info <file>` inspects one, and `remove` leaves them alone.
 
 **The folders:** the defaults above are the XDG folders; `CIS_BENCH_HOME` puts everything in one folder. See [Configuration](configuration.md#the-folders).
 

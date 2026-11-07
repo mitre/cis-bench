@@ -445,6 +445,27 @@ class TestBenchmark:
         minimal_benchmark_data.pop("downloaded_at", None)
         benchmark = Benchmark(**minimal_benchmark_data)
         assert isinstance(benchmark.downloaded_at, datetime)
+        assert benchmark.downloaded_at.tzinfo is not None
+        assert benchmark.downloaded_at.utcoffset().total_seconds() == 0
+
+    def test_benchmark_downloaded_at_is_written_with_its_offset(self, minimal_benchmark_data):
+        minimal_benchmark_data.pop("downloaded_at", None)
+        benchmark = Benchmark(**minimal_benchmark_data)
+
+        written = json.loads(benchmark.model_dump_json())["downloaded_at"]
+
+        assert datetime.fromisoformat(written) == benchmark.downloaded_at
+        assert datetime.fromisoformat(written).tzinfo is not None
+
+    def test_a_zoneless_downloaded_at_from_an_earlier_file_is_kept_as_it_is(
+        self, minimal_benchmark_data
+    ):
+        minimal_benchmark_data["downloaded_at"] = "2026-11-06T20:05:58.615168"
+
+        benchmark = Benchmark(**minimal_benchmark_data)
+
+        assert benchmark.downloaded_at == datetime(2026, 11, 6, 20, 5, 58, 615168)
+        assert benchmark.downloaded_at.tzinfo is None
 
     def test_benchmark_with_recommendations(self, minimal_recommendation_data):
         """Test benchmark with actual recommendations."""

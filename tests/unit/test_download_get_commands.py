@@ -11,7 +11,7 @@ Focuses on:
 - Edge cases in argument handling
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -49,7 +49,7 @@ def sample_benchmark():
         benchmark_id="12345",
         url="https://workbench.cisecurity.org/benchmarks/12345",
         version="v1.0.0",
-        downloaded_at=datetime(2025, 1, 1),
+        downloaded_at=datetime(2025, 1, 1, tzinfo=UTC),
         scraper_version="1.0.0",
         total_recommendations=2,
         recommendations=[
@@ -314,8 +314,8 @@ class TestDownloadMissingArgs:
 class TestDownloadCacheSkip:
     """Test download command cache skip behavior (lines 157->170)."""
 
-    def test_download_skips_cached_benchmark(self, runner, tmp_path, monkeypatch):
-        """Download skips already cached benchmarks."""
+    def test_download_skips_cached_benchmark(self, runner, tmp_path, monkeypatch, new_york_clock):
+        """Download skips already cached benchmarks, saying when the copy was downloaded."""
         catalog_path = tmp_path / "catalog.db"
         catalog_path.touch()
 
@@ -335,7 +335,7 @@ class TestDownloadCacheSkip:
                     # Return cached benchmark
                     mock_db.get_downloaded.return_value = {
                         "benchmark_id": "12345",
-                        "downloaded_at": "2025-01-01T00:00:00",
+                        "downloaded_at": datetime(2026, 11, 7, 2, 5, 58, tzinfo=UTC),
                         "recommendation_count": 10,
                     }
 
@@ -343,6 +343,7 @@ class TestDownloadCacheSkip:
 
                     assert result.exit_code == 0
                     assert "already cached" in result.output
+                    assert "Downloaded: 2026-11-06 21:05:58 EST" in result.output
                     assert "Use --force to re-download" in result.output
                     # Should NOT have called download
                     mock_scraper.download_benchmark.assert_not_called()
@@ -601,7 +602,9 @@ class TestGetTitleWrapping:
                     },
                 ]
 
-                result = runner.invoke(cli, ["get", "test", "--non-interactive"])
+                with patch("cis_bench.cli.commands.get.questionary") as mock_q:
+                    mock_q.select.return_value.ask.return_value = None
+                    result = runner.invoke(cli, ["get", "test"])
 
                 table_rows = [line for line in result.output.splitlines() if "│" in line]
                 assert sum(line.count("A") for line in table_rows) == 100
@@ -639,11 +642,14 @@ class TestGetInteractiveSelection:
 
                     result = runner.invoke(cli, ["get", "test"])
 
-                    assert result.exit_code == 0
+                    # Nothing was exported, so a script must not take it for success
+                    assert result.exit_code == 1
                     assert "Cancelled" in result.output
 
-    def test_get_interactive_selection_exception_falls_back(self, runner, tmp_path, monkeypatch):
-        """Get falls back to non-interactive when questionary fails."""
+    def test_get_interactive_selection_exception_falls_back(
+        self, runner, sample_benchmark, tmp_path, monkeypatch, working_dir
+    ):
+        """Without a usable menu, get takes the best match as it does non-interactively."""
         catalog_path = tmp_path / "catalog.db"
         catalog_path.touch()
 
@@ -653,6 +659,11 @@ class TestGetInteractiveSelection:
         with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
             mock_db = Mock()
             mock_db_class.return_value = mock_db
+            mock_db.get_downloaded.return_value = {
+                "benchmark_id": "1",
+                "content_json": sample_benchmark.model_dump_json(),
+                "downloaded_at": datetime.now(),
+            }
 
             with patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class:
                 mock_search = Mock()
@@ -665,11 +676,12 @@ class TestGetInteractiveSelection:
                 with patch("cis_bench.cli.commands.get.questionary") as mock_q:
                     mock_q.select.side_effect = Exception("Terminal not supported")
 
-                    result = runner.invoke(cli, ["get", "test"])
+                    result = runner.invoke(cli, ["get", "test", "--format", "json"])
 
-                    # Should fall back to non-interactive mode
-                    assert result.exit_code == 0
-                    assert "Multiple matches found" in result.output
+                    assert result.exit_code == 0, result.output
+                    assert "Chose: A v1" in result.output
+                    assert "1 other benchmark matched" in result.output
+                    assert mock_db.get_downloaded.call_args.args == ("1",)
 
     def test_get_interactive_selection_success(
         self, runner, sample_benchmark, tmp_path, monkeypatch, working_dir
@@ -1114,12 +1126,17 @@ class TestOutsideTextIsPrintedVerbatim:
                 {"benchmark_id": "2", "title": "CIS B", "version": "v2", "status": "Published"},
             ]
 
-            result = runner.invoke(cli, ["get", "web[x]", "--non-interactive"])
+            with patch("cis_bench.cli.commands.get.questionary") as mock_q:
+                mock_q.select.return_value.ask.return_value = None
+                menu = runner.invoke(cli, ["get", "web[x]"])
+            chosen = runner.invoke(cli, ["get", "web[x]", "--non-interactive"])
 
-        assert "matching 'web[x]'" in result.output
-        assert "CIS A [/a]" in result.output
-        assert "v1 [/v]" in result.output
-        assert "P [/s]" in result.output
+        assert "matching 'web[x]'" in menu.output
+        assert "CIS A [/a]" in menu.output
+        assert "v1 [/v]" in menu.output
+        assert "P [/s]" in menu.output
+        assert "Chose: CIS A [/a] v1 [/v]" in chosen.output
+        assert 'cis-bench search "web[x]"' in chosen.output
 
     def test_get_without_a_catalog_prints_the_query_verbatim(self, runner, tmp_path, monkeypatch):
         monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path / "missing"))
@@ -1180,47 +1197,6 @@ class TestOutsideTextIsPrintedVerbatim:
         assert result.exit_code == 0, result.output
         assert "Downloaded: CIS T [/t]" in result.output
         assert "Exported JSON: o[x]/cis_t_t.json" in result.output
-
-
-class TestGetNonInteractiveMode:
-    """Test get command non-interactive mode display (lines 181->192)."""
-
-    def test_get_non_interactive_shows_instructions(self, runner, tmp_path, monkeypatch):
-        """Get in non-interactive mode shows helpful instructions."""
-        catalog_path = tmp_path / "catalog.db"
-        catalog_path.touch()
-
-        monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
-        monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "100")
-
-        with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
-            mock_db = Mock()
-            mock_db_class.return_value = mock_db
-
-            with patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class:
-                mock_search = Mock()
-                mock_search_class.return_value = mock_search
-                mock_search.search.return_value = [
-                    {
-                        "benchmark_id": "1",
-                        "title": "Ubuntu 20.04",
-                        "version": "v1",
-                        "status": "Published",
-                    },
-                    {
-                        "benchmark_id": "2",
-                        "title": "Ubuntu 22.04",
-                        "version": "v2",
-                        "status": "Published",
-                    },
-                ]
-
-                result = runner.invoke(cli, ["get", "ubuntu", "--non-interactive"])
-
-                assert result.exit_code == 0
-                assert "Multiple matches found" in result.output
-                assert "Be more specific" in result.output
-                assert "cis-bench download" in result.output
 
 
 class TestCanonicalContentHashConsistency:
@@ -1323,6 +1299,9 @@ class TestCanonicalContentHashConsistency:
             assert row_download["content_json"] == row_catalog["content_json"]
             assert row_get["content_json"] == row_catalog["content_json"]
             validate_spy.assert_called_once_with(row_get["content_json"])
+            # one instant: each row carries the time the benchmark itself records
+            for row in (row_catalog, row_download, row_get):
+                assert row["downloaded_at"] == sample_benchmark.downloaded_at
         finally:
             db_catalog.engine.dispose()
             db_download.engine.dispose()

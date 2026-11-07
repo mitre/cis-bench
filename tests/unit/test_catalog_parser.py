@@ -1042,3 +1042,21 @@ class TestDetailPagePublishedDateRealMarkup:
         assert WorkBenchCatalogParser.parse_benchmark_detail_page(html)["published_date"] == (
             "Aug 28th 2025"
         )
+
+
+class TestParsingLogsPerPageDetailAtDebug:
+    """Per-page detail is DEBUG; the default INFO output stays free of it."""
+
+    def test_parsing_a_page_logs_at_debug_not_info(self, sample_catalog_html, caplog):
+        with caplog.at_level("INFO", logger="cis_bench.catalog.parser"):
+            WorkBenchCatalogParser.parse_catalog_page(sample_catalog_html, base_url=BASE)
+        assert [r.getMessage() for r in caplog.records if r.levelname == "INFO"] == []
+
+        caplog.clear()
+        with caplog.at_level("DEBUG", logger="cis_bench.catalog.parser"):
+            benchmarks = WorkBenchCatalogParser.parse_catalog_page(
+                sample_catalog_html, base_url=BASE
+            )
+        assert f"Parsed {len(benchmarks)} benchmarks from catalog page" in [
+            r.getMessage() for r in caplog.records if r.levelname == "DEBUG"
+        ]

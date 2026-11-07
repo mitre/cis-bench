@@ -361,6 +361,13 @@ class TestVariableSubstituter:
 
 
 class TestCCILookupService:
+    def test_loading_and_deduplicating_log_nothing_at_info(self, caplog):
+        """Per-recommendation detail is DEBUG; an export must not print a line per lookup."""
+        with caplog.at_level("INFO", logger="cis_bench.utils.cci_lookup"):
+            service = CCILookupService()
+            service.deduplicate_nist_controls(["4.8"], ["AC-1"], extract="all")
+        assert [r.getMessage() for r in caplog.records if r.levelname == "INFO"] == []
+
     """Unit tests for CCI deduplication."""
 
     @pytest.fixture

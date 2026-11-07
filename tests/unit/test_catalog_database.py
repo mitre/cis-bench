@@ -44,6 +44,15 @@ def sample_benchmark_data():
 class TestDatabaseInitialization:
     """Test database initialization and schema creation."""
 
+    def test_initializing_the_schema_logs_nothing_at_info(self, tmp_path, caplog):
+        """Schema creation happens on every refresh; it is detail, not a run-level event."""
+        db = CatalogDatabase(tmp_path / "new.db")
+        with caplog.at_level("INFO", logger="cis_bench.catalog.database"):
+            db.initialize_schema()
+            db.initialize_schema()
+        db.engine.dispose()
+        assert [r.getMessage() for r in caplog.records if r.levelname == "INFO"] == []
+
     def test_database_creation(self, temp_db):
         """Test database file is created."""
         assert temp_db.db_path.exists()
@@ -123,6 +132,7 @@ class TestDatabaseInitialization:
         ("Archived", False, 4),
         ("Rejected", False, 5),
         ("Final Update", False, 6),
+        ("Withdrawn", False, 7),
     ]
 
     @staticmethod
@@ -607,7 +617,7 @@ class TestLookupTables:
             created = temp_db.get_or_create_status("  Community Review  ", session)
             assert created.name == "Community Review"
             assert created.is_active is False
-            assert created.sort_order == 7
+            assert created.sort_order == 8  # after the seven default statuses
             assert created.status_id is not None
             created_id = created.status_id
             session.commit()
@@ -860,6 +870,61 @@ class TestDownloadedBenchmarks:
         assert downloaded["content_hash"] == "hash2"
         assert downloaded["recommendation_count"] == 150
 
+    def test_save_downloaded_keeps_the_benchmarks_own_instant(self, temp_db, sample_benchmark_data):
+        from datetime import UTC, datetime
+
+        temp_db.insert_benchmark(sample_benchmark_data)
+        instant = datetime(2026, 11, 7, 2, 5, 58, 123456, tzinfo=UTC)
+
+        temp_db.save_downloaded("23598", "{}", "h", 1, downloaded_at=instant)
+
+        assert temp_db.get_downloaded("23598")["downloaded_at"] == instant
+        assert temp_db.list_downloaded()[0]["downloaded_at"] == instant
+
+    def test_a_download_time_comes_back_aware_in_utc(self, temp_db, sample_benchmark_data):
+        from datetime import UTC
+
+        temp_db.insert_benchmark(sample_benchmark_data)
+
+        temp_db.save_downloaded("23598", "{}", "h", 1)
+
+        row = temp_db.get_downloaded("23598")
+        assert row["downloaded_at"].tzinfo is UTC
+        assert row["last_accessed"].tzinfo is UTC
+
+    def test_a_download_time_without_a_zone_is_refused(self, temp_db, sample_benchmark_data):
+        from datetime import datetime
+
+        from sqlalchemy.exc import StatementError
+
+        temp_db.insert_benchmark(sample_benchmark_data)
+
+        with pytest.raises(StatementError, match="zone"):
+            temp_db.save_downloaded("23598", "{}", "h", 1, downloaded_at=datetime(2026, 11, 7))
+        assert temp_db.get_downloaded("23598") is None
+
+    def test_a_row_written_by_an_earlier_version_is_read_as_utc(
+        self, temp_db, sample_benchmark_data
+    ):
+        """Earlier versions stored naive UTC text; it is read back as the UTC instant it was."""
+        from datetime import UTC, datetime
+
+        from sqlalchemy import text
+
+        temp_db.insert_benchmark(sample_benchmark_data)
+        with temp_db.engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO downloaded_benchmarks (benchmark_id, content_json, content_hash,"
+                    " downloaded_at, last_accessed) VALUES ('23598', '{}', 'h',"
+                    " '2026-11-07 02:05:58.000000', '2026-11-07 02:05:58.000000')"
+                )
+            )
+
+        row = temp_db.get_downloaded("23598")
+
+        assert row["downloaded_at"] == datetime(2026, 11, 7, 2, 5, 58, tzinfo=UTC)
+
     def test_get_nonexistent_downloaded(self, temp_db):
         """Test getting non-existent download returns None."""
         downloaded = temp_db.get_downloaded("99999")
@@ -906,45 +971,43 @@ class TestDownloadedBenchmarks:
 
         assert temp_db.list_downloaded_benchmark_ids() == ["24000"]
 
+    def test_list_downloaded_gives_each_cached_benchmark_in_id_order_with_its_catalog_title(
+        self, temp_db, sample_benchmark_data
+    ):
+        temp_db.insert_benchmark(sample_benchmark_data)
+        temp_db.insert_benchmark(
+            {
+                **sample_benchmark_data,
+                "benchmark_id": "24000",
+                "title": "Other",
+                "url": "https://workbench.cisecurity.org/benchmarks/24000",
+            }
+        )
+        temp_db.save_downloaded("24000", '{"b": 2}', "hash2", 20, version="v1.0.0")
+        temp_db.save_downloaded("23598", '{"b": 1}', "hash1", 100, version="v2.0.1")
+
+        # Downloaded while absent from the catalog (download needs no catalog row): still listed
+        temp_db.save_downloaded("6467", '{"b": 3}', "hash3", 5, version="v1.0.0")
+
+        rows = temp_db.list_downloaded()
+
+        assert [
+            (r["benchmark_id"], r["title"], r["version"], r["recommendation_count"]) for r in rows
+        ] == [
+            ("6467", None, "v1.0.0", 5),
+            ("23598", "CIS Ubuntu Linux 20.04 LTS Benchmark", "v2.0.1", 100),
+            ("24000", "Other", "v1.0.0", 20),
+        ]
+        assert "content_json" not in rows[0]  # fetched per benchmark by the caller
+        assert rows[0]["downloaded_at"] is not None
+        assert temp_db.list_downloaded() == rows  # ordered by ID as a number, stable
+
     def test_save_downloaded_stores_the_downloaded_version(self, temp_db, sample_benchmark_data):
         """check-updates compares the catalog version against the version that was downloaded."""
         temp_db.insert_benchmark(sample_benchmark_data)
         temp_db.save_downloaded("23598", '{"version": "v2.0.1"}', "hash1", 100, version="v2.0.1")
 
         assert temp_db.get_downloaded("23598")["version"] == "v2.0.1"
-
-    def test_initialize_schema_adds_the_version_column_to_an_older_downloaded_table(self, tmp_path):
-        """Upgrading a database created before the column existed is idempotent."""
-        import sqlite3
-
-        db_path = tmp_path / "old.db"
-        con = sqlite3.connect(db_path)
-        con.executescript(
-            """
-            CREATE TABLE benchmark_statuses (status_id INTEGER PRIMARY KEY, name VARCHAR NOT NULL,
-                is_active BOOLEAN NOT NULL, sort_order INTEGER NOT NULL);
-            CREATE TABLE catalog_benchmarks (benchmark_id VARCHAR PRIMARY KEY, url VARCHAR NOT NULL,
-                title VARCHAR NOT NULL, version VARCHAR, status_id INTEGER NOT NULL, platform_id INTEGER,
-                community_id INTEGER, owner_id INTEGER, platform_type VARCHAR, published_date VARCHAR,
-                last_revision_date VARCHAR, description VARCHAR, is_latest BOOLEAN NOT NULL,
-                is_vnext BOOLEAN NOT NULL, metadata_json VARCHAR, scraped_at DATETIME NOT NULL);
-            CREATE TABLE downloaded_benchmarks (benchmark_id VARCHAR PRIMARY KEY, content_json VARCHAR NOT NULL,
-                content_hash VARCHAR NOT NULL, file_size INTEGER, recommendation_count INTEGER,
-                downloaded_at DATETIME NOT NULL, last_accessed DATETIME NOT NULL,
-                workbench_last_modified VARCHAR);
-            """
-        )
-        con.close()
-
-        db = CatalogDatabase(db_path)
-        db.initialize_schema()
-        db.initialize_schema()  # second run must be a no-op
-
-        con = sqlite3.connect(db_path)
-        columns = {row[1] for row in con.execute("PRAGMA table_info(downloaded_benchmarks)")}
-        con.close()
-        assert "version" in columns
-        db.engine.dispose()
 
     def _insert(self, db, bid, version, status="Published"):
         db.insert_benchmark(
@@ -1073,6 +1136,7 @@ class TestStatistics:
         assert stats == {
             "total_benchmarks": 3,
             "published_benchmarks": 2,
+            "withdrawn_benchmarks": 0,
             "downloaded_benchmarks": 2,
             "platforms": 2,
             "communities": 2,
@@ -1080,7 +1144,7 @@ class TestStatistics:
         select_statements = [
             stmt for stmt in statements if stmt.lstrip().upper().startswith("SELECT")
         ]
-        assert len(select_statements) == 5
+        assert len(select_statements) == 6  # one COUNT per figure
         assert all("COUNT(" in stmt.upper() for stmt in select_statements)
         assert all("content_json" not in stmt.lower() for stmt in select_statements)
 
@@ -1479,3 +1543,311 @@ class TestConcurrency:
         stats = temp_db.get_catalog_stats()
         assert stats["platforms"] == 1  # Should have 1 platform, not 5
         assert stats["total_benchmarks"] == 5
+
+
+class TestOpeningAnOlderCatalog:
+    """A catalog written by an earlier version is brought up to date when it is opened."""
+
+    OLD_FTS = """
+        DROP TABLE benchmarks_fts;
+        CREATE VIRTUAL TABLE benchmarks_fts USING fts5(
+            benchmark_id UNINDEXED, title, platform, community, description,
+            tokenize='porter unicode61');
+        INSERT INTO benchmarks_fts (benchmark_id, title, platform, community, description)
+        SELECT b.benchmark_id, b.title, coalesce(p.name, ''), coalesce(c.name, ''),
+               coalesce(b.description, '')
+        FROM catalog_benchmarks b
+        LEFT JOIN platforms p ON p.platform_id = b.platform_id
+        LEFT JOIN communities c ON c.community_id = b.community_id;
+    """
+
+    @staticmethod
+    def _catalog(path, sql_afterwards):
+        """A catalog with two releases of one benchmark, then altered as an older version left it."""
+        import sqlite3
+
+        db = CatalogDatabase(path)
+        db.initialize_schema()
+        for benchmark_id, version in (("200", "v2.0.0"), ("210", "v2.1.0")):
+            db.insert_benchmark(
+                {
+                    "benchmark_id": benchmark_id,
+                    "title": "CIS Kubernetes Benchmark",
+                    "version": version,
+                    "url": f"https://workbench.cisecurity.org/benchmarks/{benchmark_id}",
+                    "status": "Published",
+                    "platform": "Container Platform",
+                    "community": "CIS Kubernetes Benchmarks",
+                    "description": "Guidance for kubelet and etcd",
+                }
+            )
+        db.engine.dispose()
+        con = sqlite3.connect(path)
+        con.executescript(sql_afterwards)
+        con.close()
+
+    @staticmethod
+    def _index_rows(path):
+        import sqlite3
+
+        con = sqlite3.connect(path)
+        try:
+            return sorted(row[0] for row in con.execute("SELECT benchmark_id FROM benchmarks_fts"))
+        finally:
+            con.close()
+
+    @staticmethod
+    def _warnings(caplog):
+        return [record.getMessage() for record in caplog.records if record.levelname == "WARNING"]
+
+    @staticmethod
+    def _found(db, query):
+        return sorted(str(row["benchmark_id"]) for row in db.search(query, limit=None))
+
+    def test_an_index_without_versions_is_rebuilt_so_a_version_search_works(self, tmp_path):
+        path = tmp_path / "older.db"
+        self._catalog(path, self.OLD_FTS)
+
+        db = CatalogDatabase(path)
+        try:
+            assert self._found(db, "kubernetes 2.1.0") == ["210"]
+            assert self._found(db, "kubernetes") == ["200", "210"]
+            assert self._found(db, "container") == ["200", "210"]
+            assert self._found(db, "kubelet") == ["200", "210"]
+        finally:
+            db.engine.dispose()
+        assert self._index_rows(path) == ["200", "210"]
+
+    def test_opening_it_again_leaves_one_index_row_per_benchmark(self, tmp_path):
+        path = tmp_path / "older.db"
+        self._catalog(path, self.OLD_FTS)
+
+        for _ in range(2):
+            CatalogDatabase(path).engine.dispose()
+
+        assert self._index_rows(path) == ["200", "210"]
+
+    def test_an_index_that_has_versions_is_left_as_it_is(self, tmp_path):
+        path = tmp_path / "current.db"
+        marker = "INSERT INTO benchmarks_fts (benchmark_id, title) VALUES ('marker', 'kept');"
+        self._catalog(path, marker)
+
+        CatalogDatabase(path).engine.dispose()
+
+        assert self._index_rows(path) == ["200", "210", "marker"]
+
+    def test_a_downloaded_table_without_the_version_column_gets_it(self, tmp_path):
+        path = tmp_path / "older.db"
+        self._catalog(path, "ALTER TABLE downloaded_benchmarks DROP COLUMN version;")
+
+        CatalogDatabase(path).engine.dispose()
+        db = CatalogDatabase(path)
+        try:
+            db.save_downloaded("210", '{"version": "v2.1.0"}', "hash", 20, version="v2.1.0")
+            assert db.get_downloaded("210")["version"] == "v2.1.0"
+        finally:
+            db.engine.dispose()
+
+    def test_a_rebuild_that_fails_part_way_leaves_the_old_index_in_place(
+        self, tmp_path, monkeypatch
+    ):
+        import sqlite3
+
+        path = tmp_path / "older.db"
+        self._catalog(path, self.OLD_FTS)
+        write_row = CatalogDatabase._insert_fts_row
+        written = []
+
+        def fail_on_the_second_row(benchmark, session):
+            if written:
+                raise RuntimeError("disk full")
+            written.append(benchmark.benchmark_id)
+            write_row(benchmark, session)
+
+        monkeypatch.setattr(
+            CatalogDatabase, "_insert_fts_row", staticmethod(fail_on_the_second_row)
+        )
+
+        with pytest.raises(RuntimeError, match="disk full"):
+            CatalogDatabase(path)
+
+        con = sqlite3.connect(path)
+        try:
+            columns = [row[1] for row in con.execute("PRAGMA table_info(benchmarks_fts)")]
+        finally:
+            con.close()
+        assert columns == ["benchmark_id", "title", "platform", "community", "description"]
+        assert self._index_rows(path) == ["200", "210"]
+
+    def test_an_upgrade_another_process_finished_first_is_not_repeated(
+        self, tmp_path, monkeypatch, caplog
+    ):
+        path = tmp_path / "current.db"
+        marker = "INSERT INTO benchmarks_fts (benchmark_id, title) VALUES ('marker', 'kept');"
+        self._catalog(path, marker)
+        read_pending = CatalogDatabase._pending_upgrades
+        answers = iter([(True, True)])
+
+        def stale_then_real(connection):
+            # The first look, taken before the write lock, saw an older catalog.
+            return next(answers, None) or read_pending(connection)
+
+        monkeypatch.setattr(CatalogDatabase, "_pending_upgrades", staticmethod(stale_then_real))
+
+        with caplog.at_level("WARNING", logger="cis_bench.catalog.database"):
+            CatalogDatabase(path).engine.dispose()
+
+        assert self._warnings(caplog) == []
+        assert self._index_rows(path) == ["200", "210", "marker"]
+
+    def test_an_older_catalog_that_cannot_be_written_still_opens_and_says_why(
+        self, tmp_path, monkeypatch, caplog
+    ):
+        from sqlalchemy.exc import OperationalError
+
+        path = tmp_path / "older.db"
+        self._catalog(path, self.OLD_FTS)
+        path.chmod(0o400)
+        # A catalog owned by someone else: its mode cannot be changed either.
+        monkeypatch.setattr(Path, "chmod", lambda *args, **kwargs: None)
+
+        with caplog.at_level("WARNING", logger="cis_bench.catalog.database"):
+            db = CatalogDatabase(path)
+        try:
+            assert db.get_catalog_stats()["total_benchmarks"] == 2
+            # Its index has no version column, which every search now refers to.
+            with pytest.raises(OperationalError, match="no such column: version"):
+                db.search("kubernetes", limit=None)
+        finally:
+            db.engine.dispose()
+        (warning,) = self._warnings(caplog)
+        assert warning.startswith(f"Could not update the catalog database {path} for this ")
+        assert warning.endswith("Searching it needs the update.")
+
+    def test_a_file_that_is_not_a_database_is_reported_when_it_is_first_read(
+        self, tmp_path, caplog
+    ):
+        from sqlalchemy.exc import DatabaseError
+
+        path = tmp_path / "notes.db"
+        path.write_text("this is not a SQLite database, only a text file of some length\n" * 40)
+
+        with caplog.at_level("WARNING", logger="cis_bench.catalog.database"):
+            db = CatalogDatabase(path)
+        try:
+            with pytest.raises(DatabaseError, match="not a database"):
+                db.search("kubernetes", limit=None)
+        finally:
+            db.engine.dispose()
+        (warning,) = self._warnings(caplog)
+        assert warning.startswith(f"Could not update the catalog database {path} for this ")
+
+    def test_the_index_row_holds_each_field_in_its_own_column(self, tmp_path):
+        import sqlite3
+
+        path = tmp_path / "current.db"
+        self._catalog(path, "")
+
+        con = sqlite3.connect(path)
+        try:
+            row = con.execute(
+                "SELECT title, platform, community, description, version FROM benchmarks_fts"
+                " WHERE benchmark_id = '210'"
+            ).fetchone()
+        finally:
+            con.close()
+        assert row == (
+            "CIS Kubernetes Benchmark",
+            "Container Platform",
+            "CIS Kubernetes Benchmarks",
+            "Guidance for kubelet and etcd",
+            "2.1.0",
+        )
+
+    def test_a_file_with_no_tables_is_left_empty(self, tmp_path, caplog):
+        import sqlite3
+
+        path = tmp_path / "empty.db"
+        path.touch()
+
+        with caplog.at_level("WARNING", logger="cis_bench.catalog.database"):
+            CatalogDatabase(path).engine.dispose()
+
+        assert self._warnings(caplog) == []
+        con = sqlite3.connect(path)
+        try:
+            assert con.execute("SELECT count(*) FROM sqlite_master").fetchone()[0] == 0
+        finally:
+            con.close()
+
+
+class TestMarkingWithdrawnBenchmarks:
+    """Rows a complete refresh did not see become Withdrawn; Withdrawn rows are never latest."""
+
+    def _insert(self, db, bid, title, version, status="Published"):
+        db.insert_benchmark(
+            {
+                "benchmark_id": bid,
+                "title": title,
+                "version": version,
+                "url": f"https://workbench.cisecurity.org/benchmarks/{bid}",
+                "status": status,
+            }
+        )
+
+    def test_rows_not_seen_become_withdrawn_and_are_counted_once(self, temp_db):
+        self._insert(temp_db, "1", "CIS Foo Benchmark", "v1.0.0")
+        self._insert(temp_db, "2", "CIS Bar Benchmark", "v1.0.0")
+        self._insert(temp_db, "3", "CIS Baz Benchmark", "v1.0.0", status="Archived")
+        temp_db.mark_latest_versions()
+        assert temp_db.get_benchmark("1")["is_latest"] is True
+
+        assert temp_db.mark_withdrawn_except({"2"}) == 2
+        assert temp_db.mark_withdrawn_except({"2"}) == 0
+
+        assert temp_db.get_benchmark("1")["status"] == "Withdrawn"
+        assert temp_db.get_benchmark("1")["is_latest"] is False
+        assert temp_db.get_benchmark("2")["status"] == "Published"
+        assert temp_db.get_benchmark("2")["is_latest"] is True
+        assert temp_db.get_benchmark("3")["status"] == "Withdrawn"
+
+    def test_the_statistics_count_withdrawn_rows_separately(self, temp_db):
+        self._insert(temp_db, "1", "CIS Foo Benchmark", "v1.0.0")
+        self._insert(temp_db, "2", "CIS Bar Benchmark", "v1.0.0")
+        temp_db.mark_withdrawn_except({"2"})
+
+        stats = temp_db.get_catalog_stats()
+
+        assert stats["total_benchmarks"] == 2
+        assert stats["published_benchmarks"] == 1
+        assert stats["withdrawn_benchmarks"] == 1
+
+    def test_a_withdrawn_row_is_never_the_latest_release(self, temp_db):
+        self._insert(temp_db, "1", "CIS Foo Benchmark", "v2.0.0")
+        self._insert(temp_db, "2", "CIS Foo Benchmark", "v1.0.0")
+        temp_db.mark_withdrawn_except({"2"})
+
+        temp_db.mark_latest_versions()
+
+        assert temp_db.get_benchmark("1")["is_latest"] is False
+        assert temp_db.get_benchmark("2")["is_latest"] is True
+
+    def test_the_withdrawn_status_is_backfilled_into_an_older_catalog(self, tmp_path):
+        import sqlite3
+
+        db = CatalogDatabase(tmp_path / "older.db")
+        db.initialize_schema()
+        db.engine.dispose()
+        con = sqlite3.connect(tmp_path / "older.db")
+        con.execute("DELETE FROM benchmark_statuses WHERE name = 'Withdrawn'")
+        con.commit()
+        con.close()
+
+        db = CatalogDatabase(tmp_path / "older.db")
+        db.initialize_schema()
+        try:
+            self._insert(db, "1", "CIS Foo Benchmark", "v1.0.0")
+            assert db.mark_withdrawn_except(set()) == 1
+            assert db.get_benchmark("1")["status"] == "Withdrawn"
+        finally:
+            db.engine.dispose()

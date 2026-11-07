@@ -3,7 +3,7 @@
 Tests both file-based and database-based export functionality.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -119,6 +119,20 @@ class TestExportFromFile:
         assert result.exit_code == 0
         assert Path("benchmark.md").exists()
 
+    def test_markdown_export_writes_the_download_time_with_its_offset(
+        self, runner, sample_benchmark, working_dir
+    ):
+        """A document carries the instant in ISO 8601 with its offset, as the other exports do."""
+        aware = sample_benchmark.model_copy(
+            update={"downloaded_at": datetime(2026, 11, 7, 2, 5, 58, tzinfo=UTC)}
+        )
+        Path("benchmark.json").write_text(aware.model_dump_json())
+
+        result = runner.invoke(cli, ["export", "benchmark.json", "--format", "markdown"])
+
+        assert result.exit_code == 0, result.output
+        assert "**Downloaded:** 2026-11-07T02:05:58+00:00  " in Path("benchmark.md").read_text()
+
     def test_export_from_file_xccdf_disa(self, runner, sample_benchmark_json, working_dir):
         """Export benchmark from file to XCCDF DISA format."""
         import shutil
@@ -144,6 +158,67 @@ class TestExportFromFile:
 
         assert result.exit_code == 0
         assert Path("benchmark.xml").exists()
+
+    def test_a_batch_with_one_failed_export_exits_1(
+        self, runner, sample_benchmark_json, working_dir
+    ):
+        """One good and one missing benchmark: exit 1, the good export still written."""
+        result = runner.invoke(
+            cli, ["export", str(sample_benchmark_json), "nonexistent.json", "--format", "yaml"]
+        )
+
+        assert result.exit_code == 1, result.output
+        assert "Export complete with errors." in result.output
+        assert "1 succeeded, 1 failed." in result.output
+        assert [path.suffix for path in working_dir.iterdir()] == [".yaml"]
+
+    def test_a_batch_where_every_export_succeeds_exits_0(
+        self, runner, sample_benchmark_json, working_dir
+    ):
+        result = runner.invoke(
+            cli,
+            ["export", str(sample_benchmark_json), str(sample_benchmark_json), "--format", "yaml"],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "Export complete!" in result.output
+
+    def test_an_id_with_surrounding_spaces_still_reads_the_cache(
+        self, runner, sample_benchmark, tmp_path, monkeypatch, working_dir
+    ):
+        from cis_bench.catalog.database import CatalogDatabase, serialize_benchmark_json
+
+        db = CatalogDatabase(tmp_path / "catalog.db")
+        try:
+            db.initialize_schema()
+            db.insert_benchmark(
+                {
+                    "benchmark_id": "23598",
+                    "title": "CIS AlmaLinux OS 8 Benchmark",
+                    "version": "v4.0.0",
+                    "url": "https://workbench.cisecurity.org/benchmarks/23598",
+                    "status": "Published",
+                }
+            )
+            content_json, content_hash = serialize_benchmark_json(sample_benchmark)
+            db.save_downloaded("23598", content_json, content_hash, 3, version="v4.0.0")
+        finally:
+            db.engine.dispose()
+        monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path))
+
+        result = runner.invoke(cli, ["export", " 23598 ", "--format", "yaml"])
+
+        assert result.exit_code == 0, result.output
+        assert [path.suffix for path in working_dir.iterdir()] == [".yaml"]
+
+    def test_a_string_of_non_ascii_digits_is_a_file_name_not_an_id(self, runner):
+        """Every command uses the same test for a benchmark ID: ASCII digits only."""
+        result = runner.invoke(
+            cli, ["export", "\u0662\u0663\u0665\u0669\u0668", "--format", "yaml"]
+        )
+
+        assert result.exit_code == 1
+        assert "File not found" in result.output
 
     def test_export_file_not_found(self, runner):
         """Export fails gracefully when file not found."""
@@ -463,3 +538,27 @@ class TestRealDatabaseCanonicalDeserialize:
             assert "1.1.2" in exported
         finally:
             db.engine.dispose()
+
+
+class TestExportLogsNothingAtInfo:
+    """An export prints its summary through the console, not a log line per step."""
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ["--format", "yaml"],
+            ["--format", "csv"],
+            ["--format", "markdown"],
+            ["--format", "xccdf", "--style", "disa"],
+            ["--format", "xccdf", "--style", "cis"],
+        ],
+    )
+    def test_an_export_at_the_default_level_logs_no_info_lines(
+        self, runner, sample_benchmark_json, working_dir, args
+    ):
+        result = runner.invoke(cli, ["export", str(sample_benchmark_json), *args])
+
+        assert result.exit_code == 0, result.output
+        assert "Export" in result.output
+        # The CLI's logging goes to stderr, which the runner folds into output
+        assert "INFO:" not in result.output, result.output

@@ -80,7 +80,7 @@ def migrate():
             )
             console.print("Fix that, then run `cis-bench config migrate` again to move the rest.")
             sys.exit(1)
-        logger.info(f"Moved {source} to {target}")
+        logger.debug(f"Moved {source} to {target}")
         console.print(
             f"[green]✓[/green] {escape(source.name)} -> {escape(str(target))}", soft_wrap=True
         )

@@ -28,7 +28,7 @@ class CSVExporter(BaseExporter):
         Returns:
             Path to created file
         """
-        logger.info(f"Exporting benchmark to CSV: {output_path}")
+        logger.debug(f"Exporting benchmark to CSV: {output_path}")
         logger.debug(
             f"Benchmark: {benchmark.title}, Recommendations: {benchmark.total_recommendations}"
         )
@@ -86,7 +86,7 @@ class CSVExporter(BaseExporter):
                 writer.writeheader()
                 writer.writerows(rows)
 
-            logger.info(f"Successfully exported CSV with {len(rows)} rows to {output_path}")
+            logger.debug(f"Successfully exported CSV with {len(rows)} rows to {output_path}")
         else:
             logger.warning("No recommendations to export - writing empty CSV")
 

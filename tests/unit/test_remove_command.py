@@ -1,5 +1,7 @@
 """Tests for `cis-bench remove`: deleting a downloaded benchmark's cached copy."""
 
+from datetime import UTC, datetime
+
 import pytest
 from click.testing import CliRunner
 
@@ -26,7 +28,14 @@ def db(tmp_path):
     database.initialize_schema()
     database.insert_benchmark(_catalog_row("23598", "CIS AlmaLinux OS 8 Benchmark"))
     database.insert_benchmark(_catalog_row("24000", "CIS AlmaLinux OS 9 Benchmark"))
-    database.save_downloaded("23598", "{}", "h1", 322, version="v4.0.0")
+    database.save_downloaded(
+        "23598",
+        "{}",
+        "h1",
+        322,
+        version="v4.0.0",
+        downloaded_at=datetime(2026, 11, 7, 2, 5, 58, tzinfo=UTC),
+    )
     database.save_downloaded("24000", "{}", "h2", 300, version="v4.0.0")
     return database
 
@@ -34,6 +43,7 @@ def db(tmp_path):
 @pytest.fixture
 def run(db, monkeypatch):
     monkeypatch.setenv("CIS_BENCH_HOME", str(db.db_path.parent))
+    monkeypatch.setenv("COLUMNS", "120")  # a terminal wide enough that a line does not wrap
 
     def invoke(*args, input=None):
         return CliRunner().invoke(cli, ["remove", *args], input=input)
@@ -51,13 +61,14 @@ class TestRemoveCommand:
         assert db.get_benchmark("23598") is not None
         assert "23598" in result.output
 
-    def test_lists_what_will_be_removed_and_asks_first(self, db, run):
+    def test_lists_what_will_be_removed_and_asks_first(self, db, run, new_york_clock):
         result = run("23598", input="n\n")
 
         assert result.exit_code != 0
         assert db.get_downloaded("23598") is not None
         assert "CIS AlmaLinux OS 8 Benchmark" in result.output
         assert "v4.0.0" in result.output
+        assert "(downloaded 2026-11-06 21:05:58 EST)" in result.output
 
         result = run("23598", input="y\n")
 

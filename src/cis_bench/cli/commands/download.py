@@ -10,6 +10,7 @@ from rich.console import Console
 from rich.markup import escape
 
 from cis_bench.cli.helpers.errors import report_expired_session, report_unreachable
+from cis_bench.cli.helpers.output import display_time
 from cis_bench.cli.helpers.services import auth_manager, settings_from, workbench_scraper
 from cis_bench.exceptions import (
     AuthenticationError,
@@ -187,7 +188,9 @@ def download(
                         console.print(
                             f"{prefix} [yellow]Benchmark {benchmark_id} already cached[/yellow]"
                         )
-                        console.print(f"      Downloaded: {existing['downloaded_at']}")
+                        console.print(
+                            f"      Downloaded: {display_time(existing['downloaded_at'])}"
+                        )
                         console.print(f"      Recommendations: {existing['recommendation_count']}")
                         console.print("\n[dim]Use --force to re-download[/dim]\n")
                         logger.debug(f"Skipping {benchmark_id} - already cached")
@@ -239,6 +242,7 @@ def download(
                         content_json=content_json,
                         content_hash=content_hash,
                         recommendation_count=recommendation_count,
+                        downloaded_at=benchmark.downloaded_at,
                     )
                     logger.debug(f"Saved benchmark {benchmark_id} to catalog database")
                     console.print(f"      [green]✓[/green] Cached in database (ID: {benchmark_id})")

@@ -61,6 +61,7 @@ class TestCatalogRefresh:
             "pages_scraped": 1,
             "failed_pages": [],
             "success_rate": 1.0,
+            "withdrawn": 0,
         }
         mock_scraper_class.return_value = mock_scraper
 

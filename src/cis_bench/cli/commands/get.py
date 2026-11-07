@@ -2,6 +2,7 @@
 
 import logging
 import sys
+from typing import TYPE_CHECKING
 
 import click
 import questionary
@@ -9,6 +10,7 @@ from rich.console import Console
 from rich.markup import escape
 
 from cis_bench.cli.helpers.errors import report_expired_session, report_unreachable
+from cis_bench.cli.helpers.output import benchmark_table, display_time
 from cis_bench.cli.helpers.services import auth_manager, settings_from, workbench_scraper
 from cis_bench.exceptions import (
     AuthenticationError,
@@ -18,7 +20,11 @@ from cis_bench.exceptions import (
 )
 from cis_bench.exporters import ExporterFactory
 from cis_bench.exporters.xccdf_unified_exporter import XCCDFExporter
-from cis_bench.utils.workbench_urls import resolve_benchmark_reference
+from cis_bench.utils.workbench_urls import is_benchmark_id, resolve_benchmark_reference
+
+if TYPE_CHECKING:
+    from cis_bench.catalog.search import CatalogSearch
+    from cis_bench.config import Settings
 
 console = Console()
 logger = logging.getLogger(__name__)
@@ -61,17 +67,27 @@ class DynamicStyleChoice(click.Choice):
 @click.option("--debug", "-d", is_flag=True, help="Enable debug logging (same as --verbose)")
 @click.option("--quiet", "-q", is_flag=True, help="Quiet mode (warnings and errors only)")
 @click.option(
-    "--non-interactive", is_flag=True, help="Disable interactive prompts (show table instead)"
+    "--non-interactive",
+    is_flag=True,
+    help="No menu: when several benchmarks match, take the best match",
 )
-def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_interactive):
+@click.option(
+    "--force", is_flag=True, help="Download again and replace the cached copy, if there is one"
+)
+def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_interactive, force):
     """Search, download, and export benchmark in one command.
 
     This is the easiest way to get a CIS benchmark. It combines search,
-    download, and export into a single command.
+    download, and export into a single command. QUERY is search words or a
+    catalog ID. When several benchmarks match, a menu offers them, best match
+    first; with --non-interactive the best match is taken.
 
     \b
     Examples:
         cis-bench get "ubuntu 20.04" --format xccdf --style cis
+        cis-bench get "kubernetes v2.0.1" --format xccdf
+        cis-bench get 23598 --format xccdf
+        cis-bench get 23598 --force --format xccdf
         cis-bench get "aws" --format yaml
         cis-bench get "docker" --format markdown
 
@@ -103,105 +119,37 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
         console.print(f'  cis-bench get "{escape(query)}" --format {export_format}')
         sys.exit(1)
 
-    # Step 2: Search catalog
+    # Step 2: Find the benchmark: by its catalog ID, or by searching the catalog
     try:
         from cis_bench.catalog.database import CatalogDatabase
         from cis_bench.catalog.search import CatalogSearch
 
-        logger.debug(f"Searching catalog for: {query}")
-        console.print(f"[cyan]Searching for:[/cyan] {escape(query)}\n")
-
         db = CatalogDatabase(catalog_db_path)
         search = CatalogSearch(db)
 
-        # Search with Published filter by default; CIS_BENCH_SEARCH_LIMIT caps the candidates
-        filters = {"status": "Published", "latest_only": True}
-        limit = settings.search_limit
-        results = search.search(query, limit=limit, **filters)
-        # A list shorter than the limit is complete; only a full one may have been cut off.
-        total = search.count(query, **filters) if len(results) >= limit else len(results)
-
-        if not results:
-            console.print("[yellow]No results found[/yellow]\n")
-            console.print("[dim]Try a different search term or check:[/dim]")
-            console.print("  cis-bench search --help")
-            sys.exit(1)
-
-        logger.debug(f"Found {len(results)} results")
-
+        if is_benchmark_id(query):
+            selected = _benchmark_with_id(search, query.strip())
+        else:
+            selected = _benchmark_matching(search, query, settings, non_interactive)
     except Exception as e:
         logger.debug("Search failed", exc_info=True)
         console.print(f"[red]✗ Search failed: {escape(str(e))}[/red]")
         sys.exit(1)
 
-    # Step 3: Select benchmark
-    if len(results) == 1:
-        selected = results[0]
-        console.print(f"[green]✓[/green] Found: {escape(str(selected['title']))}\n")
-    else:
-        # Multiple results
-        cut_off = f" (showing the first {len(results)})" if total > len(results) else ""
-        console.print(
-            f"[yellow]Found {total} benchmarks matching '{escape(query)}'{cut_off}[/yellow]\n"
-        )
-
-        from cis_bench.cli.helpers.output import benchmark_table
-
-        console.print(benchmark_table(results, title_width=settings.table_title_width))
-
-        # Interactive selection (if not disabled)
-        if not non_interactive:
-            console.print()
-            try:
-                choices = [
-                    f"{r['benchmark_id']}: {r['title']} ({r.get('version', 'N/A')})"
-                    for r in results
-                ]
-
-                answer = questionary.select("Select benchmark:", choices=choices).ask()
-
-                if not answer:
-                    console.print("\n[yellow]Cancelled[/yellow]")
-                    sys.exit(0)
-
-                # Extract ID from answer
-                selected_id = answer.split(":")[0]
-                selected = next(r for r in results if str(r["benchmark_id"]) == selected_id)
-
-                console.print(f"\n[green]✓[/green] Selected: {escape(str(selected['title']))}\n")
-
-            except Exception as e:
-                logger.warning(f"Interactive selection failed: {e}")
-                # Fall through to non-interactive mode
-                non_interactive = True
-
-        # Non-interactive mode - show instructions
-        if non_interactive:
-            console.print("\n[bold cyan]Multiple matches found. Please:[/bold cyan]")
-            console.print('  1. Be more specific: [bold]cis-bench get "almalinux 9"[/bold]')
-            console.print(
-                "  2. Or use ID directly: [bold]cis-bench download <ID> --format xccdf[/bold]"
-            )
-            console.print("\n[dim]Example: cis-bench download 23598 --format xccdf[/dim]")
-            console.print(
-                "[dim]         cis-bench export 23598 --format xccdf --style cis"
-                "   # choose the XCCDF style[/dim]"
-            )
-            sys.exit(0)
-
     benchmark_id = str(selected["benchmark_id"])
     logger.debug(f"Selected benchmark ID: {benchmark_id}")
 
-    # Step 4: Check if already downloaded
-    existing = db.get_downloaded(benchmark_id)
+    # Step 3: Use the cached copy, unless there is none or --force says to replace it
+    existing = None if force else db.get_downloaded(benchmark_id)
 
     if existing:
         console.print(
-            f"[green]✓[/green] Benchmark already cached (downloaded {existing['downloaded_at']})\n"
+            "[green]✓[/green] Benchmark already cached "
+            f"(downloaded {display_time(existing['downloaded_at'])})\n"
         )
         logger.debug(f"Using cached benchmark {benchmark_id}")
     else:
-        # Step 5: Download benchmark
+        # Step 4: Download benchmark
         console.print("[cyan]Downloading benchmark...[/cyan]\n")
 
         try:
@@ -239,6 +187,7 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
                 content_json=content_json,
                 content_hash=content_hash,
                 recommendation_count=recommendation_count,
+                downloaded_at=benchmark.downloaded_at,
             )
 
             logger.debug(f"Saved benchmark {benchmark_id} to database")
@@ -266,7 +215,7 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
             console.print(f"[red]✗ Download failed: {escape(str(e))}[/red]")
             sys.exit(1)
 
-    # Step 6: Export to requested format
+    # Step 5: Export to requested format
     try:
         from cis_bench.catalog.database import deserialize_benchmark_json
 
@@ -309,3 +258,90 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
         logger.debug("Export failed", exc_info=True)
         console.print(f"[red]✗ Export failed: {escape(str(e))}[/red]")
         sys.exit(1)
+
+
+def _benchmark_with_id(search: "CatalogSearch", benchmark_id: str) -> dict:
+    """The catalog row with this ID, whatever its status or age; exit 1 when there is none."""
+    found = search.find_by_id(benchmark_id)
+    if found is None:
+        console.print(f"[yellow]No benchmark with ID {benchmark_id} in the catalog[/yellow]\n")
+        console.print("[dim]If it is new on WorkBench, update the catalog first:[/dim]")
+        console.print("  cis-bench catalog refresh")
+        sys.exit(1)
+    console.print(f"[green]✓[/green] Found: {escape(found['title'])} {escape(found['version'])}\n")
+    return found
+
+
+def _benchmark_matching(
+    search: "CatalogSearch", query: str, settings: "Settings", non_interactive: bool
+) -> dict:
+    """The benchmark a word query means: the only match, the best-ranked match, or the one
+    chosen from a menu. Exit 1 when nothing matches or the menu is left without a choice."""
+    console.print(f"[cyan]Searching for:[/cyan] {escape(query)}\n")
+    logger.debug(f"Searching catalog for: {query}")
+
+    # Published benchmarks: the latest release of each, and any release the query names
+    # by its version. CIS_BENCH_SEARCH_LIMIT caps the candidates; they come best match first.
+    limit = settings.search_limit
+    results = search.search(
+        query, status="Published", latest_only=True, named_releases=True, limit=limit
+    )
+    # A list shorter than the limit is complete; only a full one may have been cut off.
+    total = len(results)
+    if len(results) >= limit:
+        total = search.count(query, status="Published", latest_only=True, named_releases=True)
+
+    if not results:
+        console.print("[yellow]No results found[/yellow]\n")
+        console.print("[dim]Try a different search term or check:[/dim]")
+        console.print("  cis-bench search --help")
+        sys.exit(1)
+
+    logger.debug(f"Found {len(results)} results")
+
+    if len(results) == 1:
+        selected = results[0]
+        console.print(f"[green]✓[/green] Found: {escape(str(selected['title']))}\n")
+        return selected
+
+    if non_interactive:
+        return _best_match(results, total, query)
+
+    cut_off = f" (showing the first {len(results)})" if total > len(results) else ""
+    console.print(
+        f"[yellow]Found {total} benchmarks matching '{escape(query)}'{cut_off}[/yellow]\n"
+    )
+
+    console.print(benchmark_table(results, title_width=settings.table_title_width))
+    console.print()
+    choices = [f"{r['benchmark_id']}: {r['title']} ({r.get('version', 'N/A')})" for r in results]
+    try:
+        answer = questionary.select("Select benchmark:", choices=choices).ask()
+    except Exception as e:
+        # No usable terminal for a menu (a pipe, a CI job): the best match, as without one
+        logger.warning(f"Interactive selection failed: {e}")
+        return _best_match(results, total, query)
+    if not answer:
+        # Nothing was exported; a script must not take this for success
+        console.print("\n[yellow]Cancelled[/yellow]")
+        sys.exit(1)
+
+    selected_id = answer.split(":")[0]
+    selected = next(r for r in results if str(r["benchmark_id"]) == selected_id)
+    console.print(f"\n[green]✓[/green] Selected: {escape(str(selected['title']))}\n")
+    return selected
+
+
+def _best_match(results: list[dict], total: int, query: str) -> dict:
+    """The best-ranked match, saying how many others there were and how to see them."""
+    selected = results[0]
+    others = total - 1
+    console.print(
+        f"[green]✓[/green] Chose: {escape(str(selected['title']))} "
+        f"{escape(str(selected.get('version', '')))}"
+    )
+    console.print(
+        f"  {others} other benchmark{'s' if others != 1 else ''} matched. To see them all:"
+    )
+    console.print(f'    cis-bench search "{escape(query)}"\n')
+    return selected
