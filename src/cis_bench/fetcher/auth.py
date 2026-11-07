@@ -4,6 +4,8 @@ import http.cookiejar
 import logging
 import platform
 import re
+import threading
+from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
@@ -529,3 +531,109 @@ Workarounds:
         self.save_session(session)
 
         return session
+
+
+class SessionKeepAlive:
+    """Keeps a WorkBench session alive during a long terminal-UI run by asking WorkBench
+    about it at an interval, in a background thread.
+
+    Each ping goes through the run's ``AuthManager.validate_session``, so it uses the run's
+    host, timeout, TLS setting and request policy. Only a rejection counts as an expired
+    session (``is_healthy`` goes False and ``on_session_expired`` is called); when WorkBench
+    could not be asked (a network failure, a TLS failure) nothing is known about the session
+    and the last state stands.
+
+    Usage::
+
+        with SessionKeepAlive(session, auth, interval_minutes=5):
+            app.run()
+    """
+
+    DEFAULT_INTERVAL_MINUTES = 5
+
+    def __init__(
+        self,
+        session: requests.Session,
+        auth: "AuthManager",
+        interval_minutes: float = DEFAULT_INTERVAL_MINUTES,
+        on_session_expired: Callable[[], None] | None = None,
+    ):
+        self.session = session
+        self.auth = auth
+        self.interval_seconds = interval_minutes * 60
+        self.on_session_expired = on_session_expired
+
+        self._stop_event = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._ping_count = 0
+        self._is_healthy = True
+
+    def start(self) -> None:
+        """Start the background thread; a second call while it runs does nothing."""
+        if self._thread is not None and self._thread.is_alive():
+            return
+        self._stop_event.clear()
+        self._thread = threading.Thread(
+            target=self._run_loop, name="session-keep-alive", daemon=True
+        )
+        self._thread.start()
+        logger.debug(f"Session keep-alive started (every {self.interval_seconds:g}s)")
+
+    def stop(self) -> None:
+        """Stop the background thread; safe to call when it is not running."""
+        if self._thread is None:
+            return
+        self._stop_event.set()
+        self._thread.join(timeout=2)
+        self._thread = None
+        logger.debug(f"Session keep-alive stopped after {self._ping_count} ping(s)")
+
+    def _run_loop(self) -> None:
+        while not self._stop_event.wait(timeout=self.interval_seconds):
+            self._ping()
+
+    def _ping(self) -> bool | None:
+        """Ask WorkBench about the session once.
+
+        Returns:
+            True if WorkBench accepted it, False if WorkBench rejected it, None if WorkBench
+            could not be asked.
+        """
+        self._ping_count += 1
+        try:
+            accepted = self.auth.validate_session(self.session)
+        except (FetchError, TLSVerificationError) as error:
+            logger.warning(f"Session keep-alive could not reach WorkBench: {error}")
+            return None
+
+        if accepted:
+            self._is_healthy = True
+            logger.debug(f"Session keep-alive ping #{self._ping_count}: session accepted")
+            return True
+
+        was_healthy = self._is_healthy
+        self._is_healthy = False
+        logger.warning("WorkBench no longer accepts the saved session")
+        if was_healthy and self.on_session_expired is not None:
+            self.on_session_expired()
+        return False
+
+    @property
+    def is_running(self) -> bool:
+        return self._thread is not None and self._thread.is_alive()
+
+    @property
+    def is_healthy(self) -> bool:
+        """False once WorkBench has rejected the session, until it accepts it again."""
+        return self._is_healthy
+
+    @property
+    def ping_count(self) -> int:
+        return self._ping_count
+
+    def __enter__(self) -> "SessionKeepAlive":
+        self.start()
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        self.stop()

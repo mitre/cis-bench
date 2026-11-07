@@ -21,6 +21,7 @@ console = Console()
 # `cis-bench export` never loads the scraper or catalog stacks and startup stays fast.
 LAZY_SUBCOMMANDS = {
     "auth": "cis_bench.cli.commands.auth.auth",
+    "browse": "cis_bench.cli.commands.browse.browse_cmd",
     "catalog": "cis_bench.cli.commands.catalog.catalog",
     "config": "cis_bench.cli.commands.config.config",
     "download": "cis_bench.cli.commands.download.download",
@@ -30,7 +31,9 @@ LAZY_SUBCOMMANDS = {
     "list": "cis_bench.cli.commands.list_cmd.list_benchmarks",
     "remove": "cis_bench.cli.commands.remove.remove_cmd",
     "search": "cis_bench.cli.commands.search.search_cmd",
+    "tui": "cis_bench.cli.commands.main_tui.main_tui",
     "validate": "cis_bench.cli.commands.validate.validate_cmd",
+    "view": "cis_bench.cli.commands.view.view_cmd",
 }
 
 

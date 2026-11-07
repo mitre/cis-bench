@@ -77,8 +77,22 @@ class TestDownloadByID:
         assert result["benchmark_id"] == "23598"
         assert "content_hash" in result
         mock_scraper.download_benchmark.assert_called_once_with(
-            "https://workbench.cisecurity.org/benchmarks/23598"
+            "https://workbench.cisecurity.org/benchmarks/23598", progress_callback=None
         )
+
+    def test_the_scraper_progress_reaches_the_given_callback(self, downloader, mock_scraper):
+        """A caller with its own progress display gets the scraper's progress messages."""
+        heard = []
+
+        def scrape(url, progress_callback=None):
+            progress_callback("Found 10 recommendations")
+            return mock_scraper.download_benchmark.return_value
+
+        mock_scraper.download_benchmark.side_effect = scrape
+
+        downloader.download_by_id("23598", progress_callback=heard.append)
+
+        assert heard == ["Found 10 recommendations"]
 
     def test_download_updates_database(self, downloader, temp_db):
         """Test download saves to database."""
@@ -147,7 +161,7 @@ class TestDownloadByID:
 
         assert result["benchmark_id"] == "23598"
         mock_scraper.download_benchmark.assert_called_once_with(
-            "https://workbench.cisecurity.org/benchmarks/23598"
+            "https://workbench.cisecurity.org/benchmarks/23598", progress_callback=None
         )
 
     @pytest.mark.parametrize(
@@ -205,7 +219,7 @@ class TestDownloadByName:
 
         assert result["benchmark_id"] == "23598"
         mock_scraper.download_benchmark.assert_called_once_with(
-            "https://workbench.cisecurity.org/benchmarks/23598"
+            "https://workbench.cisecurity.org/benchmarks/23598", progress_callback=None
         )
 
     def test_download_by_name_forwards_force_flag(self, downloader, mock_scraper):

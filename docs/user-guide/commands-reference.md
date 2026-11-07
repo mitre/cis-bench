@@ -588,6 +588,86 @@ To replace a bad copy instead of removing it, run `cis-bench download <ID> --for
 
 ---
 
+## Terminal UI
+
+Three commands open an interactive terminal interface (built with [Textual](https://textual.textualize.io/)). They read the local catalog and the cache; run `cis-bench catalog refresh` once first. When a benchmark you open is not downloaded yet, it is downloaded into the cache (as `cis-bench download` does), which needs a login.
+
+### `cis-bench browse`
+
+Browse the catalog in a terminal UI: search, filter, select several benchmarks, and view, compare or export them.
+
+**Syntax:**
+```bash
+cis-bench browse [OPTIONS]
+```
+
+**Options:**
+
+- `--platform TEXT` - Filter by platform (e.g., ubuntu, aws)
+- `--platform-type TEXT` - Filter by platform category (cloud, os, database, container)
+- `--status TEXT` - Filter by status (Published, Accepted, Draft, Archived, Rejected, Final Update, Withdrawn) - default: Published
+- `--latest` - Only the latest version of each benchmark
+- `-q, --query TEXT` - Start with this search
+- `--limit INTEGER` - Load at most this many benchmarks - default: every match
+
+**Keys:** `/` search, `Space` select, `g` jump to an ID, `Tab` switch between list and detail, `j`/`k` move, `f` full-screen detail, `?` all keys, `q`/`Esc` quit.
+
+**Examples:**
+```bash
+cis-bench browse                          # Every Published benchmark
+cis-bench browse --platform-type cloud    # Cloud benchmarks only
+cis-bench browse --latest -q ubuntu       # Latest Ubuntu releases
+```
+
+While it runs, a saved WorkBench session is kept alive (checked every 5 minutes), so downloads started from the browser do not hit an expired login.
+
+---
+
+### `cis-bench view`
+
+Read a benchmark's recommendations in a terminal UI, or as a table.
+
+**Syntax:**
+```bash
+cis-bench view <BENCHMARK> [OPTIONS]
+```
+
+**Arguments:**
+
+- `BENCHMARK` - A catalog ID (the cached copy, downloaded first if it is not cached) or a benchmark JSON file
+
+**Options:**
+
+- `-p, --profile TEXT` - Only recommendations for this profile (e.g., "Level 1")
+- `-s, --status [automated|manual|all]` - Only automated or manual recommendations - default: all
+- `-i, --interactive` / `-I, --no-interactive` - Terminal UI or table - default: the terminal UI in a terminal, the table otherwise
+
+**Examples:**
+```bash
+cis-bench view 23598                       # Terminal UI
+cis-bench view 23598 --profile "Level 1"
+cis-bench view 23598 --status automated
+cis-bench view 23598 -I                    # Table; longer than the screen, it opens in your pager ($MANPAGER or $PAGER, else less)
+cis-bench view exported.json
+```
+
+A benchmark that cannot be found or downloaded exits `1`.
+
+---
+
+### `cis-bench tui`
+
+One terminal UI with tabs: Catalog (browse, view, compare, export), Operations, and Settings.
+
+**Syntax:**
+```bash
+cis-bench tui
+```
+
+**Keys:** arrow keys move within a tab, `Tab` switches between table and detail, `?` help, `q` quit.
+
+---
+
 ## Catalog Management
 
 ### `cis-bench catalog refresh`

@@ -4,6 +4,7 @@ Integrates catalog database with WorkbenchScraper for efficient downloads.
 """
 
 import logging
+from collections.abc import Callable
 
 from cis_bench.catalog.database import (
     CatalogDatabase,
@@ -32,12 +33,19 @@ class CatalogDownloader:
         self.scraper = scraper
         self.search = CatalogSearch(database)
 
-    def download_by_id(self, benchmark_id: str, force: bool = False) -> dict:
+    def download_by_id(
+        self,
+        benchmark_id: str,
+        force: bool = False,
+        progress_callback: Callable[[str], None] | None = None,
+    ) -> dict:
         """Download benchmark by catalog ID.
 
         Args:
             benchmark_id: Benchmark ID from catalog
             force: Force re-download even if up-to-date
+            progress_callback: Receives the scraper's progress messages, for a caller that
+                shows its own progress
 
         Returns:
             Dictionary with download info
@@ -87,7 +95,9 @@ class CatalogDownloader:
         # Download from WorkBench
         logger.debug(f"Fetching from WorkBench: {benchmark_url}")
 
-        benchmark = self.scraper.download_benchmark(benchmark_url)
+        benchmark = self.scraper.download_benchmark(
+            benchmark_url, progress_callback=progress_callback
+        )
 
         content_json, content_hash = serialize_benchmark_json(benchmark)
 

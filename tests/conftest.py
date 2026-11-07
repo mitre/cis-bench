@@ -15,6 +15,7 @@ Test organization:
   Run with: uv run pytest
 """
 
+import importlib.util
 import json
 import os
 import threading
@@ -564,3 +565,11 @@ def new_york_clock(monkeypatch):
     yield
     monkeypatch.undo()
     time.tzset()
+
+
+# The terminal UI compares benchmarks with the diff command, which is ported onto this code
+# separately; tests of that path run once the module exists.
+needs_diff_command = pytest.mark.skipif(
+    importlib.util.find_spec("cis_bench.cli.commands.diff") is None,
+    reason="needs the diff command (cis_bench.cli.commands.diff), not on this branch yet",
+)
