@@ -489,6 +489,24 @@ class TestHTMLCleanerStripHtml:
 class TestHTMLCleanerHtmlToMarkdown:
     """Tests for HTMLCleaner.html_to_markdown."""
 
+    def test_html_to_markdown_of_a_bare_url_warns_nothing(self):
+        """A field that is only a URL comes back as it is, with no parser warning."""
+        import warnings
+
+        from cis_bench.utils.html_parser import HTMLCleaner
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            result = HTMLCleaner.html_to_markdown("https://www.cisecurity.org/benchmark/almalinux")
+
+        assert result == "https://www.cisecurity.org/benchmark/almalinux"
+
+    def test_html_to_markdown_still_unescapes_entities_in_plain_text(self):
+        """Text without tags still has its entities decoded (the parser is not skipped)."""
+        from cis_bench.utils.html_parser import HTMLCleaner
+
+        assert HTMLCleaner.html_to_markdown("Files &amp; folders") == "Files & folders"
+
     def test_html_to_markdown_none(self):
         """Should return empty string for None (line 50)."""
         from cis_bench.utils.html_parser import HTMLCleaner

@@ -3,6 +3,7 @@
 Tests both file-based and database-based export functionality.
 """
 
+import warnings
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -118,6 +119,22 @@ class TestExportFromFile:
 
         assert result.exit_code == 0
         assert Path("benchmark.md").exists()
+
+    def test_markdown_export_of_a_field_that_is_only_a_url_prints_no_parser_warning(
+        self, runner, sample_benchmark, working_dir
+    ):
+        """A recommendation whose text is just a URL exports without bs4's URL warning."""
+        url_only = sample_benchmark.model_copy(deep=True)
+        url_only.recommendations[0].description = "https://www.cisecurity.org/benchmark/almalinux"
+        Path("benchmark.json").write_text(url_only.model_dump_json())
+
+        with warnings.catch_warnings(record=True) as seen:
+            warnings.simplefilter("always")
+            result = runner.invoke(cli, ["export", "benchmark.json", "--format", "markdown"])
+
+        assert result.exit_code == 0, result.output
+        assert [w.category.__name__ for w in seen] == []
+        assert "https://www.cisecurity.org/benchmark/almalinux" in Path("benchmark.md").read_text()
 
     def test_markdown_export_writes_the_download_time_with_its_offset(
         self, runner, sample_benchmark, working_dir
