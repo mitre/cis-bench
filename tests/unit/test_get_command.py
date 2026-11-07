@@ -602,3 +602,85 @@ class TestGetById:
         assert "cis-bench catalog refresh" in result.output
         assert list(working_dir.iterdir()) == []
         assert unusable_command_hints(result.output) == []
+
+
+class TestGetForce:
+    """--force downloads again and replaces the cached copy; without it the cache is used."""
+
+    @staticmethod
+    def _cached(sample_benchmark):
+        return {
+            "benchmark_id": "23456",
+            "content_json": sample_benchmark.model_dump_json(),
+            "downloaded_at": datetime.now(),
+        }
+
+    @pytest.fixture
+    def cached_match(self, sample_benchmark, tmp_path, monkeypatch):
+        catalog_path = tmp_path / "catalog.db"
+        catalog_path.touch()
+        monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
+        monkeypatch.setenv("CIS_BENCH_VERIFY_SSL", "false")
+        with (
+            patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class,
+            patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class,
+            patch("cis_bench.fetcher.auth.AuthManager") as mock_auth,
+            patch("cis_bench.cli.helpers.download_helper.download_with_progress") as mock_download,
+        ):
+            mock_db = mock_db_class.return_value
+            mock_db.get_downloaded.return_value = self._cached(sample_benchmark)
+            mock_search_class.return_value.search.return_value = [
+                {
+                    "benchmark_id": "23456",
+                    "title": "CIS Ubuntu Linux 22.04 Benchmark",
+                    "version": "v2.0.0",
+                    "status": "Published",
+                }
+            ]
+            mock_download.return_value = sample_benchmark
+            yield mock_db, mock_auth, mock_download
+
+    def test_force_downloads_even_when_cached(self, runner, cached_match, working_dir):
+        mock_db, mock_auth, mock_download = cached_match
+
+        result = runner.invoke(
+            cli, ["get", "ubuntu 22", "--force", "--format", "json", "--non-interactive"]
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "Downloading benchmark" in result.output
+        assert "already cached" not in result.output
+        mock_auth.return_value.get_or_create_session.assert_called_once()
+        mock_download.assert_called_once()
+        assert mock_db.save_downloaded.call_args.kwargs["benchmark_id"] == "23456"
+        assert [path.name for path in working_dir.iterdir()] == ["benchmark_23456.json"]
+
+    def test_without_force_the_cached_copy_is_used(self, runner, cached_match, working_dir):
+        mock_db, mock_auth, mock_download = cached_match
+
+        result = runner.invoke(cli, ["get", "ubuntu 22", "--format", "json", "--non-interactive"])
+
+        assert result.exit_code == 0, result.output
+        assert "already cached" in result.output
+        mock_auth.return_value.get_or_create_session.assert_not_called()
+        mock_download.assert_not_called()
+        mock_db.save_downloaded.assert_not_called()
+
+    def test_force_with_a_bad_setting_is_refused_before_authenticating(
+        self, runner, cached_match, monkeypatch
+    ):
+        mock_db, mock_auth, mock_download = cached_match
+        monkeypatch.setenv("CIS_BENCH_REQUEST_TIMEOUT", "inf")
+
+        result = runner.invoke(cli, ["get", "ubuntu 22", "--force", "--non-interactive"])
+
+        assert result.exit_code == 1
+        assert "Configuration Error" in result.output
+        mock_auth.return_value.get_or_create_session.assert_not_called()
+        mock_download.assert_not_called()
+
+    def test_help_lists_force(self, runner):
+        result = runner.invoke(cli, ["get", "--help"])
+
+        assert result.exit_code == 0
+        assert "--force" in result.output

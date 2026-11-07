@@ -246,6 +246,7 @@ cis-bench get <QUERY> [OPTIONS]
 **Behavior Options:**
 
 - `--non-interactive` - No menu: when several benchmarks match, take the best match and say how many others there were
+- `--force` - Download again and replace the cached copy, if there is one (as `download --force`)
 
 **Output Options:**
 
@@ -267,6 +268,9 @@ cis-bench get "kubernetes v2.0.1" --format xccdf
 # Get by catalog ID (any status, latest or not)
 cis-bench get 23598 --format xccdf
 
+# Replace a cached copy with a fresh download
+cis-bench get 23598 --force --format xccdf
+
 # Non-interactive mode (for CI/scripts)
 cis-bench get "oracle cloud" --format json --non-interactive
 ```
@@ -275,7 +279,7 @@ cis-bench get "oracle cloud" --format json --non-interactive
 1. A catalog ID selects that benchmark. Otherwise searches the catalog among Published benchmarks: the latest release of each, plus any release the query names by its version (`kubernetes v2.0.1`)
 2. If single match: selects it automatically
 3. If multiple matches: shows a menu, best match first; with `--non-interactive` (or no usable terminal) takes the best match and prints how many others matched and the `search` command that lists them
-4. Checks if already downloaded (uses cache)
+4. Checks if already downloaded (uses cache; `--force` skips this and downloads again)
 5. If not cached: downloads benchmark
 6. Exports to requested format
 7. Shows output file path

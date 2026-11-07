@@ -70,7 +70,10 @@ class DynamicStyleChoice(click.Choice):
     is_flag=True,
     help="No menu: when several benchmarks match, take the best match",
 )
-def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_interactive):
+@click.option(
+    "--force", is_flag=True, help="Download again and replace the cached copy, if there is one"
+)
+def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_interactive, force):
     """Search, download, and export benchmark in one command.
 
     This is the easiest way to get a CIS benchmark. It combines search,
@@ -83,6 +86,7 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
         cis-bench get "ubuntu 20.04" --format xccdf --style cis
         cis-bench get "kubernetes v2.0.1" --format xccdf
         cis-bench get 23598 --format xccdf
+        cis-bench get 23598 --force --format xccdf
         cis-bench get "aws" --format yaml
         cis-bench get "docker" --format markdown
 
@@ -134,8 +138,8 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
     benchmark_id = str(selected["benchmark_id"])
     logger.debug(f"Selected benchmark ID: {benchmark_id}")
 
-    # Step 3: Check if already downloaded
-    existing = db.get_downloaded(benchmark_id)
+    # Step 3: Use the cached copy, unless there is none or --force says to replace it
+    existing = None if force else db.get_downloaded(benchmark_id)
 
     if existing:
         console.print(
