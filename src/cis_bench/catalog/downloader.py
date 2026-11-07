@@ -103,6 +103,7 @@ class CatalogDownloader:
             content_hash=content_hash,
             recommendation_count=len(benchmark.recommendations),
             workbench_last_modified=catalog_entry.get("last_revision_date"),
+            downloaded_at=benchmark.downloaded_at,
         )
 
         if is_unchanged:

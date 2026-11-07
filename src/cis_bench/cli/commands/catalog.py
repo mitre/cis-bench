@@ -2,6 +2,7 @@
 
 import logging
 import math
+from datetime import datetime
 
 import click
 from rich.console import Console
@@ -11,7 +12,7 @@ from rich.table import Table
 from cis_bench.catalog.database import CatalogDatabase
 from cis_bench.catalog.search import CatalogSearch
 from cis_bench.cli.helpers.errors import report_unreachable
-from cis_bench.cli.helpers.output import output_data, showing_line
+from cis_bench.cli.helpers.output import display_time, output_data, showing_line
 from cis_bench.cli.helpers.services import (
     auth_manager,
     catalog_scraper,
@@ -507,7 +508,9 @@ def stats(output_format):
         console.print(f"Communities: [yellow]{catalog_stats['communities']}[/yellow]")
 
         if last_scrape:
-            console.print(f"\nLast catalog refresh: [dim]{last_scrape}[/dim]")
+            console.print(
+                f"\nLast catalog refresh: [dim]{display_time(datetime.fromisoformat(last_scrape))}[/dim]"
+            )
 
     except click.Abort:
         raise
@@ -638,7 +641,7 @@ def check_updates(offline):
                 )
             else:
                 console.print(f"      WorkBench published {escape(str(u['published_date']))}")
-            console.print(f"      Downloaded: {u['downloaded_at']}")
+            console.print(f"      Downloaded: {display_time(u['downloaded_at'])}")
             console.print()
 
         console.print("[cyan]Use 'cis-bench catalog download <id> --force' to update.[/cyan]")

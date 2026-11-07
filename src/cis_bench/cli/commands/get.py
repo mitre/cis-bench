@@ -10,6 +10,7 @@ from rich.console import Console
 from rich.markup import escape
 
 from cis_bench.cli.helpers.errors import report_expired_session, report_unreachable
+from cis_bench.cli.helpers.output import benchmark_table, display_time
 from cis_bench.cli.helpers.services import auth_manager, settings_from, workbench_scraper
 from cis_bench.exceptions import (
     AuthenticationError,
@@ -143,7 +144,8 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
 
     if existing:
         console.print(
-            f"[green]✓[/green] Benchmark already cached (downloaded {existing['downloaded_at']})\n"
+            "[green]✓[/green] Benchmark already cached "
+            f"(downloaded {display_time(existing['downloaded_at'])})\n"
         )
         logger.debug(f"Using cached benchmark {benchmark_id}")
     else:
@@ -185,6 +187,7 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
                 content_json=content_json,
                 content_hash=content_hash,
                 recommendation_count=recommendation_count,
+                downloaded_at=benchmark.downloaded_at,
             )
 
             logger.debug(f"Saved benchmark {benchmark_id} to database")
@@ -308,8 +311,6 @@ def _benchmark_matching(
     console.print(
         f"[yellow]Found {total} benchmarks matching '{escape(query)}'{cut_off}[/yellow]\n"
     )
-
-    from cis_bench.cli.helpers.output import benchmark_table
 
     console.print(benchmark_table(results, title_width=settings.table_title_width))
     console.print()

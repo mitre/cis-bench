@@ -297,3 +297,38 @@ class TestBenchmarkTable:
         assert "CIS T [/t]" in output
         assert "v1 [/v]" in output
         assert "P [/s]" in output
+
+
+# ============================================================================
+# Tests: Times in tables
+# ============================================================================
+
+
+class TestDisplayTime:
+    """A table shows a time in the viewer's zone and names it; a time with no zone says so."""
+
+    def test_an_aware_time_is_shown_in_the_local_zone_with_its_name(self, new_york_clock):
+        from datetime import UTC, datetime
+
+        from cis_bench.cli.helpers.output import display_time
+
+        assert (
+            display_time(datetime(2026, 11, 7, 2, 5, 58, tzinfo=UTC)) == "2026-11-06 21:05:58 EST"
+        )
+
+    def test_a_summer_time_gets_the_summer_name(self, new_york_clock):
+        from datetime import UTC, datetime
+
+        from cis_bench.cli.helpers.output import display_time
+
+        assert display_time(datetime(2026, 7, 1, 12, 0, 0, tzinfo=UTC)) == "2026-07-01 08:00:00 EDT"
+
+    def test_a_time_without_a_zone_is_shown_as_it_is_and_marked(self, new_york_clock):
+        from datetime import datetime
+
+        from cis_bench.cli.helpers.output import display_time
+
+        assert (
+            display_time(datetime(2026, 11, 6, 20, 5, 58))
+            == "2026-11-06 20:05:58 (zone not recorded)"
+        )

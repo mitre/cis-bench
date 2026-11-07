@@ -1,6 +1,6 @@
 """Unit tests for get command (unified workflow)."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import Mock, patch
 
 import pytest
@@ -612,7 +612,7 @@ class TestGetForce:
         return {
             "benchmark_id": "23456",
             "content_json": sample_benchmark.model_dump_json(),
-            "downloaded_at": datetime.now(),
+            "downloaded_at": datetime(2026, 11, 7, 2, 5, 58, tzinfo=UTC),
         }
 
     @pytest.fixture
@@ -655,13 +655,15 @@ class TestGetForce:
         assert mock_db.save_downloaded.call_args.kwargs["benchmark_id"] == "23456"
         assert [path.name for path in working_dir.iterdir()] == ["benchmark_23456.json"]
 
-    def test_without_force_the_cached_copy_is_used(self, runner, cached_match, working_dir):
+    def test_without_force_the_cached_copy_is_used(
+        self, runner, cached_match, working_dir, new_york_clock
+    ):
         mock_db, mock_auth, mock_download = cached_match
 
         result = runner.invoke(cli, ["get", "ubuntu 22", "--format", "json", "--non-interactive"])
 
         assert result.exit_code == 0, result.output
-        assert "already cached" in result.output
+        assert "already cached (downloaded 2026-11-06 21:05:58 EST)" in result.output
         mock_auth.return_value.get_or_create_session.assert_not_called()
         mock_download.assert_not_called()
         mock_db.save_downloaded.assert_not_called()

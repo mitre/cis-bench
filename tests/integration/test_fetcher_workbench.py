@@ -935,6 +935,8 @@ class TestWorkbenchScraperFullDownload:
         assert benchmark.scraper_version == "v1_test"
         assert len(benchmark.recommendations) == 3
         assert benchmark.total_recommendations == 3
+        assert benchmark.downloaded_at.tzinfo is not None
+        assert benchmark.downloaded_at.utcoffset().total_seconds() == 0
 
     @patch("cis_bench.fetcher.workbench.StrategyDetector.detect_strategy")
     def test_the_recommendation_fetch_runs_with_the_given_workers_and_batch_size(

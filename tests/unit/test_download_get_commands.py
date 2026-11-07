@@ -11,7 +11,7 @@ Focuses on:
 - Edge cases in argument handling
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -49,7 +49,7 @@ def sample_benchmark():
         benchmark_id="12345",
         url="https://workbench.cisecurity.org/benchmarks/12345",
         version="v1.0.0",
-        downloaded_at=datetime(2025, 1, 1),
+        downloaded_at=datetime(2025, 1, 1, tzinfo=UTC),
         scraper_version="1.0.0",
         total_recommendations=2,
         recommendations=[
@@ -314,8 +314,8 @@ class TestDownloadMissingArgs:
 class TestDownloadCacheSkip:
     """Test download command cache skip behavior (lines 157->170)."""
 
-    def test_download_skips_cached_benchmark(self, runner, tmp_path, monkeypatch):
-        """Download skips already cached benchmarks."""
+    def test_download_skips_cached_benchmark(self, runner, tmp_path, monkeypatch, new_york_clock):
+        """Download skips already cached benchmarks, saying when the copy was downloaded."""
         catalog_path = tmp_path / "catalog.db"
         catalog_path.touch()
 
@@ -335,7 +335,7 @@ class TestDownloadCacheSkip:
                     # Return cached benchmark
                     mock_db.get_downloaded.return_value = {
                         "benchmark_id": "12345",
-                        "downloaded_at": "2025-01-01T00:00:00",
+                        "downloaded_at": datetime(2026, 11, 7, 2, 5, 58, tzinfo=UTC),
                         "recommendation_count": 10,
                     }
 
@@ -343,6 +343,7 @@ class TestDownloadCacheSkip:
 
                     assert result.exit_code == 0
                     assert "already cached" in result.output
+                    assert "Downloaded: 2026-11-06 21:05:58 EST" in result.output
                     assert "Use --force to re-download" in result.output
                     # Should NOT have called download
                     mock_scraper.download_benchmark.assert_not_called()
@@ -1298,6 +1299,9 @@ class TestCanonicalContentHashConsistency:
             assert row_download["content_json"] == row_catalog["content_json"]
             assert row_get["content_json"] == row_catalog["content_json"]
             validate_spy.assert_called_once_with(row_get["content_json"])
+            # one instant: each row carries the time the benchmark itself records
+            for row in (row_catalog, row_download, row_get):
+                assert row["downloaded_at"] == sample_benchmark.downloaded_at
         finally:
             db_catalog.engine.dispose()
             db_download.engine.dispose()

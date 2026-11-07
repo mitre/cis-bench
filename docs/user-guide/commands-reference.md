@@ -455,7 +455,9 @@ cis-bench list --output-format csv > inventory.csv
 
 **Output Fields:**
 
-Downloaded benchmarks: ID, title, version, recommendations count, CIS Controls v8 count, MITRE mappings count, NIST controls count (and the download time in `json`, `yaml` and `csv`). Exported files: the folder and the file names.
+Downloaded benchmarks: ID, title, version, recommendations count, CIS Controls v8 count, MITRE mappings count, NIST controls count, and when it was downloaded. Exported files: the folder and the file names.
+
+**Times:** a download is recorded once, in UTC. The table shows it in your zone and names the zone (`2026-11-06 21:05:58 EST`; set `TZ` to choose another); `json`, `yaml` and `csv` carry it in ISO 8601 with its offset (`2026-11-07T02:05:58+00:00`). A time written by an earlier version carries no zone; it is shown as it was written, marked `(zone not recorded)` in tables, and never guessed into a zone. `info`, `catalog stats` and `catalog check-updates` show times the same way.
 
 ---
 
@@ -495,7 +497,7 @@ cis-bench info benchmark.json --output-format yaml
 **Displays:**
 
 - Title, version, benchmark ID
-- Downloaded date, scraper version, and the source (cache, or the file)
+- When it was downloaded (in your zone in the table, ISO 8601 with offset in `json` and `yaml`; see `list` on times), scraper version, and the source (cache, or the file)
 - Total recommendations
 - CIS Controls counts (v7, v8)
 - MITRE mappings count
@@ -751,7 +753,7 @@ cis-bench catalog stats --output-format json
 - Downloaded benchmarks count
 - Platforms count
 - Communities count
-- Last refresh date
+- Last refresh time (in your zone; see `list` on times)
 
 ---
 

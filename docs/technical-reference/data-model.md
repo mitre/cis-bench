@@ -342,7 +342,7 @@ f.write(xml_output)
 | `benchmark_id` | string | | CIS WorkBench ID |
 | `url` | string (URI) | | Source URL |
 | `version` | string | | Benchmark version |
-| `downloaded_at` | string (ISO 8601) | | Download timestamp |
+| `downloaded_at` | string (ISO 8601) | | When it was downloaded, in UTC with its offset (`Z`); files from earlier versions carry no offset |
 | `scraper_version` | string | | Strategy version used |
 | `total_recommendations` | integer | | Count of recommendations |
 | `recommendations` | array | | Array of recommendation objects |

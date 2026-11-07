@@ -870,6 +870,61 @@ class TestDownloadedBenchmarks:
         assert downloaded["content_hash"] == "hash2"
         assert downloaded["recommendation_count"] == 150
 
+    def test_save_downloaded_keeps_the_benchmarks_own_instant(self, temp_db, sample_benchmark_data):
+        from datetime import UTC, datetime
+
+        temp_db.insert_benchmark(sample_benchmark_data)
+        instant = datetime(2026, 11, 7, 2, 5, 58, 123456, tzinfo=UTC)
+
+        temp_db.save_downloaded("23598", "{}", "h", 1, downloaded_at=instant)
+
+        assert temp_db.get_downloaded("23598")["downloaded_at"] == instant
+        assert temp_db.list_downloaded()[0]["downloaded_at"] == instant
+
+    def test_a_download_time_comes_back_aware_in_utc(self, temp_db, sample_benchmark_data):
+        from datetime import UTC
+
+        temp_db.insert_benchmark(sample_benchmark_data)
+
+        temp_db.save_downloaded("23598", "{}", "h", 1)
+
+        row = temp_db.get_downloaded("23598")
+        assert row["downloaded_at"].tzinfo is UTC
+        assert row["last_accessed"].tzinfo is UTC
+
+    def test_a_download_time_without_a_zone_is_refused(self, temp_db, sample_benchmark_data):
+        from datetime import datetime
+
+        from sqlalchemy.exc import StatementError
+
+        temp_db.insert_benchmark(sample_benchmark_data)
+
+        with pytest.raises(StatementError, match="zone"):
+            temp_db.save_downloaded("23598", "{}", "h", 1, downloaded_at=datetime(2026, 11, 7))
+        assert temp_db.get_downloaded("23598") is None
+
+    def test_a_row_written_by_an_earlier_version_is_read_as_utc(
+        self, temp_db, sample_benchmark_data
+    ):
+        """Earlier versions stored naive UTC text; it is read back as the UTC instant it was."""
+        from datetime import UTC, datetime
+
+        from sqlalchemy import text
+
+        temp_db.insert_benchmark(sample_benchmark_data)
+        with temp_db.engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO downloaded_benchmarks (benchmark_id, content_json, content_hash,"
+                    " downloaded_at, last_accessed) VALUES ('23598', '{}', 'h',"
+                    " '2026-11-07 02:05:58.000000', '2026-11-07 02:05:58.000000')"
+                )
+            )
+
+        row = temp_db.get_downloaded("23598")
+
+        assert row["downloaded_at"] == datetime(2026, 11, 7, 2, 5, 58, tzinfo=UTC)
+
     def test_get_nonexistent_downloaded(self, temp_db):
         """Test getting non-existent download returns None."""
         downloaded = temp_db.get_downloaded("99999")

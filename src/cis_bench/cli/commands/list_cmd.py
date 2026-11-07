@@ -13,7 +13,7 @@ from rich.markup import escape
 from rich.table import Table
 
 from cis_bench.catalog.database import CatalogDatabase, deserialize_benchmark_json
-from cis_bench.cli.helpers.output import output_data
+from cis_bench.cli.helpers.output import display_time, output_data
 from cis_bench.cli.helpers.services import settings_from
 
 console = Console()
@@ -62,11 +62,15 @@ def list_benchmarks(output_dir, output_format):
     downloaded = _downloaded_benchmarks(settings.catalog_db_path)
     exported = {"folder": str(output_dir), "files": _exported_files(output_dir)}
 
-    if output_format == "csv":
-        output_data(downloaded, output_format, csv_fields=CSV_FIELDS)
-        return
     if output_format != "table":
-        output_data({"downloaded": downloaded, "exported_files": exported}, output_format)
+        # Structured output carries the instant in ISO 8601 with its offset
+        structured = [
+            {**item, "downloaded_at": item["downloaded_at"].isoformat()} for item in downloaded
+        ]
+        if output_format == "csv":
+            output_data(structured, output_format, csv_fields=CSV_FIELDS)
+        else:
+            output_data({"downloaded": structured, "exported_files": exported}, output_format)
         return
 
     if downloaded:
@@ -90,8 +94,7 @@ def list_benchmarks(output_dir, output_format):
 
 
 def _downloaded_benchmarks(catalog_db_path) -> list[dict]:
-    """The cached benchmarks with their compliance counts, in ID order (the download time is
-    in the structured output; the table has no room for it).
+    """The cached benchmarks with their compliance counts and download time, in ID order.
 
     One cached copy is read at a time. A copy that cannot be read is listed with an
     error instead of stopping the list; the title of a benchmark the catalog does not
@@ -106,7 +109,7 @@ def _downloaded_benchmarks(catalog_db_path) -> list[dict]:
             "benchmark_id": row["benchmark_id"],
             "title": row["title"],
             "version": row["version"],
-            "downloaded_at": row["downloaded_at"].strftime("%Y-%m-%d %H:%M:%S"),
+            "downloaded_at": row["downloaded_at"],
         }
         try:
             cached = db.get_downloaded(row["benchmark_id"])
@@ -144,6 +147,7 @@ def _downloaded_table(downloaded: list[dict]) -> Table:
     table.add_column("CIS v8", justify="right")
     table.add_column("MITRE", justify="right")
     table.add_column("NIST", justify="right")
+    table.add_column("Downloaded")
     for item in downloaded:
         if "error" in item:
             table.add_row(
@@ -154,6 +158,7 @@ def _downloaded_table(downloaded: list[dict]) -> Table:
                 "?",
                 "?",
                 "?",
+                display_time(item["downloaded_at"]),
             )
             continue
         table.add_row(
@@ -164,5 +169,6 @@ def _downloaded_table(downloaded: list[dict]) -> Table:
             str(item["cis_v8"]) if item["cis_v8"] > 0 else "-",
             str(item["mitre"]) if item["mitre"] > 0 else "-",
             str(item["nist"]) if item["nist"] > 0 else "-",
+            display_time(item["downloaded_at"]),
         )
     return table

@@ -7,12 +7,39 @@ with automatic validation.
 from datetime import UTC, datetime
 from enum import Enum
 
+from sqlalchemy import DateTime
+from sqlalchemy.types import TypeDecorator
 from sqlmodel import Field, Relationship, SQLModel
 
 
 def utcnow():
     """Get current UTC time (timezone-aware)."""
     return datetime.now(UTC)
+
+
+class UTCDateTime(TypeDecorator):
+    """A timezone-aware instant stored as naive UTC text, as SQLite holds datetimes.
+
+    SQLite keeps no zone, so a plain DateTime column gives back a naive value. Every
+    instant goes in as UTC with the zone stripped and comes out with UTC attached, so
+    the rows an earlier version wrote (naive UTC from ``utcnow``) read as the instants
+    they were. A value with no zone is refused rather than guessed.
+    """
+
+    impl = DateTime
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            raise TypeError("a stored time must carry its zone")
+        return value.astimezone(UTC).replace(tzinfo=None)
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return None
+        return value.replace(tzinfo=UTC)
 
 
 class BenchmarkStatus(str, Enum):
@@ -141,7 +168,7 @@ class CatalogBenchmark(SQLModel, table=True):
     metadata_json: str | None = None
 
     # Tracking
-    scraped_at: datetime = Field(default_factory=utcnow)
+    scraped_at: datetime = Field(default_factory=utcnow, sa_type=UTCDateTime)
 
     # Relationships
     status: BenchmarkStatusModel = Relationship(back_populates="benchmarks")
@@ -189,8 +216,8 @@ class DownloadedBenchmark(SQLModel, table=True):
     version: str | None = None
 
     # Timestamps
-    downloaded_at: datetime = Field(default_factory=utcnow)
-    last_accessed: datetime = Field(default_factory=utcnow)
+    downloaded_at: datetime = Field(default_factory=utcnow, sa_type=UTCDateTime)
+    last_accessed: datetime = Field(default_factory=utcnow, sa_type=UTCDateTime)
     # ISO date (YYYY-MM-DD) WorkBench reports for the benchmark, refreshed by check-updates
     workbench_last_modified: str | None = None
 
@@ -207,4 +234,4 @@ class ScrapeMetadata(SQLModel, table=True):
 
     key: str = Field(primary_key=True)
     value: str
-    updated_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow, sa_type=UTCDateTime)

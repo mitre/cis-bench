@@ -552,3 +552,15 @@ def stub_session():
         return session, transport
 
     return make
+
+
+@pytest.fixture
+def new_york_clock(monkeypatch):
+    """The process's local zone is America/New_York for the test, as a user's terminal would set it."""
+    import time
+
+    monkeypatch.setenv("TZ", "America/New_York")
+    time.tzset()
+    yield
+    monkeypatch.undo()
+    time.tzset()

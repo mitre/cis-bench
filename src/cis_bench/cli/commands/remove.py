@@ -7,6 +7,7 @@ from rich.console import Console
 from rich.markup import escape
 
 from cis_bench.catalog.database import CatalogDatabase
+from cis_bench.cli.helpers.output import display_time
 from cis_bench.cli.helpers.services import settings_from
 from cis_bench.utils.workbench_urls import resolve_benchmark_reference
 
@@ -63,7 +64,7 @@ def remove_cmd(references: tuple[str, ...], yes: bool) -> None:
         title = catalog_row.get("title") or "(not in catalog)"
         version = downloaded.get("version") or catalog_row.get("version") or "?"
         downloaded_at = downloaded.get("downloaded_at")
-        when = downloaded_at.strftime("%Y-%m-%d") if downloaded_at else "?"
+        when = display_time(downloaded_at) if downloaded_at else "?"
         console.print(
             f"  [{benchmark_id}] {escape(str(title))} {escape(str(version))} (downloaded {when})"
         )

@@ -38,7 +38,7 @@ class MarkdownExporter(BaseExporter):
             f.write(f"**Version:** {benchmark.version}  \n")
             f.write(f"**Benchmark ID:** {benchmark.benchmark_id}  \n")
             f.write(f"**Total Recommendations:** {benchmark.total_recommendations}  \n")
-            f.write(f"**Downloaded:** {benchmark.downloaded_at.strftime('%Y-%m-%d %H:%M:%S')}  \n")
+            f.write(f"**Downloaded:** {benchmark.downloaded_at.isoformat()}  \n")
             f.write(f"**Source:** {benchmark.url}\n\n")
             f.write("---\n\n")
 

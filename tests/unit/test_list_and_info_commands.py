@@ -2,7 +2,7 @@
 exports, shown separately."""
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pytest
 from click.testing import CliRunner
@@ -76,6 +76,7 @@ def home(tmp_path, monkeypatch):
     )
     (exports / "cis_exported_only_benchmark_v300.yaml").write_text("title: whatever\n")
     monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path))
+    monkeypatch.setenv("COLUMNS", "120")  # a terminal wide enough that the table does not wrap
     return tmp_path
 
 
@@ -258,3 +259,91 @@ class TestInfoReadsTheCacheByIdAndAFileByPath:
         assert data["benchmark_id"] == "300"
         assert data["source"] == "file"
         assert data["file"] == str(path)
+
+
+class TestDownloadTimes:
+    """A download has one instant: the cache row and the benchmark JSON carry the same aware time,
+    structured output gives it in ISO 8601 with its offset, tables in the viewer's zone."""
+
+    INSTANT = datetime(2026, 11, 7, 2, 5, 58, tzinfo=UTC)
+
+    @pytest.fixture
+    def downloaded_at_a_known_instant(self, tmp_path, monkeypatch):
+        benchmark = _benchmark("201", "CIS Cached Benchmark", "v2.0.1").model_copy(
+            update={"downloaded_at": self.INSTANT}
+        )
+        db = CatalogDatabase(tmp_path / "catalog.db")
+        try:
+            db.initialize_schema()
+            db.insert_benchmark(
+                {
+                    "benchmark_id": "201",
+                    "title": "CIS Cached Benchmark",
+                    "version": "v2.0.1",
+                    "url": "https://workbench.cisecurity.org/benchmarks/201",
+                    "status": "Published",
+                }
+            )
+            content_json, content_hash = serialize_benchmark_json(benchmark)
+            db.save_downloaded(
+                "201",
+                content_json,
+                content_hash,
+                1,
+                version="v2.0.1",
+                downloaded_at=benchmark.downloaded_at,
+            )
+        finally:
+            db.engine.dispose()
+        (tmp_path / "benchmarks").mkdir()
+        monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path))
+        monkeypatch.setenv("COLUMNS", "120")
+        return tmp_path
+
+    def test_list_and_info_show_the_same_download_time(
+        self, runner, downloaded_at_a_known_instant, new_york_clock
+    ):
+        listed = runner.invoke(cli, ["list", "--output-format", "csv"])
+        shown = runner.invoke(cli, ["info", "201", "--output-format", "json"])
+
+        assert listed.exit_code == 0, listed.output
+        assert shown.exit_code == 0, shown.output
+        header, row = listed.output.strip().splitlines()
+        csv_time = dict(zip(header.split(","), row.split(","), strict=True))["downloaded_at"]
+        assert csv_time == "2026-11-07T02:05:58+00:00"
+        assert json.loads(shown.output)["downloaded_at"] == csv_time
+
+    def test_tables_show_the_download_time_in_the_local_zone(
+        self, runner, downloaded_at_a_known_instant, new_york_clock
+    ):
+        listed = runner.invoke(cli, ["list"])
+        shown = runner.invoke(cli, ["info", "201"])
+
+        assert listed.exit_code == 0, listed.output
+        assert shown.exit_code == 0, shown.output
+        assert "2026-11-06 21:05:58 EST" in " ".join(listed.output.split())
+        assert "Downloaded: 2026-11-06 21:05:58 EST" in shown.output
+
+    def test_json_and_yaml_lists_carry_the_offset(self, runner, downloaded_at_a_known_instant):
+        as_json = runner.invoke(cli, ["list", "--output-format", "json"])
+        as_yaml = runner.invoke(cli, ["list", "--output-format", "yaml"])
+
+        assert as_json.exit_code == 0, as_json.output
+        assert as_yaml.exit_code == 0, as_yaml.output
+        assert json.loads(as_json.output)["downloaded"][0]["downloaded_at"] == (
+            "2026-11-07T02:05:58+00:00"
+        )
+        assert "2026-11-07T02:05:58+00:00" in as_yaml.output
+
+    def test_a_file_from_an_earlier_version_keeps_its_zoneless_time(
+        self, runner, downloaded_at_a_known_instant, new_york_clock
+    ):
+        old = downloaded_at_a_known_instant / "benchmarks" / "old.json"
+        old.write_text(_benchmark("300", "CIS Old Benchmark", "v1.0.0").model_dump_json())
+
+        table = runner.invoke(cli, ["info", str(old)])
+        structured = runner.invoke(cli, ["info", str(old), "--output-format", "json"])
+
+        assert table.exit_code == 0, table.output
+        assert "Downloaded: 2026-11-06 12:00:00 (zone not recorded)" in table.output
+        assert json.loads(structured.output)["downloaded_at"] == "2026-11-06T12:00:00"

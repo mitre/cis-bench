@@ -15,6 +15,7 @@ Focus on missing coverage lines: 74-76, 99, 110-116, 131-153, 182-185, 190->193,
 199, 205-227, 246-249, 254, 262-271, 290-339, 357-393, 411-443, 461-505, 516-543
 """
 
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
@@ -54,7 +55,7 @@ def mock_db():
         "platforms": 10,
         "communities": 8,
     }
-    db.get_metadata.return_value = "2025-01-01 12:00:00"
+    db.get_metadata.return_value = "2025-01-01T12:00:00+00:00"
     db.list_platforms.return_value = [
         {"name": "Operating System", "count": 50},
         {"name": "Cloud", "count": 30},
@@ -1134,15 +1135,14 @@ class TestCatalogStatsCommand:
         assert "8" in result.output
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
-    def test_stats_with_last_scrape(self, mock_get_db, runner, mock_db):
+    def test_stats_with_last_scrape(self, mock_get_db, runner, mock_db, new_york_clock):
         """Test stats shows last scrape date (lines 438-439)."""
         mock_get_db.return_value = mock_db
 
         result = runner.invoke(cli, ["catalog", "stats"])
 
         assert result.exit_code == 0
-        assert "Last catalog refresh" in result.output
-        assert "2025-01-01" in result.output
+        assert "Last catalog refresh: 2025-01-01 07:00:00 EST" in result.output
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     def test_stats_without_last_scrape(self, mock_get_db, runner):
@@ -1506,7 +1506,7 @@ class TestCatalogCheckUpdatesCommand:
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     def test_check_updates_refreshes_dates_then_lists_version_and_date_reasons(
-        self, mock_get_db, runner, monkeypatch, auth_manager_class
+        self, mock_get_db, runner, monkeypatch, auth_manager_class, new_york_clock
     ):
         monkeypatch.delenv("CIS_BENCH_VERIFY_SSL", raising=False)
         mock_db = MagicMock()
@@ -1517,7 +1517,7 @@ class TestCatalogCheckUpdatesCommand:
                 "title": "CIS Ubuntu Linux 20.04 LTS Benchmark",
                 "downloaded_version": "v1.0.0",
                 "catalog_version": "v2.0.1",
-                "downloaded_at": "2024-07-15",
+                "downloaded_at": datetime(2024, 7, 15, 12, 0, 0, tzinfo=UTC),
                 "published_date": None,
                 "reason": "newer version in catalog",
             },
@@ -1526,7 +1526,7 @@ class TestCatalogCheckUpdatesCommand:
                 "title": "CIS CentOS Linux 8 Benchmark",
                 "downloaded_version": "v1.0.0",
                 "catalog_version": "v1.0.0",
-                "downloaded_at": "2024-06-01",
+                "downloaded_at": datetime(2024, 6, 1, 12, 0, 0, tzinfo=UTC),
                 "published_date": "2024-07-15",
                 "reason": "published after download",
             },
@@ -1545,6 +1545,7 @@ class TestCatalogCheckUpdatesCommand:
         assert "Updates available for 2 benchmarks" in flat
         assert "23598" in flat and "v1.0.0 -> v2.0.1" in flat
         assert "23599" in flat and "published 2024-07-15" in flat
+        assert "Downloaded: 2024-07-15 08:00:00 EDT" in flat
         assert "cis-bench catalog download <id> --force" in flat
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
@@ -1557,7 +1558,7 @@ class TestCatalogCheckUpdatesCommand:
                 "title": "CIS Benchmark [/t]",
                 "downloaded_version": "v1 [/a]",
                 "catalog_version": "v2 [/b]",
-                "downloaded_at": "2024-07-15",
+                "downloaded_at": datetime(2024, 7, 15, 12, 0, 0, tzinfo=UTC),
                 "published_date": None,
                 "reason": "newer version in catalog",
             },
@@ -1566,7 +1567,7 @@ class TestCatalogCheckUpdatesCommand:
                 "title": "CIS Other",
                 "downloaded_version": "v1",
                 "catalog_version": "v1",
-                "downloaded_at": "2024-06-01",
+                "downloaded_at": datetime(2024, 6, 1, 12, 0, 0, tzinfo=UTC),
                 "published_date": "2024 [/d]",
                 "reason": "published after download",
             },

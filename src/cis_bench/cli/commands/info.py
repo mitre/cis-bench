@@ -11,7 +11,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from cis_bench.catalog.database import CatalogDatabase, deserialize_benchmark_json
-from cis_bench.cli.helpers.output import output_data
+from cis_bench.cli.helpers.output import display_time, output_data
 from cis_bench.cli.helpers.services import settings_from
 from cis_bench.models.benchmark import Benchmark
 from cis_bench.utils.workbench_urls import is_benchmark_id
@@ -99,7 +99,7 @@ def info(benchmark, output_dir, output_format):
                 f"[bold]{escape(benchmark.title)}[/bold]\n"
                 f"Version: {escape(benchmark.version)}\n"
                 f"Benchmark ID: {escape(benchmark.benchmark_id)}\n"
-                f"Downloaded: {benchmark.downloaded_at.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                f"Downloaded: {display_time(benchmark.downloaded_at)}\n"
                 f"Scraper Version: {escape(benchmark.scraper_version)}\n"
                 f"Source: {'file ' + escape(str(filepath)) if filepath else 'cache'}",
                 title="Benchmark Information",

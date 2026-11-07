@@ -3,7 +3,7 @@
 Tests both file-based and database-based export functionality.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -118,6 +118,20 @@ class TestExportFromFile:
 
         assert result.exit_code == 0
         assert Path("benchmark.md").exists()
+
+    def test_markdown_export_writes_the_download_time_with_its_offset(
+        self, runner, sample_benchmark, working_dir
+    ):
+        """A document carries the instant in ISO 8601 with its offset, as the other exports do."""
+        aware = sample_benchmark.model_copy(
+            update={"downloaded_at": datetime(2026, 11, 7, 2, 5, 58, tzinfo=UTC)}
+        )
+        Path("benchmark.json").write_text(aware.model_dump_json())
+
+        result = runner.invoke(cli, ["export", "benchmark.json", "--format", "markdown"])
+
+        assert result.exit_code == 0, result.output
+        assert "**Downloaded:** 2026-11-07T02:05:58+00:00  " in Path("benchmark.md").read_text()
 
     def test_export_from_file_xccdf_disa(self, runner, sample_benchmark_json, working_dir):
         """Export benchmark from file to XCCDF DISA format."""

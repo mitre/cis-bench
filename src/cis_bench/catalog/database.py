@@ -9,7 +9,7 @@ import re
 import sqlite3
 import tempfile
 from collections.abc import Callable, Iterable
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import TypeVar
 
@@ -841,13 +841,16 @@ class CatalogDatabase:
         recommendation_count: int,
         workbench_last_modified: str | None = None,
         version: str | None = None,
+        downloaded_at: datetime | None = None,
     ):
         """Save downloaded benchmark content.
 
         ``version`` is the downloaded benchmark's own version string; check-updates
         compares it against the catalog's current version for the same benchmark.
+        ``downloaded_at`` is the instant the benchmark records for itself, so the row
+        and the benchmark's JSON carry one time; it must carry its zone.
         """
-        now = utcnow()
+        now = utcnow() if downloaded_at is None else downloaded_at
         with Session(self.engine) as session:
             existing = session.get(DownloadedBenchmark, benchmark_id)
 

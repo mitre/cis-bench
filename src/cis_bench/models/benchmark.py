@@ -5,7 +5,7 @@ All scrapers produce this format, all exporters consume this format.
 """
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel, Field, HttpUrl, field_validator
@@ -134,7 +134,10 @@ class Benchmark(BaseModel):
     url: HttpUrl = Field(..., description="Source URL")
     version: str = Field(..., description="Benchmark version")
 
-    downloaded_at: datetime = Field(default_factory=datetime.now, description="Download timestamp")
+    downloaded_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        description="When the benchmark was downloaded, with its zone (UTC)",
+    )
 
     scraper_version: str = Field(..., description="Scraper strategy version used")
 
