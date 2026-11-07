@@ -609,6 +609,12 @@ def check_updates(offline):
     try:
         db = require_catalog_db()
 
+        if not db.list_downloaded_benchmark_ids():
+            console.print("No benchmarks are downloaded, so there is nothing to check.")
+            console.print("[dim]Download one first:[/dim]")
+            console.print("  cis-bench download <ID>")
+            return
+
         if not offline:
             settings = settings_from()
             session = auth_manager(settings).get_or_create_session()

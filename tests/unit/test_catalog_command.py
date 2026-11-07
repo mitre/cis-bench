@@ -23,6 +23,7 @@ from click.testing import CliRunner
 from cis_bench.cli.app import cli
 from cis_bench.exceptions import AuthenticationError, NoSavedSessionError
 from cis_bench.fetcher.auth import AuthManager
+from tests.conftest import unusable_command_hints
 
 
 @pytest.fixture
@@ -74,6 +75,7 @@ def mock_db():
         "metadata_json": None,
     }
     db.check_updates_available.return_value = []
+    db.list_downloaded_benchmark_ids.return_value = ["23598"]
     return db
 
 
@@ -1462,6 +1464,28 @@ class TestCatalogCheckUpdatesCommand:
 
         assert result.exit_code == 1
         assert "Catalog not found" in result.output
+
+    @pytest.mark.parametrize("args", [[], ["--offline"]])
+    @patch("cis_bench.cli.commands.catalog.get_catalog_db")
+    def test_check_updates_with_nothing_downloaded_says_so(
+        self, mock_get_db, runner, mock_db, args
+    ):
+        mock_db.list_downloaded_benchmark_ids.return_value = []
+        mock_get_db.return_value = mock_db
+        with (
+            patch("cis_bench.fetcher.auth.AuthManager.get_or_create_session") as mock_auth,
+            patch("cis_bench.catalog.scraper.CatalogScraper") as mock_scraper_cls,
+        ):
+            result = runner.invoke(cli, ["catalog", "check-updates", *args])
+
+        assert result.exit_code == 0, result.output
+        assert "No benchmarks are downloaded, so there is nothing to check" in result.output
+        assert "cis-bench download <ID>" in result.output
+        assert "up-to-date" not in result.output
+        mock_auth.assert_not_called()
+        mock_scraper_cls.assert_not_called()
+        mock_db.check_updates_available.assert_not_called()
+        assert unusable_command_hints(result.output) == []
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     def test_check_updates_offline_skips_enrichment_and_reports_up_to_date(

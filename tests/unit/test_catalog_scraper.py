@@ -830,6 +830,46 @@ class TestRefreshDownloadedRevisionDates:
         assert temp_db.get_downloaded("401")["workbench_last_modified"] == "2025-08-28"
         assert temp_db.get_downloaded("402")["workbench_last_modified"] == "2025-08-28"
 
+    def test_a_benchmark_workbench_no_longer_has_is_reported_and_the_rest_are_checked(
+        self, temp_db, stub_session, caplog
+    ):
+        """WorkBench answering 404 for one downloaded benchmark does not stop the check."""
+        from tests.conftest import StubReply
+
+        self._seed(temp_db, "401")
+        self._seed(temp_db, "402")
+        page = "<html><body><span>Published 2 months ago on Aug 28th 2025</span></body></html>"
+        session, _ = stub_session(
+            lambda url: StubReply(body="gone", status=404) if url.endswith("/401") else page
+        )
+        scraper = CatalogScraper(
+            temp_db, session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
+
+        with caplog.at_level("WARNING", logger="cis_bench.catalog.scraper"):
+            refreshed = scraper.refresh_downloaded_revision_dates()
+
+        assert refreshed == 1
+        assert temp_db.get_downloaded("402")["workbench_last_modified"] == "2025-08-28"
+        assert temp_db.get_downloaded("401")["workbench_last_modified"] is None
+        assert [r.getMessage() for r in caplog.records if r.levelname == "WARNING"] == [
+            "WorkBench no longer has benchmark 401 (HTTP 404); its downloaded copy was not checked"
+        ]
+
+    def test_another_http_error_still_stops_the_check(self, temp_db, stub_session):
+        import requests
+
+        from tests.conftest import StubReply
+
+        self._seed(temp_db, "401")
+        session, _ = stub_session(lambda url: StubReply(body="forbidden", status=403))
+        scraper = CatalogScraper(
+            temp_db, session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
+
+        with pytest.raises(requests.HTTPError):
+            scraper.refresh_downloaded_revision_dates()
+
     def test_a_malformed_stored_id_is_skipped_and_never_fetched(self, temp_db, caplog):
         """The detail URL goes through the same validator as every other WorkBench URL."""
         self._seed(temp_db, "407")

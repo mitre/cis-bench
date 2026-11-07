@@ -715,7 +715,7 @@ Report downloaded benchmarks that WorkBench has moved past.
 
 - `--offline` - Compare versions only; do not contact WorkBench
 
-**How it decides:** a benchmark is listed when the catalog now carries a newer version than the one you downloaded, or (unless `--offline`) when its WorkBench page shows a publication date after your download. Only downloaded benchmarks are fetched, one page each, so run `cis-bench catalog refresh` first if the catalog itself is stale.
+**How it decides:** a benchmark is listed when the catalog now carries a newer version than the one you downloaded, or (unless `--offline`) when its WorkBench page shows a publication date after your download. Only downloaded benchmarks are fetched, one page each, so run `cis-bench catalog refresh` first if the catalog itself is stale. With nothing downloaded it says so and contacts nothing. A downloaded benchmark whose WorkBench page answers 404 is reported as no longer on WorkBench and the others are still checked.
 
 ```bash
 cis-bench catalog check-updates

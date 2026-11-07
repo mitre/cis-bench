@@ -366,7 +366,17 @@ class CatalogScraper:
                 )
                 continue
             logger.debug(f"Fetching detail page for downloaded benchmark {benchmark_id}: {url}")
-            response = get_with_retry(self._sessions.current(), url, timeout=self.timeout)
+            try:
+                response = get_with_retry(self._sessions.current(), url, timeout=self.timeout)
+            except requests.HTTPError as error:
+                # A benchmark WorkBench has removed is reported, not a reason to stop the check
+                if error.response is not None and error.response.status_code == 404:
+                    logger.warning(
+                        f"WorkBench no longer has benchmark {benchmark_id} (HTTP 404); "
+                        "its downloaded copy was not checked"
+                    )
+                    continue
+                raise
             if is_workbench_login_page(response.text):
                 raise AuthenticationError(
                     "WorkBench returned the login page; the saved session has expired"
