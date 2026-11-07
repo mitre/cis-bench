@@ -548,6 +548,54 @@ cis-bench info benchmark.json --output-format yaml
 
 ---
 
+### `cis-bench diff`
+
+Compare two versions of a benchmark: which recommendations were added, removed, changed or renumbered.
+
+**Syntax:**
+```bash
+cis-bench diff <OLD> <NEW> [OPTIONS]
+```
+
+**Arguments:**
+
+- `OLD`, `NEW` - Each a catalog ID (the downloaded copy in the cache) or the path of a benchmark JSON file. An ID that is not downloaded is an error that names `cis-bench download <ID>`.
+
+**Options:**
+
+- `-f, --format` - Format (table|json|markdown|summary) - default: table
+- `-v, --verbose` - Under the table, list the changed fields of each modified recommendation
+
+**Examples:**
+```bash
+# Two downloaded versions
+cis-bench diff 22605 23598
+
+# Two files
+cis-bench diff old.json new.json
+
+# A Markdown report
+cis-bench diff 22605 23598 --format markdown > changes.md
+
+# JSON for scripts
+cis-bench diff 22605 23598 --format json | jq '.changes.modified[].ref'
+```
+
+**How recommendations are matched:**
+
+- By ref (`1.1.1`). A ref only in `NEW` is *added*, only in `OLD` *removed*.
+- A ref in both whose content differs is *modified*, with the names of the fields that changed (`title`, `audit`, `impact`, ...). List order inside a field is ignored, and so are the WorkBench URLs (the recommendation's and its parent's) and artifact IDs, which change in every release.
+- A removed ref and an added ref whose titles are at least 85% alike are one *renumbered* recommendation.
+
+**Formats:**
+
+- `table` - Counts, then one row per change
+- `summary` - Counts only
+- `markdown` - A Markdown document with a table per kind of change
+- `json` - `old_version`, `new_version`, `benchmark_title`, `summary` (the counts) and `changes` (`added`, `removed`, `modified`, `renumbered`; unchanged recommendations are left out). Each modified entry has `fields_changed` and `diff`, DeepDiff's report of the change.
+
+---
+
 ### `cis-bench remove`
 
 Remove downloaded benchmarks from the local cache.

@@ -82,6 +82,14 @@ Downloaded benchmarks cached in SQLite for instant re-export.
 cis-bench export 23598 --format xccdf # Instant (from cache)
 ```
 
+### Compare Versions
+What changed between two releases: added, removed, modified (with the fields that changed) and renumbered recommendations.
+
+```bash
+cis-bench diff 22605 23598                     # Two downloaded benchmarks
+cis-bench diff old.json new.json --format markdown
+```
+
 ### Multiple Export Formats
 
 - **YAML** - Human-readable structured data

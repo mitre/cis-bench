@@ -1,0 +1,555 @@
+"""Tests for benchmark diff functionality.
+
+TDD tests for comparing benchmark versions using DeepDiff.
+"""
+
+import json
+import os
+from pathlib import Path
+
+import pytest
+from click.testing import CliRunner
+
+from cis_bench.cli.app import cli
+
+
+@pytest.fixture
+def runner():
+    """Create a CLI test runner."""
+    return CliRunner()
+
+
+@pytest.fixture
+def old_benchmark_json():
+    """Old benchmark version for comparison."""
+    return {
+        "title": "CIS Ubuntu Linux 22.04 LTS Benchmark",
+        "benchmark_id": "12345",
+        "url": "https://workbench.cisecurity.org/benchmarks/12345",
+        "version": "1.0.0",
+        "downloaded_at": "2024-01-01T00:00:00",
+        "scraper_version": "v1_current",
+        "total_recommendations": 4,
+        "recommendations": [
+            {
+                "ref": "1.1.1",
+                "title": "Ensure mounting of cramfs is disabled",
+                "url": "https://workbench.cisecurity.org/recommendations/1",
+                "assessment_status": "Automated",
+                "profiles": ["Level 1 - Server"],
+                "description": "The cramfs filesystem type is a compressed read-only Linux filesystem.",
+                "rationale": "Removing support for unneeded filesystem types reduces the local attack surface.",
+                "audit": "Run: modprobe -n -v cramfs",
+                "remediation": "Edit /etc/modprobe.d/cramfs.conf",
+                "cis_controls": [],
+                "nist_controls": ["CM-7"],
+            },
+            {
+                "ref": "2.1.1",
+                "title": "Ensure NIS Server is not installed",
+                "url": "https://workbench.cisecurity.org/recommendations/2",
+                "assessment_status": "Automated",
+                "profiles": ["Level 1 - Server"],
+                "description": "The NIS service is inherently insecure.",
+                "rationale": "NIS is insecure and should not be used.",
+                "audit": "Run: rpm -q ypserv",
+                "remediation": "Run: dnf remove ypserv",
+                "cis_controls": [],
+                "nist_controls": ["CM-7"],
+            },
+            {
+                "ref": "3.1.1",
+                "title": "Ensure SSH MaxAuthTries is set to 4 or less",
+                "url": "https://workbench.cisecurity.org/recommendations/3",
+                "assessment_status": "Automated",
+                "profiles": ["Level 1 - Server"],
+                "description": "The MaxAuthTries parameter specifies the maximum number of authentication attempts.",
+                "rationale": "Setting the MaxAuthTries parameter to a low number will minimize the risk of brute force.",
+                "audit": "Run: sshd -T | grep maxauthtries",
+                "remediation": "Edit /etc/ssh/sshd_config and set MaxAuthTries 4",
+                "cis_controls": [],
+                "nist_controls": ["AC-7"],
+            },
+            {
+                "ref": "5.1.1",
+                "title": "Ensure cron daemon is enabled",
+                "url": "https://workbench.cisecurity.org/recommendations/4",
+                "assessment_status": "Automated",
+                "profiles": ["Level 1 - Server"],
+                "description": "The cron daemon is used to execute batch jobs on the system.",
+                "rationale": "Proper job scheduling is important.",
+                "audit": "Run: systemctl is-enabled crond",
+                "remediation": "Run: systemctl enable crond",
+                "cis_controls": [],
+                "nist_controls": ["CM-7"],
+            },
+        ],
+    }
+
+
+@pytest.fixture
+def new_benchmark_json():
+    """New benchmark version with changes."""
+    return {
+        "title": "CIS Ubuntu Linux 22.04 LTS Benchmark",
+        "benchmark_id": "12345",
+        "url": "https://workbench.cisecurity.org/benchmarks/12345",
+        "version": "2.0.0",
+        "downloaded_at": "2024-06-01T00:00:00",
+        "scraper_version": "v1_current",
+        "total_recommendations": 4,
+        "recommendations": [
+            # 1.1.1 unchanged
+            {
+                "ref": "1.1.1",
+                "title": "Ensure mounting of cramfs is disabled",
+                "url": "https://workbench.cisecurity.org/recommendations/1",
+                "assessment_status": "Automated",
+                "profiles": ["Level 1 - Server"],
+                "description": "The cramfs filesystem type is a compressed read-only Linux filesystem.",
+                "rationale": "Removing support for unneeded filesystem types reduces the local attack surface.",
+                "audit": "Run: modprobe -n -v cramfs",
+                "remediation": "Edit /etc/modprobe.d/cramfs.conf",
+                "cis_controls": [],
+                "nist_controls": ["CM-7"],
+            },
+            # 2.1.1 REMOVED (not in new version)
+            # 3.1.1 MODIFIED (title and audit changed)
+            {
+                "ref": "3.1.1",
+                "title": "Ensure SSH MaxAuthTries is configured",  # Title changed
+                "url": "https://workbench.cisecurity.org/recommendations/3",
+                "assessment_status": "Automated",
+                "profiles": ["Level 1 - Server"],
+                "description": "The MaxAuthTries parameter specifies the maximum number of authentication attempts.",
+                "rationale": "Setting the MaxAuthTries parameter to a low number will minimize the risk of brute force.",
+                "audit": "Run: sshd -T -C user=root | grep maxauthtries",  # Audit changed
+                "remediation": "Edit /etc/ssh/sshd_config and set MaxAuthTries 4",
+                "cis_controls": [],
+                "nist_controls": ["AC-7"],
+            },
+            # 1.1.9 ADDED (new recommendation)
+            {
+                "ref": "1.1.9",
+                "title": "Ensure noexec option set on /var/tmp partition",
+                "url": "https://workbench.cisecurity.org/recommendations/5",
+                "assessment_status": "Automated",
+                "profiles": ["Level 1 - Server"],
+                "description": "The noexec mount option specifies that the filesystem cannot contain executable binaries.",
+                "rationale": "Adding this option prevents users from executing programs from /var/tmp.",
+                "audit": "Run: findmnt -n /var/tmp",
+                "remediation": "Edit /etc/fstab and add noexec",
+                "cis_controls": [],
+                "nist_controls": ["CM-7"],
+            },
+            # 5.1.1 -> 6.1.1 RENUMBERED (same content, different ref)
+            {
+                "ref": "6.1.1",  # Was 5.1.1
+                "title": "Ensure cron daemon is enabled",
+                "url": "https://workbench.cisecurity.org/recommendations/4",
+                "assessment_status": "Automated",
+                "profiles": ["Level 1 - Server"],
+                "description": "The cron daemon is used to execute batch jobs on the system.",
+                "rationale": "Proper job scheduling is important.",
+                "audit": "Run: systemctl is-enabled crond",
+                "remediation": "Run: systemctl enable crond",
+                "cis_controls": [],
+                "nist_controls": ["CM-7"],
+            },
+        ],
+    }
+
+
+class TestDiffCommandExists:
+    """Test that diff command is available."""
+
+    def test_diff_command_in_help(self, runner):
+        """The diff command should appear in help output."""
+        result = runner.invoke(cli, ["--help"])
+        assert result.exit_code == 0
+        assert "diff" in result.output
+
+    def test_diff_command_has_help(self, runner):
+        """The diff command should have its own help."""
+        result = runner.invoke(cli, ["diff", "--help"])
+        assert result.exit_code == 0
+        assert "Compare" in result.output or "compare" in result.output
+
+
+class TestDiffCommandArguments:
+    """Test diff command argument handling."""
+
+    def test_diff_requires_two_arguments(self, runner):
+        """diff command requires old and new benchmark identifiers."""
+        result = runner.invoke(cli, ["diff"])
+        assert result.exit_code != 0
+
+    def test_diff_requires_new_argument(self, runner):
+        """diff command requires both old and new."""
+        result = runner.invoke(cli, ["diff", "12345"])
+        assert result.exit_code != 0
+
+
+class TestDiffDetectsChanges:
+    """Each kind of change between two versions is reported with its ref."""
+
+    def test_diff_detects_added_recommendations(
+        self, runner, tmp_path, old_benchmark_json, new_benchmark_json
+    ):
+        old_file, new_file = _files(tmp_path, old_benchmark_json, new_benchmark_json)
+
+        result = runner.invoke(cli, ["diff", old_file, new_file, "--format", "json"])
+
+        assert result.exit_code == 0, result.output
+        added = json.loads(result.output)["changes"]["added"]
+        assert [a["ref"] for a in added] == ["1.1.9"]
+
+    def test_diff_detects_removed_recommendations(
+        self, runner, tmp_path, old_benchmark_json, new_benchmark_json
+    ):
+        old_file, new_file = _files(tmp_path, old_benchmark_json, new_benchmark_json)
+
+        result = runner.invoke(cli, ["diff", old_file, new_file, "--format", "json"])
+
+        assert result.exit_code == 0, result.output
+        removed = json.loads(result.output)["changes"]["removed"]
+        assert [r["ref"] for r in removed] == ["2.1.1"]
+
+    def test_diff_detects_modified_recommendations(
+        self, runner, tmp_path, old_benchmark_json, new_benchmark_json
+    ):
+        old_file, new_file = _files(tmp_path, old_benchmark_json, new_benchmark_json)
+
+        result = runner.invoke(cli, ["diff", old_file, new_file, "--format", "json"])
+
+        assert result.exit_code == 0, result.output
+        modified = json.loads(result.output)["changes"]["modified"]
+        assert [(m["ref"], m["fields_changed"]) for m in modified] == [
+            ("3.1.1", ["audit", "title"])
+        ]
+
+    def test_diff_detects_renumbered_recommendations(
+        self, runner, tmp_path, old_benchmark_json, new_benchmark_json
+    ):
+        old_file, new_file = _files(tmp_path, old_benchmark_json, new_benchmark_json)
+
+        result = runner.invoke(cli, ["diff", old_file, new_file, "--format", "json"])
+
+        assert result.exit_code == 0, result.output
+        renumbered = json.loads(result.output)["changes"]["renumbered"]
+        assert [(r["old_ref"], r["new_ref"]) for r in renumbered] == [("5.1.1", "6.1.1")]
+
+
+class TestDiffTable:
+    """The default table lists every change with its ref."""
+
+    def test_table_lists_each_change(
+        self, runner, tmp_path, old_benchmark_json, new_benchmark_json
+    ):
+        old_file, new_file = _files(tmp_path, old_benchmark_json, new_benchmark_json)
+
+        result = runner.invoke(cli, ["diff", old_file, new_file])
+
+        assert result.exit_code == 0, result.output
+        flat = " ".join(result.output.split())
+        for text in ("1.1.9", "2.1.1", "3.1.1", "5.1.1 → 6.1.1", "1.0.0 → 2.0.0"):
+            assert text in flat
+
+    def test_identical_versions_say_nothing_changed(self, runner, tmp_path, old_benchmark_json):
+        old_file, new_file = _files(tmp_path, old_benchmark_json, old_benchmark_json)
+
+        result = runner.invoke(cli, ["diff", old_file, new_file])
+
+        assert result.exit_code == 0, result.output
+        assert "No changes detected" in result.output
+
+
+class TestDiffLocal:
+    """Two benchmarks on disk are compared without touching the network."""
+
+    def test_diff_uses_cached_benchmark_without_fetch(
+        self, runner, monkeypatch, tmp_path, old_benchmark_json, new_benchmark_json
+    ):
+        """diff should use cached benchmarks without fetching."""
+
+        # Both files exist locally
+        old_file = tmp_path / "old.json"
+        new_file = tmp_path / "new.json"
+        old_file.write_text(json.dumps(old_benchmark_json))
+        new_file.write_text(json.dumps(new_benchmark_json))
+
+        result = runner.invoke(cli, ["diff", str(old_file), str(new_file)])
+
+        # Should succeed without any fetch messages
+        assert result.exit_code == 0
+        output_lower = result.output.lower()
+        # Should NOT mention fetching since both are local
+        assert "fetching" not in output_lower
+
+
+def _files(tmp_path, old, new):
+    old_file, new_file = tmp_path / "old.json", tmp_path / "new.json"
+    old_file.write_text(json.dumps(old))
+    new_file.write_text(json.dumps(new))
+    return str(old_file), str(new_file)
+
+
+def _with_rec_change(benchmark, ref, **fields):
+    changed = json.loads(json.dumps(benchmark))
+    for rec in changed["recommendations"]:
+        if rec["ref"] == ref:
+            rec.update(fields)
+    return changed
+
+
+class TestComparisonNamesEveryChangedField:
+    """A change to any recommendation field is reported with that field's name."""
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("impact", "Changes the boot order."),
+            ("default_value", "enabled"),
+            ("references", "https://example.org/new"),
+            ("artifacts", [{"id": 1, "title": "a", "type": "t"}]),
+        ],
+    )
+    def test_a_field_outside_the_old_fixed_list_is_named(self, old_benchmark_json, field, value):
+        from cis_bench.cli.commands.diff import compare_benchmarks
+
+        new = _with_rec_change(old_benchmark_json, "1.1.1", **{field: value})
+
+        comparison = compare_benchmarks(old_benchmark_json, new)
+
+        modified = comparison["changes"]["modified"]
+        assert [m["ref"] for m in modified] == ["1.1.1"]
+        assert modified[0]["fields_changed"] == [field]
+
+    def test_the_url_of_a_recommendation_is_not_a_change(self, old_benchmark_json):
+        from cis_bench.cli.commands.diff import compare_benchmarks
+
+        new = _with_rec_change(old_benchmark_json, "1.1.1", url="https://elsewhere.example/1")
+
+        assert compare_benchmarks(old_benchmark_json, new)["summary"]["modified"] == 0
+
+
+class TestWorkBenchIdentifiersAreNotChanges:
+    """WorkBench gives every release new URLs and artifact IDs; only content counts."""
+
+    def test_new_parent_url_and_artifact_ids_alone_are_not_a_change(self, old_benchmark_json):
+        from cis_bench.cli.commands.diff import compare_benchmarks
+
+        def release(section_id, artifact_id):
+            return _with_rec_change(
+                old_benchmark_json,
+                "1.1.1",
+                parent={
+                    "url": f"https://workbench.cisecurity.org/sections/{section_id}",
+                    "title": "Filesystem",
+                },
+                artifacts=[{"id": artifact_id, "title": "Check cramfs", "status": "accepted"}],
+            )
+
+        comparison = compare_benchmarks(release(2141901, 4581159), release(2346699, 7827594))
+
+        assert comparison["summary"]["modified"] == 0
+
+    def test_a_changed_artifact_or_parent_title_is_still_a_change(self, old_benchmark_json):
+        from cis_bench.cli.commands.diff import compare_benchmarks
+
+        old = _with_rec_change(
+            old_benchmark_json,
+            "1.1.1",
+            parent={"url": "https://workbench.cisecurity.org/sections/1", "title": "Filesystem"},
+            artifacts=[{"id": 1, "title": "Check cramfs", "status": "accepted"}],
+        )
+        new = _with_rec_change(
+            old_benchmark_json,
+            "1.1.1",
+            parent={"url": "https://workbench.cisecurity.org/sections/2", "title": "Modules"},
+            artifacts=[{"id": 2, "title": "Check cramfs", "status": "draft"}],
+        )
+
+        modified = compare_benchmarks(old, new)["changes"]["modified"]
+
+        assert modified[0]["fields_changed"] == ["artifacts", "parent"]
+
+
+class TestOutputs:
+    def test_json_is_valid_with_long_text_markup_like_titles_and_type_changes(
+        self, runner, tmp_path, old_benchmark_json
+    ):
+        old = _with_rec_change(old_benchmark_json, "1.1.1", impact=None)
+        new = _with_rec_change(
+            old_benchmark_json,
+            "1.1.1",
+            title="Ensure [bold]mounting[/bold] of " + "cramfs " * 30 + "is disabled",
+            impact="Changes the boot order.",
+        )
+        old_file, new_file = _files(tmp_path, old, new)
+
+        result = runner.invoke(cli, ["diff", old_file, new_file, "--format", "json"])
+
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)
+        modified = data["changes"]["modified"][0]
+        assert modified["title"] == new["recommendations"][0]["title"]
+        assert modified["fields_changed"] == ["impact", "title"]
+        impact_change = modified["diff"]["type_changes"]["root['impact']"]
+        assert impact_change["old_type"] == "NoneType" and impact_change["new_type"] == "str"
+
+    def test_markdown_is_a_plain_document(self, runner, tmp_path, old_benchmark_json):
+        long_title = "Ensure " + "very " * 40 + "long titles stay on one table row"
+        new = _with_rec_change(old_benchmark_json, "1.1.1", title=long_title)
+        old_file, new_file = _files(tmp_path, old_benchmark_json, new)
+
+        result = runner.invoke(cli, ["diff", old_file, new_file, "--format", "markdown"])
+
+        assert result.exit_code == 0, result.output
+        assert "# Benchmark Comparison" in result.output
+        assert f"| 1.1.1 | {long_title} | title |" in result.output.splitlines()
+
+    def test_summary_counts_each_kind_of_change(
+        self, runner, tmp_path, old_benchmark_json, new_benchmark_json
+    ):
+        old_file, new_file = _files(tmp_path, old_benchmark_json, new_benchmark_json)
+
+        result = runner.invoke(cli, ["diff", old_file, new_file, "--format", "summary"])
+
+        assert result.exit_code == 0, result.output
+        flat = " ".join(result.output.split())
+        assert "1 added" in flat and "1 removed" in flat and "1 modified" in flat
+        assert "1 renumbered" in flat
+
+    def test_verbose_table_names_each_changed_field(self, runner, tmp_path, old_benchmark_json):
+        new = _with_rec_change(old_benchmark_json, "1.1.1", impact="New impact", audit="New audit")
+        old_file, new_file = _files(tmp_path, old_benchmark_json, new)
+
+        result = runner.invoke(cli, ["diff", old_file, new_file, "--verbose"])
+
+        assert result.exit_code == 0, result.output
+        assert "• audit changed" in result.output
+        assert "• impact changed" in result.output
+
+    def test_titles_from_the_benchmarks_are_shown_verbatim(
+        self, runner, tmp_path, old_benchmark_json
+    ):
+        new = _with_rec_change(old_benchmark_json, "1.1.1", title="Ensure [x] is [bold]set[/bold]")
+        new["title"] = "CIS [Linux] [bold]Benchmark[/bold]"
+        old_file, new_file = _files(tmp_path, old_benchmark_json, new)
+
+        table = runner.invoke(cli, ["diff", old_file, new_file])
+        summary = runner.invoke(cli, ["diff", old_file, new_file, "--format", "summary"])
+
+        assert table.exit_code == 0, table.output
+        flat_table = " ".join(table.output.split())
+        assert "Ensure [x] is [bold]set[/bold]" in flat_table
+        assert "CIS [Linux] [bold]Benchmark[/bold]" in flat_table
+        assert "Benchmark: CIS [Linux] [bold]Benchmark[/bold]" in summary.output
+
+
+class TestDownloadedBenchmarksByID:
+    """An ID is the downloaded copy in the cache, as get, export and info read it."""
+
+    @pytest.fixture
+    def cached(self, tmp_path, monkeypatch, old_benchmark_json, new_benchmark_json):
+        from cis_bench.catalog.database import CatalogDatabase, serialize_benchmark_json
+        from cis_bench.models.benchmark import Benchmark
+
+        monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path))
+        db = CatalogDatabase(tmp_path / "catalog.db")
+        db.initialize_schema()
+        for data, bid in ((old_benchmark_json, "12345"), (new_benchmark_json, "12346")):
+            data = {**data, "benchmark_id": bid}
+            content_json, content_hash = serialize_benchmark_json(Benchmark.model_validate(data))
+            db.save_downloaded(bid, content_json, content_hash, len(data["recommendations"]))
+        return db
+
+    def test_two_downloaded_ids_are_compared_from_the_cache(self, runner, cached):
+        result = runner.invoke(cli, ["diff", "12345", "12346", "--format", "json"])
+
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.output)["summary"]["added"] == 1
+
+    def test_an_id_that_is_not_downloaded_says_how_to_download_it(self, runner, cached):
+        result = runner.invoke(cli, ["diff", "12345", "99999"])
+
+        assert result.exit_code == 1
+        assert "99999" in result.output
+        assert "cis-bench download 99999" in result.output
+        assert "Traceback" not in result.output
+
+    def test_a_missing_file_is_named(self, runner, tmp_path, old_benchmark_json):
+        old_file, _ = _files(tmp_path, old_benchmark_json, old_benchmark_json)
+
+        result = runner.invoke(cli, ["diff", old_file, str(tmp_path / "nope.json")])
+
+        assert result.exit_code == 1
+        assert "nope.json" in result.output
+
+
+class TestInputsThatAreNotBenchmarks:
+    @pytest.mark.parametrize(
+        "content", ["{not json", '{"title": "no recommendations or version"}', "[1, 2]"]
+    )
+    def test_a_file_that_is_not_a_benchmark_is_named(
+        self, runner, tmp_path, old_benchmark_json, content
+    ):
+        old_file, _ = _files(tmp_path, old_benchmark_json, old_benchmark_json)
+        bad = tmp_path / "notes.json"
+        bad.write_text(content)
+
+        result = runner.invoke(cli, ["diff", old_file, str(bad)])
+
+        assert result.exit_code == 1
+        assert "notes.json is not a benchmark JSON file" in result.output
+        assert "Traceback" not in result.output
+
+    def test_a_binary_file_is_named(self, runner, tmp_path, old_benchmark_json):
+        old_file, _ = _files(tmp_path, old_benchmark_json, old_benchmark_json)
+        bad = tmp_path / "catalog.db"
+        bad.write_bytes(b"\xff\xfe\x00SQLite format 3\x00")
+
+        result = runner.invoke(cli, ["diff", old_file, str(bad)])
+
+        assert result.exit_code == 1
+        assert "catalog.db is not a benchmark JSON file" in result.output
+        assert result.exception is None or isinstance(result.exception, SystemExit)
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root reads files whatever their mode")
+    def test_an_unreadable_file_is_named(self, runner, tmp_path, old_benchmark_json):
+        old_file, new_file = _files(tmp_path, old_benchmark_json, old_benchmark_json)
+        Path(new_file).chmod(0)
+        try:
+            result = runner.invoke(cli, ["diff", old_file, new_file])
+        finally:
+            Path(new_file).chmod(0o644)
+
+        assert result.exit_code == 1
+        assert "new.json could not be read" in result.output
+        assert result.exception is None or isinstance(result.exception, SystemExit)
+
+
+class TestOrderAndMarkdownCells:
+    def test_refs_are_listed_in_numeric_order(self, old_benchmark_json):
+        from cis_bench.cli.commands.diff import compare_benchmarks
+
+        new = json.loads(json.dumps(old_benchmark_json))
+        template = new["recommendations"][0]
+        for ref, title in (("1.1.10", "Tenth new check"), ("1.1.2", "Second new check")):
+            new["recommendations"].append({**template, "ref": ref, "title": title})
+
+        comparison = compare_benchmarks(old_benchmark_json, new)
+
+        assert [a["ref"] for a in comparison["changes"]["added"]] == ["1.1.2", "1.1.10"]
+
+    def test_a_pipe_in_a_title_stays_inside_its_markdown_cell(
+        self, runner, tmp_path, old_benchmark_json
+    ):
+        new = _with_rec_change(old_benchmark_json, "1.1.1", title="Ensure a | b is set")
+        old_file, new_file = _files(tmp_path, old_benchmark_json, new)
+
+        result = runner.invoke(cli, ["diff", old_file, new_file, "--format", "markdown"])
+
+        assert result.exit_code == 0, result.output
+        assert "| 1.1.1 | Ensure a \\| b is set | title |" in result.output.splitlines()

@@ -23,6 +23,7 @@ LAZY_SUBCOMMANDS = {
     "auth": "cis_bench.cli.commands.auth.auth",
     "catalog": "cis_bench.cli.commands.catalog.catalog",
     "config": "cis_bench.cli.commands.config.config",
+    "diff": "cis_bench.cli.commands.diff.diff_cmd",
     "download": "cis_bench.cli.commands.download.download",
     "export": "cis_bench.cli.commands.export.export_cmd",
     "get": "cis_bench.cli.commands.get.get_cmd",
