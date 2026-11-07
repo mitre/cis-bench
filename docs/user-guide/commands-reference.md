@@ -346,9 +346,8 @@ cis-bench download --file urls.txt
 1. Checks if already cached (shows message if yes, unless --force)
 2. Uses saved session from `cis-bench auth login`
 3. Downloads benchmark from WorkBench with progress bar (see "How recommendations are fetched" below)
-4. Saves to database cache
-5. Saves to file in output directory
-6. Exports to requested formats
+4. Saves to the cache (`catalog.db`) with the benchmark's version and the catalog's revision date for it, when there is a catalog; `get` and `diff` cache the same way
+5. Exports to the requested formats in the output directory (JSON by default)
 
 **How recommendations are fetched:**
 
@@ -358,7 +357,7 @@ cis-bench download --file urls.txt
 - Every request identifies itself with the User-Agent `cis-bench-cli/<version> (github.com/mitre/cis-bench)`.
 - If WorkBench answers with its login page, the saved session has expired: no further batch starts and the download stops with an authentication error. Run `cis-bench auth login` again.
 
-**Exit code:** `0` when every requested benchmark downloaded and exported. `1` when any benchmark or export failed (the others are still downloaded and the summary names the failed IDs), or when the session expired (the run stops at once and later benchmarks are not attempted). `cis-bench get` exits `1` with the same login message when the session expires during its download.
+**Exit code:** `0` when every requested benchmark downloaded, cached and exported. `1` when any benchmark, cache write or export failed (the others are still downloaded and the summary names the failed IDs; a benchmark whose cache write failed is still exported), or when the session expired (the run stops at once and later benchmarks are not attempted). `cis-bench get` exits `1` with the same login message when the session expires during its download.
 
 **Requirements:**
 
@@ -559,7 +558,7 @@ cis-bench diff <OLD> <NEW> [OPTIONS]
 
 **Arguments:**
 
-- `OLD`, `NEW` - Each a catalog ID (the downloaded copy in the cache) or the path of a benchmark JSON file. An ID that is not downloaded is an error that names `cis-bench download <ID>`.
+- `OLD`, `NEW` - Each a catalog ID or the path of a benchmark JSON file. An ID is read from the cache; one that is not downloaded yet is downloaded from CIS WorkBench and cached first, as `get` does (it needs `cis-bench auth login`; no export file is written). Messages about the download go to stderr, so `--format json` output stays valid JSON.
 
 **Options:**
 
@@ -1002,7 +1001,8 @@ A command exits `0` only when everything it was asked to do succeeded.
 - `0` - Success
 - `1` - Error (authentication failed, file not found, nothing matched, etc.)
 - `2` - Usage error on the command line (an unknown option, a bad option value); a bad `CIS_BENCH_*` setting is reported as a Configuration Error with exit `1`
-- `cis-bench download` exits `1` if any requested benchmark or export failed, even when others succeeded
+- `cis-bench download` exits `1` if any requested benchmark, cache write or export failed, even when others succeeded
+- `cis-bench diff` exits `1` when either benchmark cannot be read, or cannot be downloaded or cached
 - `cis-bench export` with several benchmarks exits `1` if any export failed; the others are still written and the summary says how many succeeded
 - `cis-bench get` exits `1` when nothing matched the query, when the ID is not in the catalog, or when the interactive menu is left without a choice
 - `cis-bench validate` exits `2` when a file is not valid XCCDF (here `2` is the validation result, as with `oscap xccdf validate`) and `1` when a file could not be validated at all (missing, not XML, not XCCDF)

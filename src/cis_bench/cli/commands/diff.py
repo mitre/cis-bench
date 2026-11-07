@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import difflib
 import json
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -13,13 +14,18 @@ from rich.markup import escape
 from rich.table import Table
 
 from cis_bench.catalog.versions import version_sort_key
-from cis_bench.cli.helpers.services import settings_from
-from cis_bench.utils.workbench_urls import is_benchmark_id
+from cis_bench.cli.helpers.errors import DOWNLOAD_ERRORS, cache_failure, report_download_error
+from cis_bench.cli.helpers.services import auth_manager, settings_from, workbench_scraper
+from cis_bench.utils.workbench_urls import is_benchmark_id, resolve_benchmark_reference
 
 if TYPE_CHECKING:
+    from cis_bench.catalog.database import CatalogDatabase
     from cis_bench.config import Settings
+    from cis_bench.fetcher.workbench import WorkbenchScraper
 
 console = Console()
+# Downloading, progress and errors go to stderr: stdout carries the comparison (JSON, Markdown).
+err_console = Console(stderr=True)
 
 # Titles at least this similar (difflib ratio) pair a removed ref with an added one.
 RENUMBER_SIMILARITY = 0.85
@@ -50,7 +56,8 @@ _WORKBENCH_IDENTIFIER_REGEX_PATHS = [r"^root\['artifacts'\]\[\d+\]\['id'\]$"]
 def diff_cmd(ctx, old_benchmark, new_benchmark, output_format, verbose):
     """Compare two versions of a benchmark to see what changed.
 
-    Each argument is the ID of a downloaded benchmark or a benchmark JSON file.
+    Each argument is a catalog ID or a benchmark JSON file. An ID that is not downloaded
+    yet is downloaded from CIS WorkBench into the cache first, as get does.
 
     \b
     Examples:
@@ -67,9 +74,9 @@ def diff_cmd(ctx, old_benchmark, new_benchmark, output_format, verbose):
         ⟳ Modified   - Same ref, different content
         ↷ Renumbered - A removed ref and an added ref with near-identical titles
     """
-    settings = settings_from(ctx)
-    old_data = _load_benchmark(old_benchmark, settings)
-    new_data = _load_benchmark(new_benchmark, settings)
+    loader = _BenchmarkLoader(settings_from(ctx))
+    old_data = loader.load(old_benchmark)
+    new_data = loader.load(new_benchmark)
 
     comparison = compare_benchmarks(old_data, new_data)
 
@@ -83,27 +90,82 @@ def diff_cmd(ctx, old_benchmark, new_benchmark, output_format, verbose):
         _output_table(comparison, verbose)
 
 
-def _load_benchmark(identifier: str, settings: Settings) -> dict:
-    """A benchmark as a dict: digits are a downloaded benchmark's ID, anything else a file.
+class _BenchmarkLoader:
+    """Reads the benchmarks of one diff run, downloading a catalog benchmark that is not
+    cached; it logs in at most once."""
 
-    Raises:
-        click.ClickException: The ID is not downloaded, or the file is missing, unreadable
-            or not a benchmark.
-    """
-    if is_benchmark_id(identifier):
+    def __init__(self, settings: Settings) -> None:
+        self.settings = settings
+        self._scraper: WorkbenchScraper | None = None
+
+    def load(self, identifier: str) -> dict:
+        """A benchmark as a dict: digits are a catalog ID (the cached copy, downloaded into
+        the cache first when missing), anything else a file.
+
+        Raises:
+            click.ClickException: No catalog, an ID the catalog does not list, a failed cache
+                write, or a file that is missing, unreadable or not a benchmark.
+        """
+        if not is_benchmark_id(identifier):
+            return self._load_file(identifier)
+
+        from cis_bench.catalog.database import CatalogDatabase
+
         benchmark_id = identifier.strip()
-        downloaded = None
-        if settings.catalog_db_path.exists():
-            from cis_bench.catalog.database import CatalogDatabase
-
-            downloaded = CatalogDatabase(settings.catalog_db_path).get_downloaded(benchmark_id)
-        if downloaded is None:
+        if not self.settings.catalog_db_path.exists():
             raise click.ClickException(
-                f"Benchmark {benchmark_id} is not downloaded. Download it first:\n"
-                f"  cis-bench download {benchmark_id}"
+                f"Benchmark {benchmark_id} is not downloaded, and there is no catalog to "
+                "download it from. Build the catalog first:\n  cis-bench catalog refresh"
             )
-        text, source = downloaded["content_json"], f"benchmark {benchmark_id}"
-    else:
+        db = CatalogDatabase(self.settings.catalog_db_path)
+        downloaded = db.get_downloaded(benchmark_id)
+        if downloaded is None:
+            self._download(db, benchmark_id)
+            downloaded = db.get_downloaded(benchmark_id)
+        if downloaded is None:
+            raise click.ClickException(f"Benchmark {benchmark_id} was downloaded but not cached")
+        return _parse_benchmark(downloaded["content_json"], f"benchmark {benchmark_id}")
+
+    def _download(self, db: CatalogDatabase, benchmark_id: str) -> None:
+        """Download a catalog benchmark into the cache, as download and get do."""
+        from sqlalchemy.exc import SQLAlchemyError
+
+        from cis_bench.catalog.downloader import CatalogDownloader
+        from cis_bench.cli.helpers.download_helper import download_with_progress
+
+        if db.get_benchmark(benchmark_id) is None:
+            raise click.ClickException(
+                f"Benchmark {benchmark_id} is not in catalog. Check the ID, or refresh the "
+                "catalog:\n  cis-bench catalog refresh"
+            )
+        _, url = resolve_benchmark_reference(benchmark_id, base_url=self.settings.workbench_url)
+
+        err_console.print(
+            f"[cyan]Benchmark {benchmark_id} is not downloaded; "
+            "downloading it from CIS WorkBench...[/cyan]"
+        )
+        try:
+            scraper = self._workbench()
+            benchmark = download_with_progress(scraper, url, prefix=" ", console=err_console)
+        except DOWNLOAD_ERRORS as error:
+            report_download_error(err_console, error)
+            sys.exit(1)
+
+        try:
+            CatalogDownloader(db, scraper).cache(benchmark_id, benchmark)
+        except (SQLAlchemyError, OSError) as error:
+            raise click.ClickException(cache_failure(benchmark_id, error)) from error
+        err_console.print(f"[green]✓[/green] Downloaded and cached: {escape(benchmark.title)}")
+
+    def _workbench(self) -> WorkbenchScraper:
+        """The WorkBench scraper for this run, logging in the first time it is needed."""
+        if self._scraper is None:
+            session = auth_manager(self.settings).get_or_create_session()
+            self._scraper = workbench_scraper(self.settings, session)
+        return self._scraper
+
+    @staticmethod
+    def _load_file(identifier: str) -> dict:
         path = Path(identifier)
         if not path.is_file():
             raise click.ClickException(f"No benchmark file {identifier}")
@@ -115,9 +177,7 @@ def _load_benchmark(identifier: str, settings: Settings) -> dict:
             ) from error
         except OSError as error:
             raise click.ClickException(f"{identifier} could not be read: {error}") from error
-        source = identifier
-
-    return _parse_benchmark(text, source)
+        return _parse_benchmark(text, identifier)
 
 
 def _parse_benchmark(text: str, source: str) -> dict:

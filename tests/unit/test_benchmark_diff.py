@@ -471,13 +471,16 @@ class TestDownloadedBenchmarksByID:
         assert result.exit_code == 0, result.output
         assert json.loads(result.output)["summary"]["added"] == 1
 
-    def test_an_id_that_is_not_downloaded_says_how_to_download_it(self, runner, cached):
-        result = runner.invoke(cli, ["diff", "12345", "99999"])
+    def test_an_id_the_catalog_does_not_list_is_named_without_logging_in(self, runner, cached):
+        from unittest.mock import patch
+
+        with patch("cis_bench.fetcher.auth.AuthManager.get_or_create_session") as session:
+            result = runner.invoke(cli, ["diff", "12345", "99999"])
 
         assert result.exit_code == 1
-        assert "99999" in result.output
-        assert "cis-bench download 99999" in result.output
-        assert "Traceback" not in result.output
+        assert "Benchmark 99999 is not in catalog" in result.output
+        assert "cis-bench catalog refresh" in result.output
+        session.assert_not_called()
 
     def test_a_missing_file_is_named(self, runner, tmp_path, old_benchmark_json):
         old_file, _ = _files(tmp_path, old_benchmark_json, old_benchmark_json)
@@ -553,3 +556,217 @@ class TestOrderAndMarkdownCells:
 
         assert result.exit_code == 0, result.output
         assert "| 1.1.1 | Ensure a \\| b is set | title |" in result.output.splitlines()
+
+
+class TestFetchingAnIDThatIsNotDownloaded:
+    """An ID in the catalog but not in the cache is downloaded into the cache, as download
+    and get do, then compared; it is then downloaded like any other."""
+
+    @pytest.fixture
+    def catalog(self, tmp_path, monkeypatch, old_benchmark_json):
+        from cis_bench.catalog.database import CatalogDatabase, serialize_benchmark_json
+        from cis_bench.models.benchmark import Benchmark
+
+        monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path))
+        db = CatalogDatabase(tmp_path / "catalog.db")
+        db.initialize_schema()
+        for bid, version in (("12345", "1.0.0"), ("12346", "2.0.0")):
+            db.insert_benchmark(
+                {
+                    "benchmark_id": bid,
+                    "title": "CIS Ubuntu Linux 22.04 LTS Benchmark",
+                    "version": version,
+                    "url": f"https://workbench.cisecurity.org/benchmarks/{bid}",
+                    "status": "Published",
+                    "last_revision_date": "2024-06-01",
+                }
+            )
+        old = {**old_benchmark_json, "benchmark_id": "12345"}
+        content_json, content_hash = serialize_benchmark_json(Benchmark.model_validate(old))
+        db.save_downloaded("12345", content_json, content_hash, 4, version="1.0.0")
+        return db
+
+    @pytest.fixture
+    def scraper(self, new_benchmark_json):
+        from unittest.mock import MagicMock, patch
+
+        from cis_bench.models.benchmark import Benchmark
+
+        new = Benchmark.model_validate(
+            {
+                **new_benchmark_json,
+                "benchmark_id": "12346",
+                "downloaded_at": "2024-06-01T00:00:00+00:00",
+            }
+        )
+        instance = MagicMock()
+        instance.base_url = "https://workbench.cisecurity.org"
+        instance.download_benchmark.return_value = new
+        with (
+            patch("cis_bench.fetcher.auth.AuthManager.get_or_create_session") as session,
+            patch("cis_bench.fetcher.workbench.WorkbenchScraper", return_value=instance),
+        ):
+            instance.session = session
+            yield instance
+
+    def test_diff_fetches_an_undownloaded_id_through_the_download_path(
+        self, runner, catalog, scraper
+    ):
+        result = runner.invoke(cli, ["diff", "12345", "12346", "--format", "json"])
+
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.stdout)["summary"]["added"] == 1
+        scraper.download_benchmark.assert_called_once()
+        assert scraper.download_benchmark.call_args.args[0] == (
+            "https://workbench.cisecurity.org/benchmarks/12346"
+        )
+        cached = catalog.get_downloaded("12346")
+        assert cached is not None
+        assert cached["version"] == "2.0.0"
+        assert cached["workbench_last_modified"] == "2024-06-01"
+        assert json.loads(cached["content_json"])["benchmark_id"] == "12346"
+
+    def test_the_fetch_is_announced_on_stderr(self, runner, catalog, scraper):
+        result = runner.invoke(cli, ["diff", "12345", "12346", "--format", "json"])
+
+        assert result.exit_code == 0, result.output
+        assert "12346" in result.stderr
+        assert "Downloaded" in result.stderr
+
+    def test_a_fetched_id_is_not_fetched_again(self, runner, catalog, scraper):
+        first = runner.invoke(cli, ["diff", "12345", "12346", "--format", "summary"])
+        second = runner.invoke(cli, ["diff", "12345", "12346", "--format", "summary"])
+
+        assert first.exit_code == 0 and second.exit_code == 0, second.output
+        scraper.download_benchmark.assert_called_once()
+
+    def test_two_ids_to_download_log_in_once(self, runner, catalog, scraper):
+        catalog.insert_benchmark(
+            {
+                "benchmark_id": "12347",
+                "title": "CIS Ubuntu Linux 22.04 LTS Benchmark",
+                "version": "3.0.0",
+                "url": "https://workbench.cisecurity.org/benchmarks/12347",
+                "status": "Published",
+            }
+        )
+
+        result = runner.invoke(cli, ["diff", "12346", "12347", "--format", "summary"])
+
+        assert result.exit_code == 0, result.output
+        assert scraper.download_benchmark.call_count == 2
+        scraper.session.assert_called_once()
+
+    def test_download_progress_stays_off_stdout(self, runner, catalog, scraper):
+        downloaded = scraper.download_benchmark.return_value
+
+        def scrape(url, progress_callback=None):
+            progress_callback("Benchmark title: CIS Ubuntu Linux 22.04 LTS Benchmark")
+            progress_callback("Found 4 recommendations")
+            progress_callback("[1/4] Fetching 1.1.1")
+            return downloaded
+
+        scraper.download_benchmark.side_effect = scrape
+
+        result = runner.invoke(cli, ["diff", "12345", "12346", "--format", "json"])
+
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.stdout)["summary"]["added"] == 1
+        assert "CIS Ubuntu Linux 22.04 LTS Benchmark" in result.stderr
+
+    def test_two_downloaded_ids_never_log_in(self, runner, catalog, scraper):
+        runner.invoke(cli, ["diff", "12345", "12345", "--format", "summary"])
+
+        scraper.session.assert_not_called()
+        scraper.download_benchmark.assert_not_called()
+
+    def test_an_id_not_in_the_catalog_is_named(self, runner, catalog, scraper):
+        result = runner.invoke(cli, ["diff", "12345", "99999"])
+
+        assert result.exit_code == 1
+        assert "99999" in result.output and "not in catalog" in result.output
+        scraper.download_benchmark.assert_not_called()
+
+    def test_without_a_catalog_it_says_to_build_one(self, runner, tmp_path, monkeypatch):
+        monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path))
+
+        result = runner.invoke(cli, ["diff", "12345", "12346"])
+
+        assert result.exit_code == 1
+        assert "cis-bench catalog refresh" in result.output
+
+    def test_no_saved_session_says_to_log_in(self, runner, catalog, scraper):
+        from cis_bench.exceptions import NoSavedSessionError
+
+        scraper.session.side_effect = NoSavedSessionError("No saved session found")
+
+        result = runner.invoke(cli, ["diff", "12345", "12346"])
+
+        assert result.exit_code == 1
+        assert "Authentication Required" in result.output
+        assert "cis-bench auth login --browser chrome" in result.output
+        assert result.exception is None or isinstance(result.exception, SystemExit)
+
+    def test_an_expired_session_says_to_log_in_again(self, runner, catalog, scraper):
+        from cis_bench.exceptions import AuthenticationError
+
+        scraper.session.side_effect = AuthenticationError("Session expired")
+
+        result = runner.invoke(cli, ["diff", "12345", "12346"])
+
+        assert result.exit_code == 1
+        assert "Authentication Failed" in result.output
+        assert "Session expired" in result.output
+
+    def test_an_untrusted_server_gives_its_message(self, runner, catalog, scraper):
+        from cis_bench.exceptions import TLSVerificationError
+
+        scraper.download_benchmark.side_effect = TLSVerificationError(
+            "certificate verify failed: set CIS_BENCH_VERIFY_SSL to a CA bundle"
+        )
+
+        result = runner.invoke(cli, ["diff", "12345", "12346"])
+
+        assert result.exit_code == 1
+        assert "certificate verify failed" in " ".join(result.output.split())
+        assert "Could not reach WorkBench" not in result.output
+        assert catalog.get_downloaded("12346") is None
+
+    def test_an_unreachable_workbench_changes_nothing(self, runner, catalog, scraper):
+        from cis_bench.exceptions import FetchError
+
+        scraper.download_benchmark.side_effect = FetchError(
+            "https://workbench.cisecurity.org/benchmarks/12346", 3, "Connection refused"
+        )
+
+        result = runner.invoke(cli, ["diff", "12345", "12346"])
+
+        assert result.exit_code == 1
+        assert "Could not reach WorkBench" in result.output
+        assert catalog.get_downloaded("12346") is None
+
+    def test_a_failed_cache_write_is_reported(self, runner, catalog, scraper, monkeypatch):
+        from sqlalchemy.exc import OperationalError
+
+        from cis_bench.catalog.database import CatalogDatabase
+
+        def locked(self, *args, **kwargs):
+            raise OperationalError("INSERT", {}, Exception("database is locked"))
+
+        monkeypatch.setattr(CatalogDatabase, "save_downloaded", locked)
+
+        result = runner.invoke(cli, ["diff", "12345", "12346"])
+
+        assert result.exit_code == 1
+        assert "Could not cache 12346" in result.output
+        assert "database is locked" in result.output
+        assert "INSERT" not in result.output
+        assert result.exception is None or isinstance(result.exception, SystemExit)
+
+    def test_a_bad_setting_is_a_configuration_error(self, runner, catalog, monkeypatch):
+        monkeypatch.setenv("CIS_BENCH_REQUESTS_PER_SECOND", "fast")
+
+        result = runner.invoke(cli, ["diff", "12345", "12346"])
+
+        assert result.exit_code == 1
+        assert "Configuration Error" in result.output

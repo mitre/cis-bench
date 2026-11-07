@@ -9,15 +9,9 @@ import questionary
 from rich.console import Console
 from rich.markup import escape
 
-from cis_bench.cli.helpers.errors import report_expired_session, report_unreachable
+from cis_bench.cli.helpers.errors import DOWNLOAD_ERRORS, report_download_error
 from cis_bench.cli.helpers.output import benchmark_table, display_time
 from cis_bench.cli.helpers.services import auth_manager, settings_from, workbench_scraper
-from cis_bench.exceptions import (
-    AuthenticationError,
-    FetchError,
-    NoSavedSessionError,
-    TLSVerificationError,
-)
 from cis_bench.exporters import ExporterFactory
 from cis_bench.exporters.xccdf_unified_exporter import XCCDFExporter
 from cis_bench.utils.workbench_urls import is_benchmark_id, resolve_benchmark_reference
@@ -167,49 +161,18 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
             logger.debug("Getting authenticated session for download")
             session = auth_manager(settings).get_or_create_session()
 
-            # Download with progress bar
-            from cis_bench.catalog.database import serialize_benchmark_json
+            from cis_bench.catalog.downloader import CatalogDownloader
             from cis_bench.cli.helpers.download_helper import download_with_progress
 
             scraper = workbench_scraper(settings, session)
-
             benchmark = download_with_progress(scraper, benchmark_url, prefix="  ")
+            CatalogDownloader(db, scraper).cache(benchmark_id, benchmark)
 
             console.print(f"[green]✓[/green] Downloaded: {escape(benchmark.title)}")
             console.print(f"  Recommendations: {benchmark.total_recommendations}\n")
 
-            # Save to database
-            content_json, content_hash = serialize_benchmark_json(benchmark)
-            recommendation_count = len(benchmark.recommendations)
-
-            db.save_downloaded(
-                version=benchmark.version,
-                benchmark_id=benchmark_id,
-                content_json=content_json,
-                content_hash=content_hash,
-                recommendation_count=recommendation_count,
-                downloaded_at=benchmark.downloaded_at,
-            )
-
-            logger.debug(f"Saved benchmark {benchmark_id} to database")
-
-        except NoSavedSessionError:
-            console.print("\n[bold red]Authentication Required[/bold red]\n")
-            console.print("[cyan]Please log in first:[/cyan]")
-            console.print("  cis-bench auth login --browser chrome")
-            console.print(
-                "\n[dim]Windows users: If Chrome fails, try Firefox or --cookies option.[/dim]"
-            )
-            sys.exit(1)
-        except TLSVerificationError as e:
-            # The server could not be trusted; the message carries the remediation.
-            console.print(f"\n[red]✗ {escape(str(e))}[/red]")
-            sys.exit(1)
-        except AuthenticationError as e:
-            report_expired_session(console, e)
-            sys.exit(1)
-        except FetchError as e:
-            report_unreachable(console, e)
+        except DOWNLOAD_ERRORS as e:
+            report_download_error(console, e)
             sys.exit(1)
         except Exception as e:
             logger.debug("Download failed", exc_info=True)
