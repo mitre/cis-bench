@@ -1,8 +1,11 @@
 """Catalog management commands for CIS Benchmark CLI."""
 
+from __future__ import annotations
+
 import logging
 import math
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 import click
 from rich.console import Console
@@ -14,13 +17,16 @@ from cis_bench.catalog.search import CatalogSearch
 from cis_bench.cli.helpers.errors import report_unreachable
 from cis_bench.cli.helpers.output import display_time, output_data, showing_line
 from cis_bench.cli.helpers.services import (
-    auth_manager,
     catalog_scraper,
     settings_from,
     workbench_scraper,
+    workbench_session,
 )
 from cis_bench.exceptions import AuthenticationError, FetchError
 from cis_bench.utils.workbench_urls import is_benchmark_id
+
+if TYPE_CHECKING:
+    from cis_bench.fetcher.workbench import WorkbenchScraper
 
 console = Console()
 logger = logging.getLogger(__name__)
@@ -106,21 +112,23 @@ def refresh(browser, max_pages, rate_limit):
         cis-bench catalog refresh --rate-limit 1  # One request per second (gentler)
     """
     try:
-        # Get database
+        # The session comes first: nothing is created (not even catalog.db) for a run that
+        # cannot log in or is offline. The session helper validates the saved or freshly
+        # extracted session and raises AuthenticationError when WorkBench accepts neither.
+        settings = settings_from()
+        with console.status("[cyan]Validating session...[/cyan]"):
+            # Pace every request of this run at the requested gap, from the session check on;
+            # the scraper's worker threads share the session's adapter, so they all follow it.
+            session = workbench_session(
+                settings,
+                needs="read the catalog",
+                browser=browser or settings.browser,
+                requests_per_second=None if rate_limit is None else 1 / rate_limit,
+            )
+        console.print("[green]✓[/green] Session valid\n")
+
         db = get_catalog_db()
         db.initialize_schema()
-
-        # The session helper validates the saved or freshly extracted session itself
-        # and raises AuthenticationError when neither is accepted by WorkBench.
-        settings = settings_from()
-        console.print("[cyan]Validating session...[/cyan]")
-        # Pace every request of this run at the requested gap, from the session check on;
-        # the scraper's worker threads share the session's adapter, so they all follow it.
-        auth = auth_manager(
-            settings, requests_per_second=None if rate_limit is None else 1 / rate_limit
-        )
-        session = auth.get_or_create_session(browser=browser or settings.browser)
-        console.print("[green]✓[/green] Session valid\n")
 
         # Create scraper
         scraper = catalog_scraper(settings, db, session)
@@ -155,8 +163,8 @@ def refresh(browser, max_pages, rate_limit):
         console.print(f"  Platforms: {db_stats['platforms']}")
         console.print(f"  Communities: {db_stats['communities']}")
 
-    except click.Abort:
-        raise
+    except (click.Abort, click.ClickException):
+        raise  # Click reports its own errors (offline mode refuses with one)
     except FetchError as e:
         report_unreachable(console, e)
         raise click.Abort() from e
@@ -190,7 +198,9 @@ def update(browser):
         db.initialize_schema()
 
         settings = settings_from()
-        session = auth_manager(settings).get_or_create_session(browser=browser or settings.browser)
+        session = workbench_session(
+            settings, needs="read the catalog", browser=browser or settings.browser
+        )
         scraper = catalog_scraper(settings, db, session)
 
         console.print("[cyan]Updating catalog (page 1)...[/cyan]")
@@ -201,8 +211,8 @@ def update(browser):
         console.print(f"  New benchmarks: [yellow]{stats['new_count']}[/yellow]")
         console.print(f"  Updated: [yellow]{stats['updated_count']}[/yellow]")
 
-    except click.Abort:
-        raise
+    except (click.Abort, click.ClickException):
+        raise  # Click reports its own errors (offline mode refuses with one)
     except FetchError as e:
         report_unreachable(console, e)
         raise click.Abort() from e
@@ -300,8 +310,8 @@ def search(query, platform, status, latest, limit, output_format):
         )
         console.print(f"[dim]{showing_line(len(results), total)}[/dim]")
 
-    except click.Abort:
-        raise
+    except (click.Abort, click.ClickException):
+        raise  # Click reports its own errors (offline mode refuses with one)
     except Exception as e:
         console.print(f"[red]✗ Search failed: {escape(str(e))}[/red]")
         raise click.Abort() from e
@@ -345,8 +355,8 @@ def list_cmd(platform, status, latest, limit):
         total = search_obj.count(**filters) if len(results) >= limit else len(results)
         console.print(f"[dim]{showing_line(len(results), total)}[/dim]")
 
-    except click.Abort:
-        raise
+    except (click.Abort, click.ClickException):
+        raise  # Click reports its own errors (offline mode refuses with one)
     except Exception as e:
         console.print(f"[red]✗ List failed: {escape(str(e))}[/red]")
         raise click.Abort() from e
@@ -411,8 +421,8 @@ def info(benchmark_id, output_format):
             f"\n[cyan]Download:[/cyan] cis-bench catalog download {escape(str(benchmark_id))}"
         )
 
-    except click.Abort:
-        raise
+    except (click.Abort, click.ClickException):
+        raise  # Click reports its own errors (offline mode refuses with one)
     except Exception as e:
         console.print(f"[red]✗ Info failed: {escape(str(e))}[/red]")
         raise click.Abort() from e
@@ -461,8 +471,8 @@ def platforms(output_format):
         console.print()
         console.print(table)
 
-    except click.Abort:
-        raise
+    except (click.Abort, click.ClickException):
+        raise  # Click reports its own errors (offline mode refuses with one)
     except Exception as e:
         console.print(f"[red]✗ Platforms list failed: {escape(str(e))}[/red]")
         raise click.Abort() from e
@@ -512,8 +522,8 @@ def stats(output_format):
                 f"\nLast catalog refresh: [dim]{display_time(datetime.fromisoformat(last_scrape))}[/dim]"
             )
 
-    except click.Abort:
-        raise
+    except (click.Abort, click.ClickException):
+        raise  # Click reports its own errors (offline mode refuses with one)
     except Exception as e:
         console.print(f"[red]✗ Stats failed: {escape(str(e))}[/red]")
         raise click.Abort() from e
@@ -540,12 +550,16 @@ def download(benchmark_id_or_name, browser, force, interactive):
         from cis_bench.catalog.downloader import CatalogDownloader
 
         settings = settings_from()
-        # Get authenticated session (reuses saved session or authenticates via browser)
-        session = auth_manager(settings).get_or_create_session(browser=browser or settings.browser)
 
-        # Create downloader
-        scraper = workbench_scraper(settings, session)
-        downloader = CatalogDownloader(db, scraper)
+        def connect() -> WorkbenchScraper:
+            # Logs in (saved session, else the browser's cookies) only when a download is
+            # needed: an up-to-date copy is reported without contacting WorkBench.
+            session = workbench_session(
+                settings, needs="download a benchmark", browser=browser or settings.browser
+            )
+            return workbench_scraper(settings, session)
+
+        downloader = CatalogDownloader(db, connect)
 
         # Determine if ID or name
         if is_benchmark_id(benchmark_id_or_name):
@@ -572,8 +586,8 @@ def download(benchmark_id_or_name, browser, force, interactive):
             console.print(f"  Recommendations: {result['recommendation_count']}")
             console.print(f"  Size: {result['file_size'] / 1024:.1f} KB")
 
-    except click.Abort:
-        raise
+    except (click.Abort, click.ClickException):
+        raise  # Click reports its own errors (offline mode refuses with one)
     except FetchError as e:
         report_unreachable(console, e)
         raise click.Abort() from e
@@ -618,9 +632,10 @@ def check_updates(offline):
             console.print("  cis-bench download <ID>")
             return
 
-        if not offline:
-            settings = settings_from()
-            session = auth_manager(settings).get_or_create_session()
+        # Its own --offline, or offline mode, compares versions only.
+        settings = settings_from()
+        if not (offline or settings.offline):
+            session = workbench_session(settings, needs="read publication dates")
             console.print("[cyan]Checking WorkBench publication dates...[/cyan]")
             refreshed = catalog_scraper(settings, db, session).refresh_downloaded_pages()
             console.print(f"[green]✓[/green] Checked {refreshed} downloaded benchmark(s)\n")
@@ -646,8 +661,8 @@ def check_updates(offline):
 
         console.print("[cyan]Use 'cis-bench catalog download <id>' to download the update.[/cyan]")
 
-    except click.Abort:
-        raise
+    except (click.Abort, click.ClickException):
+        raise  # Click reports its own errors (offline mode refuses with one)
     except FetchError as e:
         report_unreachable(console, e)
         raise click.Abort() from e

@@ -12,6 +12,7 @@ from rich.console import Console
 from rich.markup import escape
 
 from cis_bench.cli.helpers.errors import report_unreachable
+from cis_bench.cli.helpers.offline import require_online
 from cis_bench.cli.helpers.output import output_data
 from cis_bench.cli.helpers.services import auth_manager, settings_from, settings_with_flags
 from cis_bench.config import BROWSERS, is_cis_domain
@@ -89,6 +90,8 @@ def login(browser, cookies, open, no_verify_ssl):
     try:
         # --no-verify-ssl is a flag on top of CIS_BENCH_VERIFY_SSL; unset, the setting applies.
         settings = settings_with_flags(verify_ssl=False if no_verify_ssl else None)
+        # Logging in is checking cookies with WorkBench; offline there is nothing to do.
+        require_online(settings, "log in")
         auth = auth_manager(settings)
         # Without --browser the configured browser is read (CIS_BENCH_BROWSER, chrome by default).
         browser = browser or settings.browser
@@ -214,6 +217,8 @@ def login(browser, cookies, open, no_verify_ssl):
         console.print("[bold green]Login successful![/bold green]")
         console.print("[dim]You can now run commands without --browser flag[/dim]")
 
+    except click.ClickException:
+        raise  # Click reports its own errors (offline mode refuses with one)
     except TLSVerificationError as e:
         # The server could not be trusted; the message carries the remediation.
         console.print(f"[red]✗ {escape(str(e))}[/red]")
@@ -248,32 +253,39 @@ def status(output_format):
         cis-bench auth status
     """
     try:
-        auth = auth_manager(settings_from())
+        settings = settings_from()
+        # The status is WorkBench's answer about the saved session; offline it cannot be asked.
+        require_online(settings, "check the saved session")
+        auth = auth_manager(settings)
         session_path = auth.session_file
+
+        # Progress and problems go to stderr, so stdout holds only the status itself
+        # (the table, or the JSON/YAML document a script reads).
+        notes = Console(stderr=True)
 
         # Check if session file exists
         if not session_path.exists():
-            console.print("[yellow]Not logged in[/yellow]")
-            console.print(f"\n[dim]No saved session found at {escape(str(session_path))}[/dim]")
-            console.print("\n[cyan]To log in:[/cyan]")
-            console.print("  cis-bench auth login --browser chrome --open")
+            notes.print("[yellow]Not logged in[/yellow]")
+            notes.print(f"\n[dim]No saved session found at {escape(str(session_path))}[/dim]")
+            notes.print("\n[cyan]To log in:[/cyan]")
+            notes.print("  cis-bench auth login --browser chrome --open")
             sys.exit(1)
 
         # Load session
-        console.print("[cyan]Checking saved session...[/cyan]")
+        notes.print("[cyan]Checking saved session...[/cyan]")
         session = auth.load_saved_session()
 
         if not session:
-            console.print("[red]✗ Could not load saved session[/red]")
-            console.print("\n[cyan]Try logging in again:[/cyan]")
-            console.print("  cis-bench auth login --browser chrome --open")
+            notes.print("[red]✗ Could not load saved session[/red]")
+            notes.print("\n[cyan]Try logging in again:[/cyan]")
+            notes.print("  cis-bench auth login --browser chrome --open")
             sys.exit(1)
 
         cookie_count = len(list(session.cookies))
-        console.print(f"[green]✓[/green] Found saved session with {cookie_count} cookies")
+        notes.print(f"[green]✓[/green] Found saved session with {cookie_count} cookies")
 
         # Validate session
-        console.print("[cyan]Validating session...[/cyan]")
+        notes.print("[cyan]Validating session...[/cyan]")
 
         is_valid = auth.validate_session(session)
 
@@ -287,7 +299,7 @@ def status(output_format):
 
         # Output in requested format
         if output_format != "table":
-            output_data(status_data, output_format)
+            output_data(status_data, output_format, exit_code=0 if is_valid else 1)
 
         # Display for humans
         if is_valid:
@@ -301,6 +313,8 @@ def status(output_format):
             console.print("  cis-bench auth login --browser chrome")
             sys.exit(1)
 
+    except click.ClickException:
+        raise  # Click reports its own errors (offline mode refuses with one)
     except FetchError as e:
         report_unreachable(console, e)
         sys.exit(1)

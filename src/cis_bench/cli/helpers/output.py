@@ -31,28 +31,30 @@ def display_time(value: datetime) -> str:
     return f"{value.astimezone():%Y-%m-%d %H:%M:%S %Z}"
 
 
-def output_json(data: Any) -> None:
-    """Output data as JSON to stdout.
+def output_json(data: Any, exit_code: int = 0) -> None:
+    """Output data as JSON to stdout and end the command with exit_code.
 
     Args:
         data: Data to serialize as JSON (dict, list, etc.)
+        exit_code: The command's exit code (1 when the data reports a failure)
 
     Note:
         Uses default=str to handle dates and other non-JSON types
     """
     print(json.dumps(data, indent=2, default=str))
-    sys.exit(0)
+    sys.exit(exit_code)
 
 
-def output_csv(data: list[dict], fields: list[str] | None = None) -> None:
-    """Output data as CSV to stdout.
+def output_csv(data: list[dict], fields: list[str] | None = None, exit_code: int = 0) -> None:
+    """Output data as CSV to stdout and end the command with exit_code.
 
     Args:
         data: List of dictionaries
         fields: Optional field names (defaults to keys from first row)
+        exit_code: The command's exit code (1 when the data reports a failure)
     """
     if not data:
-        sys.exit(0)
+        sys.exit(exit_code)
 
     # Auto-detect fields from first row if not provided
     if fields is None:
@@ -64,17 +66,18 @@ def output_csv(data: list[dict], fields: list[str] | None = None) -> None:
     writer.writerows(data)
 
     print(output.getvalue())
-    sys.exit(0)
+    sys.exit(exit_code)
 
 
-def output_yaml(data: Any) -> None:
-    """Output data as YAML to stdout.
+def output_yaml(data: Any, exit_code: int = 0) -> None:
+    """Output data as YAML to stdout and end the command with exit_code.
 
     Args:
         data: Data to serialize as YAML
+        exit_code: The command's exit code (1 when the data reports a failure)
     """
     print(yaml.dump(data, default_flow_style=False, sort_keys=False))
-    sys.exit(0)
+    sys.exit(exit_code)
 
 
 def output_data(
@@ -82,6 +85,7 @@ def output_data(
     format: str = "table",
     human_formatter_func=None,
     csv_fields: list[str] | None = None,
+    exit_code: int = 0,
 ) -> None:
     """Output data in specified format.
 
@@ -90,6 +94,8 @@ def output_data(
         format: Output format (table, json, csv, yaml)
         human_formatter_func: Function to display table (gets console and data)
         csv_fields: Optional CSV field order
+        exit_code: Exit code a json, csv or yaml output ends the command with (1 when
+            the data reports a failure, as the table output's exit code would)
 
     Example:
         def show_table(console, data):
@@ -99,11 +105,11 @@ def output_data(
         output_data(results, format, show_table)
     """
     if format == "json":
-        output_json(data)
+        output_json(data, exit_code)
     elif format == "csv":
-        output_csv(data, csv_fields)
+        output_csv(data, csv_fields, exit_code)
     elif format == "yaml":
-        output_yaml(data)
+        output_yaml(data, exit_code)
     elif format == "table" and human_formatter_func:
         human_formatter_func(console, data)
     else:

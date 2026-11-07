@@ -11,7 +11,7 @@ from rich.markup import escape
 
 from cis_bench.cli.helpers.errors import DOWNLOAD_ERRORS, report_download_error
 from cis_bench.cli.helpers.output import benchmark_table, display_time
-from cis_bench.cli.helpers.services import auth_manager, settings_from, workbench_scraper
+from cis_bench.cli.helpers.services import settings_from, workbench_scraper, workbench_session
 from cis_bench.exporters import ExporterFactory
 from cis_bench.exporters.xccdf_unified_exporter import XCCDFExporter
 from cis_bench.utils.workbench_urls import is_benchmark_id, resolve_benchmark_reference
@@ -145,8 +145,6 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
         logger.debug(f"Using cached benchmark {benchmark_id}")
     else:
         # Step 4: Download benchmark
-        console.print("[cyan]Downloading benchmark...[/cyan]\n")
-
         try:
             # The catalog row's ID becomes a canonical WorkBench URL on the configured origin
             _, benchmark_url = resolve_benchmark_reference(
@@ -159,18 +157,21 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
         try:
             # Get authenticated session (uses saved session only)
             logger.debug("Getting authenticated session for download")
-            session = auth_manager(settings).get_or_create_session()
+            session = workbench_session(settings, needs=f"download benchmark {benchmark_id}")
+            console.print("[cyan]Downloading benchmark...[/cyan]\n")
 
             from cis_bench.catalog.downloader import CatalogDownloader
             from cis_bench.cli.helpers.download_helper import download_with_progress
 
             scraper = workbench_scraper(settings, session)
             benchmark = download_with_progress(scraper, benchmark_url, prefix="  ")
-            CatalogDownloader(db, scraper).cache(benchmark_id, benchmark)
+            CatalogDownloader(db).cache(benchmark_id, benchmark)
 
             console.print(f"[green]✓[/green] Downloaded: {escape(benchmark.title)}")
             console.print(f"  Recommendations: {benchmark.total_recommendations}\n")
 
+        except click.ClickException:
+            raise  # Click reports its own errors (offline mode refuses with one)
         except DOWNLOAD_ERRORS as e:
             report_download_error(console, e)
             sys.exit(1)

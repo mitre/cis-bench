@@ -82,6 +82,16 @@ Downloaded benchmarks cached in SQLite for instant re-export.
 cis-bench export 23598 --format xccdf # Instant (from cache)
 ```
 
+### Work Offline
+`--offline` (or `CIS_BENCH_OFFLINE=true`) keeps cis-bench off the network: commands use the catalog and downloaded benchmarks, and fail only where they need CIS WorkBench.
+
+```bash
+cis-bench --offline get 23598 --format xccdf   # A downloaded benchmark
+cis-bench --offline diff 22605 23598
+```
+
+See [Offline mode](https://mitre.github.io/cis-bench/user-guide/commands-reference/#offline-mode).
+
 ### Compare Versions
 What changed between two releases: added, removed, modified (with the fields that changed) and renumbered recommendations.
 

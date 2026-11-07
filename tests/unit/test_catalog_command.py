@@ -40,6 +40,18 @@ def runner():
             root_logger.removeHandler(handler)
 
 
+def downloads_through_connect(downloader_class, result: dict) -> None:
+    """The mocked CatalogDownloader downloads the way the real one does when a copy must be
+    fetched: it calls the connect it was built with (the login), then returns ``result``."""
+
+    def download_by_id(*args, **kwargs):
+        connect = downloader_class.call_args.args[1]
+        connect()
+        return result
+
+    downloader_class.return_value.download_by_id.side_effect = download_by_id
+
+
 @pytest.fixture
 def mock_db():
     """Create mock CatalogDatabase."""
@@ -127,12 +139,15 @@ class TestTheBrowserSettingIsTheDefaultBrowser:
                 "new_benchmarks": 0,
                 "updated_benchmarks": 0,
             }
-            downloader_class.return_value.download_by_id.return_value = {
-                "status": "downloaded",
-                "benchmark_id": "23598",
-                "recommendation_count": 1,
-                "file_size": 1,
-            }
+            downloads_through_connect(
+                downloader_class,
+                {
+                    "status": "downloaded",
+                    "benchmark_id": "23598",
+                    "recommendation_count": 1,
+                    "file_size": 1,
+                },
+            )
             yield login
 
     @pytest.mark.parametrize(
@@ -1220,14 +1235,16 @@ class TestCatalogDownloadCommand:
         mock_session = Mock()
         mock_auth.return_value.get_or_create_session.return_value = mock_session
 
-        mock_downloader = Mock()
-        mock_downloader.download_by_id.return_value = {
-            "status": "downloaded",
-            "benchmark_id": "23598",
-            "recommendation_count": 150,
-            "file_size": 102400,
-        }
-        mock_downloader_class.return_value = mock_downloader
+        mock_downloader = mock_downloader_class.return_value
+        downloads_through_connect(
+            mock_downloader_class,
+            {
+                "status": "downloaded",
+                "benchmark_id": "23598",
+                "recommendation_count": 150,
+                "file_size": 102400,
+            },
+        )
 
         result = runner.invoke(cli, ["catalog", "download", "23598"])
 
@@ -1544,7 +1561,7 @@ class TestCatalogCheckUpdatesCommand:
 
         assert result.exit_code == 0, result.output
         assert auth_manager_class.call_args.kwargs["verify_ssl"] is True
-        mock_auth.assert_called_once_with()
+        mock_auth.assert_called_once_with(browser=None)
         mock_scraper_cls.return_value.refresh_downloaded_pages.assert_called_once()
         flat = " ".join(result.output.split())
         assert "Updates available for 2 benchmarks" in flat
@@ -1811,14 +1828,15 @@ class TestVerifiedTLSByDefault:
         monkeypatch.delenv("CIS_BENCH_VERIFY_SSL", raising=False)
         mock_get_db.return_value = mock_db
         mock_auth.return_value.get_or_create_session.return_value = Mock()
-        mock_downloader = Mock()
-        mock_downloader.download_by_id.return_value = {
-            "status": "downloaded",
-            "benchmark_id": "23598",
-            "recommendation_count": 1,
-            "file_size": 10,
-        }
-        mock_downloader_class.return_value = mock_downloader
+        downloads_through_connect(
+            mock_downloader_class,
+            {
+                "status": "downloaded",
+                "benchmark_id": "23598",
+                "recommendation_count": 1,
+                "file_size": 10,
+            },
+        )
 
         result = runner.invoke(cli, ["catalog", "download", "23598"])
 
@@ -1836,6 +1854,7 @@ class TestCatalogCommandsNoSavedSession:
         self, mock_get_db, runner, mock_db, args
     ):
         mock_get_db.return_value = mock_db
+        mock_db.get_downloaded.return_value = None  # not downloaded: a download logs in
         with patch(
             "cis_bench.fetcher.auth.AuthManager.get_or_create_session",
             side_effect=NoSavedSessionError("session.cookies is missing"),
@@ -1921,7 +1940,7 @@ class TestCatalogRequestTimeoutSetting:
 
         with (
             patch("cis_bench.cli.commands.catalog.get_catalog_db"),
-            patch("cis_bench.cli.commands.catalog.require_catalog_db"),
+            patch("cis_bench.cli.commands.catalog.require_catalog_db") as require_db,
             patch.object(
                 AuthManager,
                 "get_or_create_session",
@@ -1930,6 +1949,12 @@ class TestCatalogRequestTimeoutSetting:
                 ),
             ),
         ):
+            # Listed in the catalog and not downloaded, so catalog download logs in.
+            require_db.return_value.get_benchmark.return_value = {
+                "benchmark_id": "23598",
+                "url": "https://workbench.cisecurity.org/benchmarks/23598",
+            }
+            require_db.return_value.get_downloaded.return_value = None
             result = runner.invoke(cli, ["catalog", *args])
 
         assert result.exit_code == 1

@@ -1,9 +1,12 @@
 """Download command for CIS Benchmark CLI."""
 
+from __future__ import annotations
+
 import logging
 import os
 import re
 import sys
+from typing import TYPE_CHECKING
 
 import click
 from rich.console import Console
@@ -15,11 +18,16 @@ from cis_bench.cli.helpers.errors import (
     report_download_error,
     report_expired_session,
 )
+from cis_bench.cli.helpers.offline import OfflineError
 from cis_bench.cli.helpers.output import display_time
-from cis_bench.cli.helpers.services import auth_manager, settings_from, workbench_scraper
+from cis_bench.cli.helpers.services import settings_from, workbench_scraper, workbench_session
+from cis_bench.config import Settings
 from cis_bench.exceptions import AuthenticationError
 from cis_bench.exporters import ExporterFactory
 from cis_bench.utils.workbench_urls import resolve_benchmark_reference
+
+if TYPE_CHECKING:
+    from cis_bench.fetcher.workbench import WorkbenchScraper
 
 console = Console()
 logger = logging.getLogger(__name__)
@@ -49,6 +57,32 @@ def _collect_targets(
         return [resolve_benchmark_reference(item, base_url=base_url) for item in benchmark_ids]
     console.print("[red]Error: Must specify benchmark IDs or --file[/red]")
     sys.exit(1)
+
+
+def _open_workbench(settings: Settings, benchmark_id: str) -> WorkbenchScraper:
+    """Log in to WorkBench for the first benchmark that must be fetched.
+
+    A failed login ends the run (every later download would fail the same way).
+
+    Raises:
+        OfflineError: Offline mode is on; the caller fails this benchmark and goes on.
+    """
+    try:
+        logger.debug("Getting authenticated session")
+        with console.status("[bold green]Authenticating..."):
+            session = workbench_session(settings, needs=f"download benchmark {benchmark_id}")
+    except OfflineError:
+        raise
+    except DOWNLOAD_ERRORS as e:
+        report_download_error(console, e)
+        sys.exit(1)
+    except Exception as e:
+        logger.debug("Authentication failed", exc_info=True)
+        report_expired_session(console, e)
+        sys.exit(1)
+    console.print("[green]✓[/green] Authenticated successfully\n")
+    logger.debug("Authentication successful")
+    return workbench_scraper(settings, session)
 
 
 @click.command(name="download")
@@ -126,28 +160,9 @@ def download(
         console.print("[red]Error: No benchmarks to download[/red]")
         sys.exit(1)
 
-    # Get authenticated session (uses saved session only)
-    try:
-        logger.debug("Getting authenticated session")
-        with console.status("[bold green]Authenticating..."):
-            session = auth_manager(settings).get_or_create_session()
-
-        console.print("[green]✓[/green] Authenticated successfully\n")
-        logger.debug("Authentication successful")
-
-    except DOWNLOAD_ERRORS as e:
-        report_download_error(console, e)
-        sys.exit(1)
-    except Exception as e:
-        logger.debug("Authentication failed", exc_info=True)
-        console.print("\n[bold red]Authentication Failed[/bold red]\n")
-        console.print(f"[yellow]Error: {escape(str(e))}[/yellow]\n")
-        console.print("[bold cyan]Your session may have expired. To refresh:[/bold cyan]")
-        console.print("  cis-bench auth login --browser chrome")
-        sys.exit(1)
-
-    # Create scraper
-    scraper = workbench_scraper(settings, session)
+    # The session is opened at the first benchmark that is not cached, so cached ones need
+    # no login (and work offline).
+    scraper: WorkbenchScraper | None = None
 
     # Download benchmarks
     logger.debug(f"Starting download of {len(targets)} benchmark(s)")
@@ -183,6 +198,14 @@ def download(
                 except Exception as e:
                     logger.debug(f"Cache check failed: {e}, will download anyway")
 
+        if scraper is None:
+            try:
+                scraper = _open_workbench(settings, benchmark_id)
+            except OfflineError as e:
+                console.print(f"{prefix} [red]✗[/red] {escape(e.format_message())}\n")
+                failed.append(benchmark_id)
+                continue
+
         try:
             from cis_bench.cli.helpers.download_helper import download_with_progress
 
@@ -214,7 +237,7 @@ def download(
                 from cis_bench.catalog.downloader import CatalogDownloader
 
                 try:
-                    CatalogDownloader(CatalogDatabase(catalog_db_path), scraper).cache(
+                    CatalogDownloader(CatalogDatabase(catalog_db_path)).cache(
                         benchmark_id, benchmark
                     )
                     console.print(f"      [green]✓[/green] Cached in database (ID: {benchmark_id})")

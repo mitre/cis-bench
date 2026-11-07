@@ -8,12 +8,14 @@ import pytest
 import requests
 
 from cis_bench.catalog.scraper import CatalogScraper
+from cis_bench.cli.helpers.offline import OfflineError
 from cis_bench.cli.helpers.services import (
     auth_manager,
     catalog_scraper,
     settings_from,
     settings_with_flags,
     workbench_scraper,
+    workbench_session,
 )
 from cis_bench.config import Folders, RequestPolicy, Settings, load_settings
 from cis_bench.exceptions import ConfigurationError
@@ -65,6 +67,47 @@ class TestSettingsWithFlags:
         monkeypatch.setenv("CIS_BENCH_VERIFY_SSL", "true")
         with click.Context(click.Command("cis-bench")):
             assert settings_with_flags(verify_ssl=False).verify_ssl is False
+
+
+class TestSettingsWithFlagsKeepsTheRootFlags:
+    def test_a_command_flag_keeps_the_root_offline_flag(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("CIS_BENCH_OFFLINE", raising=False)
+        root_settings = load_settings(offline=True)
+        obj = {"settings": root_settings, "setting_flags": {"offline": True}}
+        with click.Context(click.Command("cis-bench"), obj=obj):
+            settings = settings_with_flags(verify_ssl=False)
+        assert settings.verify_ssl is False
+        assert settings.offline is True
+
+
+class TestWorkbenchSession:
+    def test_offline_refuses_before_any_auth_manager_is_built(self, settings, auth_manager_class):
+        offline = load_settings(folders=settings.folders, offline=True)
+        with click.Context(click.Command("download"), parent=click.Context(click.Group("cli"))):
+            with pytest.raises(OfflineError) as caught:
+                workbench_session(offline, needs="download benchmark 23598")
+        auth_manager_class.assert_not_called()
+        message = caught.value.format_message()
+        assert message.startswith(
+            "cis-bench download needs CIS WorkBench to download benchmark 23598"
+        )
+        assert "offline mode is on" in message
+        assert "--offline" in message and "CIS_BENCH_OFFLINE" in message
+        assert caught.value.exit_code == 1
+
+    def test_online_opens_the_session_with_the_browser_and_rate(self, settings, auth_manager_class):
+        session = Mock(spec=requests.Session)
+        auth_manager_class.return_value.get_or_create_session.return_value = session
+        with click.Context(click.Command("refresh")):
+            got = workbench_session(
+                settings, needs="refresh the catalog", browser="firefox", requests_per_second=0.5
+            )
+        assert got is session
+        auth_manager_class.return_value.get_or_create_session.assert_called_once_with(
+            browser="firefox"
+        )
+        policy = auth_manager_class.call_args.kwargs["request_policy"]
+        assert policy.requests_per_second == 0.5
 
 
 class TestFactories:

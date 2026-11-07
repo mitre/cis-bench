@@ -23,16 +23,34 @@ logger = logging.getLogger(__name__)
 class CatalogDownloader:
     """Download benchmarks using catalog with change detection."""
 
-    def __init__(self, database: CatalogDatabase, scraper: WorkbenchScraper):
+    def __init__(
+        self, database: CatalogDatabase, connect: Callable[[], WorkbenchScraper] | None = None
+    ):
         """Initialize downloader.
 
         Args:
             database: CatalogDatabase instance
-            scraper: WorkbenchScraper instance (authenticated)
+            connect: Returns an authenticated WorkbenchScraper. It is called the first time a
+                benchmark must be fetched, and only then: a copy that is up to date, or a
+                benchmark the catalog does not list, never opens a WorkBench session. None
+                for a downloader that only caches benchmarks fetched elsewhere.
         """
         self.db = database
-        self.scraper = scraper
+        self._connect = connect
+        self._scraper: WorkbenchScraper | None = None
         self.search = CatalogSearch(database)
+
+    @property
+    def scraper(self) -> WorkbenchScraper:
+        """The scraper for this downloader, connecting to WorkBench on first use."""
+        if self._scraper is None:
+            if self._connect is None:
+                raise RuntimeError(
+                    "This CatalogDownloader was built with no way to connect to WorkBench; "
+                    "pass connect to download"
+                )
+            self._scraper = self._connect()
+        return self._scraper
 
     def cache(self, benchmark_id: str, benchmark: Benchmark) -> tuple[str, str]:
         """Cache a downloaded benchmark: the one place every command caches a download.

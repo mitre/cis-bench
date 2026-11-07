@@ -9,6 +9,7 @@ from rich.markup import escape
 
 from cis_bench import __version__
 from cis_bench.cli.helpers.errors import report_configuration_error
+from cis_bench.cli.helpers.services import SETTING_FLAGS_KEY
 from cis_bench.cli.lazy_group import LazyGroup
 from cis_bench.config import HOME_VARIABLE, load_settings, resolve_folders
 from cis_bench.exceptions import ConfigurationError
@@ -83,8 +84,15 @@ class RootGroup(LazyGroup):
     "--debug", "-d", is_flag=True, help="Enable maximum debug logging (same as --verbose)"
 )
 @click.option("--quiet", "-q", is_flag=True, help="Quiet mode (warnings and errors only)")
+@click.option(
+    "--offline",
+    is_flag=True,
+    default=None,
+    help="Never contact CIS WorkBench: use the catalog and downloaded benchmarks "
+    "(the offline setting, CIS_BENCH_OFFLINE, for one run)",
+)
 @click.pass_context
-def cli(ctx, verbose, debug, quiet):
+def cli(ctx, verbose, debug, quiet, offline):
     """CIS Benchmark CLI - Fetch and manage CIS benchmarks.
 
     Download CIS benchmarks from CIS WorkBench and export to multiple formats
@@ -115,6 +123,7 @@ def cli(ctx, verbose, debug, quiet):
         --verbose, -v    Show DEBUG level logs
         --debug, -d      Same as --verbose
         --quiet, -q      Only warnings and errors
+        --offline        Never contact CIS WorkBench; use what is cached
     """
     # --debug is same as --verbose
     verbose = verbose or debug
@@ -128,13 +137,18 @@ def cli(ctx, verbose, debug, quiet):
     ctx.obj["quiet"] = quiet
 
     # Every setting is checked once, before any command touches a file or the network.
+    # A root flag beats every other source; it is kept so a command's own flags keep it.
+    setting_flags = {"offline": True} if offline else {}
+    ctx.obj[SETTING_FLAGS_KEY] = setting_flags
     if not ctx.meta.get("cis_bench.asks_for_help"):
         try:
-            settings = load_settings()
+            settings = load_settings(**setting_flags)
         except ConfigurationError as error:
             report_configuration_error(console, error)
             ctx.exit(1)
         ctx.obj["settings"] = settings
+        # Read by commands (and the TUI) that change what they do offline.
+        ctx.obj["offline"] = settings.offline
         if settings.folders.legacy is not None:
             _report_legacy_folder(settings.folders.legacy)
 

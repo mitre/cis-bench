@@ -32,6 +32,32 @@ cis-bench --version # Show version
 cis-bench --help # Show help
 ```
 
+### Offline mode
+
+`cis-bench --offline <command>` never contacts CIS WorkBench. The `offline` setting
+(`CIS_BENCH_OFFLINE=true`, or `offline = true` in `config.toml`) turns it on for every run;
+`--offline` turns it on for one run whatever the setting says. See
+[Configuration](configuration.md#settings).
+
+Offline, commands use the catalog and the downloaded benchmarks in `catalog.db`, as `cargo
+--offline` and `uv --offline` use their caches. A command fails only at the point where it
+needs WorkBench. Nothing is sent, and the error (on stderr, exit code 1) names the command
+and what it needed:
+
+```text
+Error: cis-bench get needs CIS WorkBench to download benchmark 23598, and offline mode is on (--offline, CIS_BENCH_OFFLINE, or offline = true in config.toml). Nothing was sent to WorkBench.
+```
+
+| Command | Offline |
+| --- | --- |
+| `search`, `export`, `info`, `list`, `validate`, `remove`, `config`, `auth logout`, `catalog search`, `catalog list`, `catalog info`, `catalog platforms`, `catalog stats` | Work as usual (they never contact WorkBench) |
+| `get` | Exports a downloaded benchmark; fails for one that is not downloaded |
+| `diff` | Compares files and downloaded benchmarks; fails for an ID that is not downloaded |
+| `download` | Reports each downloaded benchmark as already cached; fails each one that is not downloaded and exits 1 |
+| `catalog download` | Reports an up-to-date copy; fails when the benchmark is not downloaded or has an update |
+| `catalog check-updates` | Compares versions only, as its own `--offline` does |
+| `auth login`, `auth status`, `catalog refresh`, `catalog update` | Fail: they only talk to WorkBench |
+
 ---
 
 ## Authentication Commands
@@ -121,7 +147,10 @@ cis-bench auth status --output-format json
 
 **Exit code:** `0` when WorkBench accepts the saved session. `1` when WorkBench rejects it
 (the session expired), and `1` when WorkBench could not be reached; in that case the saved
-session is kept and nothing is known about whether it is still valid.
+session is kept and nothing is known about whether it is still valid. The exit code is the
+same in every output format: with `-o json` or `-o yaml`, stdout holds only the document
+(`"logged_in": false` and exit `1` for an expired session), and the progress lines go to
+stderr.
 
 ---
 
@@ -814,7 +843,7 @@ Report downloaded benchmarks that WorkBench has moved past.
 
 **Options:**
 
-- `--offline` - Compare versions only; do not contact WorkBench
+- `--offline` - Compare versions only; do not contact WorkBench (offline mode, `cis-bench --offline` or `CIS_BENCH_OFFLINE`, does the same)
 
 **How it decides:** a benchmark is listed when the catalog now carries a newer version than the one you downloaded, or when the publish date WorkBench shows for it is later than the publish date of your copy (for a copy cached before publish dates were recorded, later than the day you downloaded it). Online (the default) it first reads each downloaded benchmark's WorkBench page and records its publish date and description in the catalog; `--offline` compares what is already recorded. A catalog that lists an older version than your copy never makes it an update. Only downloaded benchmarks are fetched, one page each, so run `cis-bench catalog refresh` first if the catalog itself is stale. With nothing downloaded it says so and contacts nothing. A downloaded benchmark whose WorkBench page answers 404 is reported as no longer on WorkBench and the others are still checked.
 

@@ -165,7 +165,7 @@ class TestDownloadAuthErrors:
             ok_result = runner.invoke(cli, ["download", "12345"])
             assert ok_result.exit_code == 0, ok_result.output
             assert auth_manager_class.call_args.kwargs["verify_ssl"] is False
-            auth.get_or_create_session.assert_called_once_with()
+            auth.get_or_create_session.assert_called_once_with(browser=None)
 
         monkeypatch.setenv("CIS_BENCH_WORKBENCH_URL", "http://workbench.cisecurity.org")
         bad_url_result = runner.invoke(cli, ["download", "12345"])
@@ -173,7 +173,7 @@ class TestDownloadAuthErrors:
         assert "Configuration Error" in bad_url_result.output
         assert "CIS_BENCH_WORKBENCH_URL" in bad_url_result.output
         assert "Authentication Required" not in bad_url_result.output
-        auth.get_or_create_session.assert_called_once_with()
+        auth.get_or_create_session.assert_called_once_with(browser=None)
 
 
 class TestDownloadRequestTimeoutSetting:
@@ -894,7 +894,7 @@ class TestGetDownloadErrors:
             )
             assert ok_res.exit_code == 0, ok_res.output
             assert mock_auth.call_args.kwargs["verify_ssl"] is False
-            mock_auth.return_value.get_or_create_session.assert_called_once_with()
+            mock_auth.return_value.get_or_create_session.assert_called_once_with(browser=None)
 
             mock_db.get_downloaded.side_effect = None
             mock_db.get_downloaded.return_value = None
@@ -904,7 +904,7 @@ class TestGetDownloadErrors:
             assert "Configuration Error" in bad_url_res.output
             assert "CIS_BENCH_WORKBENCH_URL" in bad_url_res.output
             assert "Authentication Required" not in bad_url_res.output
-            mock_auth.return_value.get_or_create_session.assert_called_once_with()
+            mock_auth.return_value.get_or_create_session.assert_called_once_with(browser=None)
 
 
 class TestGetXccdfExport:
@@ -1237,7 +1237,7 @@ class TestCanonicalContentHashConsistency:
             scraper = create_autospec(WorkbenchScraper, instance=True)
             scraper.base_url = "https://workbench.cisecurity.org"
             scraper.download_benchmark.return_value = sample_benchmark
-            cat_result = CatalogDownloader(db_catalog, scraper).download_by_id("12345")
+            cat_result = CatalogDownloader(db_catalog, lambda: scraper).download_by_id("12345")
             row_catalog = db_catalog.get_downloaded("12345")
             assert row_catalog is not None
 
@@ -1327,7 +1327,7 @@ class TestVerifiedTLSByDefault:
 
             assert result.exit_code == 0, result.output
             assert auth_manager_class.call_args.kwargs["verify_ssl"] is True
-            auth.get_or_create_session.assert_called_once_with()
+            auth.get_or_create_session.assert_called_once_with(browser=None)
 
     def test_download_reports_tls_failure_without_session_hint(self, runner, tmp_path, monkeypatch):
         """A certificate trust failure is not an expired session; say what it is and stop."""
@@ -1422,7 +1422,7 @@ class TestVerifiedTLSByDefault:
 
             assert result.exit_code == 0, result.output
             assert mock_auth.call_args.kwargs["verify_ssl"] is True
-            mock_auth.return_value.get_or_create_session.assert_called_once_with()
+            mock_auth.return_value.get_or_create_session.assert_called_once_with(browser=None)
 
     def test_get_reports_tls_failure_as_such(self, runner, tmp_path, monkeypatch):
         monkeypatch.delenv("CIS_BENCH_VERIFY_SSL", raising=False)

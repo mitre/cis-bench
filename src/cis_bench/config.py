@@ -26,7 +26,7 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 from urllib.parse import urlparse
 
-from pydantic import Field, ValidationError, field_validator
+from pydantic import Field, ValidationError, ValidationInfo, field_validator
 from pydantic_core import ErrorDetails
 from pydantic_settings import (
     BaseSettings,
@@ -74,10 +74,15 @@ USER_AGENT = f"cis-bench-cli/{__version__} (github.com/mitre/cis-bench)"
 TRUSTED_SSO_HOSTS = frozenset({"auth.portal.cisecurity.org", "auth.portal.qa.cisecurity.org"})
 MAX_SSO_REDIRECTS = 8
 
-_VERIFY_SSL_TRUE_VALUES = frozenset({"true", "1", "yes"})
-_VERIFY_SSL_FALSE_VALUES = frozenset({"false", "0", "no"})
+# The words an on/off setting accepts; anything else is refused, never read as off.
+_SWITCH_ON_VALUES = frozenset({"true", "1", "yes"})
+_SWITCH_OFF_VALUES = frozenset({"false", "0", "no"})
 _VERIFY_SSL_ACCEPTED = (
     "true/1/yes to verify certificates or false/0/no to disable verification "
+    "(in config.toml also true or false)"
+)
+_OFFLINE_ACCEPTED = (
+    "true/1/yes to keep cis-bench off the network or false/0/no to allow it "
     "(in config.toml also true or false)"
 )
 _WORKBENCH_URL_ACCEPTED = (
@@ -359,6 +364,14 @@ class Settings(BaseSettings):
         description="Browser whose cookies log in when --browser is not given",
         json_schema_extra={"accepted": _BROWSER_ACCEPTED},
     )
+    offline: bool = Field(
+        default=False,
+        description=(
+            "Never contact CIS WorkBench: use the catalog and downloaded benchmarks, and fail "
+            "only what needs WorkBench (--offline sets it for one run)"
+        ),
+        json_schema_extra={"accepted": _OFFLINE_ACCEPTED},
+    )
 
     @field_validator("browser")
     @classmethod
@@ -390,19 +403,19 @@ class Settings(BaseSettings):
             raise ValueError(f"must be {_WORKBENCH_URL_ACCEPTED}")
         return f"https://{parsed.netloc.lower()}"
 
-    @field_validator("verify_ssl", mode="before")
+    @field_validator("verify_ssl", "offline", mode="before")
     @classmethod
-    def _parse_verify_ssl(cls, value: Any) -> bool:
+    def _parse_switch(cls, value: Any, info: ValidationInfo) -> bool:
         if isinstance(value, bool):
             return value
         normalized = value.strip().lower() if isinstance(value, str) else None
-        if normalized in _VERIFY_SSL_TRUE_VALUES:
+        if normalized in _SWITCH_ON_VALUES:
             return True
-        if normalized in _VERIFY_SSL_FALSE_VALUES:
+        if normalized in _SWITCH_OFF_VALUES:
             return False
-        # A typo in a security setting must never silently turn verification off; a TOML
-        # number is not one of the documented values either.
-        raise ValueError(f"use {_VERIFY_SSL_ACCEPTED}")
+        # A typo must never silently flip a switch (turn certificate checks off, or let a run
+        # reach the network); a TOML number is not one of the documented values either.
+        raise ValueError(f"use {_accepted(str(info.field_name))}")
 
     @property
     def request_timeouts(self) -> tuple[float, float]:
@@ -474,6 +487,15 @@ def setting_names() -> list[str]:
     return [name for name in Settings.model_fields if name != _FOLDERS_FIELD]
 
 
+def _accepted(field: str) -> str | None:
+    """What a setting accepts, as its reference row states it (the field's "accepted")."""
+    model_field = Settings.model_fields.get(field)
+    extra = model_field.json_schema_extra if model_field is not None else None
+    if isinstance(extra, dict) and extra.get("accepted"):
+        return str(extra["accepted"])
+    return None
+
+
 def _describe(error: ErrorDetails) -> str:
     """One line per invalid value: the variable, its config.toml key, the value and what is accepted."""
     field = str(error["loc"][0]) if error["loc"] else "?"
@@ -486,10 +508,9 @@ def _describe(error: ErrorDetails) -> str:
     variable = f"{ENV_PREFIX}{field.upper()}"
     if error["type"] != "value_error":
         # pydantic's own type and bound messages; ours already say what is accepted.
-        model_field = Settings.model_fields.get(field)
-        extra = model_field.json_schema_extra if model_field is not None else None
-        if isinstance(extra, dict) and extra.get("accepted"):
-            message = f"{message}; accepted: {extra['accepted']}"
+        accepted = _accepted(field)
+        if accepted:
+            message = f"{message}; accepted: {accepted}"
     return (
         f"{variable} (config.toml key {field}) has invalid value {error.get('input')!r}: {message}"
     )

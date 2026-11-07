@@ -235,9 +235,7 @@ exclude_dirs = ["/tests", "/venv", "/.venv", "/build", "/dist"]
 skips = [
     "B101",  # Skip assert_used (allowed in tests)
     "B105",  # Skip hardcoded_password_string (false positives in XCCDF enums: PASS/FAIL)
-    "B320",  # Skip lxml.etree.fromstring warnings (we parse XML we generate ourselves)
     "B404",  # Skip subprocess import (used in tests for xmllint validation)
-    "B410",  # Skip lxml import warnings (required for XCCDF processing)
     "B602",  # Skip shell=True (needed for Windows 'start' command - URL is trusted)
     "B603",  # Skip subprocess without shell (we use hardcoded commands)
     "B607",  # Skip partial executable path (xmllint is in PATH)

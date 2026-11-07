@@ -26,36 +26,14 @@ The following features were originally planned as "future" but are now complete:
 - **Progress Bars** - Rich progress bars on downloads and catalog refresh
 - **Platform Taxonomy** - Two-field system (platform_type + platform)
 - **Parallel Scraping** - Catalog refresh in under a minute
+- **Offline Mode** - `cis-bench --offline` (or `CIS_BENCH_OFFLINE`) never contacts WorkBench and works from the cache; see [Offline mode](../user-guide/commands-reference.md#offline-mode)
+- **Benchmark Comparison** - `diff` compares two benchmark files or downloaded benchmarks (downloading an ID that is not cached)
 
 ---
 
 ## Future Features (v1.1+)
 
-### 1. Offline Mode
-
-**Problem**: Users may want to work without network access once they have catalog/benchmarks cached.
-
-**Solution**: `--offline` flag that fails fast if network is required:
-
-```bash
-# Work from cache only
-cis-bench search "ubuntu" --offline
-cis-bench export 23598 --format xccdf --offline # OK if cached
-cis-bench download 23598 --offline # ERROR: requires network
-```
-
-**Implementation**:
-
-- Add `--offline` global flag
-- Check network requirements before operations
-- Clear error messages when network needed
-- Works with cached catalog and downloaded benchmarks
-
-**Priority**: Medium (v1.1)
-
----
-
-### 2. Background Catalog Refresh
+### 1. Background Catalog Refresh
 
 **Problem**: Catalog refresh blocks the terminal while it runs (under a minute for about 80 pages)
 
@@ -84,7 +62,7 @@ cis-bench search "ubuntu" # Works immediately
 
 ---
 
-### 3. Batch Export Operations
+### 2. Batch Export Operations
 
 **Problem**: Exporting multiple benchmarks to same format is manual
 
@@ -113,7 +91,7 @@ cis-bench export 23598 24008 22162 --format xccdf
 
 ---
 
-### 4. Enhanced Cache Management
+### 3. Enhanced Cache Management
 
 **Problem**: Users can't inspect/manage cache
 
@@ -148,38 +126,7 @@ cis-bench cache clear --all
 
 ---
 
-### 5. Benchmark Comparison
-
-**Problem**: Users want to see what changed between versions
-
-**Solution**: Diff command:
-
-```bash
-# Compare two benchmark files
-cis-bench diff benchmark_v1.json benchmark_v2.json
-
-# Compare by ID (auto-fetch if needed)
-cis-bench diff 23598 24008
-
-# Output:
-# 145 unchanged recommendations
-# + 12 new recommendations
-# - 3 removed recommendations
-# ~ 8 modified recommendations
-```
-
-**Implementation**:
-
-- Recommendation-level diff
-- Smart matching (by ref/title)
-- Colored output (green/red/yellow)
-- Export diff to JSON/CSV
-
-**Priority**: Low (v1.3)
-
----
-
-### 6. Recommendation Search
+### 4. Recommendation Search
 
 **Problem**: Users want to find specific recommendations across benchmarks
 
@@ -210,7 +157,7 @@ cis-bench find --cis-control 4.8
 
 ---
 
-### 7. Web UI
+### 5. Web UI
 
 **Problem**: Some users prefer GUIs
 

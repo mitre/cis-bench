@@ -263,6 +263,8 @@ cis-bench catalog check-updates            # reads each downloaded benchmark's p
 cis-bench catalog check-updates --offline  # compares what is already recorded, no network
 ```
 
+Offline mode (`cis-bench --offline`, `CIS_BENCH_OFFLINE`) compares versions only, as `--offline` does.
+
 A benchmark is listed when the catalog carries a newer version than you downloaded, or when the publish date WorkBench shows for it is later than your copy's. Refresh the catalog first so the version comparison sees the current listing.
 
 **Publish dates and descriptions:** the catalog listing carries neither. Each benchmark's own WorkBench page does; cis-bench reads it whenever it downloads the benchmark (`download`, `get`, `diff`, `catalog download`) and when `catalog check-updates` runs online, and records the publish date and description on the benchmark's catalog row (`catalog info` shows them). A benchmark nobody has downloaded has neither.

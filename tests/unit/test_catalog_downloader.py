@@ -65,7 +65,7 @@ def mock_scraper(sample_recommendation_minimal):
 @pytest.fixture
 def downloader(temp_db, mock_scraper):
     """Create CatalogDownloader instance."""
-    return CatalogDownloader(temp_db, mock_scraper)
+    return CatalogDownloader(temp_db, lambda: mock_scraper)
 
 
 class TestDownloadByID:
@@ -184,7 +184,7 @@ class TestDownloadByID:
                 "status": "Published",
             }
         )
-        downloader = CatalogDownloader(temp_db, mock_scraper)
+        downloader = CatalogDownloader(temp_db, lambda: mock_scraper)
 
         result = downloader.download_by_id("23598")
 
@@ -216,12 +216,50 @@ class TestDownloadByID:
                 "status": "Published",
             }
         )
-        downloader = CatalogDownloader(temp_db, mock_scraper)
+        downloader = CatalogDownloader(temp_db, lambda: mock_scraper)
 
         with pytest.raises(ValueError, match="Invalid benchmark URL"):
             downloader.download_by_id("23598")
 
         mock_scraper.download_benchmark.assert_not_called()
+
+
+class TestConnectsOnlyToDownload:
+    """WorkBench is reached (a session opened) only when a copy must be fetched."""
+
+    def test_an_up_to_date_copy_is_reported_without_connecting(self, temp_db, mock_scraper):
+        never = Mock(side_effect=AssertionError("connected"))
+        CatalogDownloader(temp_db, never).cache(
+            "23598", mock_scraper.download_benchmark.return_value
+        )
+
+        result = CatalogDownloader(temp_db, never).download_by_id("23598")
+
+        assert result["status"] == "already_current"
+        never.assert_not_called()
+
+    def test_a_missing_catalog_entry_is_reported_without_connecting(self, temp_db):
+        never = Mock(side_effect=AssertionError("connected"))
+        with pytest.raises(ValueError, match="not in catalog"):
+            CatalogDownloader(temp_db, never).download_by_id("99999")
+        never.assert_not_called()
+
+    def test_a_downloader_without_a_connection_only_caches(self, temp_db, mock_scraper):
+        downloader = CatalogDownloader(temp_db)
+        downloader.cache("23598", mock_scraper.download_benchmark.return_value)
+        assert temp_db.get_downloaded("23598")["version"] == "v2.0.1"
+        with pytest.raises(RuntimeError, match="no way to connect to WorkBench"):
+            downloader.download_by_id("23598", force=True)
+
+    def test_it_connects_once_however_many_downloads(self, temp_db, mock_scraper):
+        connect = Mock(return_value=mock_scraper)
+        downloader = CatalogDownloader(temp_db, connect)
+
+        downloader.download_by_id("23598")
+        downloader.download_by_id("23598", force=True)
+
+        connect.assert_called_once_with()
+        assert mock_scraper.download_benchmark.call_count == 2
 
 
 class TestCache:
@@ -333,7 +371,7 @@ class TestDownloadByName:
 
     def test_download_by_name_multiple_matches_raises(self, multi_ubuntu_db, mock_scraper):
         """Test multiple matches without interactive raises error."""
-        downloader = CatalogDownloader(multi_ubuntu_db, mock_scraper)
+        downloader = CatalogDownloader(multi_ubuntu_db, lambda: mock_scraper)
 
         with pytest.raises(ValueError, match="Multiple benchmarks match"):
             downloader.download_by_name("ubuntu", interactive=False)
@@ -474,7 +512,7 @@ class TestIntegration:
 
     def test_full_download_workflow(self, temp_db, mock_scraper):
         """Test complete download workflow."""
-        downloader = CatalogDownloader(temp_db, mock_scraper)
+        downloader = CatalogDownloader(temp_db, lambda: mock_scraper)
 
         # Search
         search_results = downloader.search.search("ubuntu", limit=None)

@@ -283,6 +283,46 @@ class TestAuthStatusCommand:
         )
 
 
+class TestAuthStatusMachineOutput:
+    """-o json and -o yaml put only the status document on stdout, and the exit code says
+    whether the saved session is valid, as in table output."""
+
+    def _saved_session(self, mock_auth, session_file, *, valid: bool):
+        session_file.touch()
+        session = MagicMock()
+        session.cookies = [MagicMock(), MagicMock()]
+        mock_auth.load_saved_session.return_value = session
+        mock_auth.validate_session.return_value = valid
+
+    @pytest.mark.parametrize(("valid", "exit_code"), [(True, 0), (False, 1)])
+    def test_json_is_the_whole_stdout_and_the_exit_code_follows_the_session(
+        self, mock_auth, runner, session_file, valid, exit_code
+    ):
+        import json
+
+        self._saved_session(mock_auth, session_file, valid=valid)
+
+        result = runner.invoke(cli, ["auth", "status", "--output-format", "json"])
+
+        assert result.exit_code == exit_code, result.output
+        assert json.loads(result.stdout) == {
+            "logged_in": valid,
+            "session_file": str(session_file),
+            "cookie_count": 2,
+            "ssl_verify": True,
+        }
+
+    def test_yaml_is_the_whole_stdout(self, mock_auth, runner, session_file):
+        import yaml
+
+        self._saved_session(mock_auth, session_file, valid=False)
+
+        result = runner.invoke(cli, ["auth", "status", "-o", "yaml"])
+
+        assert result.exit_code == 1, result.output
+        assert yaml.safe_load(result.stdout)["logged_in"] is False
+
+
 # =============================================================================
 # Additional tests for uncovered lines
 # =============================================================================

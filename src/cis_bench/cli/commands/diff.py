@@ -15,7 +15,7 @@ from rich.table import Table
 
 from cis_bench.catalog.versions import version_sort_key
 from cis_bench.cli.helpers.errors import DOWNLOAD_ERRORS, cache_failure, report_download_error
-from cis_bench.cli.helpers.services import auth_manager, settings_from, workbench_scraper
+from cis_bench.cli.helpers.services import settings_from, workbench_scraper, workbench_session
 from cis_bench.utils.workbench_urls import is_benchmark_id, resolve_benchmark_reference
 
 if TYPE_CHECKING:
@@ -69,10 +69,11 @@ def diff_cmd(ctx, old_benchmark, new_benchmark, output_format, verbose):
 
     \b
     Change types:
-        ✚ Added      - Ref only in the newer version
-        ✖ Removed    - Ref only in the older version
-        ⟳ Modified   - Same ref, different content
-        ↷ Renumbered - A removed ref and an added ref with near-identical titles
+        ✚ Added       - Ref only in the newer version
+        ✖ Removed     - Ref only in the older version
+        ⟳ Modified    - Same ref, different content
+        ≈ Reformatted - Same ref, only whitespace in some fields changed
+        ↷ Renumbered  - A removed ref and an added ref with near-identical titles
     """
     loader = _BenchmarkLoader(settings_from(ctx))
     old_data = loader.load(old_benchmark)
@@ -140,27 +141,31 @@ class _BenchmarkLoader:
             )
         _, url = resolve_benchmark_reference(benchmark_id, base_url=self.settings.workbench_url)
 
-        err_console.print(
-            f"[cyan]Benchmark {benchmark_id} is not downloaded; "
-            "downloading it from CIS WorkBench...[/cyan]"
-        )
         try:
-            scraper = self._workbench()
+            scraper = self._workbench(needs=f"download benchmark {benchmark_id}")
+            err_console.print(
+                f"[cyan]Benchmark {benchmark_id} is not downloaded; "
+                "downloading it from CIS WorkBench...[/cyan]"
+            )
             benchmark = download_with_progress(scraper, url, prefix=" ", console=err_console)
         except DOWNLOAD_ERRORS as error:
             report_download_error(err_console, error)
             sys.exit(1)
 
         try:
-            CatalogDownloader(db, scraper).cache(benchmark_id, benchmark)
+            CatalogDownloader(db).cache(benchmark_id, benchmark)
         except (SQLAlchemyError, OSError) as error:
             raise click.ClickException(cache_failure(benchmark_id, error)) from error
         err_console.print(f"[green]✓[/green] Downloaded and cached: {escape(benchmark.title)}")
 
-    def _workbench(self) -> WorkbenchScraper:
-        """The WorkBench scraper for this run, logging in the first time it is needed."""
+    def _workbench(self, *, needs: str) -> WorkbenchScraper:
+        """The WorkBench scraper for this run, logging in the first time it is needed.
+
+        Raises:
+            OfflineError: Offline mode is on.
+        """
         if self._scraper is None:
-            session = auth_manager(self.settings).get_or_create_session()
+            session = workbench_session(self.settings, needs=needs)
             self._scraper = workbench_scraper(self.settings, session)
         return self._scraper
 

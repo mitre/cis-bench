@@ -799,32 +799,55 @@ cis-bench auth status --output-format json | jq '.ssl_verify'
 ## Scenario 14: Offline Mode (Work from Cache)
 
 **Context:**
-You're on a plane without internet. You need to work with benchmarks you've already downloaded.
+You're on a plane or an air-gapped network. You need to work with benchmarks you've already downloaded, and cis-bench must not try to reach CIS WorkBench.
 
 ### Prepare Before Going Offline
 
 ```bash
-# 1. Download everything you'll need
+# 1. Refresh the catalog and download everything you'll need
+cis-bench catalog refresh
 cis-bench download 23598 22162 24008 18208
 
-# 2. Verify cache
+# 2. Verify the cache
 cis-bench list
 ```
 
 ### Work Offline
 
+Turn offline mode on for every run, or for one command:
+
 ```bash
-# All these work offline (use cache):
+export CIS_BENCH_OFFLINE=true     # every run (or offline = true in config.toml)
+cis-bench --offline <command>     # one run
+```
+
+Offline, cis-bench uses the catalog and the downloaded benchmarks, and fails only where a command needs WorkBench:
+
+```bash
+# Work from the cache:
 cis-bench list
 cis-bench info 23598
+cis-bench search "ubuntu"
 cis-bench export 23598 --format xccdf --style cis
-cis-bench export 22162 --format csv
-cis-bench search "ubuntu" # Works if catalog cached
+cis-bench get 23598 --format csv          # a downloaded benchmark
+cis-bench diff 22162 23598                # two downloaded benchmarks
+cis-bench catalog check-updates           # compares versions only
+cis-bench download 23598                  # already cached: reported, exit 0
 
-# These REQUIRE internet (will fail offline):
-cis-bench download 12345 # New download
-cis-bench catalog refresh # Network required
+# Need WorkBench, so they stop with an error (exit 1) and send nothing:
+cis-bench download 28521                  # not downloaded yet
+cis-bench get 28521 --format xccdf        # in the catalog, not downloaded
+cis-bench catalog refresh
+cis-bench auth status
 ```
+
+The error names the command and what it needed:
+
+```text
+Error: cis-bench get needs CIS WorkBench to download benchmark 28521, and offline mode is on (--offline, CIS_BENCH_OFFLINE, or offline = true in config.toml). Nothing was sent to WorkBench.
+```
+
+What each command does offline: [Offline mode](commands-reference.md#offline-mode).
 
 ---
 
@@ -841,6 +864,7 @@ cis-bench catalog refresh # Network required
 | Export cached | `cis-bench export XXXXX --format xccdf --style disa` |
 | List downloaded | `cis-bench list` |
 | Check updates | `cis-bench catalog check-updates` |
+| Work offline | `cis-bench --offline <command>` (or `CIS_BENCH_OFFLINE=true`) |
 | Batch export | `cis-bench list --output-format json \| jq -r '.downloaded[].benchmark_id' \| xargs -I {} cis-bench export {} --format xccdf` |
 
 ---

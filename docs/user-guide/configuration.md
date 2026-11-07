@@ -140,6 +140,11 @@ page as failed. Other HTTP errors, such as a 404, are not retried.
 **`CIS_BENCH_BROWSER`** is the browser whose cookies log in when a command's `--browser`
 option is not given (`auth login`, `catalog refresh`, `catalog update`, `catalog download`).
 
+**`CIS_BENCH_OFFLINE`** keeps every run off the network: commands use the catalog and the
+downloaded benchmarks, and fail only where they need WorkBench (what each command does is
+in [Offline mode](commands-reference.md#offline-mode)). `cis-bench --offline` turns it on
+for one run, even when the setting says `false`.
+
 **`CIS_BENCH_SEARCH_LIMIT`** is how many results `search`, `catalog search`, `catalog list`
 and `get` show when `--limit` is not given; a cut-off list says how many matched.
 

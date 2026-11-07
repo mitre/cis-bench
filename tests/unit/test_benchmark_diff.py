@@ -286,6 +286,18 @@ class TestDiffLocal:
         # Should NOT mention fetching since both are local
         assert "fetching" not in output_lower
 
+    def test_two_files_are_compared_in_offline_mode(
+        self, runner, tmp_path, old_benchmark_json, new_benchmark_json, auth_manager_class
+    ):
+        old_file, new_file = _files(tmp_path, old_benchmark_json, new_benchmark_json)
+
+        result = runner.invoke(cli, ["--offline", "diff", old_file, new_file, "--format", "json"])
+
+        assert result.exit_code == 0, result.output
+        modified = json.loads(result.output)["changes"]["modified"]
+        assert [m["ref"] for m in modified] == ["3.1.1"]
+        auth_manager_class.assert_not_called()
+
 
 def _files(tmp_path, old, new):
     old_file, new_file = tmp_path / "old.json", tmp_path / "new.json"

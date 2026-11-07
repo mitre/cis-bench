@@ -549,6 +549,50 @@ class TestConfigVerifySSL:
                 assert value in str(exc_info.value)
 
 
+class TestConfigOffline:
+    """Offline mode as a setting: CIS_BENCH_OFFLINE or offline in config.toml."""
+
+    def test_offline_is_off_when_unset_or_blank(self):
+        env = os.environ.copy()
+        env.pop("CIS_BENCH_OFFLINE", None)
+        with patch.dict(os.environ, env, clear=True):
+            assert load_settings().offline is False
+        with patch.dict(os.environ, {"CIS_BENCH_OFFLINE": "  "}):
+            assert load_settings().offline is False
+
+    @pytest.mark.parametrize("value", ["true", "TRUE", "1", "yes", " Yes "])
+    def test_offline_on_values(self, value):
+        with patch.dict(os.environ, {"CIS_BENCH_OFFLINE": value}):
+            assert load_settings().offline is True
+
+    @pytest.mark.parametrize("value", ["false", "0", "no", " NO "])
+    def test_offline_off_values(self, value):
+        with patch.dict(os.environ, {"CIS_BENCH_OFFLINE": value}):
+            assert load_settings().offline is False
+
+    @pytest.mark.parametrize("value", ["on", "offline", "y", "2"])
+    def test_an_unknown_offline_value_is_a_configuration_error(self, value):
+        with patch.dict(os.environ, {"CIS_BENCH_OFFLINE": value}):
+            with pytest.raises(ConfigurationError, match="CIS_BENCH_OFFLINE") as caught:
+                load_settings()
+        assert value in str(caught.value)
+        assert "true/1/yes" in str(caught.value)
+
+    def test_offline_in_config_toml(self, data_dir):
+        (data_dir / "config.toml").write_text("offline = true\n")
+        assert load_settings().offline is True
+
+    @pytest.mark.parametrize("value", ["0", "1", '"maybe"'])
+    def test_offline_in_config_toml_takes_only_the_documented_values(self, data_dir, value):
+        (data_dir / "config.toml").write_text(f"offline = {value}\n")
+        with pytest.raises(ConfigurationError, match="CIS_BENCH_OFFLINE"):
+            load_settings()
+
+    def test_a_passed_value_beats_the_environment(self):
+        with patch.dict(os.environ, {"CIS_BENCH_OFFLINE": "false"}):
+            assert load_settings(offline=True).offline is True
+
+
 class TestConfigWorkbenchBaseUrl:
     """Tests for configurable CIS WorkBench base URL validation."""
 

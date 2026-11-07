@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 import click
 
+from cis_bench.cli.helpers.offline import require_online
 from cis_bench.config import Settings, load_settings
 
 if TYPE_CHECKING:
@@ -24,6 +25,8 @@ if TYPE_CHECKING:
     from cis_bench.fetcher.workbench import WorkbenchScraper
 
 _SETTINGS_KEY = "settings"
+# The root command's own setting flags (--offline), which a command's flags must keep.
+SETTING_FLAGS_KEY = "setting_flags"
 
 
 def settings_from(ctx: click.Context | None = None) -> Settings:
@@ -55,7 +58,11 @@ def settings_with_flags(**flags: object) -> Settings:
         ConfigurationError: If a flag's value is not accepted for its setting.
     """
     given = {name: value for name, value in flags.items() if value is not None}
-    return load_settings(**given) if given else settings_from()
+    if not given:
+        return settings_from()
+    root = click.get_current_context().find_root()
+    root_flags = (root.obj or {}).get(SETTING_FLAGS_KEY, {})
+    return load_settings(**{**root_flags, **given})
 
 
 def auth_manager(settings: Settings, *, requests_per_second: float | None = None) -> AuthManager:
@@ -77,6 +84,26 @@ def auth_manager(settings: Settings, *, requests_per_second: float | None = None
         request_policy=policy,
         timeout=settings.request_timeouts,
     )
+
+
+def workbench_session(
+    settings: Settings,
+    *,
+    needs: str,
+    browser: str | None = None,
+    requests_per_second: float | None = None,
+) -> requests.Session:
+    """A WorkBench session: the saved one if WorkBench still accepts it, else one from the
+    browser's cookies. Every command opens its session here.
+
+    needs says what the session is for ("download benchmark 23598").
+
+    Raises:
+        OfflineError: Offline mode is on; nothing is built and nothing is sent.
+    """
+    require_online(settings, needs)
+    auth = auth_manager(settings, requests_per_second=requests_per_second)
+    return auth.get_or_create_session(browser=browser)
 
 
 def workbench_scraper(settings: Settings, session: requests.Session) -> WorkbenchScraper:
