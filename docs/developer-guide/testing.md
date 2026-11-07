@@ -59,7 +59,7 @@ pytest tests/
 ### Full Test Suite
 ```bash
 pytest tests/
-# 405 tests, uses test database automatically
+# uses a temporary folder automatically
 ```
 
 ### Specific Test Modules
@@ -67,6 +67,22 @@ pytest tests/
 pytest tests/unit/test_catalog_database.py # Unit tests
 pytest tests/integration/ # Integration tests
 pytest tests/e2e/ # End-to-end CLI tests
+```
+
+### By Category
+
+Each folder under `tests/` is a category, and `tests/conftest.py` marks its tests with the
+folder's name, so a category can be selected with `-m` (and combined: `-m "unit or
+regression"`, `-m "not e2e"`). A new folder needs its marker declared under
+`[tool.pytest.ini_options] markers` in `pyproject.toml`, or collection stops with an error.
+
+```bash
+pytest tests -m unit           # tests/unit
+pytest tests -m integration    # tests/integration
+pytest tests -m e2e            # tests/e2e
+pytest tests -m regression     # tests/regression
+pytest tests -m architecture   # the architecture compliance modules
+pytest tests/scripts           # project utility scripts; not part of `pytest tests`
 ```
 
 ### With Coverage

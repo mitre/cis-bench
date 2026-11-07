@@ -10,6 +10,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.architecture
+
 
 class TestArchitectureCompliance:
     """Ensure implementation follows config-driven loop architecture."""

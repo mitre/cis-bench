@@ -9,6 +9,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.architecture
+
 
 class TestConfigDrivenPrinciple:
     """Ensure code follows config-driven architecture."""

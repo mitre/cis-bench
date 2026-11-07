@@ -139,11 +139,13 @@ python_functions = "test_*"
 # Run script tests explicitly with: uv run pytest tests/scripts/
 norecursedirs = [".git", "__pycache__", ".venv", "scripts"]
 
-# Markers for organizing tests
+# Markers for organizing tests. Each folder under tests/ is marked with its own name by
+# pytest_collection_modifyitems in tests/conftest.py; architecture is set per module.
 markers = [
     "unit: Unit tests (fast, isolated)",
     "integration: Integration tests (moderate speed, some I/O)",
     "e2e: End-to-end tests (slow, full pipeline)",
+    "regression: Regression tests (guards against reintroducing fixed problems)",
     "architecture: Architecture compliance tests",
     "scripts: Tests for project utility scripts (not part of cis-bench package)",
 ]

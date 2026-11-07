@@ -1,16 +1,13 @@
 """Tests for scripts/remove_code.py - LibCST utility.
 
 These tests are for project development utilities, not the cis-bench package.
-Run with: pytest -m scripts
+Run with: pytest tests/scripts (the plain test run leaves this folder out)
 """
 
 import sys
 from pathlib import Path
 
 import pytest
-
-# Mark entire module as 'scripts' - excluded from default test run
-pytestmark = pytest.mark.scripts
 
 # Add scripts to path for import
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "scripts"))

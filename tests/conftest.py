@@ -33,6 +33,37 @@ from requests.adapters import BaseAdapter
 from cis_bench.models.benchmark import Benchmark, Recommendation
 
 # ============================================================================
+# Test categories: each folder under tests/ is one, marked with its own name
+# ============================================================================
+
+_TESTS_DIR = Path(__file__).resolve().parent
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Mark every test with its folder's category (tests/unit -> unit, ...).
+
+    pytest's documented way to add markers from where a test lives (docs: "Automatically
+    adding markers"), so `pytest tests -m integration` selects tests/integration. A folder
+    without a marker declared in pyproject.toml stops the run: a new category is declared,
+    never left unmarked.
+    """
+    declared = {line.split(":", 1)[0].strip() for line in config.getini("markers")}
+    for item in items:
+        parts = item.path.resolve().relative_to(_TESTS_DIR).parts
+        if len(parts) < 2:
+            raise pytest.UsageError(
+                f"tests/{parts[0]} is not in a category folder: move it under tests/<category>/"
+            )
+        category = parts[0]
+        if category not in declared:
+            raise pytest.UsageError(
+                f"tests/{category} has no marker: declare {category!r} under "
+                "[tool.pytest.ini_options] markers in pyproject.toml"
+            )
+        item.add_marker(getattr(pytest.mark, category))
+
+
+# ============================================================================
 # Test Environment Setup
 # ============================================================================
 

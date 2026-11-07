@@ -57,11 +57,15 @@ cis-bench get "ubuntu 22" --format xccdf
 ```
 
 ### Test Markers
+Each folder under tests/ marks its tests with its own name (tests/conftest.py); a new
+folder needs its marker declared in pyproject.toml.
 ```bash
-pytest -m unit           # Fast, isolated tests
-pytest -m integration    # Component integration
-pytest -m e2e            # Full CLI workflows
-pytest -m architecture   # Architecture compliance
+pytest tests -m unit           # tests/unit: fast, isolated
+pytest tests -m integration    # tests/integration: component integration
+pytest tests -m e2e            # tests/e2e: full CLI workflows
+pytest tests -m regression     # tests/regression: guards against fixed problems
+pytest tests -m architecture   # architecture compliance modules (unit and regression)
+pytest tests/scripts           # project utility scripts (left out of `pytest tests`)
 ```
 
 ## Architecture
