@@ -12,6 +12,7 @@ from cis_bench.cli.helpers.services import settings_from
 from cis_bench.exporters import ExporterFactory
 from cis_bench.exporters.xccdf_unified_exporter import XCCDFExporter
 from cis_bench.models.benchmark import Benchmark
+from cis_bench.utils.workbench_urls import is_benchmark_id
 
 console = Console()
 logger = logging.getLogger(__name__)
@@ -102,7 +103,8 @@ def _export_single_benchmark(
     benchmark_id_for_filename = None
 
     # Check if identifier is a benchmark ID (numeric)
-    if identifier.isdigit():
+    if is_benchmark_id(identifier):
+        identifier = identifier.strip()
         logger.debug(f"Loading benchmark {identifier} from database")
 
         catalog_db_path = settings_from().catalog_db_path

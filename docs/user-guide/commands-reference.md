@@ -423,7 +423,9 @@ cis-bench export 23598 local_benchmark.json --format yaml
 
 ### `cis-bench list`
 
-List downloaded benchmarks.
+List the downloaded benchmarks, and the exported files in the benchmarks folder.
+
+A benchmark is *downloaded* when it is in the cache (`catalog.db`), where `download` and `get` put it and `remove` takes it from. The files in the benchmarks folder are *exports*: whatever `download --format` wrote. They are yours to move, rename or delete; doing so does not change what is downloaded, and `list` shows them under their own heading.
 
 **Syntax:**
 ```bash
@@ -432,8 +434,8 @@ cis-bench list [OPTIONS]
 
 **Options:**
 
-- `--output-dir PATH` - Directory to scan (default: `<data folder>/benchmarks`)
-- `-o, --output-format` - Format (table|json|csv|yaml) - default: table
+- `--output-dir PATH` - Folder whose exported files to list (default: `<data folder>/benchmarks`)
+- `-o, --output-format` - Format (table|json|csv|yaml) - default: table. `json` and `yaml` carry both parts (`downloaded`, `exported_files`); `csv` holds the downloaded benchmarks only
 
 **Examples:**
 ```bash
@@ -449,37 +451,34 @@ cis-bench list --output-format csv > inventory.csv
 
 **Output Fields:**
 
-- Title
-- Version
-- Recommendations count
-- CIS Controls v8 count
-- MITRE mappings count
-- NIST controls count
-- Filename
+Downloaded benchmarks: ID, title, version, recommendations count, CIS Controls v8 count, MITRE mappings count, NIST controls count (and the download time in `json`, `yaml` and `csv`). Exported files: the folder and the file names.
 
 ---
 
 ### `cis-bench info`
 
-Show detailed information about a benchmark.
+Show detailed information about a downloaded benchmark, or about an exported JSON file.
 
 **Syntax:**
 ```bash
-cis-bench info <FILENAME> [OPTIONS]
+cis-bench info <BENCHMARK> [OPTIONS]
 ```
 
 **Arguments:**
 
-- `FILENAME` - Benchmark JSON file
+- `BENCHMARK` - A catalog ID (the downloaded copy in the cache), or the path or name of an exported JSON file
 
 **Options:**
 
-- `--output-dir PATH` - Directory containing benchmark (default: `<data folder>/benchmarks`)
+- `--output-dir PATH` - Folder a file name is looked for in (default: `<data folder>/benchmarks`)
 - `-o, --output-format` - Format (table|json|yaml) - default: table
 
 **Examples:**
 ```bash
-# Show benchmark details
+# The downloaded copy, by catalog ID
+cis-bench info 23598
+
+# An exported file
 cis-bench info benchmark.json
 
 # JSON output
@@ -492,7 +491,7 @@ cis-bench info benchmark.json --output-format yaml
 **Displays:**
 
 - Title, version, benchmark ID
-- Downloaded date, scraper version
+- Downloaded date, scraper version, and the source (cache, or the file)
 - Total recommendations
 - CIS Controls counts (v7, v8)
 - MITRE mappings count
@@ -925,8 +924,8 @@ A command exits `0` only when everything it was asked to do succeeded.
 
 **Downloaded Benchmarks:**
 
-- Stored in: `~/.local/share/cis-bench/catalog.db` (downloaded_benchmarks table). This cached copy is what `download` checks, `get` and `export <ID>` read, and `catalog stats` counts; `cis-bench remove <ID>` deletes it and `cis-bench download <ID> --force` replaces it.
-- Also saved as: `<data folder>/benchmarks/*.json` files. These are your exported copies; `cis-bench list` and `cis-bench info` read them, and `remove` does not delete them.
+- Stored in: `~/.local/share/cis-bench/catalog.db` (downloaded_benchmarks table). This cached copy is what "downloaded" means everywhere: `download` checks it, `get`, `export <ID>`, `info <ID>` and `list` read it, `catalog stats` and `check-updates` count it; `cis-bench remove <ID>` deletes it and `cis-bench download <ID> --force` replaces it.
+- Also written: `<data folder>/benchmarks/` holds the exported files (`*.json` by default, other formats with `download --format`). They are yours to move, rename or delete; `list` shows them under their own heading, `info <file>` inspects one, and `remove` leaves them alone.
 
 **The folders:** the defaults above are the XDG folders; `CIS_BENCH_HOME` puts everything in one folder. See [Configuration](configuration.md#the-folders).
 

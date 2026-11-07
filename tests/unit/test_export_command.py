@@ -169,6 +169,43 @@ class TestExportFromFile:
         assert result.exit_code == 0, result.output
         assert "Export complete!" in result.output
 
+    def test_an_id_with_surrounding_spaces_still_reads_the_cache(
+        self, runner, sample_benchmark, tmp_path, monkeypatch, working_dir
+    ):
+        from cis_bench.catalog.database import CatalogDatabase, serialize_benchmark_json
+
+        db = CatalogDatabase(tmp_path / "catalog.db")
+        try:
+            db.initialize_schema()
+            db.insert_benchmark(
+                {
+                    "benchmark_id": "23598",
+                    "title": "CIS AlmaLinux OS 8 Benchmark",
+                    "version": "v4.0.0",
+                    "url": "https://workbench.cisecurity.org/benchmarks/23598",
+                    "status": "Published",
+                }
+            )
+            content_json, content_hash = serialize_benchmark_json(sample_benchmark)
+            db.save_downloaded("23598", content_json, content_hash, 3, version="v4.0.0")
+        finally:
+            db.engine.dispose()
+        monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path))
+
+        result = runner.invoke(cli, ["export", " 23598 ", "--format", "yaml"])
+
+        assert result.exit_code == 0, result.output
+        assert [path.suffix for path in working_dir.iterdir()] == [".yaml"]
+
+    def test_a_string_of_non_ascii_digits_is_a_file_name_not_an_id(self, runner):
+        """Every command uses the same test for a benchmark ID: ASCII digits only."""
+        result = runner.invoke(
+            cli, ["export", "\u0662\u0663\u0665\u0669\u0668", "--format", "yaml"]
+        )
+
+        assert result.exit_code == 1
+        assert "File not found" in result.output
+
     def test_export_file_not_found(self, runner):
         """Export fails gracefully when file not found."""
         result = runner.invoke(cli, ["export", "nonexistent.json", "--format", "yaml"])

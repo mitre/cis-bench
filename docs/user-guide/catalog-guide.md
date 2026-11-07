@@ -403,10 +403,9 @@ cis-bench search ubuntu --latest --output-format json | \
 jq -r '.[].benchmark_id' | \
 xargs -I {} cis-bench download {}
 
-# Export all downloaded to XCCDF
+# Export all downloaded to XCCDF (by catalog ID, from the cache)
 cis-bench list --output-format json | \
-jq -r '.[].file' | \
-xargs -I {} basename {} .json | \
+jq -r '.downloaded[].benchmark_id' | \
 xargs -I {} cis-bench export {} --format xccdf --style cis
 ```
 

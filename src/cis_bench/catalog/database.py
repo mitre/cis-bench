@@ -14,7 +14,9 @@ from pathlib import Path
 from typing import TypeVar
 
 from sqlalchemy import (
+    Integer,
     Select,
+    cast,
     column,
     event,
     func,
@@ -911,6 +913,40 @@ class CatalogDatabase:
             session.commit()
         logger.debug(f"Deleted downloaded benchmark: {benchmark_id}")
         return True
+
+    def list_downloaded(self) -> list[dict]:
+        """Every downloaded benchmark, in ID order (as numbers), with its catalog title.
+
+        A benchmark downloaded while the catalog did not list it (download needs no
+        catalog row) has title None. Each row: benchmark_id, title, version,
+        recommendation_count, downloaded_at; the cached content comes from get_downloaded,
+        one benchmark at a time.
+        """
+        with Session(self.engine) as session:
+            rows = session.execute(
+                sa_select(
+                    col(DownloadedBenchmark.benchmark_id),
+                    col(CatalogBenchmark.title),
+                    col(DownloadedBenchmark.version),
+                    col(DownloadedBenchmark.recommendation_count),
+                    col(DownloadedBenchmark.downloaded_at),
+                )
+                .outerjoin(
+                    CatalogBenchmark,
+                    col(CatalogBenchmark.benchmark_id) == col(DownloadedBenchmark.benchmark_id),
+                )
+                .order_by(cast(col(DownloadedBenchmark.benchmark_id), Integer))
+            ).all()
+            return [
+                {
+                    "benchmark_id": benchmark_id,
+                    "title": title,
+                    "version": version,
+                    "recommendation_count": recommendation_count,
+                    "downloaded_at": downloaded_at,
+                }
+                for benchmark_id, title, version, recommendation_count, downloaded_at in rows
+            ]
 
     def list_downloaded_benchmark_ids(self) -> list[str]:
         """IDs of every benchmark whose content has been downloaded."""

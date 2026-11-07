@@ -170,9 +170,9 @@ jq -r '.[].benchmark_id' | \
 head -5 | \
 xargs -I {} cis-bench download {}
 
-# Export all to DISA STIG format
+# Export all downloaded benchmarks to DISA STIG format
 cis-bench list --output-format json | \
-jq -r '.[].file' | \
+jq -r '.downloaded[].benchmark_id' | \
 xargs -I {} cis-bench export {} --format xccdf --style disa
 ```
 

@@ -916,6 +916,37 @@ class TestDownloadedBenchmarks:
 
         assert temp_db.list_downloaded_benchmark_ids() == ["24000"]
 
+    def test_list_downloaded_gives_each_cached_benchmark_in_id_order_with_its_catalog_title(
+        self, temp_db, sample_benchmark_data
+    ):
+        temp_db.insert_benchmark(sample_benchmark_data)
+        temp_db.insert_benchmark(
+            {
+                **sample_benchmark_data,
+                "benchmark_id": "24000",
+                "title": "Other",
+                "url": "https://workbench.cisecurity.org/benchmarks/24000",
+            }
+        )
+        temp_db.save_downloaded("24000", '{"b": 2}', "hash2", 20, version="v1.0.0")
+        temp_db.save_downloaded("23598", '{"b": 1}', "hash1", 100, version="v2.0.1")
+
+        # Downloaded while absent from the catalog (download needs no catalog row): still listed
+        temp_db.save_downloaded("6467", '{"b": 3}', "hash3", 5, version="v1.0.0")
+
+        rows = temp_db.list_downloaded()
+
+        assert [
+            (r["benchmark_id"], r["title"], r["version"], r["recommendation_count"]) for r in rows
+        ] == [
+            ("6467", None, "v1.0.0", 5),
+            ("23598", "CIS Ubuntu Linux 20.04 LTS Benchmark", "v2.0.1", 100),
+            ("24000", "Other", "v1.0.0", 20),
+        ]
+        assert "content_json" not in rows[0]  # fetched per benchmark by the caller
+        assert rows[0]["downloaded_at"] is not None
+        assert temp_db.list_downloaded() == rows  # ordered by ID as a number, stable
+
     def test_save_downloaded_stores_the_downloaded_version(self, temp_db, sample_benchmark_data):
         """check-updates compares the catalog version against the version that was downloaded."""
         temp_db.insert_benchmark(sample_benchmark_data)

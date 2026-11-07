@@ -19,6 +19,7 @@ from cis_bench.cli.helpers.services import (
     workbench_scraper,
 )
 from cis_bench.exceptions import AuthenticationError, FetchError
+from cis_bench.utils.workbench_urls import is_benchmark_id
 
 console = Console()
 logger = logging.getLogger(__name__)
@@ -544,12 +545,11 @@ def download(benchmark_id_or_name, browser, force, interactive):
         downloader = CatalogDownloader(db, scraper)
 
         # Determine if ID or name
-        if benchmark_id_or_name.isdigit():
+        if is_benchmark_id(benchmark_id_or_name):
             # Download by ID
-            console.print(
-                f"[cyan]Downloading benchmark {escape(str(benchmark_id_or_name))}...[/cyan]"
-            )
-            result = downloader.download_by_id(benchmark_id_or_name, force=force)
+            benchmark_id = benchmark_id_or_name.strip()
+            console.print(f"[cyan]Downloading benchmark {escape(benchmark_id)}...[/cyan]")
+            result = downloader.download_by_id(benchmark_id, force=force)
         else:
             # Download by name
             console.print(f"[cyan]Searching for: {escape(str(benchmark_id_or_name))}[/cyan]")
