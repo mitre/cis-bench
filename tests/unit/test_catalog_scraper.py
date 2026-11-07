@@ -160,6 +160,22 @@ class TestPageFetching:
         assert html == sample_html
         mock_session.get.assert_called_once()
 
+    def test_a_listing_page_has_its_addresses_decoded(self, temp_db, mock_session):
+        cf_info = "9df4f3fbf2ddf8e5fcf0edf1f8b3fef2f0"  # info@example.com
+        mock_session.get.return_value.text = (
+            f'<td><span class="__cf_email__" data-cfemail="{cf_info}">[email protected]</span></td>'
+        )
+        scraper = CatalogScraper(
+            temp_db,
+            mock_session,
+            base_url=BASE,
+            timeout=TIMEOUT,
+            max_workers=WORKERS,
+            batch_size=BATCH,
+        )
+
+        assert scraper._fetch_page(1) == "<td>info@example.com</td>"
+
     def test_fetch_page_url_format(self, temp_db, mock_session):
         """Test page URL is formatted correctly."""
         scraper = CatalogScraper(
@@ -848,6 +864,23 @@ class TestRefreshDownloadedRevisionDates:
         ).refresh_downloaded_pages()
 
         assert temp_db.get_benchmark("401")["description"] == "Guidance for 401."
+
+    def test_a_page_read_by_check_updates_has_its_addresses_decoded(self, temp_db):
+        self._seed(temp_db, "401")
+        cf_info = "9df4f3fbf2ddf8e5fcf0edf1f8b3fef2f0"  # info@example.com
+        session = Mock()
+        session.get = Mock(
+            return_value=self._response(
+                "<p>Published</p> 1 year ago on Aug 28th 2025<h2>Overview</h2>"
+                f'<p>Write <span class="__cf_email__" data-cfemail="{cf_info}">[email protected]</span></p>'
+            )
+        )
+
+        CatalogScraper(
+            temp_db, session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        ).refresh_downloaded_pages()
+
+        assert temp_db.get_benchmark("401")["description"] == "Write info@example.com"
 
     def test_a_benchmark_workbench_no_longer_has_is_reported_and_the_rest_are_checked(
         self, temp_db, stub_session, caplog

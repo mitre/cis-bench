@@ -1252,6 +1252,70 @@ class TestTheBenchmarkDescription:
         )
 
 
+class TestCloudflareAddressesOnWorkBenchPages:
+    """Pages read through the scraper carry real addresses, whatever Cloudflare did to them."""
+
+    CF_INFO = "9df4f3fbf2ddf8e5fcf0edf1f8b3fef2f0"  # info@example.com
+
+    def test_fetch_html_returns_the_page_with_addresses_decoded(self, stub_session):
+        page = f'<p>Mail <a class="__cf_email__" data-cfemail="{self.CF_INFO}">[email&#160;protected]</a></p>'
+        session, _ = stub_session(lambda url: page)
+        scraper = WorkbenchScraper(
+            session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
+
+        html = scraper.fetch_html("https://workbench.cisecurity.org/sections/1/recommendations/2")
+
+        assert html == "<p>Mail info@example.com</p>"
+
+
+class TestCloudflareAddressesInADownload:
+    """A download stores real addresses in the benchmark and its recommendations."""
+
+    CF_INFO = "9df4f3fbf2ddf8e5fcf0edf1f8b3fef2f0"  # info@example.com
+    CF_FEEDBACK = "42242727262023212902212b31272137302b363b6c2d3025"  # feedback@cisecurity.org
+
+    def test_the_stored_benchmark_carries_the_real_addresses(
+        self, sample_benchmark_navtree, sample_recommendation_html, stub_session
+    ):
+        url = "https://workbench.cisecurity.org/benchmarks/18528"
+        benchmark_page = (
+            '<wb-benchmark-title title="CIS Amazon EKS Benchmark v1.8.0"></wb-benchmark-title>'
+            "<h2>Overview</h2>"
+            f'<p>Write us at <a href="/cdn-cgi/l/email-protection" class="__cf_email__" '
+            f'data-cfemail="{self.CF_FEEDBACK}">[email&#160;protected]</a>.</p>'
+        )
+        # WorkBench links the parent recommendation by its full URL
+        recommendation_page = sample_recommendation_html.replace(
+            'href="/sections/123/recommendations/456"',
+            'href="https://workbench.cisecurity.org/sections/123/recommendations/456"',
+        ).replace(
+            "ensure that the proxy kubeconfig file",
+            f'mail <a href="/cdn-cgi/l/email-protection#{self.CF_INFO}">'
+            f'<span class="__cf_email__" data-cfemail="{self.CF_INFO}">[email&#160;protected]</span>'
+            "</a> and ensure that the proxy kubeconfig file",
+        )
+
+        def handler(requested):
+            if "navtree" in requested:
+                return sample_benchmark_navtree
+            if requested == url:
+                return benchmark_page
+            return recommendation_page
+
+        session, _ = stub_session(handler)
+        scraper = WorkbenchScraper(
+            session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
+
+        benchmark = scraper.download_benchmark(url)
+
+        assert benchmark.description == "Write us at feedback@cisecurity.org."
+        stored = benchmark.model_dump_json()
+        assert '<a href=\\"mailto:info@example.com\\">info@example.com</a>' in stored
+        assert "protected" not in stored and "cfemail" not in stored
+
+
 class TestWorkbenchScraperFullDownload:
     """Test complete benchmark download workflow."""
 

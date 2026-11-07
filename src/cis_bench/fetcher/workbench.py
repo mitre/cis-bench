@@ -18,7 +18,7 @@ from pydantic import HttpUrl
 
 from cis_bench.exceptions import AuthenticationError
 from cis_bench.fetcher.auth import is_workbench_login_page
-from cis_bench.fetcher.http import ThreadSessions, get_with_retry
+from cis_bench.fetcher.http import ThreadSessions, get_with_retry, workbench_page_text
 from cis_bench.fetcher.strategies.base import ExtractedRecommendation, ScraperStrategy
 from cis_bench.fetcher.strategies.detector import StrategyDetector
 from cis_bench.models.benchmark import Benchmark, BenchmarkPage, Recommendation
@@ -206,7 +206,7 @@ class WorkbenchScraper:
                 expired session); that is final, never retried
             requests.HTTPError: For a non-retryable HTTP status
         """
-        html = self._request(url).text
+        html = workbench_page_text(self._request(url))
         if is_workbench_login_page(html):
             raise _login_page_error(url)
         return html

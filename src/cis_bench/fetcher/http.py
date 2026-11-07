@@ -11,7 +11,9 @@ makes inside it, so retries count against the rate too. The tunable policy
 """
 
 import copy
+import html
 import logging
+import re
 import threading
 from collections import OrderedDict
 from collections.abc import Callable, Mapping
@@ -238,6 +240,57 @@ class ThreadSessions:
             worker = session_for_worker(self.session)
             self._local.session = worker
         return worker
+
+
+# Cloudflare's Email Address Obfuscation rewrites each address on a page it serves, differently
+# on every fetch: an element carrying the address in data-cfemail, and a link whose href ends in
+# /cdn-cgi/l/email-protection#<hex>. The hex is a key byte followed by the address's UTF-8 bytes,
+# each XOR the key (as Cloudflare's email-decode script reverses it).
+_CF_EMAIL_ELEMENT_RE = re.compile(
+    r"<(a|span)\b[^>]*?\sdata-cfemail=\"([0-9A-Fa-f]*)\"[^>]*>.*?</\1>", re.DOTALL
+)
+# The whole href value, as Cloudflare writes it (a path on the same origin): a value with
+# anything else in it is not Cloudflare's and is left alone.
+_CF_EMAIL_LINK_RE = re.compile(r'href="/cdn-cgi/l/email-protection#([^"]*)"')
+
+
+def _cloudflare_address(hex_text: str) -> str | None:
+    """The address a Cloudflare hex string encodes, or None when it is not a valid encoding."""
+    try:
+        data = bytes.fromhex(hex_text)
+        address = bytes(byte ^ data[0] for byte in data[1:]).decode("utf-8")
+    except ValueError:  # not hex, or not UTF-8
+        return None
+    return address or None  # empty, or a key with no address
+
+
+def decode_cloudflare_emails(text: str) -> str:
+    """text with every Cloudflare-obfuscated address written out as the address itself.
+
+    An obfuscated element becomes the address; an obfuscated link becomes a mailto: link.
+    Only Cloudflare's own markup is rewritten: a data-cfemail attribute, and an href whose whole
+    value is /cdn-cgi/l/email-protection#<hex>.
+    Markup whose hex is not a valid encoding is left as it was.
+    """
+
+    def element(match: re.Match[str]) -> str:
+        address = _cloudflare_address(match.group(2))
+        return match.group(0) if address is None else html.escape(address, quote=False)
+
+    def link(match: re.Match[str]) -> str:
+        address = _cloudflare_address(match.group(1))
+        return match.group(0) if address is None else f'href="mailto:{html.escape(address)}"'
+
+    return _CF_EMAIL_LINK_RE.sub(link, _CF_EMAIL_ELEMENT_RE.sub(element, text))
+
+
+def workbench_page_text(response: requests.Response) -> str:
+    """The text of a WorkBench page response, with Cloudflare-obfuscated addresses decoded.
+
+    The one way page text is taken from a WorkBench response, so every parser, the stored
+    benchmark and every export see real addresses.
+    """
+    return decode_cloudflare_emails(response.text)
 
 
 def get_with_retry(
