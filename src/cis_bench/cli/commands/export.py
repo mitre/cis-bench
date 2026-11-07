@@ -216,7 +216,8 @@ def _export_single_benchmark(
     "--output",
     "-o",
     "output_file",
-    help="Output file (only valid for single benchmark export)",
+    type=click.Path(dir_okay=False),
+    help="Output file (only for a single benchmark; for a folder use --output-dir)",
 )
 @click.option(
     "--output-dir",

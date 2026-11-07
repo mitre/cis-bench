@@ -241,7 +241,7 @@ cis-bench get <QUERY> [OPTIONS]
 
 - `-f, --format` - Export format (yaml|csv|markdown|md|xccdf|xml|json) - default: yaml
 - `--style` - XCCDF style (disa|cis) - default: disa, only for xccdf format
-- `-o, --output` - Output file path (default: auto-generated)
+- `-o, --output PATH` - Output file (a file path, not a folder; default: auto-generated). A folder is refused with a usage error
 
 **Behavior Options:**
 
@@ -383,7 +383,7 @@ cis-bench export <IDENTIFIER> [IDENTIFIER...] [OPTIONS]
 
 - `-f, --format` - Format (yaml|csv|markdown|md|xccdf|xml) - default: yaml
 - `--style` - XCCDF style (disa|cis) - default: disa, only for xccdf
-- `-o, --output PATH` - Output file (single export only)
+- `-o, --output PATH` - Output file (single export only; a folder is refused with a usage error, use `--output-dir` for a folder)
 - `--output-dir PATH` - Output directory for batch exports (creates if needed)
 
 **Input Options:**
