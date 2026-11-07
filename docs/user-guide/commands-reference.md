@@ -585,14 +585,16 @@ cis-bench diff 22605 23598 --format json | jq '.changes.modified[].ref'
 
 - By ref (`1.1.1`). A ref only in `NEW` is *added*, only in `OLD` *removed*.
 - A ref in both whose content differs is *modified*, with the names of the fields that changed (`title`, `audit`, `impact`, ...). List order inside a field is ignored, and so are the WorkBench URLs (the recommendation's and its parent's) and artifact IDs, which change in every release.
+- A field whose text differs only in whitespace (line wrapping, spacing, indentation) is *reformatted*, never a modification. A recommendation whose only changes are reformatted fields is listed as reformatted; a modified one names its reformatted fields separately. Nothing else is folded: case, punctuation and words joined or split are changes. Two downloads of one benchmark by the same cis-bench version are identical; formatting differences come from comparing copies made by different versions.
+- When the two benchmarks were made by different scraper versions (`scraper_version`), every format says so.
 - A removed ref and an added ref whose titles are at least 85% alike are one *renumbered* recommendation.
 
 **Formats:**
 
-- `table` - Counts, then one row per change
+- `table` - Counts, then one row per change; `--verbose` adds each modified recommendation's fields and lists the reformatted ones
 - `summary` - Counts only
-- `markdown` - A Markdown document with a table per kind of change
-- `json` - `old_version`, `new_version`, `benchmark_title`, `summary` (the counts) and `changes` (`added`, `removed`, `modified`, `renumbered`; unchanged recommendations are left out). Each modified entry has `fields_changed` and `diff`, DeepDiff's report of the change.
+- `markdown` - A Markdown document with a table per kind of change, reformatted included
+- `json` - `old_version`, `new_version`, `benchmark_title`, `scraper_versions` (`old`, `new`), `scraper_versions_differ`, `summary` (the counts) and `changes` (`added`, `removed`, `modified`, `reformatted`, `renumbered`; unchanged recommendations are left out). Each modified entry has `fields_changed`, `reformatted_fields` and `diff`, DeepDiff's report of every change; each reformatted entry has `fields`.
 
 ---
 

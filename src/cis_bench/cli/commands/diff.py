@@ -200,41 +200,72 @@ def _ref_key(ref: str) -> tuple:
     return (version_sort_key(ref), ref)
 
 
+def _whitespace_folded(value: Any) -> Any:
+    """value with every run of whitespace in its text folded to one space and the ends
+    trimmed, so two values equal here differ only in whitespace."""
+    if isinstance(value, str):
+        return " ".join(value.split())
+    if isinstance(value, list):
+        return [_whitespace_folded(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _whitespace_folded(item) for key, item in value.items()}
+    return value
+
+
+def _changed_fields(old_rec: dict, new_rec: dict) -> tuple[Any, list[str]]:
+    """DeepDiff of two recommendations and the top-level fields it names, ignoring list
+    order and the WorkBench URLs and artifact IDs every release changes."""
+    from deepdiff import DeepDiff
+
+    diff = DeepDiff(
+        old_rec,
+        new_rec,
+        ignore_order=True,
+        exclude_paths=_WORKBENCH_IDENTIFIER_PATHS,
+        exclude_regex_paths=_WORKBENCH_IDENTIFIER_REGEX_PATHS,
+    )
+    return diff, sorted(str(key) for key in diff.affected_root_keys) if diff else []
+
+
 def compare_benchmarks(old: dict, new: dict) -> dict:
     """Compare two benchmarks recommendation by recommendation.
 
     Recommendations are matched by ref and compared with DeepDiff, ignoring list order and
-    the WorkBench URLs and artifact IDs every release changes. A removed ref and an added ref whose titles are at least
-    RENUMBER_SIMILARITY alike are reported as one renumbered recommendation.
+    the WorkBench URLs and artifact IDs every release changes. A field whose text differs
+    only in whitespace is reformatted, never a modification: a recommendation whose only
+    changes are such fields is listed as reformatted. A removed ref and an added ref whose
+    titles are at least RENUMBER_SIMILARITY alike are reported as one renumbered
+    recommendation.
     """
-    from deepdiff import DeepDiff
-
     old_recs = {r["ref"]: r for r in old.get("recommendations", [])}
     new_recs = {r["ref"]: r for r in new.get("recommendations", [])}
 
     modified = []
+    reformatted = []
     unchanged = []
     for ref in sorted(old_recs.keys() & new_recs.keys(), key=_ref_key):
         old_rec, new_rec = old_recs[ref], new_recs[ref]
-        diff = DeepDiff(
-            old_rec,
-            new_rec,
-            ignore_order=True,
-            exclude_paths=_WORKBENCH_IDENTIFIER_PATHS,
-            exclude_regex_paths=_WORKBENCH_IDENTIFIER_REGEX_PATHS,
+        diff, changed = _changed_fields(old_rec, new_rec)
+        _, content_changed = _changed_fields(
+            _whitespace_folded(old_rec), _whitespace_folded(new_rec)
         )
-        if diff:
+        whitespace_only = [field for field in changed if field not in content_changed]
+        title = new_rec.get("title", "")
+        if content_changed:
             modified.append(
                 {
                     "ref": ref,
-                    "title": new_rec.get("title", ""),
+                    "title": title,
                     "old_title": old_rec.get("title", ""),
-                    "fields_changed": sorted(str(key) for key in diff.affected_root_keys),
+                    "fields_changed": content_changed,
+                    "reformatted_fields": whitespace_only,
                     "diff": json.loads(diff.to_json()),
                 }
             )
+        elif whitespace_only:
+            reformatted.append({"ref": ref, "title": title, "fields": whitespace_only})
         else:
-            unchanged.append({"ref": ref, "title": new_rec.get("title", "")})
+            unchanged.append({"ref": ref, "title": title})
 
     remaining_removed = sorted(old_recs.keys() - new_recs.keys(), key=_ref_key)
     remaining_added = sorted(new_recs.keys() - old_recs.keys(), key=_ref_key)
@@ -257,14 +288,18 @@ def compare_benchmarks(old: dict, new: dict) -> dict:
                 remaining_added.remove(new_ref)
                 break
 
+    scraper_versions = {"old": old.get("scraper_version"), "new": new.get("scraper_version")}
     return {
         "old_version": old.get("version", "unknown"),
         "new_version": new.get("version", "unknown"),
         "benchmark_title": new.get("title", old.get("title", "Unknown")),
+        "scraper_versions": scraper_versions,
+        "scraper_versions_differ": scraper_versions["old"] != scraper_versions["new"],
         "summary": {
             "added": len(remaining_added),
             "removed": len(remaining_removed),
             "modified": len(modified),
+            "reformatted": len(reformatted),
             "unchanged": len(unchanged),
             "renumbered": len(renumbered),
         },
@@ -274,10 +309,22 @@ def compare_benchmarks(old: dict, new: dict) -> dict:
                 {"ref": r, "title": old_recs[r].get("title", "")} for r in remaining_removed
             ],
             "modified": modified,
+            "reformatted": reformatted,
             "unchanged": unchanged,
             "renumbered": renumbered,
         },
     }
+
+
+def _scraper_notice(comparison: dict) -> str | None:
+    """The line saying the two copies were made by different scraper versions, if they were."""
+    if not comparison["scraper_versions_differ"]:
+        return None
+    versions = comparison["scraper_versions"]
+    return (
+        f"These copies were made by different scraper versions ({versions['old']} → "
+        f"{versions['new']}); formatting differences may come from cis-bench, not WorkBench."
+    )
 
 
 def _output_json(comparison: dict) -> None:
@@ -310,10 +357,14 @@ def _output_markdown(comparison: dict) -> None:
         f"| Added       | {summary['added']} |",
         f"| Removed     | {summary['removed']} |",
         f"| Modified    | {summary['modified']} |",
+        f"| Reformatted | {summary['reformatted']} |",
         f"| Unchanged   | {summary['unchanged']} |",
         f"| Renumbered  | {summary['renumbered']} |",
         "",
     ]
+    notice = _scraper_notice(comparison)
+    if notice:
+        lines[4:4] = [f"> {notice}", ""]
 
     sections = [
         ("Added Recommendations", ["Ref", "Title"], changes["added"], ("ref", "title")),
@@ -322,6 +373,12 @@ def _output_markdown(comparison: dict) -> None:
             "Modified Recommendations",
             ["Ref", "Title", "Changed Fields"],
             [{**m, "fields": ", ".join(m["fields_changed"])} for m in changes["modified"]],
+            ("ref", "title", "fields"),
+        ),
+        (
+            "Reformatted Recommendations",
+            ["Ref", "Title", "Fields"],
+            [{**r, "fields": ", ".join(r["fields"])} for r in changes["reformatted"]],
             ("ref", "title", "fields"),
         ),
         (
@@ -362,10 +419,14 @@ def _output_summary(comparison: dict) -> None:
         f"  [green]✚ {summary['added']} added[/green]  "
         f"[red]✖ {summary['removed']} removed[/red]  "
         f"[yellow]⟳ {summary['modified']} modified[/yellow]  "
+        f"[blue]≈ {summary['reformatted']} reformatted[/blue]  "
         f"[cyan]↷ {summary['renumbered']} renumbered[/cyan]"
     )
     console.print()
     console.print(f"Total: {total} recommendations ({summary['unchanged']} unchanged)")
+    notice = _scraper_notice(comparison)
+    if notice:
+        console.print(f"\n[dim]{escape(notice)}[/dim]")
 
 
 def _output_table(comparison: dict, verbose: bool = False, _console: Console | None = None) -> None:
@@ -379,6 +440,9 @@ def _output_table(comparison: dict, verbose: bool = False, _console: Console | N
     out.print(
         f"[dim]{escape(comparison['old_version'])} → {escape(comparison['new_version'])}[/dim]"
     )
+    notice = _scraper_notice(comparison)
+    if notice:
+        out.print(f"[dim]{escape(notice)}[/dim]")
     out.print()
 
     out.print("[bold]Summary:[/bold]")
@@ -386,13 +450,23 @@ def _output_table(comparison: dict, verbose: bool = False, _console: Console | N
         f"  [green]✚ Added:[/green]      {summary['added']} recommendations\n"
         f"  [red]✖ Removed:[/red]    {summary['removed']} recommendations\n"
         f"  [yellow]⟳ Modified:[/yellow]   {summary['modified']} recommendations\n"
+        f"  [blue]≈ Reformatted:[/blue] {summary['reformatted']} recommendations\n"
         f"  [dim]═ Unchanged:[/dim] {summary['unchanged']} recommendations\n"
         f"  [cyan]↷ Renumbered:[/cyan] {summary['renumbered']} recommendations"
     )
     out.print()
 
     if not any([changes["added"], changes["removed"], changes["modified"], changes["renumbered"]]):
-        out.print("[dim]No changes detected between versions.[/dim]")
+        if changes["reformatted"]:
+            hint = "" if verbose else " --verbose lists them."
+            out.print(
+                f"[dim]No content changes; {len(changes['reformatted'])} recommendations "
+                f"reformatted (whitespace only).{hint}[/dim]"
+            )
+            if verbose:
+                _print_reformatted(out, changes["reformatted"])
+        else:
+            out.print("[dim]No changes detected between versions.[/dim]")
         return
 
     table = Table(show_header=True, header_style="bold cyan", expand=True)
@@ -439,3 +513,17 @@ def _output_table(comparison: dict, verbose: bool = False, _console: Console | N
             )
             for field in item["fields_changed"]:
                 out.print(f"  • {escape(field)} changed")
+            for field in item["reformatted_fields"]:
+                out.print(f"  • {escape(field)} (whitespace only)")
+    if verbose and changes["reformatted"]:
+        _print_reformatted(out, changes["reformatted"])
+
+
+def _print_reformatted(out: Console, reformatted: list[dict]) -> None:
+    """List the recommendations whose only changes are whitespace, with those fields."""
+    out.print()
+    out.print("[bold]Reformatted (whitespace only):[/bold]")
+    for item in reformatted:
+        out.print(f"\n[blue]≈ REFORMATTED: {escape(item['ref'])}[/blue] - {escape(item['title'])}")
+        for field in item["fields"]:
+            out.print(f"  • {escape(field)} (whitespace only)")

@@ -771,3 +771,188 @@ class TestFetchingAnIDThatIsNotDownloaded:
 
         assert result.exit_code == 1
         assert "Configuration Error" in result.output
+
+
+class TestReformattedFields:
+    """A field whose text differs only in whitespace is reformatted: shown, never hidden, and
+    never counted as a modification."""
+
+    def test_a_field_differing_only_in_whitespace_is_reformatted_not_modified(
+        self, old_benchmark_json
+    ):
+        from cis_bench.cli.commands.diff import compare_benchmarks
+
+        rewrapped = "The cramfs filesystem type is a\ncompressed  read-only\tLinux filesystem.  "
+        new = _with_rec_change(old_benchmark_json, "1.1.1", description=rewrapped)
+
+        comparison = compare_benchmarks(old_benchmark_json, new)
+
+        assert comparison["summary"]["modified"] == 0
+        assert comparison["summary"]["reformatted"] == 1
+        assert comparison["changes"]["reformatted"] == [
+            {
+                "ref": "1.1.1",
+                "title": "Ensure mounting of cramfs is disabled",
+                "fields": ["description"],
+            }
+        ]
+
+    @pytest.mark.parametrize(
+        "description",
+        [
+            "The cramfs filesystem type is a compressed read-only Linux file system.",
+            "the cramfs filesystem type is a compressed read-only Linux filesystem.",
+            "The cramfs filesystem type is a compressed read-only Linux filesystem",
+            "The cramfs filesystem type is a compressedread-only Linux filesystem.",
+        ],
+        ids=["wording", "case", "punctuation", "words-joined"],
+    )
+    def test_anything_but_whitespace_is_a_modification(self, old_benchmark_json, description):
+        from cis_bench.cli.commands.diff import compare_benchmarks
+
+        new = _with_rec_change(old_benchmark_json, "1.1.1", description=description)
+
+        comparison = compare_benchmarks(old_benchmark_json, new)
+
+        assert comparison["summary"]["reformatted"] == 0
+        assert [m["fields_changed"] for m in comparison["changes"]["modified"]] == [["description"]]
+
+    def test_a_modified_recommendation_names_its_reformatted_fields_separately(
+        self, old_benchmark_json
+    ):
+        from cis_bench.cli.commands.diff import compare_benchmarks
+
+        new = _with_rec_change(
+            old_benchmark_json,
+            "1.1.1",
+            description="The cramfs filesystem type is a\ncompressed read-only Linux filesystem.",
+            audit="Run: modprobe -n -v cramfs | grep -E '(cramfs|install)'",
+        )
+
+        comparison = compare_benchmarks(old_benchmark_json, new)
+
+        (modified,) = comparison["changes"]["modified"]
+        assert modified["fields_changed"] == ["audit"]
+        assert modified["reformatted_fields"] == ["description"]
+        assert comparison["summary"]["reformatted"] == 0
+
+    def test_whitespace_inside_list_values_is_formatting_too(self, old_benchmark_json):
+        from cis_bench.cli.commands.diff import compare_benchmarks
+
+        new = _with_rec_change(old_benchmark_json, "1.1.1", profiles=["Level 1 -  Server"])
+
+        comparison = compare_benchmarks(old_benchmark_json, new)
+
+        assert comparison["changes"]["reformatted"][0]["fields"] == ["profiles"]
+
+    @pytest.fixture
+    def reformatted_files(self, tmp_path, old_benchmark_json):
+        new = _with_rec_change(
+            old_benchmark_json,
+            "1.1.1",
+            description="The cramfs filesystem type is a\ncompressed read-only Linux filesystem.",
+        )
+        return _files(tmp_path, old_benchmark_json, new)
+
+    def test_every_format_shows_the_reformatted_count(self, runner, reformatted_files):
+        old_file, new_file = reformatted_files
+
+        summary = runner.invoke(cli, ["diff", old_file, new_file, "--format", "summary"])
+        table = runner.invoke(cli, ["diff", old_file, new_file])
+        markdown = runner.invoke(cli, ["diff", old_file, new_file, "--format", "markdown"])
+        data = json.loads(
+            runner.invoke(cli, ["diff", old_file, new_file, "--format", "json"]).stdout
+        )
+
+        assert "1 reformatted" in " ".join(summary.output.split())
+        assert "Reformatted: 1 recommendations" in " ".join(table.output.split())
+        assert "| Reformatted | 1 |" in markdown.output.splitlines()
+        assert data["summary"]["reformatted"] == 1
+
+    def test_table_verbose_markdown_and_json_list_them(self, runner, reformatted_files):
+        old_file, new_file = reformatted_files
+
+        verbose = runner.invoke(cli, ["diff", old_file, new_file, "--verbose"])
+        markdown = runner.invoke(cli, ["diff", old_file, new_file, "--format", "markdown"])
+        data = json.loads(
+            runner.invoke(cli, ["diff", old_file, new_file, "--format", "json"]).stdout
+        )
+
+        flat = " ".join(verbose.output.split())
+        assert "REFORMATTED: 1.1.1 - Ensure mounting of cramfs is disabled" in flat
+        assert "• description (whitespace only)" in flat
+        assert "## Reformatted Recommendations" in markdown.output
+        assert "| 1.1.1 | Ensure mounting of cramfs is disabled | description |" in (
+            markdown.output.splitlines()
+        )
+        assert data["changes"]["reformatted"][0]["ref"] == "1.1.1"
+
+    def test_verbose_lists_reformatted_fields_and_recommendations_next_to_real_changes(
+        self, runner, tmp_path, old_benchmark_json
+    ):
+        new = _with_rec_change(
+            old_benchmark_json,
+            "1.1.1",
+            description="The cramfs filesystem type is a\ncompressed read-only Linux filesystem.",
+            audit="Run: modprobe -n -v cramfs | grep cramfs",
+        )
+        new = _with_rec_change(new, "2.1.1", rationale="NIS is insecure  and should\nnot be used.")
+        old_file, new_file = _files(tmp_path, old_benchmark_json, new)
+
+        result = runner.invoke(cli, ["diff", old_file, new_file, "--verbose"])
+
+        lines = [" ".join(line.split()) for line in result.output.splitlines()]
+        start = lines.index("⟳ MODIFIED: 1.1.1 - Ensure mounting of cramfs is disabled")
+        assert lines[start + 1 : start + 3] == [
+            "• audit changed",
+            "• description (whitespace only)",
+        ]
+        assert "≈ REFORMATTED: 2.1.1 - Ensure NIS Server is not installed" in lines
+        assert "• rationale (whitespace only)" in lines
+
+    def test_only_reformatted_changes_are_not_reported_as_no_changes(
+        self, runner, reformatted_files
+    ):
+        old_file, new_file = reformatted_files
+
+        table = runner.invoke(cli, ["diff", old_file, new_file])
+
+        assert "No changes detected" not in table.output
+        assert "No content changes" in table.output
+        assert "--verbose lists them" in " ".join(table.output.split())
+        verbose = runner.invoke(cli, ["diff", old_file, new_file, "--verbose"])
+        assert "--verbose lists them" not in " ".join(verbose.output.split())
+
+
+class TestScraperVersionNotice:
+    """Copies made by different scraper versions can differ in formatting for reasons of
+    cis-bench's own; diff says so."""
+
+    def test_different_scraper_versions_are_named_in_every_format(
+        self, runner, tmp_path, old_benchmark_json
+    ):
+        new = {**old_benchmark_json, "scraper_version": "v2_2026"}
+        old_file, new_file = _files(tmp_path, old_benchmark_json, new)
+
+        outputs = {
+            fmt: runner.invoke(cli, ["diff", old_file, new_file, "--format", fmt])
+            for fmt in ("table", "summary", "markdown", "json")
+        }
+
+        for fmt in ("table", "summary", "markdown"):
+            flat = " ".join(outputs[fmt].output.split())
+            assert "made by different scraper versions (v1_current → v2_2026)" in flat, fmt
+        data = json.loads(outputs["json"].stdout)
+        assert data["scraper_versions"] == {"old": "v1_current", "new": "v2_2026"}
+        assert data["scraper_versions_differ"] is True
+
+    def test_the_same_scraper_version_says_nothing(self, runner, tmp_path, old_benchmark_json):
+        old_file, new_file = _files(tmp_path, old_benchmark_json, old_benchmark_json)
+
+        summary = runner.invoke(cli, ["diff", old_file, new_file, "--format", "summary"])
+        data = json.loads(
+            runner.invoke(cli, ["diff", old_file, new_file, "--format", "json"]).stdout
+        )
+
+        assert "scraper versions" not in summary.output
+        assert data["scraper_versions_differ"] is False
