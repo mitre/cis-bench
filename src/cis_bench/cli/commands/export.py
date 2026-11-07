@@ -307,11 +307,14 @@ def export_cmd(identifiers, export_format, style, output_file, output_dir, input
                 f"{success_count} succeeded, {failed_count} failed."
             )
 
-    # Show XCCDF note for single successful export
+    # Say how to check a single XCCDF export against the NIST schema
     if total == 1 and success_count == 1 and export_format in ["xccdf", "xml"]:
         console.print()
-        console.print("[dim]Note: XCCDF output validates against NIST XCCDF 1.2 schema[/dim]")
-        console.print("[dim]Compatible with OpenSCAP, SCC, and other SCAP tools[/dim]")
+        console.print(
+            f"[dim]Check it against the NIST schema: "
+            f"cis-bench validate {escape(str(exported_files[0]))}[/dim]",
+            soft_wrap=True,
+        )
 
     # A command exits 0 only when everything it was asked to do succeeded
     if failed_count:

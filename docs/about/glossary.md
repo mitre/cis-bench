@@ -537,7 +537,7 @@ Python library that generates dataclasses from XSD schemas.
 
 **Usage:** Generate Python classes for XCCDF elements
 
-**Command:** `xsdata schemas/xccdf_1.2.xsd --package models.xccdf`
+**Command:** `xsdata src/cis_bench/schemas/xccdf_1.2.xsd --package models.xccdf`
 
 **Result:** Typed Python classes matching XCCDF schema
 
@@ -546,8 +546,8 @@ XML Schema Definition - Defines structure and rules for XML documents.
 
 **XCCDF schemas:**
 
-- `xccdf-1.1.4.xsd` - DISA STIG version
-- `xccdf-1.2.xsd` - Latest XCCDF version
+- `xccdf/1.1/xccdf-schema.xsd` - XCCDF 1.1.4, the version DISA-style exports use
+- `xccdf/1.2/xccdf_1.2.xsd` - XCCDF 1.2, the version CIS-style exports use (`cis-bench validate` picks it from the document)
 
 **Used for:** Generating xsdata models, validating XML output
 

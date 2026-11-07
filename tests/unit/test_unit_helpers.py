@@ -1548,7 +1548,7 @@ class TestRuleElementOrder:
     """The engine reports the Rule child-element order of its XCCDF version's schema."""
 
     def test_xccdf_1_2_order_matches_the_schema_sequence(self, cis_config_path):
-        """schemas/xccdf/1.2/xccdf_1.2.xsd: itemType, then selectableItemType, then ruleType."""
+        """src/cis_bench/schemas/xccdf/1.2/xccdf_1.2.xsd: itemType, then selectableItemType, then ruleType."""
         engine = MappingEngine(cis_config_path)
         assert engine.rule_element_order() == [
             "status",
@@ -1575,7 +1575,7 @@ class TestRuleElementOrder:
         ]
 
     def test_xccdf_1_1_4_order_has_no_metadata(self, disa_config_path):
-        """schemas/xccdf-1.1.4.xsd itemType (717-745) has no metadata element."""
+        """src/cis_bench/schemas/xccdf/1.1/xccdf-schema.xsd itemType (717-745) has no metadata element."""
         engine = MappingEngine(disa_config_path)
         order = engine.rule_element_order()
         assert "metadata" not in order

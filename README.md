@@ -90,6 +90,8 @@ cis-bench export 23598 --format xccdf # Instant (from cache)
 - **JSON** - Machine-readable
 - **XCCDF** - SCAP compliance (DISA STIG or CIS native)
 
+Check an XCCDF export against the NIST schema with `cis-bench validate benchmark_23598.xml` (the schemas ship with cis-bench).
+
 ### Platform Filtering
 Two-level taxonomy: category (cloud/os/database) + specific platform (aws/ubuntu/oracle).
 

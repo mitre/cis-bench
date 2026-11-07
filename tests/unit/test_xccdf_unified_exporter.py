@@ -1087,7 +1087,7 @@ class TestMetadataInsertionFollowsSchemaOrder:
     def test_metadata_goes_after_the_last_item_element_present(self):
         """XCCDF 1.2 Rule: ...reference, metadata, rationale, platform, ..., signature.
 
-        Order from schemas/xccdf/1.2/xccdf_1.2.xsd itemType -> selectableItemType -> ruleType.
+        Order from src/cis_bench/schemas/xccdf/1.2/xccdf_1.2.xsd itemType -> selectableItemType -> ruleType.
         """
         from lxml import etree
 
@@ -1126,7 +1126,7 @@ class TestMetadataInsertionFollowsSchemaOrder:
         assert [etree.QName(c).localname for c in root[0]] == ["title", "description", "metadata"]
 
     def test_injection_is_refused_for_a_version_whose_rule_has_no_metadata(self):
-        """XCCDF 1.1.4 Rules carry no metadata element (schemas/xccdf-1.1.4.xsd itemType, 717-745).
+        """XCCDF 1.1.4 Rules carry no metadata element (src/cis_bench/schemas/xccdf/1.1/xccdf-schema.xsd itemType, 717-745).
 
         Enabling the handler on such a style is a configuration error whether or
         not anything happens to be queued for injection.

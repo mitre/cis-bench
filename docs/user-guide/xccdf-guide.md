@@ -183,10 +183,12 @@ The exported XCCDF validates against:
 - NIST XCCDF 1.2 schema (CIS style)
 - NIST XCCDF 1.1.4 schema (DISA style)
 
-Validate with xmllint:
+Validate with the schemas shipped in cis-bench:
 ```bash
-xmllint --noout --schema xccdf_1.2.xsd output.xml
+cis-bench validate output.xml
 ```
+
+The command picks the schema from the document's XCCDF version and exits `0` when it is valid, `2` when it is not (each error with its line). See [`cis-bench validate`](commands-reference.md#cis-bench-validate).
 
 ---
 

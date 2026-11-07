@@ -501,7 +501,7 @@ xsdata generates Python classes from XSD schemas. For XCCDF:
 
 ```bash
 # Generate models from NIST XCCDF schema
-xsdata schemas/xccdf_1.2.xsd --package models.xccdf
+xsdata src/cis_bench/schemas/xccdf_1.2.xsd --package models.xccdf
 ```
 
 **Result:**
@@ -926,7 +926,7 @@ Catalog refresh and benchmark download both fetch in batches with `utils/paralle
 1. **HTML Structure** - StrategyDetector validates
 2. **Field Extraction** - Pydantic validates
 3. **XCCDF Structure** - xsdata validates
-4. **XML Schema** - Optional xmllint validation
+4. **XML Schema** - `cis-bench validate` against the NIST schema
 5. **DISA Conventions** - DisaValidator checks STIG requirements
 
 ### Quality Checks
@@ -935,8 +935,8 @@ Catalog refresh and benchmark download both fetch in batches with `utils/paralle
 # After export, validate
 cis-bench export 23598 --format xccdf --style disa -o output.xml
 
-# Validate with xmllint (if installed)
-xmllint --schema schemas/xccdf-1.1.4.xsd output.xml
+# Validate against the XCCDF schema
+cis-bench validate output.xml
 
 # Check DISA conventions
 python -c "from cis_bench.validators.disa_conventions import validate; validate('output.xml')"

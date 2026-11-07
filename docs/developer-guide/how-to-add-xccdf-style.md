@@ -154,30 +154,23 @@ ls -lh output.xml
 
 **Always validate your XCCDF output against the official NIST schema.**
 
-### For XCCDF 1.2 (Modern Standard)
+### Validate the Output
 
 ```bash
-# Validate against XCCDF 1.2 schema
-xmllint --schema schemas/xccdf_1.2.xsd --noout output.xml
+cis-bench validate output.xml
 ```
+
+The command picks the schema (XCCDF 1.1 or 1.2) from the document's root namespace and uses the schemas shipped with cis-bench; no xmllint, no network.
 
 **Success looks like:**
 ```
-output.xml validates
+✓ output.xml: valid XCCDF 1.2
 ```
 
-**Failure looks like:**
+**Failure looks like (exit code 2):**
 ```
-output.xml:42: element description: Schemas validity error : Element
-'{http://checklists.nist.gov/xccdf/1.2}description': This element is
-not expected. Expected is ( {http://checklists.nist.gov/xccdf/1.2}title ).
-```
-
-### For XCCDF 1.1.4 (DISA/DoD Compatibility)
-
-```bash
-# Validate against XCCDF 1.1.4 schema
-xmllint --schema schemas/xccdf-1.1.4.xsd --noout output.xml
+✗ output.xml: invalid XCCDF 1.2 (1 error)
+    line 42: Element '{http://checklists.nist.gov/xccdf/1.2}description': This element is not expected. Expected is ( {http://checklists.nist.gov/xccdf/1.2}title ).
 ```
 
 ### When to Use Which Schema
@@ -193,22 +186,18 @@ xmllint --schema schemas/xccdf-1.1.4.xsd --noout output.xml
 ### Add XSD Validation to Tests
 
 ```python
-import subprocess
+from cis_bench.validators.xccdf_schema import validate_xccdf
 
 def test_pci_dss_xsd_validation(sample_benchmark, tmp_path):
-    """Verify output validates against XCCDF 1.2 schema."""
+    """Verify output validates against the XCCDF 1.2 schema."""
     output_file = tmp_path / "pci_dss_validation.xml"
     exporter = ExporterFactory.create("xccdf", style="pci-dss")
     exporter.export(sample_benchmark, output_file)
 
-    # Run xmllint validation
-    result = subprocess.run(
-        ["xmllint", "--schema", "schemas/xccdf_1.2.xsd", "--noout", str(output_file)],
-        capture_output=True,
-        text=True
-    )
+    result = validate_xccdf(output_file)
 
-    assert result.returncode == 0, f"XSD validation failed:\n{result.stderr}"
+    assert result.version == "1.2"
+    assert result.is_valid, result.errors
 ```
 
 **XSD validation is mandatory before releasing a new style.**
@@ -240,7 +229,7 @@ Add fields one at a time:
 ```bash
 # Add title field, test
 cis-bench export benchmark.json --format xccdf --style pci-dss
-xmllint --schema schemas/xccdf_1.2.xsd --noout output.xml
+cis-bench validate output.xml
 
 # Add description, test again
 # Add metadata, test again
@@ -274,7 +263,7 @@ Before committing:
 
 ```bash
 # XSD validation (must pass)
-xmllint --schema schemas/xccdf_1.2.xsd --noout output.xml
+cis-bench validate output.xml
 
 # Visual inspection
 xmllint --format output.xml | less
@@ -330,7 +319,7 @@ Before considering your new style complete:
 - [ ] Config follows naming convention: `{style}_style.yaml`
 - [ ] CLI option added to `export.py`
 - [ ] Manual test: `cis-bench export --format xccdf --style {name}`
-- [ ] **XSD validation passes:** `xmllint --schema schemas/xccdf_*.xsd --noout output.xml`
+- [ ] **XSD validation passes:** `cis-bench validate output.xml`
 - [ ] Unit tests written and passing
 - [ ] XSD validation in automated tests
 - [ ] Documentation added to `XCCDF_STYLES.md`
