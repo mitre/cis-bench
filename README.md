@@ -67,10 +67,12 @@ cis-bench search --platform-type database --latest
 ```
 
 ### Unified Get Command
-Search + download + export in one step.
+Search + download + export in one step. Several matches: a menu, best match first (`--non-interactive` takes the best match). A catalog ID or a version names a benchmark or a release directly.
 
 ```bash
 cis-bench get "ubuntu 22" --format xccdf --style cis
+cis-bench get 23598 --format xccdf --style cis
+cis-bench get "kubernetes v2.0.1" --format xccdf
 ```
 
 ### Database Caching

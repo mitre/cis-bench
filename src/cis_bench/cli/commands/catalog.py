@@ -214,14 +214,16 @@ def update(browser):
         raise click.Abort() from e
 
 
+_STATUS_HELP = (
+    "Filter by status (Published, Accepted, Draft, Archived, Rejected, Final Update, "
+    "Withdrawn, or all)"
+)
+
+
 @catalog.command()
 @click.argument("query", required=False)
 @click.option("--platform", help="Filter by platform")
-@click.option(
-    "--status",
-    default="Published",
-    help="Filter by status (Published, Accepted, Draft, Archived, Rejected, Final Update, Withdrawn, or all)",
-)
+@click.option("--status", default="Published", help=_STATUS_HELP)
 @click.option("--latest", is_flag=True, help="Latest versions only")
 @click.option("--limit", type=int, help="Max results (default: CIS_BENCH_SEARCH_LIMIT, 100)")
 @click.option(
@@ -305,15 +307,17 @@ def search(query, platform, status, latest, limit, output_format):
 
 @catalog.command(name="list")
 @click.option("--platform", help="Filter by platform")
+@click.option("--status", default="Published", help=_STATUS_HELP)
 @click.option("--latest", is_flag=True, help="Latest versions only")
 @click.option("--limit", type=int, help="Max results (default: CIS_BENCH_SEARCH_LIMIT, 100)")
-def list_cmd(platform, latest, limit):
+def list_cmd(platform, status, latest, limit):
     """List benchmarks in catalog.
 
     \b
     Examples:
         cis-bench catalog list
         cis-bench catalog list --platform "Operating System" --latest
+        cis-bench catalog list --status Withdrawn
     """
     try:
         db = require_catalog_db()
@@ -322,7 +326,7 @@ def list_cmd(platform, latest, limit):
         if limit is None:
             limit = settings_from().search_limit
 
-        filters = {"platform": platform, "status": "Published", "latest_only": latest}
+        filters = {"platform": platform, "status": status, "latest_only": latest}
         results = search_obj.search(query="", limit=limit, **filters)
 
         if not results:

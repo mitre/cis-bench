@@ -709,6 +709,56 @@ class TestCatalogSearchCommand:
 class TestCatalogListCommand:
     """Tests for catalog list command."""
 
+    @pytest.fixture
+    def published_and_withdrawn(self, tmp_path, monkeypatch):
+        """A real catalog with one Published and one Withdrawn benchmark."""
+        from cis_bench.catalog.database import CatalogDatabase
+
+        db = CatalogDatabase(tmp_path / "catalog.db")
+        try:
+            db.initialize_schema()
+            for bid, title in (("1", "CIS Kept Benchmark"), ("2", "CIS Gone Benchmark")):
+                db.insert_benchmark(
+                    {
+                        "benchmark_id": bid,
+                        "title": title,
+                        "version": "v1.0.0",
+                        "url": f"https://workbench.cisecurity.org/benchmarks/{bid}",
+                        "status": "Published",
+                    }
+                )
+            db.mark_withdrawn_except({"1"})
+        finally:
+            db.engine.dispose()
+        monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path))
+
+    @pytest.mark.parametrize(
+        ("args", "shown", "hidden"),
+        [
+            ([], "CIS Kept Benchmark", "CIS Gone Benchmark"),
+            (["--status", "Withdrawn"], "CIS Gone Benchmark", "CIS Kept Benchmark"),
+            (["--status", "all"], "CIS Gone Benchmark", None),
+        ],
+    )
+    def test_list_with_status_withdrawn_shows_withdrawn_rows(
+        self, runner, published_and_withdrawn, args, shown, hidden
+    ):
+        result = runner.invoke(cli, ["catalog", "list", *args])
+
+        assert result.exit_code == 0, result.output
+        assert shown in result.output
+        if hidden:
+            assert hidden not in result.output
+        else:
+            assert "CIS Kept Benchmark" in result.output
+
+    def test_list_help_describes_the_status_option(self, runner):
+        result = runner.invoke(cli, ["catalog", "list", "--help"])
+
+        assert result.exit_code == 0
+        assert "--status" in result.output
+        assert "Withdrawn" in result.output
+
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     @patch("cis_bench.cli.commands.catalog.CatalogSearch")
     def test_list_catalog_not_found(self, mock_search_class, mock_get_db, runner):

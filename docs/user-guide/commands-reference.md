@@ -650,6 +650,7 @@ cis-bench catalog list [OPTIONS]
 **Options:**
 
 - `--platform TEXT` - Filter by platform
+- `--status` - Filter by status (`Published`, `Accepted`, `Draft`, `Archived`, `Rejected`, `Final Update`, `Withdrawn`, or `all`) - default: `Published`
 - `--latest` - Latest versions only
 - `--limit INTEGER` - Max results (default: the `CIS_BENCH_SEARCH_LIMIT` setting, 100)
 
@@ -657,6 +658,7 @@ cis-bench catalog list [OPTIONS]
 ```bash
 cis-bench catalog list
 cis-bench catalog list --platform "Operating System" --latest
+cis-bench catalog list --status Withdrawn   # benchmarks WorkBench no longer lists
 ```
 
 ---
