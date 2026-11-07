@@ -84,7 +84,7 @@ class WorkBenchCatalogParser:
                 logger.warning(f"Failed to parse row: {e}")
                 continue
 
-        logger.info(f"Parsed {len(benchmarks)} benchmarks from catalog page")
+        logger.debug(f"Parsed {len(benchmarks)} benchmarks from catalog page")
         return benchmarks
 
     @staticmethod

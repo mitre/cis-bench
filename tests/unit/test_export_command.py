@@ -487,3 +487,27 @@ class TestRealDatabaseCanonicalDeserialize:
             assert "1.1.2" in exported
         finally:
             db.engine.dispose()
+
+
+class TestExportLogsNothingAtInfo:
+    """An export prints its summary through the console, not a log line per step."""
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ["--format", "yaml"],
+            ["--format", "csv"],
+            ["--format", "markdown"],
+            ["--format", "xccdf", "--style", "disa"],
+            ["--format", "xccdf", "--style", "cis"],
+        ],
+    )
+    def test_an_export_at_the_default_level_logs_no_info_lines(
+        self, runner, sample_benchmark_json, working_dir, args
+    ):
+        result = runner.invoke(cli, ["export", str(sample_benchmark_json), *args])
+
+        assert result.exit_code == 0, result.output
+        assert "Export" in result.output
+        # The CLI's logging goes to stderr, which the runner folds into output
+        assert "INFO:" not in result.output, result.output

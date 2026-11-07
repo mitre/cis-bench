@@ -193,7 +193,7 @@ class CatalogDatabase:
 
     def initialize_schema(self):
         """Create all tables and indexes."""
-        logger.info("Creating database schema")
+        logger.debug("Creating database schema")
 
         # Create all tables from SQLModel models
         SQLModel.metadata.create_all(self.engine)
@@ -209,13 +209,13 @@ class CatalogDatabase:
 
             if missing_statuses:
                 session.add_all(missing_statuses)
-                logger.info("Inserted default benchmark statuses")
+                logger.debug("Inserted default benchmark statuses")
 
             session.execute(text(_CREATE_FTS_TABLE))
             session.commit()
-            logger.info("Created FTS5 virtual table")
+            logger.debug("Created FTS5 virtual table")
 
-        logger.info("Database schema initialized")
+        logger.debug("Database schema initialized")
 
     def _upgrade_schema(self) -> None:
         """Bring a database an earlier version wrote up to the current schema (idempotent).

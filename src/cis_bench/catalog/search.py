@@ -68,7 +68,7 @@ class CatalogSearch:
             named_releases=named_releases,
         )
 
-        logger.info(f"Search returned {len(results)} results")
+        logger.debug(f"Search returned {len(results)} results")
         return results
 
     def count(

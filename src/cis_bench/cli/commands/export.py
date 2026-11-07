@@ -103,7 +103,7 @@ def _export_single_benchmark(
 
     # Check if identifier is a benchmark ID (numeric)
     if identifier.isdigit():
-        logger.info(f"Loading benchmark {identifier} from database")
+        logger.debug(f"Loading benchmark {identifier} from database")
 
         catalog_db_path = settings_from().catalog_db_path
 
@@ -133,7 +133,7 @@ def _export_single_benchmark(
 
     else:
         # Treat as file path
-        logger.info(f"Loading benchmark from file: {identifier}")
+        logger.debug(f"Loading benchmark from file: {identifier}")
 
         try:
             benchmark, error = _load_benchmark_from_file(identifier, input_dir)
@@ -177,7 +177,7 @@ def _export_single_benchmark(
         exporter.export(benchmark, actual_output_file)
 
         file_size = os.path.getsize(actual_output_file) / 1024
-        logger.info(f"Export successful: {actual_output_file} ({file_size:.1f} KB)")
+        logger.debug(f"Export successful: {actual_output_file} ({file_size:.1f} KB)")
 
         console.print(
             f"{prefix} [green]✓[/green] Exported {len(benchmark.recommendations)} "

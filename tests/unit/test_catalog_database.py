@@ -44,6 +44,15 @@ def sample_benchmark_data():
 class TestDatabaseInitialization:
     """Test database initialization and schema creation."""
 
+    def test_initializing_the_schema_logs_nothing_at_info(self, tmp_path, caplog):
+        """Schema creation happens on every refresh; it is detail, not a run-level event."""
+        db = CatalogDatabase(tmp_path / "new.db")
+        with caplog.at_level("INFO", logger="cis_bench.catalog.database"):
+            db.initialize_schema()
+            db.initialize_schema()
+        db.engine.dispose()
+        assert [r.getMessage() for r in caplog.records if r.levelname == "INFO"] == []
+
     def test_database_creation(self, temp_db):
         """Test database file is created."""
         assert temp_db.db_path.exists()

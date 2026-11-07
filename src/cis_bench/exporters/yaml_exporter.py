@@ -24,7 +24,7 @@ class YAMLExporter(BaseExporter):
         Returns:
             Path to created file
         """
-        logger.info(f"Exporting benchmark to YAML: {output_path}")
+        logger.debug(f"Exporting benchmark to YAML: {output_path}")
         logger.debug(
             f"Benchmark: {benchmark.title}, Recommendations: {benchmark.total_recommendations}"
         )
@@ -36,7 +36,7 @@ class YAMLExporter(BaseExporter):
         with open(output_path, "w", encoding="utf-8") as f:
             yaml.dump(data, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
 
-        logger.info(f"Successfully exported YAML to {output_path}")
+        logger.debug(f"Successfully exported YAML to {output_path}")
         return output_path
 
     def get_file_extension(self) -> str:

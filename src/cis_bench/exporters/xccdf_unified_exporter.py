@@ -55,7 +55,7 @@ class XCCDFExporter(BaseExporter):
                 f"To add a new style, create configs/styles/{config_filename}"
             )
 
-        logger.info(f"Initializing XCCDF exporter with style: {style}")
+        logger.debug(f"Initializing XCCDF exporter with style: {style}")
         self.config = ConfigLoader.load(config_path)
         self.engine = MappingEngine(config_path)
         logger.debug(f"Loaded config: {config_filename}")
@@ -77,7 +77,7 @@ class XCCDFExporter(BaseExporter):
         Returns:
             Path to created file
         """
-        logger.info(
+        logger.debug(
             f"Exporting {len(benchmark.recommendations)} recommendations to XCCDF ({self.style} style)"
         )
 
@@ -96,7 +96,7 @@ class XCCDFExporter(BaseExporter):
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(xml_output)
 
-        logger.info(f"Export successful: {output_path}")
+        logger.debug(f"Export successful: {output_path}")
         return output_path
 
     def _create_benchmark(self, benchmark: Benchmark):
@@ -165,7 +165,7 @@ class XCCDFExporter(BaseExporter):
         logger.debug(f"Engine has _dc_elements: {has_dc}, value: {self._dc_elements}")
 
         # Post-processing data (Dublin Core for NIST references)
-        logger.info("Post-processing setup: Dublin Core elements ready for injection")
+        logger.debug("Post-processing setup: Dublin Core elements ready for injection")
 
     def _apply_post_processing(self, xml_output: str, benchmark: Benchmark) -> str:
         """Apply post-processing pipeline based on style config.
@@ -278,7 +278,7 @@ class XCCDFExporter(BaseExporter):
             logger.debug("No metadata for post-processing")
             return xml_output
 
-        logger.info(f"Injecting {len(metadata_elements)} metadata elements (config-driven)")
+        logger.debug(f"Injecting {len(metadata_elements)} metadata elements (config-driven)")
 
         root = etree.fromstring(xml_output.encode("utf-8"))
         rules = root.xpath(".//*[local-name()='Rule']")
@@ -386,7 +386,7 @@ class XCCDFExporter(BaseExporter):
                     ident.set(ns_prefix, control_uri)
                     added_count += 1
 
-        logger.info(f"Added cc7/cc8 controlURI attributes to {added_count} ident elements")
+        logger.debug(f"Added cc7/cc8 controlURI attributes to {added_count} ident elements")
         return str(etree.tostring(root, encoding="unicode", pretty_print=True))
 
     def format_name(self) -> str:

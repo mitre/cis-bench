@@ -27,7 +27,7 @@ class MarkdownExporter(BaseExporter):
         Returns:
             Path to created file
         """
-        logger.info(f"Exporting benchmark to Markdown: {output_path}")
+        logger.debug(f"Exporting benchmark to Markdown: {output_path}")
         logger.debug(
             f"Benchmark: {benchmark.title}, Recommendations: {benchmark.total_recommendations}"
         )
@@ -126,7 +126,7 @@ class MarkdownExporter(BaseExporter):
 
                 f.write("---\n\n")
 
-        logger.info(
+        logger.debug(
             f"Successfully exported Markdown with {len(benchmark.recommendations)} recommendations to {output_path}"
         )
         return output_path

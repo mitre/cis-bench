@@ -45,7 +45,7 @@ class CatalogDownloader:
         Raises:
             ValueError: If benchmark not in catalog
         """
-        logger.info(f"Downloading benchmark: {benchmark_id}")
+        logger.debug(f"Downloading benchmark: {benchmark_id}")
 
         # Get catalog entry
         catalog_entry = self.db.get_benchmark(benchmark_id)
@@ -68,7 +68,7 @@ class CatalogDownloader:
                 and existing.get("workbench_last_modified")
                 and catalog_entry["last_revision_date"] == existing["workbench_last_modified"]
             ):
-                logger.info("Benchmark is up-to-date (matching revision date)")
+                logger.debug("Benchmark is up-to-date (matching revision date)")
                 return {
                     "benchmark_id": benchmark_id,
                     "status": "already_current",
@@ -85,7 +85,7 @@ class CatalogDownloader:
         )
 
         # Download from WorkBench
-        logger.info(f"Fetching from WorkBench: {benchmark_url}")
+        logger.debug(f"Fetching from WorkBench: {benchmark_url}")
 
         benchmark = self.scraper.download_benchmark(benchmark_url)
 
@@ -94,7 +94,7 @@ class CatalogDownloader:
         # Check if content actually changed
         is_unchanged = bool(existing and existing.get("content_hash") == content_hash and not force)
         if is_unchanged:
-            logger.info("Content unchanged (same hash), updating timestamp only")
+            logger.debug("Content unchanged (same hash), updating timestamp only")
 
         self.db.save_downloaded(
             version=benchmark.version,
@@ -116,7 +116,7 @@ class CatalogDownloader:
 
         status = "updated" if existing else "downloaded"
 
-        logger.info(
+        logger.debug(
             f"Benchmark {status}: {len(benchmark.recommendations)} recommendations, {len(content_json)} bytes"
         )
 
@@ -150,7 +150,7 @@ class CatalogDownloader:
         Raises:
             ValueError: If no matches or multiple matches without interactive
         """
-        logger.info(f"Searching catalog for: {name_query}")
+        logger.debug(f"Searching catalog for: {name_query}")
 
         results = self.search.find_by_name(name_query, latest_only=latest)
 
@@ -160,7 +160,7 @@ class CatalogDownloader:
         if len(results) == 1:
             # Single match - download it
             benchmark_id = results[0]["benchmark_id"]
-            logger.info(f"Found single match: {results[0]['title']}")
+            logger.debug(f"Found single match: {results[0]['title']}")
             return self.download_by_id(benchmark_id, force=force)
 
         # Multiple matches
@@ -173,7 +173,7 @@ class CatalogDownloader:
             )
 
         # Interactive selection (requires questionary)
-        logger.info(f"Found {len(results)} matches, prompting for selection")
+        logger.debug(f"Found {len(results)} matches, prompting for selection")
         benchmark_id = self._interactive_select(results)
 
         return self.download_by_id(benchmark_id, force=force)

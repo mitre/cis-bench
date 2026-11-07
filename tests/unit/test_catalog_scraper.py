@@ -1030,3 +1030,22 @@ class TestACompleteRefreshMarksWithdrawnBenchmarks:
 
         assert stats["withdrawn"] is None
         assert self._status(temp_db, "101") == ("Published", True)
+
+
+class TestARefreshLogsOnlyRunLevelLinesAtInfo:
+    def test_a_full_refresh_logs_summaries_at_info_and_per_page_detail_at_debug(
+        self, temp_db, sample_html, stub_session, caplog
+    ):
+        session, _ = stub_session(lambda url: sample_html)
+        scraper = CatalogScraper(
+            temp_db, session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
+
+        with caplog.at_level("INFO", logger="cis_bench"):
+            scraper.scrape_full_catalog(max_pages=3)
+
+        info = [r.getMessage() for r in caplog.records if r.levelname == "INFO"]
+        assert not [m for m in info if m.startswith("Parsed ")]
+        assert not [m for m in info if "schema" in m.lower() or "FTS5" in m]
+        assert "Will scrape 3 pages (detected from pagination)" in info
+        assert any(m.startswith("Scrape complete: ") for m in info)
