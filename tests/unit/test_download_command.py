@@ -199,7 +199,7 @@ class TestDownloadDatabaseCaching:
             mock_scraper_class.return_value.download_benchmark.return_value = sample_benchmark
             mock_db = mock_db_class.return_value
             mock_db.get_downloaded.return_value = None
-            mock_db.get_benchmark.side_effect = TypeError("a bug")
+            mock_db.save_downloaded.side_effect = TypeError("a bug")
 
             result = runner.invoke(cli, ["download", "23598"])
 

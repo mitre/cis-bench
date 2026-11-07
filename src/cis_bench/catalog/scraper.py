@@ -14,6 +14,7 @@ from cis_bench.catalog.parser import WorkBenchCatalogParser
 from cis_bench.exceptions import AuthenticationError
 from cis_bench.fetcher.auth import is_workbench_login_page
 from cis_bench.fetcher.http import ThreadSessions, get_with_retry
+from cis_bench.fetcher.workbench import parse_benchmark_page
 from cis_bench.utils.parallel import iter_batches
 from cis_bench.utils.workbench_urls import catalog_listing_url, resolve_benchmark_reference
 
@@ -292,7 +293,7 @@ class CatalogScraper:
 
     @classmethod
     def _has_catalog_changes(cls, existing: dict, incoming: dict) -> bool:
-        """Return True when any scraped catalog field, collection set, or revision date changed."""
+        """Return True when any scraped catalog field or the collection set changed."""
         for field in cls._CATALOG_COMPARISON_FIELDS:
             inc_val = incoming.get(field)
             if isinstance(inc_val, str):
@@ -310,11 +311,7 @@ class CatalogScraper:
             for c in (incoming.get("collections") or [])
             if isinstance(c, str) and c.strip()
         }
-        if existing_collections != incoming_collections:
-            return True
-
-        inc_rev = incoming.get("last_revision_date")
-        return inc_rev is not None and existing.get("last_revision_date") != inc_rev
+        return existing_collections != incoming_collections
 
     def _try_insert_benchmark(self, bench: dict, page_num: int) -> bool:
         """Insert a single parsed benchmark row, isolating row-level data errors."""
@@ -346,8 +343,9 @@ class CatalogScraper:
             )
         return inserted_count
 
-    def refresh_downloaded_revision_dates(self) -> int:
-        """Fetch each downloaded benchmark's detail page and record its publication date.
+    def refresh_downloaded_pages(self) -> int:
+        """Fetch each downloaded benchmark's page and record what it says on its catalog row
+        (record_page: publish date, description); the cached copy keeps its own date.
 
         Only downloaded benchmarks are visited (a handful of requests, never the
         whole catalog). A page without a recognisable date leaves the row as it
@@ -381,10 +379,9 @@ class CatalogScraper:
                 raise AuthenticationError(
                     "WorkBench returned the login page; the saved session has expired"
                 )
-            metadata = WorkBenchCatalogParser.parse_benchmark_detail_page(response.text)
-            iso_date = WorkBenchCatalogParser.published_date_to_iso(metadata.get("published_date"))
-            if iso_date is not None:
-                self.db.set_downloaded_revision_date(benchmark_id, iso_date)
+            page = parse_benchmark_page(response.text)
+            self.db.record_page(benchmark_id, page)
+            if page.published_date is not None:
                 refreshed += 1
             else:
                 logger.debug(f"No publication date found on detail page for {benchmark_id}")

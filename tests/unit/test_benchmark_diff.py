@@ -578,7 +578,6 @@ class TestFetchingAnIDThatIsNotDownloaded:
                     "version": version,
                     "url": f"https://workbench.cisecurity.org/benchmarks/{bid}",
                     "status": "Published",
-                    "last_revision_date": "2024-06-01",
                 }
             )
         old = {**old_benchmark_json, "benchmark_id": "12345"}
@@ -597,6 +596,7 @@ class TestFetchingAnIDThatIsNotDownloaded:
                 **new_benchmark_json,
                 "benchmark_id": "12346",
                 "downloaded_at": "2024-06-01T00:00:00+00:00",
+                "published_date": "2024-06-01",
             }
         )
         instance = MagicMock()
@@ -623,7 +623,8 @@ class TestFetchingAnIDThatIsNotDownloaded:
         cached = catalog.get_downloaded("12346")
         assert cached is not None
         assert cached["version"] == "2.0.0"
-        assert cached["workbench_last_modified"] == "2024-06-01"
+        assert str(cached["published_date"]) == "2024-06-01"
+        assert str(catalog.get_benchmark("12346")["published_date"]) == "2024-06-01"
         assert json.loads(cached["content_json"])["benchmark_id"] == "12346"
 
     def test_the_fetch_is_announced_on_stderr(self, runner, catalog, scraper):

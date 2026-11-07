@@ -11,7 +11,7 @@ import tempfile
 from collections.abc import Callable, Iterable
 from datetime import date, datetime
 from pathlib import Path
-from typing import TypeVar
+from typing import NamedTuple, TypeVar
 
 from sqlalchemy import (
     Integer,
@@ -55,7 +55,7 @@ from cis_bench.catalog.models import (
     utcnow,
 )
 from cis_bench.catalog.versions import VersionSortKey, is_newer_version, version_sort_key
-from cis_bench.models.benchmark import Benchmark
+from cis_bench.models.benchmark import Benchmark, BenchmarkPage
 
 logger = logging.getLogger(__name__)
 
@@ -91,19 +91,43 @@ def _normalize_base_title(title: str | None) -> str:
     return _TRAILING_VERSION_RE.sub("", title.strip())
 
 
-def _parse_iso_date(value: str | None) -> date | None:
-    """Return the date for a YYYY-MM-DD string, or None for anything else.
+# Columns downloaded_benchmarks gained after its first release, added to an older database
+# when it is opened: (name, SQLite type).
+_ADDED_DOWNLOADED_COLUMNS = (("version", "VARCHAR"), ("published_date", "DATE"))
 
-    Only values written by ``set_downloaded_revision_date`` are expected here; a legacy
-    or hand-edited value that is not ISO is treated as unknown rather than compared.
+
+class _PendingUpgrades(NamedTuple):
+    """What _upgrade_schema has to change in a database an earlier version wrote."""
+
+    downloaded_columns: tuple[tuple[str, str], ...]
+    rebuild_index: bool
+
+    def __bool__(self) -> bool:
+        return bool(self.downloaded_columns) or self.rebuild_index
+
+
+def update_reason(
+    *,
+    catalog_version: str | None,
+    catalog_published: date | None,
+    copy_version: str | None,
+    copy_published: date | None,
+    downloaded_at: datetime,
+) -> str | None:
+    """Why a cached copy is behind WorkBench, or None when it is not.
+
+    - "newer version in catalog": the catalog's version parses as newer than the copy's;
+    - "published after download": the date WorkBench shows the release as published is after
+      the date the copy was published (or, for a copy cached before dates were recorded,
+      after the day it was downloaded).
+    A catalog whose version is behind the copy never makes it an update, whatever its date.
     """
-    if not value:
+    if is_newer_version(catalog_version, copy_version):
+        return "newer version in catalog"
+    if is_newer_version(copy_version, catalog_version) or catalog_published is None:
         return None
-    try:
-        return date.fromisoformat(value)
-    except ValueError:
-        logger.warning(f"Ignoring non-ISO publication date {value!r}")
-        return None
+    copy_date = copy_published if copy_published is not None else downloaded_at.date()
+    return "published after download" if catalog_published > copy_date else None
 
 
 def normalize_status_filter(status: str | None) -> str | None:
@@ -230,7 +254,7 @@ class CatalogDatabase:
         """
         try:
             with self.engine.connect() as connection:
-                if not any(self._pending_upgrades(connection)):
+                if not self._pending_upgrades(connection):
                     return
             with Session(self.engine) as session:
                 # One write transaction for every change: either all of it is written or
@@ -239,15 +263,15 @@ class CatalogDatabase:
                 session.execute(text("BEGIN IMMEDIATE"))
                 # Looked at again under the write lock: another process may have finished
                 # the same upgrade since the first look.
-                add_version_column, rebuild_index = self._pending_upgrades(session)
-                if add_version_column:
+                pending = self._pending_upgrades(session)
+                for name, sql_type in pending.downloaded_columns:
                     session.execute(
-                        text("ALTER TABLE downloaded_benchmarks ADD COLUMN version VARCHAR")
+                        text(f"ALTER TABLE downloaded_benchmarks ADD COLUMN {name} {sql_type}")
                     )
-                    logger.info("Added column downloaded_benchmarks.version")
-                if rebuild_index:
+                    logger.info(f"Added column downloaded_benchmarks.{name}")
+                if pending.rebuild_index:
                     self._rebuild_fts(session)
-                    logger.info("Rebuilt the search index to include benchmark versions")
+                    logger.info("Rebuilt the search index in the current layout")
                 session.commit()
         except DatabaseError as error:
             logger.warning(
@@ -256,19 +280,24 @@ class CatalogDatabase:
             )
 
     @staticmethod
-    def _pending_upgrades(connection: Connection | Session) -> tuple[bool, bool]:
-        """Whether downloaded_benchmarks lacks its version column, and whether the search
-        index lacks its version column. A table that does not exist needs neither."""
+    def _pending_upgrades(connection: Connection | Session) -> _PendingUpgrades:
+        """What an earlier version's database lacks: columns of downloaded_benchmarks added
+        since, and whether the search index is in another layout. A table that does not
+        exist needs nothing."""
 
-        def columns(table_name: str) -> set[str]:
+        def columns(table_name: str) -> list[str]:
             rows = connection.execute(text(f"PRAGMA table_info({table_name})"))
-            return {row[1] for row in rows}
+            return [row[1] for row in rows]
 
         downloaded = columns("downloaded_benchmarks")
         index = columns("benchmarks_fts")
-        return (
-            bool(downloaded) and "version" not in downloaded,
-            bool(index) and VERSION_COLUMN not in index,
+        return _PendingUpgrades(
+            downloaded_columns=tuple(
+                (name, sql_type)
+                for name, sql_type in _ADDED_DOWNLOADED_COLUMNS
+                if downloaded and name not in downloaded
+            ),
+            rebuild_index=bool(index) and index != ["benchmark_id", *_FTS_COLUMNS],
         )
 
     def _rebuild_fts(self, session: Session) -> None:
@@ -429,6 +458,10 @@ class CatalogDatabase:
                         "owner",
                         "status",
                         "collections",
+                        # Read from the release's own page (record_page), never the listing:
+                        # a refresh must not overwrite them
+                        "published_date",
+                        "description",
                     }:
                         setattr(existing, key, value)
 
@@ -450,12 +483,8 @@ class CatalogDatabase:
                     platform_type=benchmark_data.get("platform_type"),
                     community_id=community.community_id if community else None,
                     owner_id=owner.owner_id if owner else None,
-                    published_date=benchmark_data.get("published_date"),
-                    last_revision_date=benchmark_data.get("last_revision_date"),
-                    description=benchmark_data.get("description"),
                     is_latest=bool(benchmark_data.get("is_latest", False)),
                     is_vnext=bool(benchmark_data.get("is_vnext", False)),
-                    metadata_json=benchmark_data.get("metadata_json"),
                 )
                 session.add(benchmark)
 
@@ -517,7 +546,6 @@ class CatalogDatabase:
                 title=benchmark.title,
                 platform=benchmark.platform.name if benchmark.platform else "",
                 community=benchmark.community.name if benchmark.community else "",
-                description=benchmark.description or "",
                 version=version_index_text(benchmark.version),
             )
         )
@@ -610,7 +638,9 @@ class CatalogDatabase:
         if fts_query is not None:
             stmt = stmt.order_by(fts_table.c.rank)
         else:
-            stmt = stmt.order_by(col(CatalogBenchmark.published_date).desc())
+            stmt = stmt.order_by(
+                col(CatalogBenchmark.title), cast(col(CatalogBenchmark.benchmark_id), Integer)
+            )
 
         return stmt if limit is None else stmt.limit(limit)
 
@@ -728,12 +758,10 @@ class CatalogDatabase:
                 "community": benchmark.community.name if benchmark.community else None,
                 "owner": benchmark.owner.username if benchmark.owner else None,
                 "published_date": benchmark.published_date,
-                "last_revision_date": benchmark.last_revision_date,
                 "description": benchmark.description,
                 "is_latest": benchmark.is_latest,
                 "is_vnext": benchmark.is_vnext,
                 "collections": collection_names,
-                "metadata_json": benchmark.metadata_json,
             }
 
     def list_platforms(self) -> list[dict]:
@@ -839,14 +867,15 @@ class CatalogDatabase:
         content_json: str,
         content_hash: str,
         recommendation_count: int,
-        workbench_last_modified: str | None = None,
         version: str | None = None,
         downloaded_at: datetime | None = None,
+        published_date: date | None = None,
     ):
         """Save downloaded benchmark content.
 
-        ``version`` is the downloaded benchmark's own version string; check-updates
-        compares it against the catalog's current version for the same benchmark.
+        ``version`` and ``published_date`` are the downloaded release's own version string and
+        the date WorkBench showed it as published; check-updates compares both against the
+        catalog row.
         ``downloaded_at`` is the instant the benchmark records for itself, so the row
         and the benchmark's JSON carry one time; it must carry its zone.
         """
@@ -859,7 +888,7 @@ class CatalogDatabase:
                 existing.content_hash = content_hash
                 existing.recommendation_count = recommendation_count
                 existing.file_size = len(content_json)
-                existing.workbench_last_modified = workbench_last_modified
+                existing.published_date = published_date
                 existing.version = version
                 existing.downloaded_at = now
                 existing.last_accessed = now
@@ -873,7 +902,7 @@ class CatalogDatabase:
                     version=version,
                     downloaded_at=now,
                     last_accessed=now,
-                    workbench_last_modified=workbench_last_modified,
+                    published_date=published_date,
                 )
                 session.add(downloaded)
 
@@ -896,7 +925,7 @@ class CatalogDatabase:
                 "last_accessed": downloaded.last_accessed,
                 "recommendation_count": downloaded.recommendation_count,
                 "version": downloaded.version,
-                "workbench_last_modified": downloaded.workbench_last_modified,
+                "published_date": downloaded.published_date,
             }
 
     def delete_downloaded(self, benchmark_id: str) -> bool:
@@ -956,27 +985,30 @@ class CatalogDatabase:
         with Session(self.engine) as session:
             return list(session.exec(select(DownloadedBenchmark.benchmark_id)).all())
 
-    def set_downloaded_revision_date(self, benchmark_id: str, iso_date: str | None) -> None:
-        """Record the publication date WorkBench currently shows for a downloaded benchmark."""
+    def record_page(self, benchmark_id: str, page: BenchmarkPage) -> None:
+        """Record on a release's catalog row what its WorkBench page says (publish date,
+        description); the one step every command that reads the page goes through.
+
+        A field the page did not carry leaves what is known as it was. A release the catalog
+        does not list is left alone: the catalog row is catalog refresh's to create. The
+        title stays the listing's.
+        """
         with Session(self.engine) as session:
-            downloaded = session.get(DownloadedBenchmark, benchmark_id)
-            if downloaded is None:
+            benchmark = session.get(CatalogBenchmark, benchmark_id)
+            if benchmark is None:
                 return
-            downloaded.workbench_last_modified = iso_date
-            session.add(downloaded)
+            if page.published_date is not None:
+                benchmark.published_date = page.published_date
+            if page.description is not None:
+                benchmark.description = page.description
+            session.add(benchmark)
             session.commit()
 
     def check_updates_available(self) -> list[dict]:
-        """Downloaded benchmarks that WorkBench has moved past.
+        """Downloaded benchmarks that WorkBench has moved past, by ``update_reason``.
 
-        Two signals, either is enough:
-        - the catalog's version for the benchmark parses as newer than the version
-          that was downloaded ("newer version in catalog");
-        - the publication date recorded from the benchmark's detail page (see
-          ``set_downloaded_revision_date``) falls after the download
-          ("published after download").
-        The catalog list page carries no dates, so nothing here depends on
-        ``last_revision_date``.
+        The catalog row carries WorkBench's current version and (once a command has read the
+        release's page) its publish date; the cached row carries the copy's.
         """
         with Session(self.engine) as session:
             rows = session.exec(
@@ -988,16 +1020,13 @@ class CatalogDatabase:
 
             updates: list[dict] = []
             for downloaded, catalog in rows:
-                reason: str | None = None
-                if is_newer_version(catalog.version, downloaded.version):
-                    reason = "newer version in catalog"
-                elif is_newer_version(downloaded.version, catalog.version):
-                    # The catalog listing is behind what we hold; a date cannot make it an update
-                    reason = None
-                else:
-                    published_on = _parse_iso_date(downloaded.workbench_last_modified)
-                    if published_on is not None and published_on > downloaded.downloaded_at.date():
-                        reason = "published after download"
+                reason = update_reason(
+                    catalog_version=catalog.version,
+                    catalog_published=catalog.published_date,
+                    copy_version=downloaded.version,
+                    copy_published=downloaded.published_date,
+                    downloaded_at=downloaded.downloaded_at,
+                )
                 if reason is None:
                     continue
                 updates.append(
@@ -1007,7 +1036,7 @@ class CatalogDatabase:
                         "downloaded_version": downloaded.version,
                         "catalog_version": catalog.version,
                         "downloaded_at": downloaded.downloaded_at,
-                        "published_date": downloaded.workbench_last_modified,
+                        "published_date": catalog.published_date,
                         "reason": reason,
                     }
                 )

@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from cis_bench.catalog.database import CatalogDatabase
+from cis_bench.models.benchmark import BenchmarkPage
 
 
 @pytest.fixture
@@ -33,9 +34,6 @@ def sample_benchmark_data():
         "platform": "Operating System",
         "community": "CIS Ubuntu Benchmarks",
         "owner": "eric.pinnell",
-        "published_date": "2024-08-01",
-        "last_revision_date": "2024-11-01",
-        "description": "Ubuntu 20.04 LTS security configuration guidance",
         "is_latest": True,
         "collections": ["Operating System", "Linux"],
     }
@@ -337,15 +335,13 @@ class TestFTS5Search:
                 "url": "https://workbench.cisecurity.org/benchmarks/1",
                 "status": "Published",
                 "platform": "Operating System",
-                "description": "Ubuntu security",
             },
             {
                 "benchmark_id": "2",
-                "title": "CIS RHEL 9 Benchmark",
+                "title": "CIS Red Hat Enterprise Linux 9 Benchmark",
                 "url": "https://workbench.cisecurity.org/benchmarks/2",
                 "status": "Published",
                 "platform": "Operating System",
-                "description": "Red Hat Enterprise Linux",
             },
             {
                 "benchmark_id": "3",
@@ -353,7 +349,6 @@ class TestFTS5Search:
                 "url": "https://workbench.cisecurity.org/benchmarks/3",
                 "status": "Published",
                 "platform": "Cloud",
-                "description": "Amazon Web Services",
             },
             {
                 "benchmark_id": "4",
@@ -361,7 +356,6 @@ class TestFTS5Search:
                 "url": "https://workbench.cisecurity.org/benchmarks/4",
                 "status": "Archived",
                 "platform": "Operating System",
-                "description": "Windows security",
             },
         ]
 
@@ -476,15 +470,15 @@ class TestFTS5Search:
                 "url": "https://workbench.cisecurity.org/benchmarks/6",
                 "status": "Published",
                 "platform": "Database",
-                "description": "Ubuntu and Oracle database hardening",
             }
         )
 
         oracle_results = populated_db.search("OR", limit=None)
         assert [row["benchmark_id"] for row in oracle_results] == ["6"]
 
-        combined_results = populated_db.search("ubuntu AND", limit=None)
-        assert [row["benchmark_id"] for row in combined_results] == ["6"]
+        # As an operator AND would leave "ubuntu" and find benchmark 1; as a literal it asks
+        # for a word starting "and" as well, which no title has.
+        assert populated_db.search("ubuntu AND", limit=None) == []
 
         assert populated_db.search("NOT", limit=None) == []
         assert populated_db.search("NEAR", limit=None) == []
@@ -1040,28 +1034,45 @@ class TestDownloadedBenchmarks:
 
     def test_check_updates_reports_a_publication_date_after_the_download(self, temp_db):
         """Same version, but WorkBench shows a publication date after we downloaded it."""
+        from datetime import date
+
         self._insert(temp_db, "303", "v1.0.0")
         temp_db.save_downloaded("303", "{}", "h", 1, version="v1.0.0")
-        temp_db.set_downloaded_revision_date("303", "2999-01-01")
+        temp_db.record_page(
+            "303", BenchmarkPage(title="CIS Benchmark", published_date=date(2999, 1, 1))
+        )
 
         updates = temp_db.check_updates_available()
 
         assert [u["benchmark_id"] for u in updates] == ["303"]
-        assert updates[0]["published_date"] == "2999-01-01"
+        assert updates[0]["published_date"] == date(2999, 1, 1)
         assert updates[0]["reason"] == "published after download"
 
     def test_check_updates_ignores_a_publication_date_before_the_download(self, temp_db):
+        from datetime import date
+
         self._insert(temp_db, "304", "v1.0.0")
         temp_db.save_downloaded("304", "{}", "h", 1, version="v1.0.0")
-        temp_db.set_downloaded_revision_date("304", "2000-01-01")
+        temp_db.record_page(
+            "304", BenchmarkPage(title="CIS Benchmark", published_date=date(2000, 1, 1))
+        )
 
         assert temp_db.check_updates_available() == []
 
-    def test_check_updates_ignores_a_non_iso_legacy_publication_value(self, temp_db):
-        """Only YYYY-MM-DD values are comparable; anything else is treated as unknown."""
+    def test_check_updates_does_not_read_the_column_earlier_versions_wrote(self, temp_db):
+        """Earlier versions kept the date in downloaded_benchmarks.workbench_last_modified; an
+        older database may still hold one there, and nothing reads it."""
+        from sqlalchemy import text
+
         self._insert(temp_db, "307", "v1.0.0")
         temp_db.save_downloaded("307", "{}", "h", 1, version="v1.0.0")
-        temp_db.set_downloaded_revision_date("307", "Aug 28th 2999")  # lexically > any ISO date
+        with temp_db.engine.begin() as connection:
+            connection.execute(
+                text("ALTER TABLE downloaded_benchmarks ADD COLUMN workbench_last_modified VARCHAR")
+            )
+            connection.execute(
+                text("UPDATE downloaded_benchmarks SET workbench_last_modified = '2999-01-01'")
+            )
 
         assert temp_db.check_updates_available() == []
 
@@ -1069,9 +1080,13 @@ class TestDownloadedBenchmarks:
         self, temp_db
     ):
         """A stale catalog listing an older version than we hold is not an update, whatever the date says."""
+        from datetime import date
+
         self._insert(temp_db, "308", "v1.0.0")
         temp_db.save_downloaded("308", "{}", "h", 1, version="v2.0.0")
-        temp_db.set_downloaded_revision_date("308", "2999-01-01")
+        temp_db.record_page(
+            "308", BenchmarkPage(title="CIS Benchmark", published_date=date(2999, 1, 1))
+        )
 
         assert temp_db.check_updates_available() == []
 
@@ -1554,8 +1569,7 @@ class TestOpeningAnOlderCatalog:
             benchmark_id UNINDEXED, title, platform, community, description,
             tokenize='porter unicode61');
         INSERT INTO benchmarks_fts (benchmark_id, title, platform, community, description)
-        SELECT b.benchmark_id, b.title, coalesce(p.name, ''), coalesce(c.name, ''),
-               coalesce(b.description, '')
+        SELECT b.benchmark_id, b.title, coalesce(p.name, ''), coalesce(c.name, ''), ''
         FROM catalog_benchmarks b
         LEFT JOIN platforms p ON p.platform_id = b.platform_id
         LEFT JOIN communities c ON c.community_id = b.community_id;
@@ -1578,7 +1592,6 @@ class TestOpeningAnOlderCatalog:
                     "status": "Published",
                     "platform": "Container Platform",
                     "community": "CIS Kubernetes Benchmarks",
-                    "description": "Guidance for kubelet and etcd",
                 }
             )
         db.engine.dispose()
@@ -1613,10 +1626,53 @@ class TestOpeningAnOlderCatalog:
             assert self._found(db, "kubernetes 2.1.0") == ["210"]
             assert self._found(db, "kubernetes") == ["200", "210"]
             assert self._found(db, "container") == ["200", "210"]
-            assert self._found(db, "kubelet") == ["200", "210"]
         finally:
             db.engine.dispose()
         assert self._index_rows(path) == ["200", "210"]
+
+    # The layout an earlier version of this branch wrote: versions, and a description column
+    # WorkBench's catalog listing never filled.
+    DESCRIPTION_FTS = """
+        DROP TABLE benchmarks_fts;
+        CREATE VIRTUAL TABLE benchmarks_fts USING fts5(
+            benchmark_id UNINDEXED, title, platform, community, description, version,
+            tokenize='porter unicode61');
+        INSERT INTO benchmarks_fts (benchmark_id, title, platform, community, description, version)
+        SELECT b.benchmark_id, b.title, '', '', '', b.version FROM catalog_benchmarks b;
+    """
+
+    def test_an_index_with_a_description_column_is_rebuilt_without_it(self, tmp_path):
+        import sqlite3
+
+        path = tmp_path / "older.db"
+        self._catalog(path, self.DESCRIPTION_FTS)
+
+        db = CatalogDatabase(path)
+        try:
+            assert self._found(db, "kubernetes 2.1.0") == ["210"]
+        finally:
+            db.engine.dispose()
+        con = sqlite3.connect(path)
+        try:
+            columns = [row[1] for row in con.execute("PRAGMA table_info(benchmarks_fts)")]
+        finally:
+            con.close()
+        assert columns == ["benchmark_id", "title", "platform", "community", "version"]
+        assert self._index_rows(path) == ["200", "210"]
+
+    def test_a_downloaded_table_without_the_published_date_column_gets_it(self, tmp_path):
+        from datetime import date
+
+        path = tmp_path / "older.db"
+        self._catalog(path, "ALTER TABLE downloaded_benchmarks DROP COLUMN published_date;")
+
+        CatalogDatabase(path).engine.dispose()
+        db = CatalogDatabase(path)
+        try:
+            db.save_downloaded("210", "{}", "hash", 20, published_date=date(2025, 8, 28))
+            assert db.get_downloaded("210")["published_date"] == date(2025, 8, 28)
+        finally:
+            db.engine.dispose()
 
     def test_opening_it_again_leaves_one_index_row_per_benchmark(self, tmp_path):
         path = tmp_path / "older.db"
@@ -1686,7 +1742,11 @@ class TestOpeningAnOlderCatalog:
         marker = "INSERT INTO benchmarks_fts (benchmark_id, title) VALUES ('marker', 'kept');"
         self._catalog(path, marker)
         read_pending = CatalogDatabase._pending_upgrades
-        answers = iter([(True, True)])
+        from cis_bench.catalog.database import _PendingUpgrades
+
+        answers = iter(
+            [_PendingUpgrades(downloaded_columns=(("version", "VARCHAR"),), rebuild_index=True)]
+        )
 
         def stale_then_real(connection):
             # The first look, taken before the write lock, saw an older catalog.
@@ -1750,17 +1810,14 @@ class TestOpeningAnOlderCatalog:
 
         con = sqlite3.connect(path)
         try:
-            row = con.execute(
-                "SELECT title, platform, community, description, version FROM benchmarks_fts"
-                " WHERE benchmark_id = '210'"
-            ).fetchone()
+            row = con.execute("SELECT * FROM benchmarks_fts WHERE benchmark_id = '210'").fetchone()
         finally:
             con.close()
         assert row == (
+            "210",
             "CIS Kubernetes Benchmark",
             "Container Platform",
             "CIS Kubernetes Benchmarks",
-            "Guidance for kubelet and etcd",
             "2.1.0",
         )
 
@@ -1851,3 +1908,197 @@ class TestMarkingWithdrawnBenchmarks:
             assert db.get_benchmark("1")["status"] == "Withdrawn"
         finally:
             db.engine.dispose()
+
+
+class TestPublishDatesAndTheUpdateRule:
+    """A release's WorkBench publish date lives on its catalog row (what WorkBench shows now);
+    the cached row keeps the date of the copy we hold. One rule says whether a copy is behind."""
+
+    @pytest.fixture
+    def db(self, temp_db):
+        temp_db.insert_benchmark(
+            {
+                "benchmark_id": "23598",
+                "title": "CIS AlmaLinux OS 8 Benchmark",
+                "version": "v4.0.0",
+                "url": "https://workbench.cisecurity.org/benchmarks/23598",
+                "status": "Published",
+            }
+        )
+        return temp_db
+
+    def test_the_cached_row_keeps_the_copy_publish_date(self, db):
+        from datetime import date
+
+        db.save_downloaded(
+            "23598", "{}", "h", 1, version="v4.0.0", published_date=date(2025, 8, 28)
+        )
+
+        assert db.get_downloaded("23598")["published_date"] == date(2025, 8, 28)
+
+    def test_the_catalog_row_takes_the_date_workbench_shows(self, db):
+        from datetime import date
+
+        db.record_page(
+            "23598", BenchmarkPage(title="CIS Benchmark", published_date=date(2025, 8, 28))
+        )
+
+        assert db.get_benchmark("23598")["published_date"] == date(2025, 8, 28)
+
+    def test_a_catalog_refresh_keeps_a_publish_date_already_read(self, db):
+        from datetime import date
+
+        db.record_page(
+            "23598", BenchmarkPage(title="CIS Benchmark", published_date=date(2025, 8, 28))
+        )
+        db.insert_benchmark(
+            {
+                "benchmark_id": "23598",
+                "title": "CIS AlmaLinux OS 8 Benchmark",
+                "version": "v4.0.0",
+                "url": "https://workbench.cisecurity.org/benchmarks/23598",
+                "status": "Published",
+            }
+        )
+
+        assert db.get_benchmark("23598")["published_date"] == date(2025, 8, 28)
+
+    def test_a_listing_row_cannot_overwrite_a_publish_date_read_from_the_page(self, db):
+        from datetime import date
+
+        db.record_page(
+            "23598", BenchmarkPage(title="CIS Benchmark", published_date=date(2025, 8, 28))
+        )
+        db.insert_benchmark(
+            {
+                "benchmark_id": "23598",
+                "title": "CIS AlmaLinux OS 8 Benchmark",
+                "version": "v4.0.0",
+                "url": "https://workbench.cisecurity.org/benchmarks/23598",
+                "status": "Published",
+                "published_date": "not from the listing",
+            }
+        )
+
+        assert db.get_benchmark("23598")["published_date"] == date(2025, 8, 28)
+
+    def test_a_page_records_its_description_on_the_catalog_row(self, db):
+        db.record_page(
+            "23598",
+            BenchmarkPage(
+                title="CIS AlmaLinux OS 8 Benchmark", description="Guidance for AlmaLinux."
+            ),
+        )
+
+        assert db.get_benchmark("23598")["description"] == "Guidance for AlmaLinux."
+
+    def test_what_a_page_does_not_carry_does_not_erase_what_is_known(self, db):
+        from datetime import date
+
+        db.record_page(
+            "23598",
+            BenchmarkPage(title="t", published_date=date(2025, 8, 28), description="Known."),
+        )
+        db.record_page("23598", BenchmarkPage(title="t"))
+
+        row = db.get_benchmark("23598")
+        assert (row["published_date"], row["description"]) == (date(2025, 8, 28), "Known.")
+
+    def test_a_listing_row_cannot_overwrite_the_description_read_from_the_page(self, db):
+        db.record_page("23598", BenchmarkPage(title="t", description="From the page."))
+        db.insert_benchmark(
+            {
+                "benchmark_id": "23598",
+                "title": "CIS AlmaLinux OS 8 Benchmark",
+                "version": "v4.0.0",
+                "url": "https://workbench.cisecurity.org/benchmarks/23598",
+                "status": "Published",
+                "description": "not from the listing",
+            }
+        )
+
+        assert db.get_benchmark("23598")["description"] == "From the page."
+
+    def test_search_does_not_match_description_words(self, db):
+        db.record_page("23598", BenchmarkPage(title="t", description="kubelet etcd guidance"))
+
+        assert db.search("kubelet", limit=None) == []
+
+    def test_a_page_for_a_release_the_catalog_does_not_list_is_ignored(self, db):
+        db.record_page("99999", BenchmarkPage(title="t", description="x"))
+
+        assert db.get_benchmark("99999") is None
+
+    def test_a_catalog_row_carries_only_what_workbench_provides(self, db):
+        row = db.get_benchmark("23598")
+
+        assert not {"metadata_json", "last_revision_date"} & set(row)
+        assert row["description"] is None
+
+    @pytest.mark.parametrize(
+        ("catalog_version", "catalog_date", "copy_version", "copy_date", "expected"),
+        [
+            ("v4.1.0", None, "v4.0.0", None, "newer version in catalog"),
+            ("v3.0.0", "2026-01-01", "v4.0.0", "2025-08-28", None),
+            ("v4.0.0", "2026-01-01", "v4.0.0", "2025-08-28", "published after download"),
+            ("v4.0.0", "2025-08-28", "v4.0.0", "2025-08-28", None),
+            ("v4.0.0", None, "v4.0.0", "2025-08-28", None),
+            # A copy cached before dates were recorded: compare with when it was downloaded
+            ("v4.0.0", "2025-12-01", "v4.0.0", None, "published after download"),
+            ("v4.0.0", "2025-10-01", "v4.0.0", None, None),
+        ],
+    )
+    def test_update_reason(self, catalog_version, catalog_date, copy_version, copy_date, expected):
+        from datetime import UTC, date, datetime
+
+        from cis_bench.catalog.database import update_reason
+
+        def as_date(text):
+            return date.fromisoformat(text) if text else None
+
+        reason = update_reason(
+            catalog_version=catalog_version,
+            catalog_published=as_date(catalog_date),
+            copy_version=copy_version,
+            copy_published=as_date(copy_date),
+            downloaded_at=datetime(2025, 11, 1, 12, tzinfo=UTC),
+        )
+
+        assert reason == expected
+
+    def test_check_updates_reports_the_date_workbench_shows_now(self, db):
+        from datetime import date
+
+        db.save_downloaded(
+            "23598", "{}", "h", 1, version="v4.0.0", published_date=date(2025, 8, 28)
+        )
+        db.record_page(
+            "23598", BenchmarkPage(title="CIS Benchmark", published_date=date(2026, 1, 5))
+        )
+
+        (update,) = db.check_updates_available()
+
+        assert update["reason"] == "published after download"
+        assert update["published_date"] == date(2026, 1, 5)
+
+    def test_a_search_without_words_lists_by_title_then_id(self, db):
+        rows = (
+            ("300", "CIS Zeta Benchmark"),
+            ("100", "CIS Beta Benchmark"),
+            ("20", "CIS Beta Benchmark"),
+        )
+        for benchmark_id, title in rows:
+            db.insert_benchmark(
+                {
+                    "benchmark_id": benchmark_id,
+                    "title": title,
+                    "version": "v1.0.0",
+                    "url": f"https://workbench.cisecurity.org/benchmarks/{benchmark_id}",
+                    "status": "Published",
+                }
+            )
+
+        ids = [str(row["benchmark_id"]) for row in db.search("", limit=None)]
+
+        # AlmaLinux sorts before Beta; the two Betas by numeric ID (20 before 100)
+        assert ids == ["23598", "20", "100", "300"]

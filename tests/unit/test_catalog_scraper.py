@@ -1,5 +1,6 @@
 """Unit tests for catalog scraper."""
 
+from datetime import date
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -331,7 +332,7 @@ class TestQuickUpdate:
     def test_update_detects_field_and_status_changes_without_revision_date(
         self, temp_db, mock_session, monkeypatch
     ):
-        """scrape_page_one_update detects status/version/title updates even when last_revision_date is None."""
+        """scrape_page_one_update detects status/version/title updates from the listing alone."""
         row = {
             "benchmark_id": "501",
             "title": "CIS CentOS Linux 7 Benchmark",
@@ -378,7 +379,6 @@ class TestQuickUpdate:
                 "version": "v1.0.0",
                 "status": "Published",
                 "url": "https://workbench.cisecurity.org/benchmarks/601",
-                "published_date": "2024-01-01",
             }
         )
         temp_db.mark_latest_versions()
@@ -391,7 +391,6 @@ class TestQuickUpdate:
                 "version": "v2.0.0",
                 "status": "Published",
                 "url": "https://workbench.cisecurity.org/benchmarks/602",
-                "published_date": "2025-01-01",
             }
         ]
         scraper = _stub_scraper_pages(temp_db, mock_session, monkeypatch, lambda _html: incoming)
@@ -819,7 +818,7 @@ class TestRefreshDownloadedRevisionDates:
             temp_db, session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
         )
 
-        refreshed = scraper.refresh_downloaded_revision_dates()
+        refreshed = scraper.refresh_downloaded_pages()
 
         assert refreshed == 2
         fetched = sorted(call.args[0] for call in session.get.call_args_list)
@@ -827,8 +826,28 @@ class TestRefreshDownloadedRevisionDates:
             "https://workbench.cisecurity.org/benchmarks/401",
             "https://workbench.cisecurity.org/benchmarks/402",
         ]
-        assert temp_db.get_downloaded("401")["workbench_last_modified"] == "2025-08-28"
-        assert temp_db.get_downloaded("402")["workbench_last_modified"] == "2025-08-28"
+        # What WorkBench shows now goes on the catalog row; the copy keeps its own date
+        assert temp_db.get_benchmark("401")["published_date"] == date(2025, 8, 28)
+        assert temp_db.get_benchmark("402")["published_date"] == date(2025, 8, 28)
+        assert temp_db.get_downloaded("401")["published_date"] is None
+        assert temp_db.get_benchmark("403")["published_date"] is None
+
+    def test_the_description_on_the_page_is_recorded_too(self, temp_db):
+        self._seed(temp_db, "401")
+        session = Mock()
+        session.get = Mock(
+            return_value=self._response(
+                "<p>Published</p> 1 year ago on Aug 28th 2025"
+                '<wb-recommendation-data attribute="overview" text="Guidance for 401.">'
+                "</wb-recommendation-data>"
+            )
+        )
+
+        CatalogScraper(
+            temp_db, session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        ).refresh_downloaded_pages()
+
+        assert temp_db.get_benchmark("401")["description"] == "Guidance for 401."
 
     def test_a_benchmark_workbench_no_longer_has_is_reported_and_the_rest_are_checked(
         self, temp_db, stub_session, caplog
@@ -847,11 +866,11 @@ class TestRefreshDownloadedRevisionDates:
         )
 
         with caplog.at_level("WARNING", logger="cis_bench.catalog.scraper"):
-            refreshed = scraper.refresh_downloaded_revision_dates()
+            refreshed = scraper.refresh_downloaded_pages()
 
         assert refreshed == 1
-        assert temp_db.get_downloaded("402")["workbench_last_modified"] == "2025-08-28"
-        assert temp_db.get_downloaded("401")["workbench_last_modified"] is None
+        assert temp_db.get_benchmark("402")["published_date"] == date(2025, 8, 28)
+        assert temp_db.get_benchmark("401")["published_date"] is None
         assert [r.getMessage() for r in caplog.records if r.levelname == "WARNING"] == [
             "WorkBench no longer has benchmark 401 (HTTP 404); its downloaded copy was not checked"
         ]
@@ -868,7 +887,7 @@ class TestRefreshDownloadedRevisionDates:
         )
 
         with pytest.raises(requests.HTTPError):
-            scraper.refresh_downloaded_revision_dates()
+            scraper.refresh_downloaded_pages()
 
     def test_a_malformed_stored_id_is_skipped_and_never_fetched(self, temp_db, caplog):
         """The detail URL goes through the same validator as every other WorkBench URL."""
@@ -889,7 +908,7 @@ class TestRefreshDownloadedRevisionDates:
                 timeout=TIMEOUT,
                 max_workers=WORKERS,
                 batch_size=BATCH,
-            ).refresh_downloaded_revision_dates()
+            ).refresh_downloaded_pages()
 
         assert refreshed == 1
         assert [c.args[0] for c in session.get.call_args_list] == [
@@ -904,10 +923,10 @@ class TestRefreshDownloadedRevisionDates:
 
         refreshed = CatalogScraper(
             temp_db, session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
-        ).refresh_downloaded_revision_dates()
+        ).refresh_downloaded_pages()
 
         assert refreshed == 0
-        assert temp_db.get_downloaded("404")["workbench_last_modified"] is None
+        assert temp_db.get_benchmark("404")["published_date"] is None
 
     def test_login_page_raises_authentication_error_immediately(self, temp_db):
         self._seed(temp_db, "405")
@@ -927,7 +946,7 @@ class TestRefreshDownloadedRevisionDates:
                 timeout=TIMEOUT,
                 max_workers=WORKERS,
                 batch_size=BATCH,
-            ).refresh_downloaded_revision_dates()
+            ).refresh_downloaded_pages()
 
         assert session.get.call_count == 1
 

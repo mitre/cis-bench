@@ -86,7 +86,7 @@ cis-bench search "kubernetes v2.1.0"
 **Search features:**
 
 - Full-text search with FTS5
-- Word matching: every word must match the start of a word in the title, platform, community or description (`ubunt` finds Ubuntu); no typo tolerance
+- Word matching: every word must match the start of a word in the title, platform or community (`ubunt` finds Ubuntu); no typo tolerance
 - Searches titles, platforms, communities
 - A version in the query (`v2.1.0`, `2.1`) picks the release; see [How a query matches](commands-reference.md#cis-bench-search)
 - Returns up to `CIS_BENCH_SEARCH_LIMIT` results (100 by default); `--limit` changes it for one run
@@ -259,11 +259,13 @@ cis-bench catalog refresh
 See which downloaded benchmarks have updates:
 
 ```bash
-cis-bench catalog check-updates            # versions + WorkBench publication dates
-cis-bench catalog check-updates --offline  # versions only, no network
+cis-bench catalog check-updates            # reads each downloaded benchmark's page first
+cis-bench catalog check-updates --offline  # compares what is already recorded, no network
 ```
 
-A benchmark is listed when the catalog carries a newer version than you downloaded, or when its WorkBench page shows it was published again after your download. Refresh the catalog first so the version comparison sees the current listing.
+A benchmark is listed when the catalog carries a newer version than you downloaded, or when the publish date WorkBench shows for it is later than your copy's. Refresh the catalog first so the version comparison sees the current listing.
+
+**Publish dates and descriptions:** the catalog listing carries neither. Each benchmark's own WorkBench page does; cis-bench reads it whenever it downloads the benchmark (`download`, `get`, `diff`, `catalog download`) and when `catalog check-updates` runs online, and records the publish date and description on the benchmark's catalog row (`catalog info` shows them). A benchmark nobody has downloaded has neither.
 
 **About `--latest`:** the catalog page lists no dates, so "latest" is decided by version: within one title and status, the highest parseable version (`v2.0.1` beats `v1.0.0`; `v10` beats `v9`) is latest. Labels without a number such as `vNext` are latest only when every version in the group is unnumbered.
 
@@ -304,17 +306,18 @@ cis-bench catalog refresh --max-pages 5
 **catalog_benchmarks:**
 
 - Metadata for all benchmarks
-- Fields: id, title, version, status, platform_type, platform, etc.
+- Fields: id, title, version, status, platform_type, platform, etc. from the listing; published_date and description from the benchmark's page, once it has been read
 
 **downloaded_benchmarks:**
 
 - Full benchmark JSON content
 - Cached for instant re-export
+- The copy's version and publish date, which check-updates compares with the catalog row
 
 **benchmarks_fts:**
 
 - FTS5 virtual table for full-text search
-- Indexes: title, platform, community, description, version
+- Indexes: title, platform, community, version (the fields every catalog row has)
 
 ### Platform Inference
 

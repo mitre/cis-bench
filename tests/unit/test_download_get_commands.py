@@ -11,7 +11,7 @@ Focuses on:
 - Edge cases in argument handling
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -1709,7 +1709,6 @@ class TestDownloadAndGetCacheThroughTheCatalogDownloader:
                 "version": "v1.0.0",
                 "url": "https://workbench.cisecurity.org/benchmarks/12345",
                 "status": "Published",
-                "last_revision_date": "2025-01-01",
             }
         )
         return db
@@ -1718,7 +1717,9 @@ class TestDownloadAndGetCacheThroughTheCatalogDownloader:
     def scraper(self, sample_benchmark):
         scraper = Mock()
         scraper.base_url = "https://workbench.cisecurity.org"
-        scraper.download_benchmark.return_value = sample_benchmark
+        scraper.download_benchmark.return_value = sample_benchmark.model_copy(
+            update={"published_date": date(2025, 1, 1)}
+        )
         with (
             patch("cis_bench.fetcher.auth.AuthManager.get_or_create_session"),
             patch("cis_bench.fetcher.workbench.WorkbenchScraper", return_value=scraper),
@@ -1743,5 +1744,6 @@ class TestDownloadAndGetCacheThroughTheCatalogDownloader:
         cached = catalog.get_downloaded("12345")
         assert cached is not None
         assert cached["version"] == "v1.0.0"
-        assert cached["workbench_last_modified"] == "2025-01-01"
+        assert cached["published_date"] == date(2025, 1, 1)
+        assert catalog.get_benchmark("12345")["published_date"] == date(2025, 1, 1)
         scraper.download_benchmark.assert_called_once()

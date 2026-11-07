@@ -8,7 +8,7 @@ import logging
 import re
 import threading
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
 import requests
@@ -21,7 +21,8 @@ from cis_bench.fetcher.auth import is_workbench_login_page
 from cis_bench.fetcher.http import ThreadSessions, get_with_retry
 from cis_bench.fetcher.strategies.base import ExtractedRecommendation, ScraperStrategy
 from cis_bench.fetcher.strategies.detector import StrategyDetector
-from cis_bench.models.benchmark import Benchmark, Recommendation
+from cis_bench.models.benchmark import Benchmark, BenchmarkPage, Recommendation
+from cis_bench.utils.html_parser import HTMLCleaner, attribute_text
 from cis_bench.utils.parallel import parallel_execute_batched
 from cis_bench.utils.workbench_urls import navtree_url, recommendation_url
 
@@ -29,6 +30,86 @@ from cis_bench.utils.workbench_urls import navtree_url, recommendation_url
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 logger = logging.getLogger(__name__)
+
+
+# WorkBench renders a release's status as a label ("Published") followed by a bare text node
+# such as "1 year ago on Aug 28th 2025".
+_PUBLISHED_ON_RE = re.compile(r"\bago on ([A-Za-z]+) (\d+)(?:st|nd|rd|th) (\d{4})")
+# Paragraphs of an Overview section written as a heading and paragraphs, as kept for a page
+# without the overview component.
+_OVERVIEW_PARAGRAPHS = 3
+
+
+def parse_benchmark_page(html: str) -> BenchmarkPage:
+    """What a benchmark's WorkBench page says: its title, publish date and description.
+
+    The one parser for that page; every command that reads it goes through here.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    return BenchmarkPage(
+        title=_benchmark_title(soup),
+        published_date=_published_date(soup),
+        description=_description(soup),
+    )
+
+
+def _benchmark_title(soup: BeautifulSoup) -> str:
+    """The title the page carries in its wb-benchmark-title element."""
+    title_elem = soup.find(name="wb-benchmark-title")
+    if isinstance(title_elem, Tag):
+        raw_title = title_elem.get("title")
+        if isinstance(raw_title, str):
+            return raw_title
+        if isinstance(raw_title, list):
+            return " ".join(raw_title)
+    return "Unknown Benchmark"
+
+
+def _published_date(soup: BeautifulSoup) -> date | None:
+    """The date in the "<n> <units> ago on Aug 28th 2025" status text (abbreviated or full
+    month name); anything that is not a real calendar date in that shape gives None."""
+    text = soup.find(string=_PUBLISHED_ON_RE)
+    if not isinstance(text, str):
+        return None
+    match = _PUBLISHED_ON_RE.search(text)
+    if match is None:
+        return None
+    month, day, year = match.groups()
+    for fmt in ("%b %d %Y", "%B %d %Y"):
+        try:
+            return datetime.strptime(f"{month} {day} {year}", fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _description(soup: BeautifulSoup) -> str | None:
+    """The page's overview as plain text.
+
+    WorkBench renders it as <wb-recommendation-data attribute="overview" text="...">, whose
+    text may hold HTML. A page written with an "Overview" heading instead gives the text of
+    its first paragraphs up to the next heading.
+    """
+    component = soup.find("wb-recommendation-data", attrs={"attribute": "overview"})
+    if isinstance(component, Tag):
+        text = HTMLCleaner.strip_html(attribute_text(component, "text"))
+        return text or None
+
+    heading = soup.find(
+        lambda tag: isinstance(tag, Tag)
+        and tag.name == "h2"
+        and "overview" in tag.get_text().lower()
+    )
+    if not isinstance(heading, Tag):
+        return None
+    paragraphs = []
+    for sibling in heading.find_next_siblings():
+        if sibling.name and sibling.name.startswith("h"):
+            break
+        text = sibling.get_text(strip=True)
+        if text:
+            paragraphs.append(text)
+    return " ".join(paragraphs[:_OVERVIEW_PARAGRAPHS]) or None
 
 
 def _login_page_error(url: str) -> AuthenticationError:
@@ -187,16 +268,11 @@ class WorkbenchScraper:
         Returns:
             Benchmark title
         """
-        html = self.fetch_html(benchmark_url)
-        soup = BeautifulSoup(html, "html.parser")
-        title_elem = soup.find(name="wb-benchmark-title")
-        if isinstance(title_elem, Tag):
-            raw_title = title_elem.get("title")
-            if isinstance(raw_title, str):
-                return raw_title
-            if isinstance(raw_title, list):
-                return " ".join(raw_title)
-        return "Unknown Benchmark"
+        return self.fetch_benchmark_page(benchmark_url).title
+
+    def fetch_benchmark_page(self, benchmark_url: str) -> BenchmarkPage:
+        """Fetch a benchmark's own page and read it (parse_benchmark_page)."""
+        return parse_benchmark_page(self.fetch_html(benchmark_url))
 
     def fetch_navtree(self, benchmark_id: str) -> dict[str, Any]:
         """Fetch navigation tree for benchmark.
@@ -297,8 +373,9 @@ class WorkbenchScraper:
         benchmark_id = self.get_benchmark_id(benchmark_url)
         log(f"Fetching benchmark: {benchmark_url}", level="debug")
 
-        # Get benchmark title
-        title = self.get_benchmark_title(benchmark_url)
+        # The benchmark's own page: its title, publish date and description
+        page = self.fetch_benchmark_page(benchmark_url)
+        title = page.title
         log(f"Benchmark title: {title}", level="debug")
 
         # Extract version from title (simple heuristic)
@@ -354,6 +431,8 @@ class WorkbenchScraper:
             benchmark_id=benchmark_id,
             url=HttpUrl(benchmark_url),
             version=version,
+            published_date=page.published_date,
+            description=page.description,
             scraper_version=(
                 self._detected_strategy.version if self._detected_strategy else "manual"
             ),

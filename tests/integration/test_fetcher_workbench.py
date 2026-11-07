@@ -898,6 +898,360 @@ def _navtree_with(count):
     }
 
 
+# The status block of a published benchmark's page, in the shape WorkBench renders it: the
+# label in its own <p>, the date as a bare text node after it.
+PUBLISHED_STATUS_HTML = """
+<div class="object-status" data-cy="benchmark-status-label">
+    <p class="label label-published">Published</p>
+        1 year ago on Aug 28th 2025
+</div>
+"""
+
+
+class TestTheReleasePublishDate:
+    """A download reads the release's publish date from the page it fetches for the title."""
+
+    @patch("cis_bench.fetcher.workbench.StrategyDetector.detect_strategy")
+    def test_download_records_the_publish_date_from_the_one_page_fetch(
+        self,
+        mock_detector,
+        mock_strategy,
+        sample_benchmark_title_html,
+        sample_benchmark_navtree,
+        sample_recommendation_html,
+        stub_session,
+    ):
+        from datetime import date
+
+        mock_detector.return_value = mock_strategy
+        page = sample_benchmark_title_html.replace(
+            "</body>", PUBLISHED_STATUS_HTML + OVERVIEW_COMPONENT_HTML + "</body>"
+        )
+        url = "https://workbench.cisecurity.org/benchmarks/18528"
+
+        def handler(requested):
+            if "navtree" in requested:
+                return sample_benchmark_navtree
+            if requested == url:
+                return page
+            return sample_recommendation_html
+
+        session, transport = stub_session(handler)
+        scraper = WorkbenchScraper(
+            session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
+
+        benchmark = scraper.download_benchmark(url)
+
+        assert benchmark.published_date == date(2025, 8, 28)
+        assert benchmark.title == "CIS Amazon Elastic Kubernetes Service (EKS) Benchmark v1.8.0"
+        assert transport.urls.count(url) == 1
+        assert '"published_date":"2025-08-28"' in benchmark.model_dump_json()
+        assert benchmark.description.startswith("This document provides prescriptive guidance")
+
+    @patch("cis_bench.fetcher.workbench.StrategyDetector.detect_strategy")
+    def test_a_page_without_a_publish_date_records_none(
+        self,
+        mock_detector,
+        mock_strategy,
+        sample_benchmark_title_html,
+        sample_benchmark_navtree,
+        sample_recommendation_html,
+        stub_session,
+    ):
+        mock_detector.return_value = mock_strategy
+
+        def handler(requested):
+            if "navtree" in requested:
+                return sample_benchmark_navtree
+            if "/benchmarks/" in requested:
+                return sample_benchmark_title_html
+            return sample_recommendation_html
+
+        session, _ = stub_session(handler)
+        scraper = WorkbenchScraper(
+            session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
+
+        benchmark = scraper.download_benchmark("https://workbench.cisecurity.org/benchmarks/18528")
+
+        assert benchmark.published_date is None
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("1 year ago on Aug 28th 2025", "2025-08-28"),
+        ("4 years ago on Jun 21st 2022", "2022-06-21"),
+        ("2 months ago on September 9th 2025", "2025-09-09"),
+        ("3 days ago on Feb 3rd 2026", "2026-02-03"),
+        ("1 day ago on Mar 2nd 2026", "2026-03-02"),
+        ("1 year ago on Aug 1st 2025", "2025-08-01"),
+        ("1 year ago on Dec 22nd 2024", "2024-12-22"),
+        ("3 years ago on Mar 3rd 2023", "2023-03-03"),
+        ("Published 1 day ago on Jan 1st 2026", "2026-01-01"),
+        ("Published 2 months ago on Feb 22nd 2025", "2025-02-22"),
+        ("Published 1 year ago on Mar 3rd 2024", "2024-03-03"),
+        ("Published just now ago on Apr 4th 2025", "2025-04-04"),
+        ("ago on Feb 30th 2025", None),
+        ("ago on Aug 32nd 2025", None),
+        ("ago on Smarch 1st 2025", None),
+        ("yesterday", None),
+        ("2 weeks ago", None),
+        ("Published 2 weeks ago", None),
+        ("Published", None),
+    ],
+)
+def test_the_publish_date_is_read_from_the_status_text(text, expected):
+    from cis_bench.fetcher.workbench import parse_benchmark_page
+
+    page = parse_benchmark_page(
+        f'<div data-cy="benchmark-status-label"><p>Published</p>{text}</div>'
+    )
+
+    assert (page.published_date.isoformat() if page.published_date else None) == expected
+
+
+def test_a_draft_label_with_a_date_and_an_empty_page():
+    import warnings
+
+    from cis_bench.fetcher.workbench import parse_benchmark_page
+
+    draft = PUBLISHED_STATUS_HTML.replace("label-published", "label-draft").replace(
+        ">Published<", ">Draft<"
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+        assert parse_benchmark_page(draft).published_date.isoformat() == "2025-08-28"
+        empty = parse_benchmark_page("")
+    assert (empty.title, empty.published_date, empty.description) == (
+        "Unknown Benchmark",
+        None,
+        None,
+    )
+
+
+# The overview as WorkBench renders it: a web component whose text attribute holds it
+OVERVIEW_COMPONENT_HTML = """
+<wb-recommendation-data attribute="intended_audience" text="Administrators."></wb-recommendation-data>
+<wb-recommendation-data
+        attribute="overview"
+        :can-see-warning="false"
+        text="This document provides prescriptive guidance for establishing a secure
+configuration posture for AlmaLinux OS 8 Linux systems.
+
+The guidance &lt;strong&gt;assumes&lt;/strong&gt; root &amp;amp; bash."></wb-recommendation-data>
+"""
+
+
+class TestTheBenchmarkDescription:
+    """The description is the benchmark page's overview, as plain text."""
+
+    def test_the_overview_component_is_the_description(self):
+        from cis_bench.fetcher.workbench import parse_benchmark_page
+
+        page = parse_benchmark_page(PUBLISHED_STATUS_HTML + OVERVIEW_COMPONENT_HTML)
+
+        assert page.description == (
+            "This document provides prescriptive guidance for establishing a secure\n"
+            "configuration posture for AlmaLinux OS 8 Linux systems.\n\n"
+            "The guidance assumes root & bash."
+        )
+        assert page.published_date.isoformat() == "2025-08-28"
+
+    def test_the_component_wins_over_an_overview_heading(self):
+        from cis_bench.fetcher.workbench import parse_benchmark_page
+
+        html = OVERVIEW_COMPONENT_HTML + "<h2>Overview</h2><p>Heading text.</p>"
+
+        assert parse_benchmark_page(html).description.startswith("This document provides")
+
+    def test_parse_benchmark_detail_basic(self):
+        """Test basic benchmark detail page parsing."""
+        from datetime import date
+
+        from cis_bench.fetcher.workbench import parse_benchmark_page
+
+        html = """
+        <html>
+        <body>
+            <h1>CIS Ubuntu 22.04 Benchmark</h1>
+            <p>Published 3 months ago on Aug 1st 2025</p>
+            <h2>Overview</h2>
+            <p>This benchmark provides security guidance.</p>
+            <p>It covers essential hardening steps.</p>
+            <p>Use this for compliance.</p>
+            <h2>Recommendations</h2>
+            <p>Different section content.</p>
+        </body>
+        </html>
+        """
+        page = parse_benchmark_page(html)
+
+        assert page.published_date == date(2025, 8, 1)
+        assert "security guidance" in page.description
+        assert "hardening steps" in page.description
+
+    def test_parse_benchmark_detail_no_published_date(self):
+        """Test parsing when no published date is present."""
+        from cis_bench.fetcher.workbench import parse_benchmark_page
+
+        html = """
+        <html>
+        <body>
+            <h2>Overview</h2>
+            <p>Some description text.</p>
+        </body>
+        </html>
+        """
+        page = parse_benchmark_page(html)
+
+        assert page.published_date is None
+        assert page.description == "Some description text."
+
+    def test_parse_benchmark_detail_no_overview(self):
+        """Test parsing when no Overview section is present."""
+        from datetime import date
+
+        from cis_bench.fetcher.workbench import parse_benchmark_page
+
+        html = """
+        <html>
+        <body>
+            <p>Published 1 month ago on Dec 15th 2025</p>
+            <h2>Recommendations</h2>
+            <p>Some recommendations.</p>
+        </body>
+        </html>
+        """
+        page = parse_benchmark_page(html)
+
+        assert page.published_date == date(2025, 12, 15)
+        assert page.description is None
+
+    def test_parse_benchmark_detail_empty_overview_section(self):
+        """Test parsing when Overview heading exists but no content follows."""
+        from cis_bench.fetcher.workbench import parse_benchmark_page
+
+        html = """
+        <html>
+        <body>
+            <h2>Overview</h2>
+            <h2>Next Section</h2>
+            <p>Content in next section.</p>
+        </body>
+        </html>
+        """
+
+        assert parse_benchmark_page(html).description is None
+
+    def test_parse_benchmark_detail_published_without_specific_date(self):
+        """Published text without an "on DATE" part gives no date; the description is still read."""
+        from cis_bench.fetcher.workbench import parse_benchmark_page
+
+        html = """
+        <html>
+        <body>
+            <p>Published 2 weeks ago</p>
+            <h2>Overview</h2>
+            <p>Description text.</p>
+        </body>
+        </html>
+        """
+        page = parse_benchmark_page(html)
+
+        assert page.published_date is None
+        assert page.description == "Description text."
+
+    def test_parse_benchmark_detail_multiple_paragraphs_limited(self):
+        """Test description is limited to first 3 paragraphs."""
+        from cis_bench.fetcher.workbench import parse_benchmark_page
+
+        html = """
+        <html>
+        <body>
+            <h2>Overview</h2>
+            <p>First paragraph.</p>
+            <p>Second paragraph.</p>
+            <p>Third paragraph.</p>
+            <p>Fourth paragraph should not be included.</p>
+            <p>Fifth paragraph should not be included.</p>
+        </body>
+        </html>
+        """
+        description = parse_benchmark_page(html).description
+
+        assert "First paragraph" in description
+        assert "Second paragraph" in description
+        assert "Third paragraph" in description
+        assert "Fourth paragraph" not in description
+        assert "Fifth paragraph" not in description
+
+    def test_parse_benchmark_detail_stops_at_next_heading(self):
+        """Test description stops at next heading."""
+        from cis_bench.fetcher.workbench import parse_benchmark_page
+
+        html = """
+        <html>
+        <body>
+            <h2>Overview</h2>
+            <p>First overview paragraph.</p>
+            <h3>Subsection</h3>
+            <p>Should not be included.</p>
+            <h2>Recommendations</h2>
+            <p>Different section.</p>
+        </body>
+        </html>
+        """
+        description = parse_benchmark_page(html).description
+
+        assert "First overview paragraph" in description
+        assert "Should not be included" not in description
+
+    def test_parse_benchmark_detail_overview_with_empty_paragraphs(self):
+        """Test description handles empty paragraph elements."""
+        from cis_bench.fetcher.workbench import parse_benchmark_page
+
+        html = """
+        <html>
+        <body>
+            <h2>Overview</h2>
+            <p></p>
+            <p>   </p>
+            <p>Actual content.</p>
+            <p>More content.</p>
+        </body>
+        </html>
+        """
+
+        assert parse_benchmark_page(html).description == "Actual content. More content."
+
+    def test_parse_benchmark_detail_emits_no_deprecation_warnings(self):
+        """Detail page parsing reads the published date and overview without deprecations."""
+        import warnings
+        from datetime import date
+
+        from cis_bench.fetcher.workbench import parse_benchmark_page
+
+        html = """
+        <html>
+        <body>
+            <p>Published 3 months ago on Aug 1st 2025</p>
+            <h2>Overview</h2>
+            <p>Hardening guidance for servers.</p>
+        </body>
+        </html>
+        """
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            page = parse_benchmark_page(html)
+
+        assert (page.published_date, page.description) == (
+            date(2025, 8, 1),
+            "Hardening guidance for servers.",
+        )
+
+
 class TestWorkbenchScraperFullDownload:
     """Test complete benchmark download workflow."""
 

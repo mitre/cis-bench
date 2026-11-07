@@ -10,10 +10,11 @@ from cis_bench.catalog.database import (
     CatalogDatabase,
     deserialize_benchmark_json,
     serialize_benchmark_json,
+    update_reason,
 )
 from cis_bench.catalog.search import CatalogSearch
 from cis_bench.fetcher.workbench import WorkbenchScraper
-from cis_bench.models.benchmark import Benchmark
+from cis_bench.models.benchmark import Benchmark, BenchmarkPage
 from cis_bench.utils.workbench_urls import normalize_benchmark_url
 
 logger = logging.getLogger(__name__)
@@ -36,24 +37,31 @@ class CatalogDownloader:
     def cache(self, benchmark_id: str, benchmark: Benchmark) -> tuple[str, str]:
         """Cache a downloaded benchmark: the one place every command caches a download.
 
-        The cached row carries the benchmark's version and, when the catalog lists the
-        benchmark, WorkBench's revision date for it (check-updates compares both).
+        The cached row carries the copy's version and the date WorkBench showed it as
+        published. What the benchmark's page said (publish date, description) is recorded on
+        the release's catalog row (record_page), which holds what WorkBench shows now;
+        check-updates compares the two dates.
 
         Returns:
             The cached JSON and its content hash, as serialize_benchmark_json gives them
         """
         content_json, content_hash = serialize_benchmark_json(benchmark)
-        catalog_entry = self.db.get_benchmark(benchmark_id)
         self.db.save_downloaded(
             version=benchmark.version,
             benchmark_id=benchmark_id,
             content_json=content_json,
             content_hash=content_hash,
             recommendation_count=len(benchmark.recommendations),
-            workbench_last_modified=(
-                catalog_entry.get("last_revision_date") if catalog_entry else None
-            ),
             downloaded_at=benchmark.downloaded_at,
+            published_date=benchmark.published_date,
+        )
+        self.db.record_page(
+            benchmark_id,
+            BenchmarkPage(
+                title=benchmark.title,
+                published_date=benchmark.published_date,
+                description=benchmark.description,
+            ),
         )
         logger.debug(f"Cached benchmark {benchmark_id}")
         return content_json, content_hash
@@ -93,22 +101,23 @@ class CatalogDownloader:
         existing = self.db.get_downloaded(benchmark_id)
 
         if existing and not force:
-            logger.debug("Benchmark already downloaded, checking if up-to-date")
-
-            # Compare revision dates if available
-            if (
-                catalog_entry.get("last_revision_date")
-                and existing.get("workbench_last_modified")
-                and catalog_entry["last_revision_date"] == existing["workbench_last_modified"]
-            ):
-                logger.debug("Benchmark is up-to-date (matching revision date)")
+            reason = update_reason(
+                catalog_version=catalog_entry.get("version"),
+                catalog_published=catalog_entry.get("published_date"),
+                copy_version=existing.get("version"),
+                copy_published=existing.get("published_date"),
+                downloaded_at=existing["downloaded_at"],
+            )
+            if reason is None:
+                logger.debug(f"Benchmark {benchmark_id} is cached and up to date")
                 return {
                     "benchmark_id": benchmark_id,
                     "status": "already_current",
                     "downloaded_at": existing["downloaded_at"],
                     "recommendation_count": existing["recommendation_count"],
-                    "message": "Already up-to-date. Use --force to re-download.",
+                    "message": "Already up to date. Use --force to download it again.",
                 }
+            logger.debug(f"Downloading benchmark {benchmark_id} again: {reason}")
 
         # Validate and canonicalize the URL against the origin the scraper fetches from
         _, benchmark_url = normalize_benchmark_url(

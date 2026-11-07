@@ -15,7 +15,7 @@ Focus on missing coverage lines: 74-76, 99, 110-116, 131-153, 182-185, 190->193,
 199, 205-227, 246-249, 254, 262-271, 290-339, 357-393, 411-443, 461-505, 516-543
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
@@ -69,11 +69,9 @@ def mock_db():
         "platform": "Operating System",
         "community": "Ubuntu",
         "owner": "cis-admin",
-        "published_date": "2024-08-01",
-        "last_revision_date": "2024-08-15",
+        "published_date": date(2024, 8, 1),
         "description": "Security configuration benchmark for Ubuntu 20.04",
         "is_latest": True,
-        "metadata_json": None,
     }
     db.check_updates_available.return_value = []
     db.list_downloaded_benchmark_ids.return_value = ["23598"]
@@ -921,10 +919,8 @@ class TestCatalogInfoCommand:
             "community": None,
             "owner": None,
             "published_date": None,
-            "last_revision_date": None,
             "description": None,
             "is_latest": False,
-            "metadata_json": None,
         }
         mock_get_db.return_value = mock_db
 
@@ -933,6 +929,15 @@ class TestCatalogInfoCommand:
         assert result.exit_code == 0
         assert "Minimal Benchmark" in result.output
         assert "Version:" not in result.output  # No version
+
+    @patch("cis_bench.cli.commands.catalog.get_catalog_db")
+    def test_info_shows_the_publish_date_when_it_is_known(self, mock_get_db, runner, mock_db):
+        mock_get_db.return_value = mock_db
+
+        result = runner.invoke(cli, ["catalog", "info", "23598"])
+
+        assert result.exit_code == 0, result.output
+        assert "Published: 2024-08-01" in result.output
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     def test_info_with_description(self, mock_get_db, runner, mock_db):
@@ -1534,19 +1539,19 @@ class TestCatalogCheckUpdatesCommand:
         mock_get_db.return_value = mock_db
         mock_auth = auth_manager_class.return_value.get_or_create_session
         with patch("cis_bench.catalog.scraper.CatalogScraper") as mock_scraper_cls:
-            mock_scraper_cls.return_value.refresh_downloaded_revision_dates.return_value = 2
+            mock_scraper_cls.return_value.refresh_downloaded_pages.return_value = 2
             result = runner.invoke(cli, ["catalog", "check-updates"])
 
         assert result.exit_code == 0, result.output
         assert auth_manager_class.call_args.kwargs["verify_ssl"] is True
         mock_auth.assert_called_once_with()
-        mock_scraper_cls.return_value.refresh_downloaded_revision_dates.assert_called_once()
+        mock_scraper_cls.return_value.refresh_downloaded_pages.assert_called_once()
         flat = " ".join(result.output.split())
         assert "Updates available for 2 benchmarks" in flat
         assert "23598" in flat and "v1.0.0 -> v2.0.1" in flat
         assert "23599" in flat and "published 2024-07-15" in flat
         assert "Downloaded: 2024-07-15 08:00:00 EDT" in flat
-        assert "cis-bench catalog download <id> --force" in flat
+        assert "cis-bench catalog download <id>' to download the update" in flat
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     def test_check_updates_prints_titles_versions_and_dates_verbatim(self, mock_get_db, runner):

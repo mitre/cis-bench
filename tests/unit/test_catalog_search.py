@@ -1,11 +1,13 @@
 """Unit tests for catalog search."""
 
+from datetime import date
 from unittest.mock import patch
 
 import pytest
 
 from cis_bench.catalog.database import CatalogDatabase
 from cis_bench.catalog.search import CatalogSearch
+from cis_bench.models.benchmark import BenchmarkPage
 
 
 @pytest.fixture
@@ -24,9 +26,7 @@ def temp_db(tmp_path):
             "status": "Published",
             "platform": "Operating System",
             "community": "CIS Ubuntu Benchmarks",
-            "description": "Ubuntu 20.04 security guidance",
             "is_latest": True,
-            "published_date": "2024-08-01",
         },
         {
             "benchmark_id": "2",
@@ -37,7 +37,6 @@ def temp_db(tmp_path):
             "platform": "Operating System",
             "community": "CIS RHEL Benchmarks",
             "is_latest": True,
-            "published_date": "2024-07-01",
         },
         {
             "benchmark_id": "3",
@@ -62,6 +61,15 @@ def temp_db(tmp_path):
 
     for bench in benchmarks:
         db.insert_benchmark(bench)
+    # A release's publish date and description are read from its own page, never the listing
+    db.record_page(
+        "1",
+        BenchmarkPage(
+            title="CIS Ubuntu Linux 20.04 LTS Benchmark",
+            published_date=date(2024, 8, 1),
+            description="Ubuntu 20.04 security guidance",
+        ),
+    )
 
     return db
 
@@ -229,13 +237,12 @@ class TestFormatting:
         assert formatted == "No benchmarks found."
 
     def test_format_with_description(self, search):
-        """Test formatting with description snippets."""
+        """A result whose page was read shows the start of its description."""
         results = search.search("ubuntu", limit=None)
 
         formatted = search.format_results_table(results, show_description=True)
 
-        # Should include description text
-        assert len(formatted) > 0
+        assert "        Ubuntu 20.04 security guidance" in formatted.splitlines()
 
 
 @pytest.fixture

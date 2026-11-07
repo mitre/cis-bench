@@ -132,6 +132,16 @@ flowchart LR
 "description": "Benchmark version (extracted from title or metadata)",
 "examples": ["v1.8.0", "vNEXT", "v1.0.0"]
 },
+"published_date": {
+"type": ["string", "null"],
+"format": "date",
+"description": "The date WorkBench shows this release as published, read from the benchmark's page",
+"examples": ["2025-08-28"]
+},
+"description": {
+"type": ["string", "null"],
+"description": "The benchmark's overview, as plain text, read from its page"
+},
 "downloaded_at": {
 "type": "string",
 "format": "date-time",
@@ -342,6 +352,8 @@ f.write(xml_output)
 | `benchmark_id` | string | | CIS WorkBench ID |
 | `url` | string (URI) | | Source URL |
 | `version` | string | | Benchmark version |
+| `published_date` | string (ISO 8601 date) or null | | The date WorkBench shows the release as published, read from the benchmark's page |
+| `description` | string or null | | The benchmark's overview, as plain text, read from its page |
 | `downloaded_at` | string (ISO 8601) | | When it was downloaded, in UTC with its offset (`Z`); files from earlier versions carry no offset |
 | `scraper_version` | string | | Strategy version used |
 | `total_recommendations` | integer | | Count of recommendations |
@@ -439,6 +451,8 @@ json-schema-for-humans cis_bench/models/schema.json docs/schema.html
 "benchmark_id": "22605",
 "url": "https://workbench.cisecurity.org/benchmarks/22605",
 "version": "v1.8.0",
+"published_date": "2025-08-28",
+"description": "This document provides prescriptive guidance for establishing a secure configuration posture for Amazon EKS.",
 "downloaded_at": "2025-10-17T21:48:00Z",
 "scraper_version": "v1_2025_10",
 "total_recommendations": 50,

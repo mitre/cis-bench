@@ -204,10 +204,11 @@ cis-bench search
 
 **How a query matches:**
 
-- Every word must match. A word matches the start of a word in the title, platform, community or description (`ubunt` finds Ubuntu).
+- Every word must match. A word matches the start of a word in the title, platform or community (`ubunt` finds Ubuntu). These are the fields the catalog listing gives for every benchmark; a description, known only for benchmarks whose WorkBench page has been read, is not searched.
 - A dotted number or a `v` number (`v2.1.0`, `2.1`, `v18`) also matches a benchmark's version from its start, number by number: `2.1` finds v2.1.0 and v2.1.3, not v2.10.0 or v1.2.1.
 - A word also matches a whole word of a version (`vNext`, the `NEXT` of `v1.1.0 NEXT`), so a name pasted with its version is found.
-- A plain number (`almalinux 8`) is looked up in the same text as any other word (title, platform, community, description), never in versions.
+- A plain number (`almalinux 8`) is looked up in the same text as any other word (title, platform, community), never in versions.
+- With no words, every benchmark that passes the filters is listed by title, then by ID.
 
 **Requirements:**
 
@@ -726,6 +727,8 @@ Show catalog information for a benchmark.
 cis-bench catalog info <BENCHMARK_ID> [OPTIONS]
 ```
 
+The catalog listing gives the title, version, status, platform, community, owner and collections. The publish date and description come from the benchmark's own WorkBench page, which cis-bench reads when it downloads the benchmark and when `catalog check-updates` runs online; until then they are not shown.
+
 **Options:**
 
 - `-o, --output-format` - Format (table|json|yaml)
@@ -772,6 +775,8 @@ cis-bench catalog download [OPTIONS] BENCHMARK_ID_OR_NAME
 - `--force` - Download again even if the cached copy is current
 - `--interactive` - Choose from a list when several benchmarks match
 
+A benchmark that is already cached is downloaded again only when `catalog check-updates` would list it (a newer catalog version, or a later WorkBench publish date than the cached copy's), or with `--force`.
+
 **Examples:**
 ```bash
 cis-bench catalog download 23598
@@ -809,12 +814,14 @@ Report downloaded benchmarks that WorkBench has moved past.
 
 - `--offline` - Compare versions only; do not contact WorkBench
 
-**How it decides:** a benchmark is listed when the catalog now carries a newer version than the one you downloaded, or (unless `--offline`) when its WorkBench page shows a publication date after your download. Only downloaded benchmarks are fetched, one page each, so run `cis-bench catalog refresh` first if the catalog itself is stale. With nothing downloaded it says so and contacts nothing. A downloaded benchmark whose WorkBench page answers 404 is reported as no longer on WorkBench and the others are still checked.
+**How it decides:** a benchmark is listed when the catalog now carries a newer version than the one you downloaded, or when the publish date WorkBench shows for it is later than the publish date of your copy (for a copy cached before publish dates were recorded, later than the day you downloaded it). Online (the default) it first reads each downloaded benchmark's WorkBench page and records its publish date and description in the catalog; `--offline` compares what is already recorded. A catalog that lists an older version than your copy never makes it an update. Only downloaded benchmarks are fetched, one page each, so run `cis-bench catalog refresh` first if the catalog itself is stale. With nothing downloaded it says so and contacts nothing. A downloaded benchmark whose WorkBench page answers 404 is reported as no longer on WorkBench and the others are still checked.
 
 ```bash
 cis-bench catalog check-updates
 cis-bench catalog check-updates --offline
 ```
+
+`cis-bench catalog download <id>` then downloads the update.
 
 ### `cis-bench catalog stats`
 
