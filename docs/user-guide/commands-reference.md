@@ -204,10 +204,11 @@ cis-bench search
 
 **How a query matches:**
 
-- Every word must match. A word matches the start of a word in the title, platform, community or description (`ubunt` finds Ubuntu).
+- Every word must match. A word matches the start of a word in the title, platform or community (`ubunt` finds Ubuntu). These are the fields the catalog listing gives for every benchmark; a description, known only for benchmarks whose WorkBench page has been read, is not searched.
 - A dotted number or a `v` number (`v2.1.0`, `2.1`, `v18`) also matches a benchmark's version from its start, number by number: `2.1` finds v2.1.0 and v2.1.3, not v2.10.0 or v1.2.1.
 - A word also matches a whole word of a version (`vNext`, the `NEXT` of `v1.1.0 NEXT`), so a name pasted with its version is found.
-- A plain number (`almalinux 8`) is looked up in the same text as any other word (title, platform, community, description), never in versions.
+- A plain number (`almalinux 8`) is looked up in the same text as any other word (title, platform, community), never in versions.
+- With no words, every benchmark that passes the filters is listed by title, then by ID.
 
 **Requirements:**
 
@@ -346,9 +347,8 @@ cis-bench download --file urls.txt
 1. Checks if already cached (shows message if yes, unless --force)
 2. Uses saved session from `cis-bench auth login`
 3. Downloads benchmark from WorkBench with progress bar (see "How recommendations are fetched" below)
-4. Saves to database cache
-5. Saves to file in output directory
-6. Exports to requested formats
+4. Saves to the cache (`catalog.db`) with the benchmark's version and the catalog's revision date for it, when there is a catalog; `get` and `diff` cache the same way
+5. Exports to the requested formats in the output directory (JSON by default)
 
 **How recommendations are fetched:**
 
@@ -358,7 +358,7 @@ cis-bench download --file urls.txt
 - Every request identifies itself with the User-Agent `cis-bench-cli/<version> (github.com/mitre/cis-bench)`.
 - If WorkBench answers with its login page, the saved session has expired: no further batch starts and the download stops with an authentication error. Run `cis-bench auth login` again.
 
-**Exit code:** `0` when every requested benchmark downloaded and exported. `1` when any benchmark or export failed (the others are still downloaded and the summary names the failed IDs), or when the session expired (the run stops at once and later benchmarks are not attempted). `cis-bench get` exits `1` with the same login message when the session expires during its download.
+**Exit code:** `0` when every requested benchmark downloaded, cached and exported. `1` when any benchmark, cache write or export failed (the others are still downloaded and the summary names the failed IDs; a benchmark whose cache write failed is still exported), or when the session expired (the run stops at once and later benchmarks are not attempted). `cis-bench get` exits `1` with the same login message when the session expires during its download.
 
 **Requirements:**
 
@@ -548,6 +548,56 @@ cis-bench info benchmark.json --output-format yaml
 
 ---
 
+### `cis-bench diff`
+
+Compare two versions of a benchmark: which recommendations were added, removed, changed or renumbered.
+
+**Syntax:**
+```bash
+cis-bench diff <OLD> <NEW> [OPTIONS]
+```
+
+**Arguments:**
+
+- `OLD`, `NEW` - Each a catalog ID or the path of a benchmark JSON file. An ID is read from the cache; one that is not downloaded yet is downloaded from CIS WorkBench and cached first, as `get` does (it needs `cis-bench auth login`; no export file is written). Messages about the download go to stderr, so `--format json` output stays valid JSON.
+
+**Options:**
+
+- `-f, --format` - Format (table|json|markdown|summary) - default: table
+- `-v, --verbose` - Under the table, list the changed fields of each modified recommendation
+
+**Examples:**
+```bash
+# Two downloaded versions
+cis-bench diff 22605 23598
+
+# Two files
+cis-bench diff old.json new.json
+
+# A Markdown report
+cis-bench diff 22605 23598 --format markdown > changes.md
+
+# JSON for scripts
+cis-bench diff 22605 23598 --format json | jq '.changes.modified[].ref'
+```
+
+**How recommendations are matched:**
+
+- By ref (`1.1.1`). A ref only in `NEW` is *added*, only in `OLD` *removed*.
+- A ref in both whose content differs is *modified*, with the names of the fields that changed (`title`, `audit`, `impact`, ...). List order inside a field is ignored, and so are the WorkBench URLs (the recommendation's and its parent's) and artifact IDs, which change in every release.
+- A field whose text differs only in whitespace (line wrapping, spacing, indentation) is *reformatted*, never a modification. A recommendation whose only changes are reformatted fields is listed as reformatted; a modified one names its reformatted fields separately. Nothing else is folded: case, punctuation and words joined or split are changes. Two downloads of one benchmark by the same cis-bench version are identical; formatting differences come from comparing copies made by different versions.
+- When the two benchmarks were made by different scraper versions (`scraper_version`), every format says so.
+- A removed ref and an added ref whose titles are at least 85% alike are one *renumbered* recommendation.
+
+**Formats:**
+
+- `table` - Counts, then one row per change; `--verbose` adds each modified recommendation's fields and lists the reformatted ones
+- `summary` - Counts only
+- `markdown` - A Markdown document with a table per kind of change, reformatted included
+- `json` - `old_version`, `new_version`, `benchmark_title`, `scraper_versions` (`old`, `new`), `scraper_versions_differ`, `summary` (the counts) and `changes` (`added`, `removed`, `modified`, `reformatted`, `renumbered`; unchanged recommendations are left out). Each modified entry has `fields_changed`, `reformatted_fields` and `diff`, DeepDiff's report of every change; each reformatted entry has `fields`.
+
+---
+
 ### `cis-bench remove`
 
 Remove downloaded benchmarks from the local cache.
@@ -679,6 +729,8 @@ Show catalog information for a benchmark.
 cis-bench catalog info <BENCHMARK_ID> [OPTIONS]
 ```
 
+The catalog listing gives the title, version, status, platform, community, owner and collections. The publish date and description come from the benchmark's own WorkBench page, which cis-bench reads when it downloads the benchmark and when `catalog check-updates` runs online; until then they are not shown.
+
 **Options:**
 
 - `-o, --output-format` - Format (table|json|yaml)
@@ -725,6 +777,8 @@ cis-bench catalog download [OPTIONS] BENCHMARK_ID_OR_NAME
 - `--force` - Download again even if the cached copy is current
 - `--interactive` - Choose from a list when several benchmarks match
 
+A benchmark that is already cached is downloaded again only when `catalog check-updates` would list it (a newer catalog version, or a later WorkBench publish date than the cached copy's), or with `--force`.
+
 **Examples:**
 ```bash
 cis-bench catalog download 23598
@@ -762,12 +816,14 @@ Report downloaded benchmarks that WorkBench has moved past.
 
 - `--offline` - Compare versions only; do not contact WorkBench
 
-**How it decides:** a benchmark is listed when the catalog now carries a newer version than the one you downloaded, or (unless `--offline`) when its WorkBench page shows a publication date after your download. Only downloaded benchmarks are fetched, one page each, so run `cis-bench catalog refresh` first if the catalog itself is stale. With nothing downloaded it says so and contacts nothing. A downloaded benchmark whose WorkBench page answers 404 is reported as no longer on WorkBench and the others are still checked.
+**How it decides:** a benchmark is listed when the catalog now carries a newer version than the one you downloaded, or when the publish date WorkBench shows for it is later than the publish date of your copy (for a copy cached before publish dates were recorded, later than the day you downloaded it). Online (the default) it first reads each downloaded benchmark's WorkBench page and records its publish date and description in the catalog; `--offline` compares what is already recorded. A catalog that lists an older version than your copy never makes it an update. Only downloaded benchmarks are fetched, one page each, so run `cis-bench catalog refresh` first if the catalog itself is stale. With nothing downloaded it says so and contacts nothing. A downloaded benchmark whose WorkBench page answers 404 is reported as no longer on WorkBench and the others are still checked.
 
 ```bash
 cis-bench catalog check-updates
 cis-bench catalog check-updates --offline
 ```
+
+`cis-bench catalog download <id>` then downloads the update.
 
 ### `cis-bench catalog stats`
 
@@ -954,7 +1010,8 @@ A command exits `0` only when everything it was asked to do succeeded.
 - `0` - Success
 - `1` - Error (authentication failed, file not found, nothing matched, etc.)
 - `2` - Usage error on the command line (an unknown option, a bad option value); a bad `CIS_BENCH_*` setting is reported as a Configuration Error with exit `1`
-- `cis-bench download` exits `1` if any requested benchmark or export failed, even when others succeeded
+- `cis-bench download` exits `1` if any requested benchmark, cache write or export failed, even when others succeeded
+- `cis-bench diff` exits `1` when either benchmark cannot be read, or cannot be downloaded or cached
 - `cis-bench export` with several benchmarks exits `1` if any export failed; the others are still written and the summary says how many succeeded
 - `cis-bench get` exits `1` when nothing matched the query, when the ID is not in the catalog, or when the interactive menu is left without a choice
 - `cis-bench validate` exits `2` when a file is not valid XCCDF (here `2` is the validation result, as with `oscap xccdf validate`) and `1` when a file could not be validated at all (missing, not XML, not XCCDF)

@@ -622,7 +622,7 @@ def check_updates(offline):
             settings = settings_from()
             session = auth_manager(settings).get_or_create_session()
             console.print("[cyan]Checking WorkBench publication dates...[/cyan]")
-            refreshed = catalog_scraper(settings, db, session).refresh_downloaded_revision_dates()
+            refreshed = catalog_scraper(settings, db, session).refresh_downloaded_pages()
             console.print(f"[green]✓[/green] Checked {refreshed} downloaded benchmark(s)\n")
 
         updates = db.check_updates_available()
@@ -644,7 +644,7 @@ def check_updates(offline):
             console.print(f"      Downloaded: {display_time(u['downloaded_at'])}")
             console.print()
 
-        console.print("[cyan]Use 'cis-bench catalog download <id> --force' to update.[/cyan]")
+        console.print("[cyan]Use 'cis-bench catalog download <id>' to download the update.[/cyan]")
 
     except click.Abort:
         raise

@@ -10,7 +10,7 @@ from cis_bench.catalog.fts import (
 
 # A plain word is looked up in the text columns of the index and, whole, in the version column;
 # a plain number is looked up in the text columns only.
-TEXT = "{title platform community description}"
+TEXT = "{title platform community}"
 
 
 def word(term: str) -> str:

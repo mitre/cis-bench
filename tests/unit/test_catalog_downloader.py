@@ -1,5 +1,6 @@
 """Unit tests for catalog downloader."""
 
+from datetime import date
 from unittest.mock import Mock, create_autospec, patch
 
 import pytest
@@ -8,7 +9,7 @@ from cis_bench.catalog.database import CatalogDatabase
 from cis_bench.catalog.downloader import CatalogDownloader
 from cis_bench.config import RequestPolicy
 from cis_bench.fetcher.workbench import WorkbenchScraper
-from cis_bench.models.benchmark import Benchmark
+from cis_bench.models.benchmark import Benchmark, BenchmarkPage
 
 POLICY = RequestPolicy(requests_per_second=3.0, retries=2, backoff_factor=1.0, jitter_seconds=0.5)
 
@@ -29,7 +30,6 @@ def temp_db(tmp_path):
             "status": "Published",
             "platform": "Operating System",
             "is_latest": True,
-            "last_revision_date": "2024-11-01",
         }
     )
 
@@ -48,8 +48,10 @@ def mock_scraper(sample_recommendation_minimal):
     mock_benchmark = Benchmark(
         benchmark_id="23598",
         title="Test Benchmark",
-        version="v1.0.0",
+        version="v2.0.1",
         url="https://workbench.cisecurity.org/benchmarks/23598",
+        published_date=date(2025, 8, 28),
+        description="Hardening guidance.",
         scraper_version="v1_2025_10",
         total_recommendations=len(recs),
         recommendations=recs,
@@ -77,8 +79,22 @@ class TestDownloadByID:
         assert result["benchmark_id"] == "23598"
         assert "content_hash" in result
         mock_scraper.download_benchmark.assert_called_once_with(
-            "https://workbench.cisecurity.org/benchmarks/23598"
+            "https://workbench.cisecurity.org/benchmarks/23598", progress_callback=None
         )
+
+    def test_the_scraper_progress_reaches_the_given_callback(self, downloader, mock_scraper):
+        """A caller with its own progress display gets the scraper's progress messages."""
+        heard = []
+
+        def scrape(url, progress_callback=None):
+            progress_callback("Found 10 recommendations")
+            return mock_scraper.download_benchmark.return_value
+
+        mock_scraper.download_benchmark.side_effect = scrape
+
+        downloader.download_by_id("23598", progress_callback=heard.append)
+
+        assert heard == ["Found 10 recommendations"]
 
     def test_download_updates_database(self, downloader, temp_db):
         """Test download saves to database."""
@@ -105,6 +121,33 @@ class TestDownloadByID:
         assert result["status"] == "already_current"
         # Should have called fetch only once (first time)
         assert mock_scraper.download_benchmark.call_count == 1
+
+    def test_a_release_published_again_is_downloaded_again(self, downloader, mock_scraper, temp_db):
+        downloader.download_by_id("23598")
+        temp_db.record_page(
+            "23598", BenchmarkPage(title="CIS Benchmark", published_date=date(2026, 1, 5))
+        )
+
+        result = downloader.download_by_id("23598")
+
+        assert result["status"] in ("updated", "unchanged")
+        assert mock_scraper.download_benchmark.call_count == 2
+
+    def test_a_newer_catalog_version_is_downloaded_again(self, downloader, mock_scraper, temp_db):
+        downloader.download_by_id("23598")
+        temp_db.insert_benchmark(
+            {
+                "benchmark_id": "23598",
+                "title": "CIS Ubuntu Linux 20.04 LTS Benchmark",
+                "version": "v2.1.0",
+                "url": "https://workbench.cisecurity.org/benchmarks/23598",
+                "status": "Published",
+            }
+        )
+
+        downloader.download_by_id("23598")
+
+        assert mock_scraper.download_benchmark.call_count == 2
 
     def test_download_force_redownloads(self, downloader, mock_scraper):
         """Test force flag re-downloads."""
@@ -147,7 +190,7 @@ class TestDownloadByID:
 
         assert result["benchmark_id"] == "23598"
         mock_scraper.download_benchmark.assert_called_once_with(
-            "https://workbench.cisecurity.org/benchmarks/23598"
+            "https://workbench.cisecurity.org/benchmarks/23598", progress_callback=None
         )
 
     @pytest.mark.parametrize(
@@ -181,6 +224,68 @@ class TestDownloadByID:
         mock_scraper.download_benchmark.assert_not_called()
 
 
+class TestCache:
+    """cache is the one place a downloaded benchmark is cached: the row carries the
+    benchmark's version and, when the catalog lists the benchmark, WorkBench's revision date."""
+
+    def test_cache_records_the_publish_date_on_the_copy_and_the_catalog_row(
+        self, downloader, mock_scraper, temp_db
+    ):
+        benchmark = mock_scraper.download_benchmark.return_value
+
+        downloader.cache("23598", benchmark)
+
+        cached = temp_db.get_downloaded("23598")
+        assert cached["version"] == "v2.0.1"
+        assert cached["published_date"] == date(2025, 8, 28)
+        assert temp_db.get_benchmark("23598")["published_date"] == date(2025, 8, 28)
+        assert temp_db.get_benchmark("23598")["description"] == "Hardening guidance."
+        assert cached["recommendation_count"] == 10
+        assert cached["downloaded_at"] == benchmark.downloaded_at
+        mock_scraper.download_benchmark.assert_not_called()
+
+    def test_a_benchmark_the_catalog_does_not_list_is_cached_with_its_date(
+        self, downloader, mock_scraper, temp_db
+    ):
+        downloader.cache("777", mock_scraper.download_benchmark.return_value)
+
+        assert temp_db.get_downloaded("777")["published_date"] == date(2025, 8, 28)
+        assert temp_db.get_benchmark("777") is None
+
+    def test_downloading_again_takes_the_new_copy_date_so_the_update_is_settled(
+        self, downloader, mock_scraper, temp_db
+    ):
+        first = mock_scraper.download_benchmark.return_value
+        downloader.cache("23598", first)
+        republished = first.model_copy(update={"published_date": date(2026, 1, 5)})
+
+        downloader.cache("23598", republished)
+
+        assert temp_db.get_downloaded("23598")["published_date"] == date(2026, 1, 5)
+        assert temp_db.check_updates_available() == []
+
+    def test_a_page_without_a_date_keeps_the_catalog_date_already_known(
+        self, downloader, mock_scraper, temp_db
+    ):
+        temp_db.record_page(
+            "23598", BenchmarkPage(title="CIS Benchmark", published_date=date(2025, 8, 28))
+        )
+        undated = mock_scraper.download_benchmark.return_value.model_copy(
+            update={"published_date": None}
+        )
+
+        downloader.cache("23598", undated)
+
+        assert temp_db.get_benchmark("23598")["published_date"] == date(2025, 8, 28)
+        assert temp_db.get_downloaded("23598")["published_date"] is None
+
+    def test_download_by_id_caches_through_cache(self, downloader, mock_scraper):
+        with patch.object(downloader, "cache", wraps=downloader.cache) as cache:
+            downloader.download_by_id("23598")
+
+        cache.assert_called_once_with("23598", mock_scraper.download_benchmark.return_value)
+
+
 class TestDownloadByName:
     """Test downloading by name with fuzzy matching."""
 
@@ -205,7 +310,7 @@ class TestDownloadByName:
 
         assert result["benchmark_id"] == "23598"
         mock_scraper.download_benchmark.assert_called_once_with(
-            "https://workbench.cisecurity.org/benchmarks/23598"
+            "https://workbench.cisecurity.org/benchmarks/23598", progress_callback=None
         )
 
     def test_download_by_name_forwards_force_flag(self, downloader, mock_scraper):
@@ -347,7 +452,14 @@ class TestChangeDetection:
         ]
 
         first = downloader.download_by_id("23599")
+        # Each later download happens because WorkBench shows the release published again
+        temp_db.record_page(
+            "23599", BenchmarkPage(title="CIS Benchmark", published_date=date(2026, 2, 1))
+        )
         second = downloader.download_by_id("23599")
+        temp_db.record_page(
+            "23599", BenchmarkPage(title="CIS Benchmark", published_date=date(2026, 3, 1))
+        )
         third = downloader.download_by_id("23599")
 
         assert first["status"] == "downloaded"

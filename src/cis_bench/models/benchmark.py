@@ -5,10 +5,10 @@ All scrapers produce this format, all exporters consume this format.
 """
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
-from pydantic import BaseModel, Field, HttpUrl, field_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
 
 
 class CISControl(BaseModel):
@@ -125,6 +125,20 @@ class Recommendation(BaseModel):
     )
 
 
+class BenchmarkPage(BaseModel):
+    """What a benchmark's own WorkBench page says about the release.
+
+    Read whenever a command fetches the page (every download, and an online check-updates)
+    and recorded on the release's catalog row; the catalog listing carries none of it.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    title: str
+    published_date: date | None = None
+    description: str | None = None
+
+
 class Benchmark(BaseModel):
     """A complete CIS benchmark with metadata and recommendations."""
 
@@ -133,6 +147,13 @@ class Benchmark(BaseModel):
     benchmark_id: str = Field(..., description="CIS WorkBench benchmark ID")
     url: HttpUrl = Field(..., description="Source URL")
     version: str = Field(..., description="Benchmark version")
+    published_date: date | None = Field(
+        None,
+        description="The date WorkBench shows this release as published, read from its page",
+    )
+    description: str | None = Field(
+        None, description="The benchmark's overview, as plain text, read from its page"
+    )
 
     downloaded_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC),

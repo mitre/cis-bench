@@ -4,7 +4,7 @@ Uses SQLModel (Pydantic + SQLAlchemy) for type-safe database operations
 with automatic validation.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from enum import Enum
 
 from sqlalchemy import DateTime
@@ -153,19 +153,17 @@ class CatalogBenchmark(SQLModel, table=True):
         default=None, index=True
     )  # cloud, os, database, container, application
 
-    # Dates
-    published_date: str | None = None
-    last_revision_date: str | None = None
+    # The date WorkBench shows this release as published, read from the release's own page
+    # when a command reads it (a download, or an online check-updates). The catalog listing
+    # carries no dates, so a release whose page has not been read has none.
+    published_date: date | None = None
 
-    # Content
+    # The release's overview, read from its page as published_date is
     description: str | None = None
 
     # Flags
     is_latest: bool = Field(default=False)
     is_vnext: bool = Field(default=False)
-
-    # Metadata overflow
-    metadata_json: str | None = None
 
     # Tracking
     scraped_at: datetime = Field(default_factory=utcnow, sa_type=UTCDateTime)
@@ -218,8 +216,8 @@ class DownloadedBenchmark(SQLModel, table=True):
     # Timestamps
     downloaded_at: datetime = Field(default_factory=utcnow, sa_type=UTCDateTime)
     last_accessed: datetime = Field(default_factory=utcnow, sa_type=UTCDateTime)
-    # ISO date (YYYY-MM-DD) WorkBench reports for the benchmark, refreshed by check-updates
-    workbench_last_modified: str | None = None
+    # The date WorkBench showed the release as published when this copy was downloaded
+    published_date: date | None = None
 
 
 # ============================================================================

@@ -175,6 +175,8 @@ class TestLazyStartup:
         "cis_bench.catalog.downloader",
         "cis_bench.catalog.database",
         "cis_bench.exporters",
+        "cis_bench.cli.commands.diff",
+        "deepdiff",
         "sqlalchemy",
         "bs4",
     ]
@@ -203,6 +205,19 @@ class TestLazyStartup:
             f"print(json.dumps([m for m in {self.HEAVY_STACKS!r} if m in sys.modules]))"
         )
         assert loaded == []
+
+    @pytest.mark.parametrize("args", [["--help"], ["diff", "--help"]])
+    def test_help_does_not_import_deepdiff(self, args):
+        """deepdiff is loaded when two benchmarks are compared, not to list or describe commands."""
+        loaded = self._run(
+            "import json, sys\n"
+            "from click.testing import CliRunner\n"
+            "from cis_bench.cli.app import cli\n"
+            f"result = CliRunner().invoke(cli, {args!r})\n"
+            "assert result.exit_code == 0, result.output\n"
+            "print(json.dumps('deepdiff' in sys.modules))"
+        )
+        assert loaded is False
 
     def test_importing_package_is_lazy_but_every_export_resolves(self):
         result = self._run(

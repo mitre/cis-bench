@@ -11,7 +11,7 @@ Focuses on:
 - Edge cases in argument handling
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -1689,3 +1689,61 @@ class TestTypedAuthErrors:
         assert result.exit_code == 1
         assert "Authentication Required" in result.output
         assert "Download failed" not in result.output
+
+
+class TestDownloadAndGetCacheThroughTheCatalogDownloader:
+    """download and get cache a benchmark the same way: the row carries the benchmark's version
+    and the catalog's revision date for it, which check-updates compares against."""
+
+    @pytest.fixture
+    def catalog(self, tmp_path, monkeypatch):
+        from cis_bench.catalog.database import CatalogDatabase
+
+        monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path))
+        db = CatalogDatabase(tmp_path / "catalog.db")
+        db.initialize_schema()
+        db.insert_benchmark(
+            {
+                "benchmark_id": "12345",
+                "title": "CIS Test Benchmark",
+                "version": "v1.0.0",
+                "url": "https://workbench.cisecurity.org/benchmarks/12345",
+                "status": "Published",
+            }
+        )
+        return db
+
+    @pytest.fixture
+    def scraper(self, sample_benchmark):
+        scraper = Mock()
+        scraper.base_url = "https://workbench.cisecurity.org"
+        scraper.download_benchmark.return_value = sample_benchmark.model_copy(
+            update={"published_date": date(2025, 1, 1)}
+        )
+        with (
+            patch("cis_bench.fetcher.auth.AuthManager.get_or_create_session"),
+            patch("cis_bench.fetcher.workbench.WorkbenchScraper", return_value=scraper),
+        ):
+            yield scraper
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ["download", "12345"],
+            ["get", "12345", "--format", "json", "--non-interactive"],
+        ],
+    )
+    def test_the_cached_row_records_version_and_revision_date(
+        self, runner, catalog, scraper, args, tmp_path, monkeypatch
+    ):
+        monkeypatch.chdir(tmp_path)
+
+        result = runner.invoke(cli, args)
+
+        assert result.exit_code == 0, result.output
+        cached = catalog.get_downloaded("12345")
+        assert cached is not None
+        assert cached["version"] == "v1.0.0"
+        assert cached["published_date"] == date(2025, 1, 1)
+        assert catalog.get_benchmark("12345")["published_date"] == date(2025, 1, 1)
+        scraper.download_benchmark.assert_called_once()

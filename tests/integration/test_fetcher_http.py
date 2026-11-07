@@ -515,3 +515,95 @@ class TestUserAgent:
             get_with_retry(new_workbench_session(POLICY), server.base_url + "/p", timeout=TIMEOUT)
 
         assert server.user_agents == [USER_AGENT, USER_AGENT]
+
+
+# Cloudflare's email obfuscation: the first hex byte is a key; every later byte XOR the key is
+# one UTF-8 byte of the address. Fixed vectors (computed once from that scheme).
+CF_FEEDBACK = "42242727262023212902212b31272137302b363b6c2d3025"  # feedback@cisecurity.org
+CF_INFO = "9df4f3fbf2ddf8e5fcf0edf1f8b3fef2f0"  # info@example.com
+CF_UTF8 = "177dd4ab6570727957726f767a677b72397372"  # jürgen@example.de
+
+
+class TestCloudflareObfuscatedAddresses:
+    """Addresses Cloudflare obfuscates are decoded where WorkBench page text enters cis-bench."""
+
+    def test_cloudflare_obfuscated_addresses_are_decoded(self):
+        from cis_bench.fetcher.http import decode_cloudflare_emails
+
+        page = (
+            "<p>Write us at "
+            f'<a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="{CF_FEEDBACK}">'
+            "[email&#160;protected]</a> or "
+            f'<a href="/cdn-cgi/l/email-protection#{CF_INFO}">'
+            f'<span class="__cf_email__" data-cfemail="{CF_INFO}">[email&#160;protected]</span></a>.</p>'
+        )
+
+        assert decode_cloudflare_emails(page) == (
+            "<p>Write us at feedback@cisecurity.org or "
+            '<a href="mailto:info@example.com">info@example.com</a>.</p>'
+        )
+
+    def test_a_non_ascii_address_decodes(self):
+        from cis_bench.fetcher.http import decode_cloudflare_emails
+
+        assert decode_cloudflare_emails(
+            f'<span class="__cf_email__" data-cfemail="{CF_UTF8}">[email protected]</span>'
+        ) == ("jürgen@example.de")
+
+    @pytest.mark.parametrize(
+        "hex_text",
+        [CF_INFO[:-1], "zz" + CF_INFO[2:], CF_INFO + "zz", "41ff", "41", ""],
+        ids=["odd-length", "not-hex", "hex-then-junk", "not-utf8", "key-only", "empty"],
+    )
+    def test_malformed_markup_is_left_as_it_was(self, hex_text):
+        from cis_bench.fetcher.http import decode_cloudflare_emails
+
+        page = (
+            f'<a class="__cf_email__" data-cfemail="{hex_text}">[email protected]</a>'
+            f'<a href="/cdn-cgi/l/email-protection#{hex_text}">x</a>'
+        )
+
+        assert decode_cloudflare_emails(page) == page
+
+    @pytest.mark.parametrize(
+        "page",
+        [
+            f'<a href="https://example.org/cdn-cgi/l/email-protection#{CF_INFO}">x</a>',
+            f"<p>See /cdn-cgi/l/email-protection#{CF_INFO} for details</p>",
+            f'<span x-data-cfemail="{CF_INFO}">kept</span>',
+        ],
+        ids=["another-origin", "prose", "other-attribute"],
+    )
+    def test_only_cloudflares_own_markup_is_rewritten(self, page):
+        from cis_bench.fetcher.http import decode_cloudflare_emails
+
+        assert decode_cloudflare_emails(page) == page
+
+    def test_text_without_the_markup_is_unchanged(self):
+        from cis_bench.fetcher.http import decode_cloudflare_emails
+
+        page = '<p>Mail <a href="mailto:feedback@cisecurity.org">feedback@cisecurity.org</a></p>'
+
+        assert decode_cloudflare_emails(page) == page
+
+    def test_an_address_is_escaped_for_the_html_it_goes_into(self):
+        from cis_bench.fetcher.http import decode_cloudflare_emails
+
+        key = 0x21
+        hex_text = f"{key:02x}" + "".join(f"{c ^ key:02x}" for c in b'a"<b>@x.org')
+
+        assert decode_cloudflare_emails(
+            f'<a href="/cdn-cgi/l/email-protection#{hex_text}">t</a>'
+        ) == ('<a href="mailto:a&quot;&lt;b&gt;@x.org">t</a>')
+        assert decode_cloudflare_emails(f'<span data-cfemail="{hex_text}">x</span>') == (
+            'a"&lt;b&gt;@x.org'
+        )
+
+    def test_the_page_text_of_a_response_is_decoded(self):
+        from cis_bench.fetcher.http import workbench_page_text
+
+        response = requests.Response()
+        response._content = f'<b data-x="1"></b><span data-cfemail="{CF_INFO}">x</span>'.encode()
+        response.encoding = "utf-8"
+
+        assert workbench_page_text(response) == '<b data-x="1"></b>info@example.com'

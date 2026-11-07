@@ -53,6 +53,8 @@ dependencies = [
     "xsdata[cli,lxml]>=24.0.0",
     "lxml>=5.0.0",
     "requests-ratelimiter>=0.10.0",
+    # Comparing two benchmark versions (cis-bench diff)
+    "deepdiff>=9.1.0",
 ]
 
 [project.optional-dependencies]

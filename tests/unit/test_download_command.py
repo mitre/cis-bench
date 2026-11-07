@@ -145,47 +145,66 @@ class TestDownloadDatabaseCaching:
                 # Should still save the JSON file (default format) in the data folder
                 assert list((nonexistent_path.parent / "benchmarks").glob("*.json"))
 
-    def test_download_continues_on_database_error(
+    def test_a_failed_cache_write_fails_that_benchmark_but_keeps_its_exports(
         self, runner, sample_benchmark, tmp_path, monkeypatch
     ):
-        """Download continues if database save fails."""
+        """The download is not thrown away: its exports are written, the failure is reported,
+        and the command exits 1 because not everything asked for was done."""
+        from sqlalchemy.exc import OperationalError
+
         catalog_path = tmp_path / "catalog.db"
         catalog_path.touch()
 
         monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
         monkeypatch.setenv("CIS_BENCH_VERIFY_SSL", "false")
 
-        mock_session = Mock()
-        with patch("cis_bench.fetcher.auth.AuthManager.get_or_create_session") as mock_auth:
-            mock_auth.return_value = mock_session
+        with (
+            patch("cis_bench.fetcher.auth.AuthManager.get_or_create_session"),
+            patch("cis_bench.fetcher.workbench.WorkbenchScraper") as mock_scraper_class,
+            patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class,
+        ):
+            mock_scraper_class.return_value.download_benchmark.return_value = sample_benchmark
+            mock_db = mock_db_class.return_value
+            mock_db.get_downloaded.return_value = None
+            mock_db.get_benchmark.return_value = None
+            mock_db.save_downloaded.side_effect = OperationalError(
+                "INSERT", {}, Exception("database is locked [/x]")
+            )
 
-            with patch("cis_bench.fetcher.workbench.WorkbenchScraper") as mock_scraper_class:
-                mock_scraper = Mock()
-                mock_scraper_class.return_value = mock_scraper
-                mock_scraper.download_benchmark.return_value = sample_benchmark
+            result = runner.invoke(cli, ["download", "23598"])
 
-                # Mock database to raise error
-                with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
-                    mock_db = Mock()
-                    mock_db_class.return_value = mock_db
-                    mock_db.save_downloaded.side_effect = Exception("Database error [/x]")
+        assert result.exit_code == 1, result.output
+        flat = " ".join(result.output.split())
+        assert "Could not cache 23598:" in flat
+        assert "database is locked [/x]" in flat
+        assert "INSERT" not in result.output
+        assert "Cached in database" not in result.output
+        assert "1 of 1 benchmark(s) failed (23598)" in flat
+        assert "Traceback" not in result.output
+        assert list((tmp_path / "benchmarks").glob("*.json"))
 
-                    result = runner.invoke(
-                        cli,
-                        ["download", "23598"],
-                    )
+    def test_an_unexpected_cache_error_is_not_swallowed(
+        self, runner, sample_benchmark, tmp_path, monkeypatch
+    ):
+        """Only database and OS errors are a failed cache write; anything else is a bug."""
+        catalog_path = tmp_path / "catalog.db"
+        catalog_path.touch()
+        monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
 
-                    # Should still succeed
-                    assert result.exit_code == 0, f"Download failed: {result.output}"
+        with (
+            patch("cis_bench.fetcher.auth.AuthManager.get_or_create_session"),
+            patch("cis_bench.fetcher.workbench.WorkbenchScraper") as mock_scraper_class,
+            patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class,
+        ):
+            mock_scraper_class.return_value.download_benchmark.return_value = sample_benchmark
+            mock_db = mock_db_class.return_value
+            mock_db.get_downloaded.return_value = None
+            mock_db.save_downloaded.side_effect = TypeError("a bug")
 
-                    # Should show warning
-                    assert (
-                        result.output.count("Could not cache in database: Database error [/x]") == 1
-                    )
-                    assert "Traceback" not in result.output
+            result = runner.invoke(cli, ["download", "23598"])
 
-                    # Should still create the JSON file in the data folder
-                    assert list((tmp_path / "benchmarks").glob("*.json"))
+        assert result.exit_code == 1
+        assert "Could not cache" not in result.output
 
     def test_download_multiple_benchmarks_caches_all(
         self, runner, sample_benchmark, tmp_path, monkeypatch

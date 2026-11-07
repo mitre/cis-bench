@@ -5,9 +5,8 @@ Extracts benchmark metadata from HTML catalog listing pages.
 
 import logging
 import re
-from datetime import datetime
 
-from bs4 import BeautifulSoup, Tag
+from bs4 import BeautifulSoup
 
 from cis_bench.exceptions import AuthenticationError
 from cis_bench.fetcher.auth import is_workbench_login_page
@@ -281,71 +280,3 @@ class WorkBenchCatalogParser:
 
         logger.debug(f"Pagination info: {result}")
         return result
-
-    _ORDINAL_SUFFIX_RE = re.compile(r"(\d+)(st|nd|rd|th)\b")
-    _PUBLISHED_ON_RE = re.compile(r"\bago on ([A-Za-z]+ \d+(?:st|nd|rd|th) \d{4})")
-
-    @staticmethod
-    def published_date_to_iso(text: str | None) -> str | None:
-        """Convert WorkBench's "Aug 28th 2025" (or "September 9th 2025") to "2025-08-28".
-
-        Returns None for anything that is not a real calendar date in that shape.
-        """
-        if not text:
-            return None
-        cleaned = WorkBenchCatalogParser._ORDINAL_SUFFIX_RE.sub(r"\1", text.strip())
-        for fmt in ("%b %d %Y", "%B %d %Y"):
-            try:
-                return datetime.strptime(cleaned, fmt).date().isoformat()
-            except ValueError:
-                continue
-        return None
-
-    @staticmethod
-    def parse_benchmark_detail_page(html: str) -> dict:
-        """Parse individual benchmark page for additional metadata.
-
-        This is for Phase 2 enhancement - get published date, description, etc.
-        from the benchmark detail page (not the catalog listing).
-
-        Args:
-            html: HTML from benchmark detail page
-
-        Returns:
-            Dictionary with published_date, description, etc.
-        """
-        soup = BeautifulSoup(html, "html.parser")
-
-        metadata = {}
-
-        # Extract the publication date. WorkBench renders the status label in its own
-        # <p> ("Published", "Draft") and leaves "1 year ago on Aug 28th 2025" as a bare
-        # sibling text node, so match the date text node on its own.
-        date_text = soup.find(string=WorkBenchCatalogParser._PUBLISHED_ON_RE)
-        if isinstance(date_text, str):
-            date_match = WorkBenchCatalogParser._PUBLISHED_ON_RE.search(date_text)
-            if date_match:
-                metadata["published_date"] = date_match.group(1)
-                metadata["published_relative"] = " ".join(date_text.split())
-
-        # Extract description from Overview section
-        overview = soup.find(
-            lambda tag: isinstance(tag, Tag)
-            and tag.name == "h2"
-            and "overview" in tag.get_text().lower()
-        )
-        if isinstance(overview, Tag):
-            # Get text after Overview heading
-            desc_parts = []
-            for sibling in overview.find_next_siblings():
-                if sibling.name and sibling.name.startswith("h"):
-                    break  # Stop at next heading
-                text = sibling.get_text(strip=True)
-                if text:
-                    desc_parts.append(text)
-
-            if desc_parts:
-                metadata["description"] = " ".join(desc_parts[:3])  # First 3 paragraphs
-
-        logger.debug(f"Extracted metadata: {metadata}")
-        return metadata

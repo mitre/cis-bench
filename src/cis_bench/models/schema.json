@@ -372,8 +372,35 @@
       "title": "Version",
       "type": "string"
     },
+    "published_date": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The date WorkBench shows this release as published, read from its page",
+      "title": "Published Date"
+    },
+    "description": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The benchmark's overview, as plain text, read from its page",
+      "title": "Description"
+    },
     "downloaded_at": {
-      "description": "Download timestamp",
+      "description": "When the benchmark was downloaded, with its zone (UTC)",
       "format": "date-time",
       "title": "Downloaded At",
       "type": "string"

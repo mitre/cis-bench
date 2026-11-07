@@ -307,7 +307,7 @@ class TestCatalogRefreshSharedFetch:
 
         scraper.scrape_full_catalog(max_pages=3)
         scraper.scrape_page_one_update()
-        scraper.refresh_downloaded_revision_dates()
+        scraper.refresh_downloaded_pages()
 
         assert len(transport.settings) == 5
         assert {s["timeout"] for s in transport.settings} == {(10.0, 45.0)}

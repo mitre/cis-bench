@@ -9,15 +9,15 @@ import click
 from rich.console import Console
 from rich.markup import escape
 
-from cis_bench.cli.helpers.errors import report_expired_session, report_unreachable
+from cis_bench.cli.helpers.errors import (
+    DOWNLOAD_ERRORS,
+    cache_failure,
+    report_download_error,
+    report_expired_session,
+)
 from cis_bench.cli.helpers.output import display_time
 from cis_bench.cli.helpers.services import auth_manager, settings_from, workbench_scraper
-from cis_bench.exceptions import (
-    AuthenticationError,
-    FetchError,
-    NoSavedSessionError,
-    TLSVerificationError,
-)
+from cis_bench.exceptions import AuthenticationError
 from cis_bench.exporters import ExporterFactory
 from cis_bench.utils.workbench_urls import resolve_benchmark_reference
 
@@ -135,24 +135,8 @@ def download(
         console.print("[green]✓[/green] Authenticated successfully\n")
         logger.debug("Authentication successful")
 
-    except NoSavedSessionError:
-        console.print("\n[bold red]Authentication Required[/bold red]\n")
-        console.print("[bold cyan]Please log in first:[/bold cyan]")
-        console.print("  cis-bench auth login --browser chrome")
-        console.print("\n[dim]This saves your session for future commands.[/dim]")
-        console.print(
-            "\n[dim]Windows users: If Chrome fails, try Firefox or --cookies option.[/dim]"
-        )
-        sys.exit(1)
-    except TLSVerificationError as e:
-        # The server could not be trusted; the message carries the remediation.
-        console.print(f"\n[red]✗ {escape(str(e))}[/red]")
-        sys.exit(1)
-    except AuthenticationError as e:
-        report_expired_session(console, e)
-        sys.exit(1)
-    except FetchError as e:
-        report_unreachable(console, e)
+    except DOWNLOAD_ERRORS as e:
+        report_download_error(console, e)
         sys.exit(1)
     except Exception as e:
         logger.debug("Authentication failed", exc_info=True)
@@ -200,11 +184,9 @@ def download(
                     logger.debug(f"Cache check failed: {e}, will download anyway")
 
         try:
-            # Download with progress bar (using helper)
             from cis_bench.cli.helpers.download_helper import download_with_progress
 
             console.print(f"{prefix} [cyan]Starting download...[/cyan]")
-
             benchmark = download_with_progress(scraper, url, prefix=prefix)
 
             logger.debug(f"Successfully downloaded benchmark: {benchmark.title}")
@@ -222,35 +204,24 @@ def download(
                 f"      NIST Controls: {sum(len(r.nist_controls) for r in benchmark.recommendations)}"
             )
 
-            # Save to catalog database if it exists
+            # Into the cache when there is one (catalog.db). A failed cache write fails this
+            # benchmark, but the download is kept: the exports below are still written.
             catalog_db_path = settings.catalog_db_path
             if catalog_db_path.exists():
+                from sqlalchemy.exc import SQLAlchemyError
+
+                from cis_bench.catalog.database import CatalogDatabase
+                from cis_bench.catalog.downloader import CatalogDownloader
+
                 try:
-                    from cis_bench.catalog.database import (
-                        CatalogDatabase,
-                        serialize_benchmark_json,
+                    CatalogDownloader(CatalogDatabase(catalog_db_path), scraper).cache(
+                        benchmark_id, benchmark
                     )
-
-                    # Prepare data for database
-                    content_json, content_hash = serialize_benchmark_json(benchmark)
-                    recommendation_count = len(benchmark.recommendations)
-
-                    db = CatalogDatabase(catalog_db_path)
-                    db.save_downloaded(
-                        version=benchmark.version,
-                        benchmark_id=benchmark_id,
-                        content_json=content_json,
-                        content_hash=content_hash,
-                        recommendation_count=recommendation_count,
-                        downloaded_at=benchmark.downloaded_at,
-                    )
-                    logger.debug(f"Saved benchmark {benchmark_id} to catalog database")
                     console.print(f"      [green]✓[/green] Cached in database (ID: {benchmark_id})")
-                except Exception as e:
-                    logger.debug("Failed to save to catalog database", exc_info=True)
-                    console.print(
-                        f"      [yellow]⚠[/yellow] Could not cache in database: {escape(str(e))}"
-                    )
+                except (SQLAlchemyError, OSError) as e:
+                    logger.debug("Failed to cache the benchmark", exc_info=True)
+                    console.print(f"      [red]✗[/red] {escape(cache_failure(benchmark_id, e))}")
+                    failed.append(benchmark_id)
 
             # Export to requested formats
             for fmt in export_formats:

@@ -12,7 +12,7 @@ a version: it means a number in a title.
 import re
 import unicodedata
 
-TEXT_COLUMNS = ("title", "platform", "community", "description")
+TEXT_COLUMNS = ("title", "platform", "community")
 VERSION_COLUMN = "version"
 
 _WORD_TOKEN_RE = re.compile(r"[^\W_]+")
