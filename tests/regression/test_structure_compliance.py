@@ -95,6 +95,18 @@ class TestControlMappingFidelity:
         with pytest.raises(ValueError, match="nist_after_everything"):
             engine.map_rule(sample_benchmark.recommendations[0], {})
 
+    def test_a_rule_id_template_that_gives_no_id_is_refused(
+        self, sample_benchmark, disa_config_path
+    ):
+        # The template only sees the ref's values; any other variable leaves the id empty.
+        from cis_bench.exporters.mapping_engine import MappingEngine
+
+        engine = MappingEngine(disa_config_path)
+        engine.config.rule_id["template"] = "{platform}"
+
+        with pytest.raises(ValueError, match="gives no Rule id"):
+            engine.map_rule(sample_benchmark.recommendations[0], {"platform": "ubuntu"})
+
     @pytest.mark.parametrize("style", ["cis", "disa"])
     def test_profiles_select_every_rule_listing_them(self, sample_benchmark, tmp_path, style):
         tree = _export(sample_benchmark, tmp_path, style)

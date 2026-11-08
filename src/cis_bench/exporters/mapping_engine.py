@@ -893,6 +893,21 @@ class MappingEngine:
 
         return None
 
+    def rule_id_for_ref(self, ref: str) -> str:
+        """The Rule id for a recommendation ref, from the style's rule_id template; the one
+        place a Rule id is made, so a Rule and every Profile select naming it agree."""
+        template = self.config.rule_id.get("template", "CIS-{ref_normalized}_rule")
+        rule_id = VariableSubstituter.substitute(
+            template,
+            {
+                "ref_normalized": self.normalize_ref(ref),
+                "stig_number": self.ref_to_stig_number(ref),
+            },
+        )
+        if not isinstance(rule_id, str) or not rule_id:
+            raise ValueError(f"rule_id template {template!r} gives no Rule id for ref {ref!r}")
+        return rule_id
+
     def _cci_split(self, rec: Recommendation, context: dict) -> tuple[list[str], list[str]]:
         """The rule's (CCIs, NIST controls no CCI covers), computed once per rule by map_rule
         and shared by the CCI idents and the NIST references."""
@@ -932,9 +947,7 @@ class MappingEngine:
         # The context is shared across rules: drop the previous rule's CCI split.
         context.pop("cci_split", None)
 
-        rule_id = VariableSubstituter.substitute(
-            self.config.rule_id.get("template", "CIS-{ref_normalized}_rule"), context
-        )
+        rule_id = self.rule_id_for_ref(rec.ref)
 
         # Start with required fields and defaults
         # Note: status belongs at Benchmark level, not Rule level
@@ -1565,18 +1578,9 @@ class MappingEngine:
             select_list = []
             for rec in recommendations:
                 if names.intersection(rec.profiles):
-                    # Generate rule ID using config template (same logic as map_rule)
-                    ref_normalized = self.normalize_ref(rec.ref)
-                    stig_number = self.ref_to_stig_number(rec.ref)
-                    rule_context = {
-                        "ref_normalized": ref_normalized,
-                        "stig_number": stig_number,
-                    }
-                    rule_id = VariableSubstituter.substitute(
-                        self.config.rule_id.get("template", "CIS-{ref_normalized}_rule"),
-                        rule_context,
+                    select_list.append(
+                        ProfileSelectType(idref=self.rule_id_for_ref(rec.ref), selected=True)
                     )
-                    select_list.append(ProfileSelectType(idref=rule_id, selected=True))
 
             if not select_list:
                 # Only a page definition can get here: a name on the rules selects its rules.

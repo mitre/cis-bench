@@ -115,6 +115,11 @@ template: "xccdf_org.cisecurity.benchmarks_rule_{ref_normalized}"
 ref_normalized: "replace('.', '_')" # 3.1.1 3_1_1
 ```
 
+The template sees two values made from the recommendation's ref: `{ref_normalized}`
+(`3_1_1`) and `{stig_number}` (`030101`). The same id names the Rule and every Profile
+`select` of it. A template that gives no id (an empty template, or one naming any other
+variable) stops the export with an error.
+
 ## Field Mappings
 
 Core of the configuration. Each field mapping defines how to map one field.
