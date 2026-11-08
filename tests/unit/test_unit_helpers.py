@@ -854,36 +854,6 @@ class TestCCILookupService:
         # No extras
         assert extra_nist == []
 
-    def test_get_base_nist_control_simple(self):
-        """Test extracting base NIST control (simple case)."""
-        base = CCILookupService._get_base_nist_control("CM-7")
-        assert base == "CM-7"
-
-    def test_get_base_nist_control_with_subcontrol(self):
-        """Test extracting base from subcontrol (CM-7.1 → CM-7)."""
-        base = CCILookupService._get_base_nist_control("CM-7.1")
-        assert base == "CM-7"
-
-    def test_get_base_nist_control_with_enhancement(self):
-        """Test extracting base from enhancement (CM-7(5) → CM-7)."""
-        base = CCILookupService._get_base_nist_control("CM-7(5)")
-        assert base == "CM-7"
-
-    def test_get_base_nist_control_complex(self):
-        """Test extracting base from complex control (CM-7.1(5) → CM-7)."""
-        base = CCILookupService._get_base_nist_control("CM-7.1(5)")
-        assert base == "CM-7"
-
-    def test_hierarchical_matching(self, cci_service):
-        """Test that hierarchical matching works (CM-7.1 covers CM-7)."""
-        # This is testing the CONCEPT - actual implementation depends on mapping data
-        # If we have a CCI that maps to CM-7.1, it should cover CM-7
-        base_cm7 = CCILookupService._get_base_nist_control("CM-7.1")
-        base_cm7_cited = CCILookupService._get_base_nist_control("CM-7")
-
-        # Both should resolve to CM-7
-        assert base_cm7 == base_cm7_cited == "CM-7"
-
 
 # ============================================================================
 # TEST: DRY Helper Methods (MappingEngine)

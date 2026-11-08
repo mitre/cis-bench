@@ -166,76 +166,43 @@ Ensure Only Approved Ports, Protocols and Services Are Running
 
 ### CCI + NIST Deduplication Algorithm
 
-**Goal**: Use CCIs (DoD standard) where available, add NIST references only for extras
+**Goal**: use CCIs (the DoD standard) where the mapping gives them, and add a NIST reference
+only for each cited NIST control no CCI on the rule covers. The full rules are in
+[CCI + NIST Deduplication Algorithm](#cci-nist-deduplication-algorithm-disa-style-only).
 
 **Input**:
 
-- CIS Control from recommendation: "4.8"
-- CIS nist_controls: ["CM-7", "SI-3", "MP-7"]
-- CCI mapping for 4.8:
+- The recommendation's CIS Controls: v8 "4.8" (and its v7 control, which is not looked up)
+- Its NIST controls: ["CM-7", "SI-3", "MP-7"]
+- The mapping entry for 4.8 in `cis-cci-mapping.json`:
 ```json
 {
-"primary_cci": {"cci": "CCI-000381", "nist": "CM-7.1"},
+"cis_id": "4.8",
+"primary_cci": {"cci": "CCI-001762", "nist_control": "CM-7 (1) (b)"},
 "supporting_ccis": [
-{"cci": "CCI-000382", "nist": "CM-7.3"},
-{"cci": "CCI-000380", "nist": "CM-7.2"}
-]
+{"cci": "CCI-000382", "nist_control": "CM-7 b"},
+{"cci": "CCI-000381", "nist_control": "CM-7 a"},
+{"cci": "CCI-000384", "nist_control": "CM-7 (1) (a)"}
+],
+"mapping_status": "OFFICIAL"
 }
 ```
 
-**Step 1**: Extract all CCIs from mapping
-```
-CCIs: [CCI-000381, CCI-000382, CCI-000380]
-```
+**Step 1**: the DISA style takes the primary CCI (`extract: "primary"`): CCI-001762.
 
-**Step 2**: Determine which NIST controls each CCI covers
-```
-CCI-000381 CM-7.1 covers "CM-7"
-CCI-000382 CM-7.3 covers "CM-7"
-CCI-000380 CM-7.2 covers "CM-7"
-```
+**Step 2**: it covers the base control of its `nist_control`: CM-7.
 
-**Step 3**: Check each CIS-cited NIST control
-```
-For "CM-7": Covered by CCIs (CCI-000381, 382, 380)
-For "SI-3": NOT in any CCI mapping
-For "MP-7": NOT in any CCI mapping
-```
+**Step 3**: "CM-7" is covered; "SI-3" and "MP-7" are not.
 
-**Step 4**: Build output
+**Step 4**: output
 ```xml
-<!-- Add ALL CCIs from mapping (they cover CM-7) -->
-<ident system="http://cyber.mil/cci">CCI-000381</ident>
-<ident system="http://cyber.mil/cci">CCI-000382</ident>
-<ident system="http://cyber.mil/cci">CCI-000380</ident>
-
-<!-- Add extras as references (not covered by CCIs) -->
-<reference>
-<dc:identifier>SI-3</dc:identifier>
+<ident system="http://cyber.mil/cci">CCI-001762</ident>
+<reference href="https://csrc.nist.gov/Projects/risk-management/sp800-53-controls">
+<dc:title>NIST SP 800-53</dc:title><dc:identifier>SI-3</dc:identifier>
 </reference>
-<reference>
-<dc:identifier>MP-7</dc:identifier>
+<reference href="https://csrc.nist.gov/Projects/risk-management/sp800-53-controls">
+<dc:title>NIST SP 800-53</dc:title><dc:identifier>MP-7</dc:identifier>
 </reference>
-```
-
-**Matching Logic for NIST Controls**:
-```python
-def nist_control_matches(cited, cci_mapped):
-"""Check if CCI-mapped control covers cited control.
-
-Examples:
-cited="CM-7", cci_mapped="CM-7.1" True
-cited="CM-7", cci_mapped="CM-7" True
-cited="CM-7.1", cci_mapped="CM-7" False (too broad)
-cited="CM-7(5)", cci_mapped="CM-7.1" False (different enhancement)
-
-Logic: Strip enhancement numbers, check if cci_mapped starts with cited
-"""
-cited_base = cited.split('(')[0] # "CM-7(5)" "CM-7"
-cci_base = cci_mapped.split('(')[0] # "CM-7(5)" "CM-7"
-
-# CM-7.1 covers CM-7, but not vice versa
-return cci_base.startswith(cited_base)
 ```
 
 ### Why This Normalization Is Correct
@@ -407,169 +374,53 @@ Verify the permissions are 644 or more restrictive.
 ### Purpose
 Avoid duplicating NIST control references when CCIs already provide that mapping.
 
+### The mapping file
+
+`src/cis_bench/data/cis-cci-mapping.json` maps each CIS Controls v8 safeguard (`cis_id`,
+"4.8") to DISA CCIs: a `primary_cci` and up to three `supporting_ccis`, each with its
+`cci`, `confidence`, `reasoning` and `nist_control` (the CCI's NIST SP 800-53 Rev 5 index
+in DISA's CCI list, such as "CM-7 (1) (b)"). `mapping_status` is:
+
+- `OFFICIAL`: the safeguard's NIST controls are CIS's own, and its CCIs are DISA's for those
+  controls. Only these entries give CCIs.
+
+- `INFERRED`: CCIs kept as research data; they give no CCIs and cover nothing.
+- `UNMAPPED`: no CCI fits; no `primary_cci`.
+
+`utils/cci_lookup.py` reads every entry through one reader and refuses an OFFICIAL entry
+whose primary CCI is missing or any of whose CCIs lacks `cci` or `nist_control`.
+
 ### Algorithm
 
-**Input**:
+For each recommendation, once:
 
-- `cis_controls`: List of CIS Control objects from recommendation
-- `nist_controls`: List of NIST control IDs cited by CIS authors (e.g., ["CM-7", "SI-3"])
-- `cis_cci_mapping`: Loaded from cis-cci-mapping.json
-
-**Process**:
-
-**Step 1**: For each CIS Control, look up CCI mapping
-```python
-for cis_ctrl in recommendation.cis_controls:
-cis_id = f"{cis_ctrl.version}.{cis_ctrl.control}" # "8.4.8" or "7.9.2"
-
-mapping = cis_cci_mapping.get(cis_id)
-if mapping:
-# Collect CCIs
-all_ccis.append(mapping['primary_cci']['cci'])
-all_ccis.extend([s['cci'] for s in mapping['supporting_ccis']])
-```
-
-**Step 2**: Build CCI NIST reverse map
-```python
-cci_to_nist = {}
-for mapping in cis_cci_mapping.values():
-# From primary
-cci_to_nist[mapping['primary_cci']['cci']] = extract_nist(mapping['primary_cci'])
-
-# From supporting
-for supp in mapping['supporting_ccis']:
-cci_to_nist[supp['cci']] = extract_nist(supp)
-
-# Extract NIST from CCI mapping entry
-def extract_nist(cci_entry):
-# Could be in 'nist' field or need to parse from reasoning
-# Return base control: "CM-7.1" "CM-7"
-```
-
-**Step 3**: Check which cited NIST controls are covered by CCIs
-```python
-covered_nist = set()
-for cci in all_ccis:
-nist_ctrl = cci_to_nist.get(cci)
-if nist_ctrl:
-base = nist_ctrl.split('(')[0].split('.')[0] # "CM-7(5)" "CM-7"
-covered_nist.add(base)
-```
-
-**Step 4**: Find NIST controls NOT covered by CCIs
-```python
-extra_nist = []
-for cited in recommendation.nist_controls:
-cited_base = cited.split('(')[0].split('.')[0]
-if cited_base not in covered_nist:
-extra_nist.append(cited)
-```
-
-**Output**:
-```xml
-<!-- All CCIs (cover CM-7) -->
-<ident>CCI-000381</ident>
-<ident>CCI-000382</ident>
-<ident>CCI-000380</ident>
-
-<!-- Extras not covered by CCIs -->
-<reference><dc:identifier>SI-3</dc:identifier></reference>
-<reference><dc:identifier>MP-7</dc:identifier></reference>
-```
+1. Look up only the CIS Controls of the version the mapping file is keyed by
+   (`cci_lookup.cis_controls_version: 8` in `disa.yaml`); v7 numbers name unrelated v8
+   safeguards.
+2. Collect each safeguard's CCIs (`extract: "primary"` in the DISA style: the primary CCI
+   only; `"all"` adds the supporting CCIs), each CCI once.
+3. A CCI covers the base control of its `nist_control`: the family and number at its
+   start ("CM-7 (1) (b)" covers CM-7, "SC-7 (4) (b)" covers SC-7).
+4. Every NIST control the recommendation cites whose base control no CCI covers becomes a
+   `<reference>` (`source_logic: "nist_after_cci_deduplication"`), with the `dc_elements`
+   the field names.
+5. A recommendation with no CCI gets `fallback_cci` (CCI-000366, CM-6 b), and all its NIST
+   controls become references.
 
 ### NIST Control Matching Rules
 
-**Matching is hierarchical**:
-
-- CCI maps to "CM-7.1" **covers** citation of "CM-7"
-- CCI maps to "CM-7" does **NOT cover** citation of "CM-7.1" (too specific)
-- CCI maps to "CM-7(5)" **covers** "CM-7" but not "CM-7(4)" (different enhancement)
-
-**Base matching**:
-```python
-def cci_covers_citation(cci_nist_control: str, cited_nist_control: str) -> bool:
-"""Check if CCI-mapped control covers the cited control.
-
-Examples:
-("CM-7.1", "CM-7") True
-("CM-7", "CM-7") True
-("CM-7", "CM-7.1") False (CCI too broad)
-("CM-7.1", "CM-7.1") True
-("CM-7.1", "CM-7.2") False (different sub-control)
-"""
-# Normalize: remove enhancements
-cited_base = cited_nist_control.split('(')[0]
-cci_base = cci_nist_control.split('(')[0]
-
-# Check if CCI control starts with cited
-# "CM-7.1".startswith("CM-7") True
-return cci_base.startswith(cited_base)
-```
+Matching compares base controls, both ways: a CCI for "CM-7 (5)" or "CM-7 b" covers a
+citation of "CM-7", "CM-7(4)" or "CM-7.1", and a CCI for "CM-7" covers "CM-7 (5)". The
+cited control is written as a reference only when its family and number differ from every
+covered base control.
 
 ### Edge Cases
 
-**Case 1**: CIS cites "CM-7" but CCI maps to "CM-7(5)"
+- **A recommendation with no CIS Controls** (older benchmarks): the fallback CCI, and every
+  NIST control as a reference.
 
-- Match: CM-7(5) covers CM-7? **YES** (enhancement of CM-7)
-- Action: Use CCI
-
-**Case 2**: CIS cites "CM-7.1" but CCI maps to "CM-7"
-
-- Match: CM-7 covers CM-7.1? **NO** (too general)
-- Action: Add CM-7.1 as reference (CCI doesn't cover specific sub-control)
-
-**Case 3**: CIS has no CIS Controls (old benchmark)
-
-- No CCI mapping available
-- Action: Add all NIST controls as references
-
-**Case 4**: CCI mapping not found for CIS Control
-
-- Mapping incomplete
-- Action: Add all NIST controls as references, log warning
-
-### Implementation Notes
-
-**CCI Mapping File**: Bundle cis-cci-mapping.json with tool
-```python
-# Load once at module import
-import json
-from pathlib import Path
-
-CCI_MAPPING_FILE = Path(__file__).parent / 'data' / 'cis-cci-mapping.json'
-
-with open(CCI_MAPPING_FILE) as f:
-CIS_CCI_MAPPING = json.load(f)
-```
-
-**Lookup function**:
-```python
-def get_ccis_for_cis_control(cis_version: int, cis_control_id: str) -> List[str]:
-"""Get all CCIs for a CIS control.
-
-Args:
-cis_version: 7 or 8
-cis_control_id: "4.8", "10.3", etc.
-
-Returns:
-List of CCI identifiers ["CCI-000381", "CCI-000382", ...]
-"""
-# CCI mapping uses just control number, not version-prefixed
-# Both v7 and v8 might map to same CCIs (NIST doesn't change)
-
-mapping = CIS_CCI_MAPPING.get(cis_control_id)
-if not mapping:
-return []
-
-ccis = []
-if mapping.get('primary_cci'):
-ccis.append(mapping['primary_cci']['cci'])
-
-for supp in mapping.get('supporting_ccis', []):
-ccis.append(supp.get('cci') or supp.get('cci_id'))
-
-return ccis
-```
+- **A safeguard that is INFERRED, UNMAPPED or not in the file**: it adds no CCI; if no other
+  safeguard of the recommendation does, the fallback CCI applies.
 
 ---
 

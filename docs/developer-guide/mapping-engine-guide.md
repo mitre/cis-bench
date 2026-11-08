@@ -938,7 +938,7 @@ TypeError: Rule.title expects TextType, got str
 ```
 WARNING: No CCIs found for CIS Control 18.1
 ```
-**Fix:** CCI mapping file incomplete, control is INFERRED (has no CCIs)
+**Fix:** none needed when the safeguard is INFERRED or UNMAPPED in `cis-cci-mapping.json`: only OFFICIAL entries give CCIs, and a rule with none gets the fallback CCI
 
 **Issue: "Namespace prefix not declared"**
 ```

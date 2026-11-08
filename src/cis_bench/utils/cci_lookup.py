@@ -12,6 +12,9 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+# The family and number at the start of a NIST SP 800-53 control index ("CM-8" in "CM-8 a 1")
+_BASE_CONTROL_RE = re.compile(r"[A-Z]{2}-\d+")
+
 
 @dataclass
 class CCIMapping:
@@ -38,97 +41,73 @@ class CCILookupService:
         logger.debug(f"Initializing CCI lookup service with mapping file: {mapping_file}")
 
         with open(mapping_file) as f:
-            self._mapping_data = json.load(f)
+            mapping_data = json.load(f)
 
-        logger.debug(f"Loaded {len(self._mapping_data)} CCI mapping entries")
+        logger.debug(f"Loaded {len(mapping_data)} CCI mapping entries")
 
-        # Build reverse index: CCI → NIST control
-        self._cci_to_nist: dict[str, str] = {}
-        self._build_reverse_index()
+        # Each safeguard's CCIs, read once through the one entry reader: only OFFICIAL
+        # entries give CCIs (INFERRED and UNMAPPED entries are kept in the file as
+        # research data and give none).
+        self._ccis_by_safeguard: dict[str, list[CCIMapping]] = {
+            entry["cis_id"]: self._official_ccis(entry) for entry in mapping_data
+        }
+        # Reverse index: CCI -> the NIST control it implements (DISA's Rev 5 index)
+        self._cci_to_nist: dict[str, str] = {
+            mapping.cci: mapping.nist_control
+            for ccis in self._ccis_by_safeguard.values()
+            for mapping in ccis
+            if mapping.nist_control
+        }
 
-    def _build_reverse_index(self):
-        """Build CCI → NIST control reverse index."""
-        logger.debug("Building CCI to NIST control reverse index")
-        for entry in self._mapping_data:
-            # Skip if not OFFICIAL (INFERRED has variable schema)
-            if entry.get("mapping_status") != "OFFICIAL":
-                continue
+    @staticmethod
+    def _official_ccis(entry: dict) -> list[CCIMapping]:
+        """An entry's CCIs, primary first, then its supporting CCIs; none unless the entry
+        is OFFICIAL.
 
-            # Primary CCI
-            primary = entry.get("primary_cci", {})
-            if primary.get("cci"):
-                # NIST control might be in mapping or need extraction
-                nist = entry.get("nist_control", "")
-                self._cci_to_nist[primary["cci"]] = nist
-
-            # Supporting CCIs
-            for supp in entry.get("supporting_ccis", []):
-                cci_id = supp.get("cci") or supp.get("cci_id")
-                if cci_id:
-                    # Try to extract NIST from reasoning if not explicit
-                    nist = self._extract_nist_from_cci_entry(supp)
-                    if nist:
-                        self._cci_to_nist[cci_id] = nist
-
-    def _extract_nist_from_cci_entry(self, cci_entry: dict) -> str | None:
-        """Extract NIST control from CCI entry."""
-        # Could be explicit or in reasoning
-        # For now, use pattern matching in reasoning
-        reasoning = cci_entry.get("reasoning", "")
-
-        # Look for patterns like "CM-7.1", "AC-2(1)"
-        pattern = r"([A-Z]{2}-\d+(?:\.\d+)?(?:\(\d+\))?)"
-        matches = re.findall(pattern, reasoning)
-
-        return matches[0] if matches else None
+        Raises:
+            ValueError: An OFFICIAL entry without a primary CCI, or a CCI without its CCI
+                id or NIST control.
+        """
+        if entry.get("mapping_status") != "OFFICIAL":
+            return []
+        cis_id = entry.get("cis_id")
+        primary = entry.get("primary_cci")
+        if not primary:
+            raise ValueError(f"safeguard {cis_id}: an OFFICIAL entry needs a primary_cci")
+        ccis = []
+        for item in [primary, *entry.get("supporting_ccis", [])]:
+            if not item.get("cci") or not item.get("nist_control"):
+                raise ValueError(
+                    f"safeguard {cis_id}: every CCI needs its cci and nist_control: {item!r}"
+                )
+            ccis.append(
+                CCIMapping(
+                    cci=item["cci"],
+                    nist_control=item["nist_control"],
+                    confidence=item.get("confidence"),
+                )
+            )
+        return ccis
 
     def get_ccis_for_cis_control(
         self, cis_control_id: str, extract: str = "all"
     ) -> list[CCIMapping]:
-        """Get CCIs for a CIS control.
+        """The CCIs of a CIS safeguard: the primary CCI only, or primary and supporting.
 
         Args:
-            cis_control_id: CIS control ID (e.g., "4.8", "10.3")
-            extract: "primary" for primary CCI only, "all" for primary + supporting (default: "all")
+            cis_control_id: CIS safeguard ID (e.g., "4.8", "10.3")
+            extract: "primary" for the primary CCI only, "all" for primary + supporting
 
         Returns:
-            List of CCIMapping objects
+            List of CCIMapping objects; empty for a safeguard with no OFFICIAL mapping
+
+        Raises:
+            ValueError: extract is neither "primary" nor "all".
         """
-        logger.debug(f"Looking up CCIs for CIS control: {cis_control_id} (extract={extract})")
-        # Find mapping entry
-        for entry in self._mapping_data:
-            if entry.get("cis_id") == cis_control_id:
-                ccis = []
-
-                # Add primary
-                primary = entry.get("primary_cci", {})
-                if primary.get("cci"):
-                    ccis.append(
-                        CCIMapping(
-                            cci=primary["cci"],
-                            nist_control=entry.get("nist_control"),
-                            confidence=primary.get("confidence"),
-                        )
-                    )
-
-                # Add supporting only if extract="all"
-                if extract == "all":
-                    for supp in entry.get("supporting_ccis", []):
-                        cci_id = supp.get("cci") or supp.get("cci_id")
-                        if cci_id:
-                            nist = self._extract_nist_from_cci_entry(supp)
-                            ccis.append(
-                                CCIMapping(
-                                    cci=cci_id,
-                                    nist_control=nist,
-                                    confidence=supp.get("confidence")
-                                    or supp.get("confidence_score"),
-                                )
-                            )
-
-                return ccis
-
-        return []
+        if extract not in ("primary", "all"):
+            raise ValueError(f"extract must be 'primary' or 'all', not {extract!r}")
+        ccis = self._ccis_by_safeguard.get(cis_control_id, [])
+        return ccis[:1] if extract == "primary" else list(ccis)
 
     def get_nist_controls_covered_by_ccis(self, ccis: list[str]) -> set[str]:
         """Get all NIST controls covered by given CCIs.
@@ -144,9 +123,7 @@ class CCILookupService:
         for cci in ccis:
             nist_ctrl = self._cci_to_nist.get(cci)
             if nist_ctrl:
-                # Extract base control: "CM-7.1" → "CM-7", "CM-7(5)" → "CM-7"
-                base = self._get_base_nist_control(nist_ctrl)
-                covered.add(base)
+                covered.add(self.base_nist_control(nist_ctrl))
 
         return covered
 
@@ -186,9 +163,7 @@ class CCILookupService:
         # Find extras (cited but not covered)
         extra_nist = []
         for cited in cited_nist_controls:
-            cited_base = self._get_base_nist_control(cited)
-
-            if cited_base not in covered_nist:
+            if self.base_nist_control(cited) not in covered_nist:
                 extra_nist.append(cited)
 
         logger.debug(
@@ -197,19 +172,16 @@ class CCILookupService:
         return all_ccis, extra_nist
 
     @staticmethod
-    def _get_base_nist_control(nist_control: str) -> str:
-        """Extract base NIST control.
+    def base_nist_control(nist_control: str) -> str:
+        """The base NIST SP 800-53 control (family and number) of any index form.
 
         Examples:
-            "CM-7" → "CM-7"
-            "CM-7.1" → "CM-7"
-            "CM-7(5)" → "CM-7"
-            "CM-7.1(5)" → "CM-7"
+            "CM-8 a 1" -> "CM-8" (DISA's CCI index), "CA-8 (1)" -> "CA-8",
+            "CM-7(5)" -> "CM-7", "CM-7.1" -> "CM-7" (assessment procedure)
         """
-        # Remove enhancements and sub-controls
-        base = nist_control.split("(")[0]  # Remove enhancements
-        base = base.split(".")[0]  # Remove sub-controls
-        return base.strip()
+        text = nist_control.strip().upper()
+        match = _BASE_CONTROL_RE.match(text)
+        return match.group(0) if match else text
 
 
 # Singleton instance for easy access
