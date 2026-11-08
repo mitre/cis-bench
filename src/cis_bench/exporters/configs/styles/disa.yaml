@@ -239,6 +239,7 @@ field_mappings:
       enabled: true
       mapping_file: "data/cis-cci-mapping.json"
       source_field: "cis_controls"
+      cis_controls_version: 8  # the mapping file is keyed by CIS Controls v8 only
       extract: "primary"  # primary only (key compliance mapping) - use "all" for primary + supporting
       deduplicate_nist: true
       fallback_cci: "CCI-000366"  # Ensures every rule has at least one ident (DISA requirement)
@@ -253,6 +254,8 @@ field_mappings:
     source_field: "nist_controls"
     structure: "dublin_core"
     dc_elements:
+      - element: "dc:title"
+        content: "NIST SP 800-53"
       - element: "dc:identifier"
         content: "{nist_control_id}"
     attributes:
@@ -388,6 +391,10 @@ rule_elements:
 
   ident:
     xccdf_type: "IdentType"
+    multiple: true
+
+  reference:
+    xccdf_type: "ReferenceType"
     multiple: true
 
   fixtext:

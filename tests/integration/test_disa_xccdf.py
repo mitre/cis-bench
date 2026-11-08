@@ -58,7 +58,13 @@ def test_disa_export_has_ccis(disa_export_file):
     # Use namespace-agnostic XPath (works with any namespace prefix)
     idents = root.xpath('.//*[local-name()="ident"][@system="http://cyber.mil/cci"]')
 
-    assert len(idents) == 38, f"Expected 38 deterministic CCIs, found {len(idents)}"
+    # Every DISA Rule carries at least one CCI (the fallback when its controls map to
+    # none); which CCIs each rule gets is checked against the mapping file in
+    # tests/regression/test_structure_compliance.py.
+    for rule in root.xpath('.//*[local-name()="Rule"]'):
+        assert rule.xpath('./*[local-name()="ident"][@system="http://cyber.mil/cci"]'), rule.get(
+            "id"
+        )
 
     for ident in idents:
         assert re.fullmatch(r"CCI-\d{6}", ident.text or ""), f"Invalid CCI format: {ident.text}"

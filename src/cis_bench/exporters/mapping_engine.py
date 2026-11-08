@@ -541,13 +541,20 @@ class MappingEngine:
             # No deduplication - return empty CCIs, all NIST as extras
             return [], rec.nist_controls
 
-        # Get CIS control IDs
-        cis_control_ids = [c.control for c in rec.cis_controls]
-
         # Get extract parameter from ident field mapping (default: "all")
         ident_mapping = self.config.field_mappings.get("ident", {})
         cci_lookup_config = ident_mapping.get("cci_lookup", {})
         extract = cci_lookup_config.get("extract", "all")
+
+        # The CCI mapping file is keyed by one CIS Controls version, named in the style
+        # (cci_lookup.cis_controls_version); other versions reuse the same numbers for
+        # unrelated safeguards, so only that version's controls are looked up.
+        controls_version = cci_lookup_config.get("cis_controls_version")
+        cis_control_ids = [
+            c.control
+            for c in rec.cis_controls
+            if controls_version is None or c.version == controls_version
+        ]
 
         # Use CCI service for deduplication
         ccis, extra_nist = self.cci_service.deduplicate_nist_controls(
@@ -864,7 +871,7 @@ class MappingEngine:
 
         elif field_mapping.get("source_logic") == "cci_lookup_with_deduplication":
             # CCI lookup - returns list of CCIs
-            ccis, _ = self.get_ccis_with_deduplication(rec)
+            ccis, _ = self._cci_split(rec, context)
             return ccis  # Return raw list, caller will wrap in IdentType
 
         elif structure == "nested":
@@ -885,6 +892,14 @@ class MappingEngine:
             return transformed_value
 
         return None
+
+    def _cci_split(self, rec: Recommendation, context: dict) -> tuple[list[str], list[str]]:
+        """The rule's (CCIs, NIST controls no CCI covers), computed once per rule by map_rule
+        and shared by the CCI idents and the NIST references."""
+        if "cci_split" not in context:
+            context["cci_split"] = self.get_ccis_with_deduplication(rec)
+        split: tuple[list[str], list[str]] = context["cci_split"]
+        return split
 
     def map_rule(self, rec: Recommendation, context: dict):
         """Map Recommendation to Rule using config (LOOP-DRIVEN - no hard-coded fields).
@@ -914,6 +929,8 @@ class MappingEngine:
                 "rec": rec,
             }
         )
+        # The context is shared across rules: drop the previous rule's CCI split.
+        context.pop("cci_split", None)
 
         rule_id = VariableSubstituter.substitute(
             self.config.rule_id.get("template", "CIS-{ref_normalized}_rule"), context
@@ -994,8 +1011,19 @@ class MappingEngine:
             if structure == "dublin_core":
                 # Build NIST references with Dublin Core elements
                 source_field = field_mapping.get("source_field")
+                source_logic = field_mapping.get("source_logic")
                 if source_field:
-                    nist_controls = getattr(rec, source_field, None)
+                    nist_controls: list[str] | None
+                    if source_logic == "nist_after_cci_deduplication":
+                        # Only the NIST controls no CCI ident on this rule already covers
+                        _, nist_controls = self._cci_split(rec, context)
+                    elif source_logic is None:
+                        nist_controls = getattr(rec, source_field, None)
+                    else:
+                        raise ValueError(
+                            f"field {field_name!r}: unknown source_logic {source_logic!r} "
+                            "for a dublin_core reference"
+                        )
                     if nist_controls and isinstance(nist_controls, list):
                         dc_elements_config = field_mapping.get("dc_elements", [])
                         href = field_mapping.get("attributes", {}).get("href", "")

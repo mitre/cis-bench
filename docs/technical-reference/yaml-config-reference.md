@@ -247,11 +247,23 @@ cci_lookup:
 enabled: true
 mapping_file: "data/cis-cci-mapping.json"
 source_field: "cis_controls"
+cis_controls_version: 8 # the CIS Controls version the mapping file is keyed by
 extract: "all" # primary + supporting
 deduplicate_nist: true
 attributes:
 system: "http://cyber.mil/cci"
 ```
+
+`cis_controls_version` names the CIS Controls version the mapping file is keyed by (the
+shipped `cis-cci-mapping.json` is keyed by v8). Only a rule's controls of that version are
+looked up: v7 reuses the same numbers for unrelated safeguards. A rule with no control of
+that version gets `fallback_cci`. Without the key, every control is looked up.
+
+The NIST controls no CCI on the rule covers are written as references by a field with
+`source_logic: "nist_after_cci_deduplication"` (the DISA style's `reference`, listed in its
+`rule_elements`); each reference carries the `dc_elements` the field names (`dc:title`
+"NIST SP 800-53" and `dc:identifier`). A `dublin_core` field with any other `source_logic`
+stops the export with an error. The CCI lookup runs once per rule for both.
 
 ### Custom Namespace Elements
 
