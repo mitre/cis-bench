@@ -13,7 +13,9 @@ jobs:
   release:
     name: Semantic Release
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    # A release follows only a successful CI run for a push to main (branches: main above
+    # matches the CI run's head branch, which a pull request from a branch named main also has).
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push') }}
     concurrency: release
     permissions:
       id-token: write  # REQUIRED for PyPI trusted publishing
