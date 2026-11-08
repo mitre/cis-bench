@@ -22,6 +22,7 @@ from cis_bench.exporters.mapping_engine import (
 from cis_bench.models.benchmark import (
     CISControl,
     MITREMapping,
+    ProfileDefinition,
     Recommendation,
 )
 from cis_bench.utils.cci_lookup import CCILookupService
@@ -387,19 +388,18 @@ class TestIdentAttributes:
 
 
 class TestProfileGeneration:
-    """Each profile selects the rules of its own mapping and of every profile it includes."""
+    """One profile per profile the benchmark defines, or per profile name on its rules; each
+    selects its own rules and the rules of every profile it includes."""
 
     MAPPINGS = [
-        {"match": "Level 1 - Server", "id": "l1s", "title": "Level 1 - Server"},
+        {"match": "Level 1 - Server", "title": "Level 1 - Server"},
         {
             "match": "Level 2 - Server",
-            "id": "l2s",
             "title": "Level 2 - Server",
             "includes": ["Level 1 - Server"],
         },
         {
             "match": "Level 3 - Server",
-            "id": "l3s",
             "title": "Level 3 - Server",
             "includes": ["Level 2 - Server"],
         },
@@ -420,11 +420,21 @@ class TestProfileGeneration:
 
     @staticmethod
     def _selected(profiles):
-        return {p.id: [s.idref for s in p.select] for p in profiles}
+        return {p.id: [s.idref.rsplit("_rule_", 1)[1] for s in p.select] for p in profiles}
 
-    def _generate(self, cis_config_path, recs, mappings):
+    @staticmethod
+    def _text(elements):
+        return "".join(str(part) for part in elements[0].content) if elements else None
+
+    def _generate(self, cis_config_path, recs, mappings, definitions=None):
+        config = {
+            "generate_from_rules": True,
+            "id_template": "p_{profile.title|slug:_}",
+            "description_transform": "strip_html",
+            "profile_mappings": mappings,
+        }
         return MappingEngine(cis_config_path).generate_profiles_from_rules(
-            recs, {"generate_from_rules": True, "profile_mappings": mappings}
+            recs, config, definitions or []
         )
 
     def test_a_profile_selects_the_rules_of_the_profiles_it_includes(self, cis_config_path):
@@ -438,26 +448,140 @@ class TestProfileGeneration:
 
         selected = self._selected(self._generate(cis_config_path, recs, self.MAPPINGS))
 
-        rule = "xccdf_org.cisecurity.benchmarks_rule_{}".format
         assert selected == {
-            "l1s": [rule("1_1"), rule("1_3")],
-            "l2s": [rule("1_1"), rule("1_2"), rule("1_3")],
-            "l3s": [rule("1_1"), rule("1_2"), rule("1_3"), rule("1_5")],
+            "p_level_1_server": ["1_1", "1_3"],
+            "p_level_2_server": ["1_1", "1_2", "1_3"],
+            "p_level_3_server": ["1_1", "1_2", "1_3", "1_5"],
+            "p_level_1_workstation": ["1_4"],
         }
 
-    def test_an_include_that_names_no_profile_mapping_is_refused(self, cis_config_path):
+    def test_every_profile_name_on_the_rules_and_no_other_gets_a_profile(self, cis_config_path):
+        # Mapped names first, in mapping order; other names in the order rules first use them.
+        # A mapping no rule names is not one of this benchmark's profiles, even when it
+        # includes one that is.
+        recs = self._recs(
+            ("1.1", ["Level 2 - Docker - Linux"]),
+            ("1.2", ["Level 1"]),
+            ("1.3", ["Level 1 - Server", "Level 1"]),
+        )
+
+        profiles = self._generate(cis_config_path, recs, self.MAPPINGS)
+
+        assert [(p.id, self._text(p.title)) for p in profiles] == [
+            ("p_level_1_server", "Level 1 - Server"),
+            ("p_level_2_docker_linux", "Level 2 - Docker - Linux"),
+            ("p_level_1", "Level 1"),
+        ]
+        assert self._selected(profiles)["p_level_1"] == ["1_2", "1_3"]
+
+    def test_a_defined_profile_that_selects_no_rule_is_left_out_with_a_warning(
+        self, cis_config_path, caplog
+    ):
+        definitions = [
+            ProfileDefinition(title="Level 1 - Alpha"),
+            ProfileDefinition(title="Level 1 - Beta"),
+        ]
+        recs = self._recs(("1.1", ["Level 1 - Alpha"]))
+
+        with caplog.at_level("WARNING", logger="cis_bench.exporters.mapping_engine"):
+            profiles = self._generate(cis_config_path, recs, [], definitions)
+
+        assert [p.id for p in profiles] == ["p_level_1_alpha"]
+        warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+        assert len(warnings) == 1
+        assert "'Level 1 - Beta'" in warnings[0]
+
+    def test_defined_profiles_select_their_rules_and_their_ancestors(self, cis_config_path):
+        definitions = [
+            ProfileDefinition(title="Level 1 - Alpha", description="<p>First tier.</p>"),
+            ProfileDefinition(title="Level 2 - Alpha", parent="Level 1 - Alpha"),
+            ProfileDefinition(title="Level 3 - Alpha", parent="Level 2 - Alpha"),
+        ]
+        recs = self._recs(
+            ("1.1", ["Level 1 - Alpha"]),
+            ("1.2", ["Level 2 - Alpha"]),
+            ("1.3", ["Level 3 - Alpha"]),
+            ("1.4", ["Level 1 - Server"]),
+        )
+        # With definitions the page decides; the YAML's mappings and includes are not used.
+        mappings = [{"match": "Level 1 - Alpha", "includes": ["Level 3 - Alpha"]}, *self.MAPPINGS]
+
+        profiles = self._generate(cis_config_path, recs, mappings, definitions)
+
+        assert self._selected(profiles) == {
+            "p_level_1_alpha": ["1_1"],
+            "p_level_2_alpha": ["1_1", "1_2"],
+            "p_level_3_alpha": ["1_1", "1_2", "1_3"],
+        }
+        assert self._text(profiles[0].description) == "First tier."
+        assert profiles[1].description == []
+
+    @pytest.mark.parametrize(
+        ("definitions", "message"),
+        [
+            (
+                [ProfileDefinition(title="Level 2 - Alpha", parent="Level 1 - Beta")],
+                "'Level 1 - Beta'",
+            ),
+            (
+                [
+                    ProfileDefinition(title="Level 1 - Alpha", parent="Level 2 - Alpha"),
+                    ProfileDefinition(title="Level 2 - Alpha", parent="Level 1 - Alpha"),
+                ],
+                "include each other",
+            ),
+        ],
+    )
+    def test_a_parent_that_is_not_a_profile_or_a_loop_is_refused(
+        self, cis_config_path, definitions, message
+    ):
+        recs = self._recs(("1.1", ["Level 2 - Alpha"]))
+
+        with pytest.raises(ValueError, match=message):
+            self._generate(cis_config_path, recs, [], definitions)
+
+    @pytest.mark.parametrize("named_on_rules", ["Level 2 - Server", "Level 1 - Workstation"])
+    def test_an_include_that_names_no_profile_mapping_is_refused(
+        self, cis_config_path, named_on_rules
+    ):
+        # The style's mappings are checked whole, whether or not this benchmark uses them.
         mappings = [{**self.MAPPINGS[1], "includes": ["Level 9 - Server"]}]
-        recs = self._recs(("1.1", ["Level 2 - Server"]))
+        recs = self._recs(("1.1", [named_on_rules]))
 
         with pytest.raises(ValueError, match="'Level 9 - Server'"):
             self._generate(cis_config_path, recs, mappings)
 
     def test_a_profile_mapping_without_a_match_is_refused(self, cis_config_path):
-        mappings = [{"id": "l1s", "title": "Level 1 - Server"}]
+        mappings = [{"title": "Level 1 - Server"}]
         recs = self._recs(("1.1", ["Level 1 - Server"]))
 
         with pytest.raises(ValueError, match="profile mapping needs a match"):
             self._generate(cis_config_path, recs, mappings)
+
+    def test_a_profile_mapping_with_its_own_id_is_refused(self, cis_config_path):
+        # Profile ids come from the style's id_template, one rule for every profile.
+        mappings = [{**self.MAPPINGS[0], "id": "l1s"}]
+        recs = self._recs(("1.1", ["Level 1 - Server"]))
+
+        with pytest.raises(ValueError, match="id_template"):
+            self._generate(cis_config_path, recs, mappings)
+
+    def test_two_mappings_for_one_profile_name_are_refused(self, cis_config_path):
+        mappings = [self.MAPPINGS[0], {**self.MAPPINGS[0], "title": "Level 1 (Server)"}]
+        recs = self._recs(("1.1", ["Level 1 - Server"]))
+
+        with pytest.raises(ValueError, match="'Level 1 - Server'.*more than one"):
+            self._generate(cis_config_path, recs, mappings)
+
+    @pytest.mark.parametrize("with_definitions", [True, False])
+    def test_two_profiles_with_one_id_are_refused(self, cis_config_path, with_definitions):
+        # Profile ids are xsd:ID values; two titles that slug alike would write one id twice.
+        titles = ["Level 1 - Server", "Level 1 (Server)"]
+        recs = self._recs(("1.1", titles))
+        definitions = [ProfileDefinition(title=title) for title in titles]
+
+        with pytest.raises(ValueError, match="p_level_1_server"):
+            self._generate(cis_config_path, recs, [], definitions if with_definitions else None)
 
     def test_profiles_that_include_each_other_are_refused(self, cis_config_path):
         mappings = [
@@ -468,6 +592,28 @@ class TestProfileGeneration:
 
         with pytest.raises(ValueError, match="include each other"):
             self._generate(cis_config_path, recs, mappings)
+
+
+class TestSlug:
+    """A title as a URI- and id-safe slug, the separator named by the config."""
+
+    @pytest.mark.parametrize(
+        ("title", "separator", "slug"),
+        [
+            ("Level 1 - Server", "_", "level_1_server"),
+            ("Level 2 - Docker - Linux", "_", "level_2_docker_linux"),
+            ("Level 1 - Server", "-", "level-1-server"),
+            ("  E3 Level 1 (Cloud)  ", "_", "e3_level_1_cloud"),
+            ("Niveau 1 - Café Serveur", "_", "niveau_1_cafe_serveur"),
+        ],
+    )
+    def test_runs_of_other_characters_become_one_separator(self, title, separator, slug):
+        assert TransformRegistry.get("slug")(title, separator) == slug
+
+    @pytest.mark.parametrize("title", ["", "  -  ", None])
+    def test_a_title_with_nothing_to_keep_is_refused(self, title):
+        with pytest.raises(ValueError, match="slug"):
+            TransformRegistry.get("slug")(title, "_")
 
 
 class TestStyleInheritance:
@@ -1058,13 +1204,49 @@ class TestHTMLCleaner:
         result = HTMLCleaner.strip_html("")
         assert result == ""
 
-    def test_strip_html_preserves_text_spacing(self):
-        """Test that strip_html preserves reasonable spacing."""
-        html = "<p>First paragraph</p><p>Second paragraph</p>"
-        result = HTMLCleaner.strip_html(html)
-        # Should have text from both paragraphs
-        assert "First paragraph" in result
-        assert "Second paragraph" in result
+    @pytest.mark.parametrize(
+        ("html", "text"),
+        [
+            ("<p>First <b>tier</b>.</p>", "First tier."),
+            ("<p>Run <code>ls</code>, then stop.</p>", "Run ls, then stop."),
+            (
+                "<p>First paragraph</p><p>Second paragraph</p>",
+                "First paragraph\n\nSecond paragraph",
+            ),
+            ("<ul><li>one</li><li>two</li></ul>", "one\ntwo"),
+            ("<p>Intro:</p><ul><li>one</li></ul><p>End.</p>", "Intro:\n\none\n\nEnd."),
+            ("line one<br>line two", "line one\nline two"),
+            # WorkBench text is Markdown-like: its own line breaks and spacing are kept.
+            (
+                "Run the following:\n\n    # stat -Lc '%a  %U' /etc/passwd\n\nThen <b>check</b>.",
+                "Run the following:\n\n    # stat -Lc '%a  %U' /etc/passwd\n\nThen check.",
+            ),
+            ("Files &amp; folders", "Files & folders"),
+            ("<ul>Intro:<li>one</li><li>two</li></ul>", "Intro:\none\ntwo"),
+            ("<ul><li>one<ul><li>one.a</li></ul></li><li>two</li></ul>", "one\none.a\ntwo"),
+            (
+                "<ul>\n  <li>one</li>\n  <li>two</li>\n</ul>\n<p>End.</p>",
+                "one\ntwo\n\nEnd.",
+            ),
+            (
+                "<table><tr><th>Name</th><th>Value</th></tr><tr><td>a</td><td>1</td></tr></table>",
+                "Name\tValue\na\t1",
+            ),
+            # WorkBench saves many fields with Windows line breaks.
+            ("Run:  \r\n\r\n\r\n\r\n    # id\r\nDone.\r", "Run:\n\n    # id\nDone."),
+        ],
+    )
+    def test_strip_html_keeps_inline_text_together_and_blocks_apart(self, html, text):
+        assert HTMLCleaner.strip_html(html) == text
+
+    def test_strip_html_keeps_preformatted_text_as_written(self):
+        html = (
+            "<p>Run:</p><pre><code># grep -E '^\\s*auth'  /etc/pam.d/su\n  next line</code></pre>"
+        )
+
+        assert HTMLCleaner.strip_html(html) == (
+            "Run:\n\n# grep -E '^\\s*auth'  /etc/pam.d/su\n  next line"
+        )
 
     def test_html_to_markdown_basic(self, sample_html_simple):
         """Test HTML to Markdown conversion."""

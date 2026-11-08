@@ -420,33 +420,44 @@ label, is refused.
 
 ### Profiles
 
-`benchmark.profiles` turns the profiles named on each recommendation into XCCDF `<Profile>`
-elements at Benchmark level, each with an explicit `<select>` for every rule it contains.
+`benchmark.profiles` writes XCCDF `<Profile>` elements at Benchmark level, each with an
+explicit `<select>` for every rule it contains.
 
 ```yaml
 benchmark:
   profiles:
     generate_from_rules: true
+    id_template: "{profile.title|slug:-}"   # every Profile id, from its title
+    description_transform: "strip_html"          # for descriptions read from the page
     profile_mappings:
 
       - match: "Level 1 - Server"            # a profile name as recommendations give it
-        id: "level-1-server"                  # the Profile id
         title: "Level 1 - Server"
         description: "CIS Level 1 recommendations for server environments"
 
       - match: "Level 2 - Server"
-        id: "level-2-server"
         title: "Level 2 - Server"
         includes: ["Level 1 - Server"]        # also select the rules of these profiles
 ```
 
-A recommendation's `profiles` holds one name per entry; WorkBench's one-text form
-("Level 1 - Server" and "Level 1 - Workstation" on two lines) is split when the
-recommendation is loaded, for new downloads and stored copies alike. A profile selects the
-rules whose profiles include its `match` or the `match` of any profile it includes, directly
-or through another mapping (CIS's Level 2 profiles extend the Level 1 profile of the same
-platform). An `includes` entry that no mapping matches, or profiles that include each other,
-stops the export with an error. A mapping that selects no rule writes no Profile.
+A download reads the benchmark's profile definitions from its WorkBench page: each profile's
+title, description and the profile it extends (`parent`). With those, there is one Profile
+per definition; it selects the rules that name it or any ancestor, and takes its title and
+description from the page (the description through `description_transform`). A definition
+that selects no rule is left out, and the export logs a warning naming it. A copy saved
+before definitions were read has one Profile per profile name its rules use; a mapping for
+that name gives the title, description and the profiles it `includes` (directly or through
+another mapping), and a name with no mapping gets a Profile with its own rules. A mapping
+that no rule names writes no Profile.
+
+Every Profile id comes from `id_template` (the `slug` filter drops accents, then turns
+"Level 1 - Server" into `level-1-server` with `-`, `level_1_server` with `_`); a mapping
+does not set its own `id`. A recommendation's `profiles` holds one name per entry;
+WorkBench's one-text form ("Level 1 - Server" and "Level 1 - Workstation" on two lines) is
+split when the recommendation is loaded. A parent or `includes` entry that names no
+profile, profiles that include each other, two mappings for one `match`, two profiles that
+get one id, a mapping without `match` or with an `id`, or no `id_template` stops the export
+with an error. Every mapping is checked, whether or not the benchmark's rules use it.
 
 ## Source Field Reference
 
@@ -839,6 +850,7 @@ ValueError: Unknown transformation: unknown_transform
 - wrap_xhtml_paragraphs
 - strip_version_prefix
 - dotted_number_path (with arguments; see [Filters](#filters))
+- slug (with the separator as argument; see [Profiles](#profiles))
 
 ### Issue: Source Field Not Found
 

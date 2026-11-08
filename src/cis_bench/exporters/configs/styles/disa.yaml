@@ -41,33 +41,40 @@ benchmark:
   # Profile generation - convert CIS profiles to XCCDF Profile elements
   profiles:
     generate_from_rules: true
+    # Every Profile id, from the profile's title (one rule for defined and named profiles)
+    id_template: "{profile.title|slug:-}"
+    # A profile description read from the benchmark's page is HTML: same transform as rule text
+    description_transform: "strip_html"
+    # Copies saved without the page's profile definitions: per profile name on the rules,
+    # the title, description and the profiles it includes (any other name gets a profile too)
     profile_mappings:
       - match: "Level 1 - Server"
-        id: "level-1-server"
         title: "Level 1 - Server"
         description: "CIS Level 1 recommendations for server environments"
       - match: "Level 1 - Workstation"
-        id: "level-1-workstation"
         title: "Level 1 - Workstation"
         description: "CIS Level 1 recommendations for workstation environments"
       - match: "Level 2 - Server"
-        id: "level-2-server"
         title: "Level 2 - Server"
         description: "CIS Level 2 recommendations for server environments"
         includes: ["Level 1 - Server"]  # Level 2 extends Level 1 (WorkBench profile definitions)
       - match: "Level 2 - Workstation"
-        id: "level-2-workstation"
         title: "Level 2 - Workstation"
         description: "CIS Level 2 recommendations for workstation environments"
         includes: ["Level 1 - Workstation"]  # Level 2 extends Level 1 (WorkBench profile definitions)
       - match: "Level 3 - Server"
-        id: "level-3-server"
         title: "Level 3 - Server"
         description: "CIS Level 3 recommendations for server environments (new, not in all benchmarks)"
       - match: "Level 3 - Workstation"
-        id: "level-3-workstation"
         title: "Level 3 - Workstation"
         description: "CIS Level 3 recommendations for workstation environments (new, not in all benchmarks)"
+      - match: "Level 1"
+        title: "Level 1"
+        description: "CIS Level 1 recommendations"
+      - match: "Level 2"
+        title: "Level 2"
+        description: "CIS Level 2 recommendations"
+        includes: ["Level 1"]  # Level 2 extends Level 1 (WorkBench profile definitions)
 
   # Namespaces inherited from base_style.yaml (common + controls/enhanced)
   # Can override here if needed for DISA-specific requirements

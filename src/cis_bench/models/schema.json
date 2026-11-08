@@ -135,6 +135,48 @@
       "title": "ParentReference",
       "type": "object"
     },
+    "ProfileDefinition": {
+      "description": "One of a benchmark's profiles as its WorkBench page defines it.",
+      "properties": {
+        "title": {
+          "description": "Profile title, as rules name it",
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "What the profile is for (HTML format)",
+          "title": "Description"
+        },
+        "parent": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Title of the profile this one extends (its rules are included)",
+          "title": "Parent"
+        }
+      },
+      "required": [
+        "title"
+      ],
+      "title": "ProfileDefinition",
+      "type": "object"
+    },
     "Recommendation": {
       "description": "A single CIS recommendation within a benchmark.\n\nThis represents one security configuration recommendation with all\nassociated metadata, audit procedures, and remediation steps.",
       "properties": {
@@ -398,6 +440,14 @@
       "default": null,
       "description": "The benchmark's overview, as plain text, read from its page",
       "title": "Description"
+    },
+    "profile_definitions": {
+      "description": "The benchmark's profiles as its page defines them (title, description, the profile each extends); empty for copies saved before they were read",
+      "items": {
+        "$ref": "#/$defs/ProfileDefinition"
+      },
+      "title": "Profile Definitions",
+      "type": "array"
     },
     "downloaded_at": {
       "description": "When the benchmark was downloaded, with its zone (UTC)",

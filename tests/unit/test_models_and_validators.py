@@ -323,6 +323,19 @@ class TestRecommendation:
             "Level 2 - Workstation",
         ]
 
+    def test_a_copy_saved_before_profile_definitions_loads_with_none(self, minimal_benchmark_data):
+        stored = json.dumps(minimal_benchmark_data)  # no profile_definitions key
+
+        assert deserialize_benchmark_json(stored).profile_definitions == []
+
+    def test_a_benchmark_defines_each_profile_title_once(self, minimal_benchmark_data):
+        # Profile titles are what rules name; two definitions of one title are ambiguous.
+        definition = {"title": "Level 1 - Alpha"}
+        stored = json.dumps({**minimal_benchmark_data, "profile_definitions": [definition] * 2})
+
+        with pytest.raises(ValidationError, match="'Level 1 - Alpha'"):
+            deserialize_benchmark_json(stored)
+
     def test_recommendation_requires_ref(self):
         """Test ref field is required."""
         with pytest.raises(ValidationError) as exc:

@@ -162,10 +162,10 @@ framework_metadata:
 ```yaml
 profiles:
   generate_from_rules: true
+  id_template: "{profile.title|slug:-}"  # every Profile id, from its title
   profile_mappings:
 
     - match: "Tier 1"
-      id: "tier-1"
       title: "Tier 1"
 ```
 

@@ -21,7 +21,6 @@ Two quirks of the new format are handled here:
 """
 
 import json
-import re
 from typing import Any
 
 from bs4 import BeautifulSoup
@@ -30,27 +29,7 @@ from cis_bench.fetcher.strategies.base import ExtractedRecommendation, ScraperSt
 from cis_bench.models.benchmark import Artifact, CISControl, MITREMapping
 from cis_bench.utils.html_parser import attribute_text
 from cis_bench.utils.parsers import WorkbenchParser
-
-_UNICODE_ESCAPE_RE = re.compile(r"\\u([0-9a-fA-F]{4})")
-_JSON_PARSE_RE = re.compile(r"^JSON\.parse\('(.+)'\)$", re.DOTALL)
-
-
-def _decode_vue_payload(raw: str | None) -> str | None:
-    """Unwrap ``JSON.parse('...')`` and decode ``\\uXXXX`` escapes.
-
-    Args:
-        raw: The raw attribute value captured from a Vue web component.
-
-    Returns:
-        A JSON string suitable for :func:`json.loads`, or ``None`` when
-        the input is empty.
-    """
-    if not raw:
-        return None
-    stripped = raw.strip()
-    match = _JSON_PARSE_RE.search(stripped)
-    payload = match.group(1) if match else stripped
-    return _UNICODE_ESCAPE_RE.sub(lambda h: chr(int(h.group(1), 16)), payload)
+from cis_bench.utils.vue_payload import decode_vue_payload
 
 
 class WorkbenchV2Strategy(ScraperStrategy):
@@ -147,7 +126,7 @@ class WorkbenchV2Strategy(ScraperStrategy):
 
     @staticmethod
     def _parse_vue_json(raw: str | None) -> Any | None:
-        decoded = _decode_vue_payload(raw)
+        decoded = decode_vue_payload(raw)
         if decoded is None:
             return None
         try:
@@ -235,7 +214,7 @@ class WorkbenchV2Strategy(ScraperStrategy):
         if legacy:
             return WorkbenchParser.parse_artifacts_json(legacy)
 
-        decoded = _decode_vue_payload(attribute_text(el, ":artifacts"))
+        decoded = decode_vue_payload(attribute_text(el, ":artifacts"))
         if decoded:
             return WorkbenchParser.parse_artifacts_json(decoded)
 

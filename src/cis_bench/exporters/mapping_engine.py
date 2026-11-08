@@ -26,6 +26,7 @@ Adding PCI-DSS, ISO 27001, HIPAA, etc. MUST require ZERO code changes (YAML only
 import inspect
 import logging
 import re
+import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass, field, fields
 from pathlib import Path
@@ -35,7 +36,7 @@ from typing import Any
 import yaml
 
 from cis_bench.exceptions import ExportError
-from cis_bench.models.benchmark import Benchmark, Recommendation
+from cis_bench.models.benchmark import Benchmark, ProfileDefinition, Recommendation
 
 # Import XCCDF types for element creation (XCCDF 1.2 - for type hints only)
 # Note: Engine dynamically loads version-specific types based on config
@@ -171,6 +172,30 @@ def dotted_number_path(value: Any, *labels: str) -> str:
 
 
 TransformRegistry.register("dotted_number_path", dotted_number_path)
+
+
+_NOT_SLUG = re.compile(r"[^0-9a-z]+")
+
+
+def slug(value: Any, separator: str = "_") -> str:
+    """A title as an id-safe slug: accents dropped (NFKD), lower case, each run of other
+    characters one separator.
+
+    Examples:
+        slug("Level 1 - Server", "_") -> "level_1_server"
+        slug("Level 1 - Server", "-") -> "level-1-server"
+        slug("Café", "_") -> "cafe"
+    """
+    text = "" if value is None else str(value)
+    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
+    text = text.strip().lower()
+    result = _NOT_SLUG.sub(separator, text).strip(separator)
+    if not result:
+        raise ValueError(f"{value!r} has nothing a slug can keep")
+    return result
+
+
+TransformRegistry.register("slug", slug)
 
 
 class ConfigLoader:
@@ -1287,7 +1312,9 @@ class MappingEngine:
             # Get recommendations from context (passed by exporter)
             recommendations = context.get("recommendations", [])
             if recommendations:
-                profiles = self.generate_profiles_from_rules(recommendations, profile_config)
+                profiles = self.generate_profiles_from_rules(
+                    recommendations, profile_config, benchmark.profile_definitions
+                )
                 if profiles:
                     benchmark_fields["profile"] = profiles
                     logger.debug(f"Added {len(profiles)} Profile elements to benchmark")
@@ -1434,35 +1461,34 @@ class MappingEngine:
         return value
 
     def generate_profiles_from_rules(
-        self, recommendations: list["Recommendation"], profile_config: dict
+        self,
+        recommendations: list["Recommendation"],
+        profile_config: dict,
+        profile_definitions: list[ProfileDefinition] | None = None,
     ) -> list:
-        """Generate XCCDF Profile elements from recommendation.profiles field.
+        """XCCDF Profile elements at Benchmark level, each with a select for every rule in it.
 
-        Builds Profile elements at Benchmark level with select lists indicating
-        which rules belong to which profiles. Supports both CIS and DISA profile types.
+        With the benchmark page's profile definitions, one Profile per definition: its
+        title and description (through description_transform) from the page, its rules
+        those naming it or an ancestor (parent); a definition with no such rule is left out
+        with a warning. Without them (a copy saved before they were read), one Profile per
+        profile name the rules use; a mapping for that name gives the title, description
+        and the profiles it includes.
 
         Config structure:
             generate_from_rules: true
+            id_template: "{profile.title|slug:-}"   # every Profile id
+            description_transform: "strip_html"          # for the page's descriptions
             profile_mappings:
-              - match: "Level 1 - Server"  # Match against rec.profiles
-                id: "level-1-server"
-                title: "Level 1 - Server"
-                description: "Basic server security controls"
+              - match: "Level 2 - Server"                 # a profile name on the rules
+                title: "Level 2 - Server"
+                description: "CIS Level 2 for server environments"
+                includes: ["Level 1 - Server"]
 
-        Args:
-            recommendations: All recommendations in the benchmark
-            profile_config: YAML profile configuration
-
-        Returns:
-            List of xsdata Profile objects with select elements
-
-        Example Output:
-            <Profile id="level-1-server">
-              <title>Level 1 - Server</title>
-              <description>Basic server security controls</description>
-              <select idref="xccdf_cis_rule_6_1_1" selected="true"/>
-              <select idref="xccdf_cis_rule_6_1_2" selected="true"/>
-            </Profile>
+        Raises:
+            ValueError: No id_template, a mapping without a match or with its own id, two
+                mappings for one name, an include or parent that names no profile, profiles
+                that include each other, or two profiles that get one id.
         """
         Profile = self.get_xccdf_class("Profile")
         ProfileSelectType = self.get_xccdf_class("ProfileSelectType")
@@ -1472,23 +1498,42 @@ class MappingEngine:
         if not profile_config.get("generate_from_rules"):
             return []
 
-        profile_mappings = profile_config.get("profile_mappings", [])
-        if not profile_mappings:
-            logger.warning("profile_mappings empty - no profiles will be generated")
-            return []
+        mappings = profile_config.get("profile_mappings", [])
+        id_template = profile_config.get("id_template")
+        if not id_template:
+            raise ValueError("benchmark.profiles needs an id_template (a Profile id per title)")
+        by_match: dict[str, dict] = {}
+        for mapping in mappings:
+            name = mapping.get("match")
+            if not isinstance(name, str) or not name:
+                raise ValueError(f"a profile mapping needs a match: {mapping!r}")
+            if "id" in mapping:
+                raise ValueError(
+                    f"profile mapping {name!r} sets an id; profile ids come from "
+                    "benchmark.profiles.id_template"
+                )
+            if name in by_match:
+                raise ValueError(f"profile {name!r} has more than one profile mapping")
+            by_match[name] = mapping
+
+        entries = (
+            self._defined_profiles(profile_definitions, profile_config)
+            if profile_definitions
+            else self._profiles_named_on_rules(recommendations, mappings, by_match)
+        )
 
         profiles = []
-        by_match = {mapping.get("match"): mapping for mapping in profile_mappings}
+        titles_by_id: dict[str, str] = {}
+        for title, description, names in entries:
+            profile_id = VariableSubstituter.substitute(id_template, {"profile": {"title": title}})
+            if profile_id in titles_by_id:
+                raise ValueError(
+                    f"profiles {titles_by_id[profile_id]!r} and {title!r} both get the id "
+                    f"{profile_id!r} from benchmark.profiles.id_template"
+                )
+            titles_by_id[profile_id] = title
 
-        # Build profiles from config
-        for mapping in profile_mappings:
-            profile_id = mapping.get("id")
-            profile_title = mapping.get("title")
-            profile_desc = mapping.get("description", "")
-            # The profile's own name and every profile it includes (Level 2 includes Level 1)
-            names = self._profile_names(mapping, by_match)
-
-            # Find all rules in this profile or in a profile it includes
+            # Every rule in this profile or in a profile it includes
             select_list = []
             for rec in recommendations:
                 if names.intersection(rec.profiles):
@@ -1503,58 +1548,128 @@ class MappingEngine:
                         self.config.rule_id.get("template", "CIS-{ref_normalized}_rule"),
                         rule_context,
                     )
-
-                    # Create select element
-                    select = ProfileSelectType(idref=rule_id, selected=True)
-                    select_list.append(select)
+                    select_list.append(ProfileSelectType(idref=rule_id, selected=True))
 
             if not select_list:
-                logger.debug(f"Profile '{profile_id}' has no matching rules, skipping")
+                # Only a page definition can get here: a name on the rules selects its rules.
+                logger.warning(
+                    f"Profile {title!r} is defined for this benchmark but no recommendation "
+                    "is in it or in a profile it extends; it is left out of the export"
+                )
                 continue
 
             # Create Profile element (use _construct_typed_element helper for DRY)
-            title_elem = self._construct_typed_element(TextWithSubType, profile_title)
-            desc_elem = self._construct_typed_element(HtmlTextWithSubType, profile_desc)
-
-            profile = Profile(
-                id=profile_id,
-                title=[title_elem] if title_elem else [],
-                description=[desc_elem] if desc_elem else [],
-                select=select_list,
+            title_elem = self._construct_typed_element(TextWithSubType, title)
+            desc_elem = (
+                self._construct_typed_element(HtmlTextWithSubType, description)
+                if description
+                else None
             )
 
-            profiles.append(profile)
+            profiles.append(
+                Profile(
+                    id=profile_id,
+                    title=[title_elem] if title_elem else [],
+                    description=[desc_elem] if desc_elem else [],
+                    select=select_list,
+                )
+            )
             logger.debug(f"Generated profile '{profile_id}' with {len(select_list)} rules")
 
         logger.debug(f"Generated {len(profiles)} Profile elements")
         return profiles
 
-    @staticmethod
-    def _profile_names(mapping: dict, by_match: dict[str, dict]) -> set[str]:
-        """The profile names a mapping selects: its own match and, through each mapping's
-        includes, every profile it includes directly or through another.
+    def _defined_profiles(
+        self, definitions: list[ProfileDefinition], profile_config: dict
+    ) -> list[tuple[str, str | None, set[str]]]:
+        """(title, description, profile names it selects) for each profile the benchmark's
+        page defines; a profile selects its own name and every ancestor's, by parent. The
+        description goes through the style's description_transform.
 
         Raises:
-            ValueError: A mapping has no match, an include names no profile mapping, or
-                profiles include each other.
+            ValueError: A parent is not one of the benchmark's profiles, or parents loop.
         """
-        names: set[str] = set()
+        by_title = {definition.title: definition for definition in definitions}
+        for definition in definitions:
+            if definition.parent and definition.parent not in by_title:
+                raise ValueError(
+                    f"profile {definition.title!r} extends {definition.parent!r}, which is not "
+                    "one of the benchmark's profiles"
+                )
+        transform = TransformRegistry.get(profile_config.get("description_transform", "none"))
 
-        def visit(current: dict, path: list[str]) -> None:
-            name = current.get("match")
-            if not isinstance(name, str) or not name:
-                raise ValueError(f"a profile mapping needs a match: {current!r}")
-            if name in path:
-                raise ValueError(f"profiles {path + [name]} include each other")
-            names.add(name)
-            for included in current.get("includes", []):
+        def parents(title: str) -> list[str]:
+            parent = by_title[title].parent
+            return [parent] if parent else []
+
+        return [
+            (
+                definition.title,
+                (transform(definition.description) or None) if definition.description else None,
+                self._included_profiles(definition.title, parents),
+            )
+            for definition in definitions
+        ]
+
+    def _profiles_named_on_rules(
+        self,
+        recommendations: list["Recommendation"],
+        mappings: list[dict],
+        by_match: dict[str, dict],
+    ) -> list[tuple[str, str | None, set[str]]]:
+        """(title, description, profile names it selects) for a copy saved without the
+        page's definitions: one entry per profile name its rules use, mapped names in the
+        style's order, then the others in the order rules first use them. A mapping sets
+        its title, description and the profiles it includes. Every mapping is checked,
+        whether or not these rules use it.
+
+        Raises:
+            ValueError: An include names no profile mapping, or mappings include each other.
+        """
+
+        def includes(name: str) -> list[str]:
+            if name not in by_match:
+                return []
+            listed = by_match[name].get("includes", [])
+            for included in listed:
                 if included not in by_match:
                     raise ValueError(
                         f"profile {name!r} includes {included!r}, which no profile mapping matches"
                     )
-                visit(by_match[included], path + [name])
+            return list(listed)
 
-        visit(mapping, [])
+        named = dict.fromkeys(name for rec in recommendations for name in rec.profiles)
+        entries = []
+        for mapping in mappings:
+            included = self._included_profiles(mapping["match"], includes)
+            if mapping["match"] in named:
+                entries.append(
+                    (
+                        mapping.get("title") or mapping["match"],
+                        mapping.get("description") or None,
+                        included,
+                    )
+                )
+        entries.extend((name, None, {name}) for name in named if name not in by_match)
+        return entries
+
+    @staticmethod
+    def _included_profiles(name: str, parents: Callable[[str], list[str]]) -> set[str]:
+        """name and every profile it includes, directly or through another.
+
+        Raises:
+            ValueError: Profiles include each other.
+        """
+        names: set[str] = set()
+
+        def visit(current: str, path: list[str]) -> None:
+            if current in path:
+                raise ValueError(f"profiles {path + [current]} include each other")
+            names.add(current)
+            for parent in parents(current):
+                visit(parent, path + [current])
+
+        visit(name, [])
         return names
 
     def generate_metadata_from_config(

@@ -331,7 +331,12 @@ IdentType(value="CCI-000382", system="http://cyber.mil/cci")
 Transformations are defined in `base_style.yaml` and can be used by any field:
 
 ### strip_html
-Removes all HTML tags, returns plain text.
+Removes HTML tags and returns plain text that keeps the text's layout: line breaks and
+spacing away from tags stay as written (Windows line breaks become `\n`); inline tags
+leave their text in the sentence; paragraphs, headings, tables and lists are set apart by
+a blank line; list items, table rows and `<br>` are lines of their own; table cells are
+separated by a tab. Anything in angle brackets is read as a tag and removed, so a
+placeholder such as `<user>` in a command does not survive.
 
 ```yaml
 title:

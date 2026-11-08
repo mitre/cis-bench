@@ -2013,3 +2013,145 @@ class TestWorkbenchScraperConcurrentFetches:
         worker.headers["X-Worker"] = "1"
         assert base.cookies.get("workbench_session") is None
         assert "X-Worker" not in base.headers
+
+
+# A benchmark's profiles as WorkBench's page lists them (our own text, the component's shape)
+PROFILE_DEFINITIONS = [
+    {
+        "title": "Level 1 - Alpha",
+        "description": "<p>Items for every Alpha system.</p>",
+        "parent_title": None,
+    },
+    {
+        "title": "Level 2 - Alpha",
+        "description": "<p>Extends Level 1 - Alpha.</p><ul><li>Defense in depth.</li></ul>",
+        "parent_title": "Level 1 - Alpha",
+    },
+]
+
+
+def _profiles_component(value: object) -> str:
+    from tests.conftest import vue_json_attr
+
+    return f'<wb-benchmark-profiles :profiles="{vue_json_attr(value)}"></wb-benchmark-profiles>'
+
+
+class TestTheProfileDefinitions:
+    """The benchmark page's profiles are read with their descriptions and parents."""
+
+    def test_each_profile_is_read_with_its_parent(self):
+        from cis_bench.fetcher.workbench import parse_benchmark_page
+        from cis_bench.models.benchmark import ProfileDefinition
+
+        page = parse_benchmark_page(_profiles_component(PROFILE_DEFINITIONS))
+
+        assert page.profile_definitions == [
+            ProfileDefinition(
+                title="Level 1 - Alpha",
+                description="<p>Items for every Alpha system.</p>",
+                parent=None,
+            ),
+            ProfileDefinition(
+                title="Level 2 - Alpha",
+                description="<p>Extends Level 1 - Alpha.</p><ul><li>Defense in depth.</li></ul>",
+                parent="Level 1 - Alpha",
+            ),
+        ]
+
+    def test_a_page_without_the_component_has_no_definitions(self):
+        from cis_bench.fetcher.workbench import parse_benchmark_page
+
+        assert parse_benchmark_page(PUBLISHED_STATUS_HTML).profile_definitions == []
+
+    @pytest.mark.parametrize(
+        "html",
+        [
+            pytest.param(
+                "<wb-benchmark-profiles :profiles=\"JSON.parse('[{not json')\">"
+                "</wb-benchmark-profiles>",
+                id="not-json",
+            ),
+            pytest.param(_profiles_component({"title": "Level 1 - Alpha"}), id="not-a-list"),
+            pytest.param(_profiles_component([{"description": "<p>No title.</p>"}]), id="no-title"),
+            pytest.param(_profiles_component(["Level 1 - Alpha"]), id="not-an-object"),
+            pytest.param(
+                _profiles_component([{"title": "Level 1 - Alpha", "parent_title": 1}]),
+                id="parent-not-text",
+            ),
+            pytest.param(
+                _profiles_component([{"title": "Level 1 - Alpha", "description": {"p": 1}}]),
+                id="description-not-text",
+            ),
+            pytest.param(
+                _profiles_component([PROFILE_DEFINITIONS[0], PROFILE_DEFINITIONS[0]]),
+                id="duplicate-title",
+            ),
+            pytest.param("<wb-benchmark-profiles></wb-benchmark-profiles>", id="no-attribute"),
+            pytest.param(
+                '<wb-benchmark-profiles :profiles=""></wb-benchmark-profiles>',
+                id="empty-attribute",
+            ),
+            pytest.param(
+                '<wb-benchmark-profiles :profiles="  "></wb-benchmark-profiles>',
+                id="blank-attribute",
+            ),
+            pytest.param(
+                "<wb-benchmark-profiles :profiles=\"JSON.parse('')\"></wb-benchmark-profiles>",
+                id="empty-literal",
+            ),
+        ],
+    )
+    def test_a_component_without_a_list_of_titled_profiles_is_an_error(self, html):
+        # The component is there, so its profiles are never silently dropped.
+        from cis_bench.exceptions import ParserError
+        from cis_bench.fetcher.workbench import parse_benchmark_page
+
+        with pytest.raises(ParserError, match="wb-benchmark-profiles"):
+            parse_benchmark_page(html)
+
+    def test_titles_are_trimmed_and_a_blank_parent_or_description_is_none(self):
+        from cis_bench.fetcher.workbench import parse_benchmark_page
+        from cis_bench.models.benchmark import ProfileDefinition
+
+        page = parse_benchmark_page(
+            _profiles_component(
+                [{"title": "  Level 1 - Alpha ", "description": "  ", "parent_title": " "}]
+            )
+        )
+
+        assert page.profile_definitions == [ProfileDefinition(title="Level 1 - Alpha")]
+
+    @patch("cis_bench.fetcher.workbench.StrategyDetector.detect_strategy")
+    def test_a_download_keeps_the_page_profile_definitions(
+        self,
+        mock_detector,
+        mock_strategy,
+        sample_benchmark_title_html,
+        sample_benchmark_navtree,
+        sample_recommendation_html,
+        stub_session,
+    ):
+        mock_detector.return_value = mock_strategy
+        page = sample_benchmark_title_html.replace(
+            "</body>", _profiles_component(PROFILE_DEFINITIONS) + "</body>"
+        )
+        url = "https://workbench.cisecurity.org/benchmarks/18528"
+
+        def handler(requested):
+            if "navtree" in requested:
+                return sample_benchmark_navtree
+            if requested == url:
+                return page
+            return sample_recommendation_html
+
+        session, _ = stub_session(handler)
+        scraper = WorkbenchScraper(
+            session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
+
+        benchmark = scraper.download_benchmark(url)
+
+        assert [(p.title, p.parent) for p in benchmark.profile_definitions] == [
+            ("Level 1 - Alpha", None),
+            ("Level 2 - Alpha", "Level 1 - Alpha"),
+        ]

@@ -376,6 +376,59 @@ class TestCISXCCDFExport:
             name("2", "workstation"): 17,
         }
 
+    @pytest.mark.parametrize(
+        ("style", "prefix"), [("cis", "xccdf_org.cisecurity.benchmarks_profile_"), ("disa", "")]
+    )
+    def test_the_page_profile_definitions_decide_the_profiles(
+        self, sample_benchmark, tmp_path, style, prefix
+    ):
+        from cis_bench.models.benchmark import ProfileDefinition
+
+        # The page defines two profiles under names no style mapping knows; Beta extends Alpha.
+        names = {"1.1.1": ["Alpha"], "2.1.1": ["Beta"]}
+        recs = [
+            rec.model_copy(update={"profiles": names.get(rec.ref, [])})
+            for rec in sample_benchmark.recommendations
+        ]
+        benchmark = sample_benchmark.model_copy(
+            update={
+                "recommendations": recs,
+                "profile_definitions": [
+                    ProfileDefinition(title="Alpha", description="<p>First tier.</p>"),
+                    ProfileDefinition(title="Beta", parent="Alpha"),
+                ],
+            }
+        )
+        output_path = tmp_path / f"{style}.xml"
+
+        ExporterFactory.create("xccdf", style=style).export(benchmark, str(output_path))
+
+        root = etree.parse(str(output_path)).getroot()
+        rule_ids = {
+            "".join(rule.xpath("./*[local-name()='title']//text()")).strip(): rule.get("id")
+            for rule in root.xpath("//*[local-name()='Rule']")
+        }
+        rule_1_1_1, rule_2_1_1 = (
+            rule_ids[rec.title] for rec in recs if rec.ref in ("1.1.1", "2.1.1")
+        )
+        profiles = {
+            p.get("id"): (
+                [
+                    "".join(d.xpath(".//text()")).strip()
+                    for d in p.xpath("./*[local-name()='description']")
+                ],
+                [
+                    (s.get("idref"), s.get("selected"))
+                    for s in p.xpath("./*[local-name()='select']")
+                ],
+            )
+            for p in root.xpath("./*[local-name()='Profile']")
+        }
+        assert profiles == {
+            f"{prefix}alpha": (["First tier."], [(rule_1_1_1, "true")]),
+            f"{prefix}beta": ([], [(rule_1_1_1, "true"), (rule_2_1_1, "true")]),
+        }
+
     def test_nist_references_dublin_core(self, sample_benchmark):
         """Test that NIST references use Dublin Core."""
         exporter = ExporterFactory.create("xccdf", style="cis")

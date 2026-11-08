@@ -11,31 +11,23 @@ CIS WorkBench Vue migration:
    capitalized singular/plural keys (``Technique``/``Tactics``/``Mitigations``).
 """
 
+import json
+
 import pytest
 
 from cis_bench.fetcher.strategies.base import ExtractedRecommendation
 from cis_bench.fetcher.strategies.detector import StrategyDetector
 from cis_bench.fetcher.strategies.v1_current import WorkbenchV1Strategy
-from cis_bench.fetcher.strategies.v2_2026 import WorkbenchV2Strategy, _decode_vue_payload
+from cis_bench.fetcher.strategies.v2_2026 import WorkbenchV2Strategy
 from cis_bench.models.benchmark import CISControl, MITREMapping, Recommendation
-
-
-def _js_escape(s: str) -> str:
-    """Encode a string the way Vue does when serializing to an attribute value."""
-    return "".join(f"\\u{ord(c):04x}" if c in ('"', "\\", "'") else c for c in s)
-
-
-def _vue_json_attr(value: object) -> str:
-    """Build a ``JSON.parse('...')`` wrapper with ``\\uXXXX``-escaped quotes."""
-    import json as _json
-
-    return f"JSON.parse('{_js_escape(_json.dumps(value))}')"
+from cis_bench.utils.vue_payload import decode_vue_payload
+from tests.conftest import vue_json_attr
 
 
 @pytest.fixture
 def v2_full_html():
     """Complete V2 HTML with every field the scraper reads populated."""
-    controls_payload = _vue_json_attr(
+    controls_payload = vue_json_attr(
         {
             "0": {
                 "title": "Collect Detailed Audit Logs",
@@ -56,7 +48,7 @@ def v2_full_html():
             },
         }
     )
-    mitre_payload = _vue_json_attr(
+    mitre_payload = vue_json_attr(
         {
             "Technique": ["T1078.004"],
             "Tactics": ["TA0001", "TA0004"],
@@ -119,7 +111,7 @@ def v2_minimal_html():
 @pytest.fixture
 def v2_controls_as_list_html():
     """V2 HTML where :controls is serialized as a list (not a dict)."""
-    payload = _vue_json_attr(
+    payload = vue_json_attr(
         [
             {
                 "title": "Only Control",
@@ -176,16 +168,32 @@ class TestV2IsCompatible:
 class TestDecodeVuePayload:
     def test_unwraps_json_parse_and_decodes_escapes(self):
         raw = r"""JSON.parse('[{\u0022a\u0022:1}]')"""
-        assert _decode_vue_payload(raw) == '[{"a":1}]'
+        assert decode_vue_payload(raw) == '[{"a":1}]'
+
+    def test_json_escapes_inside_the_literal_survive_its_own_escaping(self):
+        # WorkBench writes the JSON text's own escapes (< for "<") with an escaped
+        # backslash inside the JS literal, and "/" as \/.
+        raw = r"""JSON.parse('[{"d":"\\u003Cp\\u003Ea\\u0026b\\u003C\/p\\u003E"}]')"""
+
+        assert json.loads(decode_vue_payload(raw)) == [{"d": "<p>a&b</p>"}]
+
+    def test_an_escaped_quote_in_a_value_survives(self):
+        raw = r"""JSON.parse('[{"t":"say \\"hi\\" it's"}]')"""
+
+        assert json.loads(decode_vue_payload(raw)) == [{"t": 'say "hi" it\'s'}]
 
     def test_returns_input_when_no_wrapper(self):
-        assert _decode_vue_payload('{"a":1}') == '{"a":1}'
+        assert decode_vue_payload('{"a":1}') == '{"a":1}'
 
     def test_none_passthrough(self):
-        assert _decode_vue_payload(None) is None
+        assert decode_vue_payload(None) is None
 
-    def test_empty_string(self):
-        assert _decode_vue_payload("") is None
+    @pytest.mark.parametrize("raw", ["", "  \n "])
+    def test_empty_or_blank_is_none(self, raw):
+        assert decode_vue_payload(raw) is None
+
+    def test_an_empty_literal_is_unwrapped_to_empty_text(self):
+        assert decode_vue_payload("JSON.parse('')") == ""
 
 
 # ============ Field Extraction ============
@@ -277,7 +285,7 @@ class TestV2ExtractMitre:
         assert data["mitre_mapping"] is None
 
     def test_empty_mitre_returns_none(self):
-        empty = _vue_json_attr({"Technique": [], "Tactics": [], "Mitigations": []})
+        empty = vue_json_attr({"Technique": [], "Tactics": [], "Mitigations": []})
         html = f"""
         <wb-recommendation-data attribute="description" text="x"></wb-recommendation-data>
         <wb-recommendation-mitre-mappings :mappings="{empty}">

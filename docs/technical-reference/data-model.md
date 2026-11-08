@@ -354,6 +354,7 @@ f.write(xml_output)
 | `version` | string | | Benchmark version |
 | `published_date` | string (ISO 8601 date) or null | | The date WorkBench shows the release as published, read from the benchmark's page |
 | `description` | string or null | | The benchmark's overview, as plain text, read from its page |
+| `profile_definitions` | array | | The benchmark's profiles as its page defines them: `title`, `description` (HTML), `parent` (the title of the profile it extends, or null); each title once; empty for copies saved before they were read |
 | `downloaded_at` | string (ISO 8601) | | When it was downloaded, in UTC with its offset (`Z`); files from earlier versions carry no offset |
 | `scraper_version` | string | | Strategy version used |
 | `total_recommendations` | integer | | Count of recommendations |

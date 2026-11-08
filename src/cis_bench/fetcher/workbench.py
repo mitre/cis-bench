@@ -4,6 +4,7 @@ This scraper uses the Strategy pattern to adapt to HTML changes.
 It produces validated Pydantic Benchmark models.
 """
 
+import json
 import logging
 import re
 import threading
@@ -14,16 +15,23 @@ from typing import Any
 import requests
 import urllib3
 from bs4 import BeautifulSoup, Tag
-from pydantic import HttpUrl
+from pydantic import HttpUrl, TypeAdapter, ValidationError
 
-from cis_bench.exceptions import AuthenticationError
+from cis_bench.exceptions import AuthenticationError, ParserError
 from cis_bench.fetcher.auth import is_workbench_login_page
 from cis_bench.fetcher.http import ThreadSessions, get_with_retry, workbench_page_text
 from cis_bench.fetcher.strategies.base import ExtractedRecommendation, ScraperStrategy
 from cis_bench.fetcher.strategies.detector import StrategyDetector
-from cis_bench.models.benchmark import Benchmark, BenchmarkPage, Recommendation
+from cis_bench.models.benchmark import (
+    Benchmark,
+    BenchmarkPage,
+    ProfileDefinition,
+    ProfileDefinitions,
+    Recommendation,
+)
 from cis_bench.utils.html_parser import HTMLCleaner, attribute_text
 from cis_bench.utils.parallel import parallel_execute_batched
+from cis_bench.utils.vue_payload import decode_vue_payload
 from cis_bench.utils.workbench_urls import navtree_url, recommendation_url
 
 # Suppress SSL warnings
@@ -38,19 +46,69 @@ _PUBLISHED_ON_RE = re.compile(r"\bago on ([A-Za-z]+) (\d+)(?:st|nd|rd|th) (\d{4}
 # Paragraphs of an Overview section written as a heading and paragraphs, as kept for a page
 # without the overview component.
 _OVERVIEW_PARAGRAPHS = 3
+# The page's profile list, validated by the model's own rules for it.
+_PROFILE_DEFINITIONS = TypeAdapter(ProfileDefinitions)
 
 
 def parse_benchmark_page(html: str) -> BenchmarkPage:
-    """What a benchmark's WorkBench page says: its title, publish date and description.
+    """What a benchmark's WorkBench page says: its title, publish date, description and
+    profile definitions.
 
     The one parser for that page; every command that reads it goes through here.
+
+    Raises:
+        ParserError: The page's profile list does not decode to a list of titled profiles.
     """
     soup = BeautifulSoup(html, "html.parser")
     return BenchmarkPage(
         title=_benchmark_title(soup),
         published_date=_published_date(soup),
         description=_description(soup),
+        profile_definitions=_profile_definitions(soup),
     )
+
+
+def _profile_definitions(soup: BeautifulSoup) -> list[ProfileDefinition]:
+    """The profiles in the page's wb-benchmark-profiles component: each one's title,
+    description (HTML) and the title of the profile it extends; none without the component.
+
+    Raises:
+        ParserError: The component has no payload, or the payload is not JSON, not a list
+            of objects, or not valid profile definitions (a title each, text descriptions
+            and parents, each title once).
+    """
+    component = soup.find(name="wb-benchmark-profiles")
+    if not isinstance(component, Tag):
+        return []
+    payload = decode_vue_payload(attribute_text(component, ":profiles"))
+    if payload is None:
+        raise ParserError("wb-benchmark-profiles: the component has no profile list")
+    try:
+        profiles = json.loads(payload)
+    except json.JSONDecodeError as error:
+        raise ParserError(
+            f"wb-benchmark-profiles: the profile list is not JSON: {error}"
+        ) from error
+    if not isinstance(profiles, list):
+        raise ParserError(
+            f"wb-benchmark-profiles: expected a list of profiles, got {type(profiles).__name__}"
+        )
+    for profile in profiles:
+        if not isinstance(profile, dict):
+            raise ParserError(f"wb-benchmark-profiles: a profile is not an object: {profile!r}")
+    try:
+        return _PROFILE_DEFINITIONS.validate_python(
+            [
+                {
+                    "title": profile.get("title"),
+                    "description": profile.get("description"),
+                    "parent": profile.get("parent_title"),
+                }
+                for profile in profiles
+            ]
+        )
+    except ValidationError as error:
+        raise ParserError(f"wb-benchmark-profiles: {error}") from error
 
 
 def _benchmark_title(soup: BeautifulSoup) -> str:
@@ -433,6 +491,7 @@ class WorkbenchScraper:
             version=version,
             published_date=page.published_date,
             description=page.description,
+            profile_definitions=page.profile_definitions,
             scraper_version=(
                 self._detected_strategy.version if self._detected_strategy else "manual"
             ),

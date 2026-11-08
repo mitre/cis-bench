@@ -6,9 +6,17 @@ All scrapers produce this format, all exporters consume this format.
 
 import json
 from datetime import UTC, date, datetime
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    HttpUrl,
+    StringConstraints,
+    field_validator,
+)
 
 
 class CISControl(BaseModel):
@@ -138,6 +146,39 @@ class Recommendation(BaseModel):
         return list(dict.fromkeys(name for name in names if name))
 
 
+class ProfileDefinition(BaseModel):
+    """One of a benchmark's profiles as its WorkBench page defines it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    title: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)] = Field(
+        ..., description="Profile title, as rules name it"
+    )
+    description: str | None = Field(None, description="What the profile is for (HTML format)")
+    parent: Annotated[str, StringConstraints(strip_whitespace=True)] | None = Field(
+        None, description="Title of the profile this one extends (its rules are included)"
+    )
+
+    @field_validator("description", "parent")
+    @classmethod
+    def blank_is_none(cls, value: str | None) -> str | None:
+        """Blank text is no description or no parent."""
+        return value if value and value.strip() else None
+
+
+def one_definition_per_title(definitions: list[ProfileDefinition]) -> list[ProfileDefinition]:
+    """Rules name profiles by title, so a benchmark defines each title once."""
+    seen: set[str] = set()
+    for definition in definitions:
+        if definition.title in seen:
+            raise ValueError(f"profile {definition.title!r} is defined more than once")
+        seen.add(definition.title)
+    return definitions
+
+
+ProfileDefinitions = Annotated[list[ProfileDefinition], AfterValidator(one_definition_per_title)]
+
+
 class BenchmarkPage(BaseModel):
     """What a benchmark's own WorkBench page says about the release.
 
@@ -150,6 +191,7 @@ class BenchmarkPage(BaseModel):
     title: str
     published_date: date | None = None
     description: str | None = None
+    profile_definitions: ProfileDefinitions = Field(default_factory=list)
 
 
 class Benchmark(BaseModel):
@@ -166,6 +208,11 @@ class Benchmark(BaseModel):
     )
     description: str | None = Field(
         None, description="The benchmark's overview, as plain text, read from its page"
+    )
+    profile_definitions: ProfileDefinitions = Field(
+        default_factory=list,
+        description="The benchmark's profiles as its page defines them (title, description, "
+        "the profile each extends); empty for copies saved before they were read",
     )
 
     downloaded_at: datetime = Field(

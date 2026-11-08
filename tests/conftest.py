@@ -595,3 +595,15 @@ def new_york_clock(monkeypatch):
     yield
     monkeypatch.undo()
     time.tzset()
+
+
+_VUE_LITERAL_ESCAPES = {'"': "\\u0022", "'": "\\u0027", "\\": "\\\\", "/": "\\/"}
+
+
+def vue_json_attr(value: object) -> str:
+    """A value as WorkBench's Vue components carry it: ``JSON.parse('...')`` around the
+    JSON text, with quotes and apostrophes as ``\\uXXXX``, backslashes doubled and ``/`` as
+    ``\\/`` (so the JSON text's own escapes, such as ``\\u003C`` for ``<``, sit behind an
+    escaped backslash, as on WorkBench's pages)."""
+    text = json.dumps(value).replace("<", "\\u003C").replace(">", "\\u003E").replace("&", "\\u0026")
+    return "JSON.parse('" + "".join(_VUE_LITERAL_ESCAPES.get(c, c) for c in text) + "')"

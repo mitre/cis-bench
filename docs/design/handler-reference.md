@@ -149,25 +149,24 @@ Generate Benchmark-level `<Profile>` elements from rule applicability.
 benchmark:
   profiles:
     generate_from_rules: true
+    id_template: "{profile.title|slug:-}"  # every Profile id, from its title
     profile_mappings:
 
       - match: "Level 1 - Server"
-        id: "level-1-server"
         title: "Level 1 - Server"
         description: "CIS Level 1 for server environments"
 
       - match: "Level 2 - Server"
-        id: "level-2-server"
         title: "Level 2 - Server"
         includes: ["Level 1 - Server"]  # Level 2 extends Level 1
 ```
 
 **How It Works:**
 
-1. Scans all recommendations
-2. For each profile mapping, finds rules where `match`, or a profile the mapping `includes` (directly or through another mapping), is in `recommendation.profiles`
-3. Creates Profile element with select list of matching rule IDs
-4. Adds to Benchmark (not Rules)
+1. With the benchmark's profile definitions (read from its WorkBench page on download): one Profile per definition, selecting the rules that name it or any ancestor (`parent`); a definition that selects no rule is left out, with a warning naming it
+2. Without them (a copy saved earlier): one Profile per profile name the rules use, selecting the rules that name it or a profile it `includes`; a mapping for that name gives its title, description and `includes`
+3. Each Profile id comes from `id_template`; title and description from the definition (description through `description_transform`) or the mapping; two profiles that get one id, or two mappings for one name, stop the export
+4. Adds the Profiles to the Benchmark (not Rules), with an explicit select per rule
 
 **Output:**
 ```xml
