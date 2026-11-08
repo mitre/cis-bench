@@ -333,6 +333,49 @@ class TestCISXCCDFExport:
         finally:
             Path(output_path).unlink()
 
+    @pytest.mark.parametrize(
+        ("style", "profile_id"),
+        [
+            ("cis", "xccdf_org.cisecurity.benchmarks_profile_{}".format),
+            ("disa", "{}".format),
+        ],
+    )
+    def test_profiles_select_their_rules_and_level_2_includes_level_1(
+        self, sample_benchmark, tmp_path, style, profile_id
+    ):
+        # Profiles as WorkBench's page gives them: one text, a Markdown line break between.
+        recs = [
+            rec.model_copy(update={"profiles": ["  \n".join(rec.profiles)]})
+            if rec.profiles
+            else rec
+            for rec in sample_benchmark.recommendations
+        ]
+        joined = Benchmark.model_validate(
+            sample_benchmark.model_copy(update={"recommendations": recs}).model_dump()
+        )
+        output_path = tmp_path / f"{style}.xml"
+
+        ExporterFactory.create("xccdf", style=style).export(joined, str(output_path))
+
+        root = etree.parse(str(output_path)).getroot()
+        counts = {
+            p.get("id"): len(p.xpath("./*[local-name()='select'][@selected='true']"))
+            for p in root.xpath("./*[local-name()='Profile']")
+        }
+        separator = "_" if style == "cis" else "-"
+
+        def name(level: str, kind: str) -> str:
+            return profile_id(separator.join(["level", level, kind]))
+
+        # synthetic_complete.json: 14 rules in both Level 1 profiles, 3 in both Level 2
+        # profiles, none in a Level 1 and a Level 2 profile of the same platform.
+        assert counts == {
+            name("1", "server"): 14,
+            name("2", "server"): 17,
+            name("1", "workstation"): 14,
+            name("2", "workstation"): 17,
+        }
+
     def test_nist_references_dublin_core(self, sample_benchmark):
         """Test that NIST references use Dublin Core."""
         exporter = ExporterFactory.create("xccdf", style="cis")

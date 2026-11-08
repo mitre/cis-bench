@@ -460,6 +460,27 @@ class TestOutputs:
         assert "Benchmark: CIS [Linux] [bold]Benchmark[/bold]" in summary.output
 
 
+class TestBenchmarksAreComparedAsTheModelReadsThem:
+    """Both sides are compared as the Benchmark model reads them, so a copy saved in an
+    older form is not reported as changed."""
+
+    def test_profiles_saved_as_one_joined_text_are_not_a_change(
+        self, runner, tmp_path, old_benchmark_json
+    ):
+        joined = _with_rec_change(
+            old_benchmark_json, "1.1.1", profiles=["Level 1 - Server  \nLevel 1 - Workstation"]
+        )
+        split = _with_rec_change(
+            old_benchmark_json, "1.1.1", profiles=["Level 1 - Server", "Level 1 - Workstation"]
+        )
+        old_file, new_file = _files(tmp_path, joined, split)
+
+        result = runner.invoke(cli, ["diff", old_file, new_file, "--format", "json"])
+
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.output)["summary"]["modified"] == 0
+
+
 class TestDownloadedBenchmarksByID:
     """An ID is the downloaded copy in the cache, as get, export and info read it."""
 

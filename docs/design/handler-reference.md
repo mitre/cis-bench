@@ -159,12 +159,13 @@ benchmark:
       - match: "Level 2 - Server"
         id: "level-2-server"
         title: "Level 2 - Server"
+        includes: ["Level 1 - Server"]  # Level 2 extends Level 1
 ```
 
 **How It Works:**
 
 1. Scans all recommendations
-2. For each profile mapping, finds rules where `match` is in `recommendation.profiles`
+2. For each profile mapping, finds rules where `match`, or a profile the mapping `includes` (directly or through another mapping), is in `recommendation.profiles`
 3. Creates Profile element with select list of matching rule IDs
 4. Adds to Benchmark (not Rules)
 

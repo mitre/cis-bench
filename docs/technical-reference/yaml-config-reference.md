@@ -418,6 +418,36 @@ level after it (`1.2.3` with `section, item` is `1/section/2/item/3`); a value t
 dotted number (ASCII digits between dots), that has more levels than labels, or an empty
 label, is refused.
 
+### Profiles
+
+`benchmark.profiles` turns the profiles named on each recommendation into XCCDF `<Profile>`
+elements at Benchmark level, each with an explicit `<select>` for every rule it contains.
+
+```yaml
+benchmark:
+  profiles:
+    generate_from_rules: true
+    profile_mappings:
+
+      - match: "Level 1 - Server"            # a profile name as recommendations give it
+        id: "level-1-server"                  # the Profile id
+        title: "Level 1 - Server"
+        description: "CIS Level 1 recommendations for server environments"
+
+      - match: "Level 2 - Server"
+        id: "level-2-server"
+        title: "Level 2 - Server"
+        includes: ["Level 1 - Server"]        # also select the rules of these profiles
+```
+
+A recommendation's `profiles` holds one name per entry; WorkBench's one-text form
+("Level 1 - Server" and "Level 1 - Workstation" on two lines) is split when the
+recommendation is loaded, for new downloads and stored copies alike. A profile selects the
+rules whose profiles include its `match` or the `match` of any profile it includes, directly
+or through another mapping (CIS's Level 2 profiles extend the Level 1 profile of the same
+platform). An `includes` entry that no mapping matches, or profiles that include each other,
+stops the export with an error. A mapping that selects no rule writes no Profile.
+
 ## Source Field Reference
 
 Available source fields from Recommendation model:
@@ -434,7 +464,7 @@ assessment_status # "Automated" or "Manual"
 ### Classification and Mappings
 
 ```yaml
-profiles # List[str] - Applicable profiles
+profiles # List[str] - Applicable profiles, one name per entry
 cis_controls # List[CISControl] - CIS Controls mappings
 mitre_mapping # MITREMapping - MITRE ATT&CK mappings
 nist_controls # List[str] - NIST control IDs

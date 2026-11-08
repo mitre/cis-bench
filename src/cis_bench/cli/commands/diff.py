@@ -186,18 +186,20 @@ class _BenchmarkLoader:
 
 
 def _parse_benchmark(text: str, source: str) -> dict:
-    """The benchmark JSON as a dict, after checking it against the Benchmark model."""
+    """The benchmark as the Benchmark model reads it, as a dict.
+
+    Both sides of a comparison go through the model, so a copy saved in an older form
+    (profiles as one joined text, for example) compares equal to the same content saved now.
+    """
     from pydantic import ValidationError
 
     from cis_bench.models.benchmark import Benchmark
 
     try:
-        data = json.loads(text)
-        Benchmark.model_validate(data)
-    except (json.JSONDecodeError, ValidationError) as error:
+        benchmark = Benchmark.model_validate_json(text)
+    except ValidationError as error:
         raise click.ClickException(f"{source} is not a benchmark JSON file: {error}") from error
-    benchmark: dict = data
-    return benchmark
+    return benchmark.model_dump(mode="json")
 
 
 def _ref_key(ref: str) -> tuple:

@@ -17,6 +17,8 @@ from pathlib import Path
 import pytest
 from pydantic import HttpUrl, ValidationError
 
+from cis_bench.catalog.database import deserialize_benchmark_json
+
 # Import models
 from cis_bench.models.benchmark import (
     Artifact,
@@ -276,6 +278,50 @@ class TestRecommendation:
         assert rec.mitre_mapping is not None
         assert len(rec.mitre_mapping.techniques) == 2
         assert rec.description is not None
+
+    def test_profiles_joined_by_a_line_break_are_one_entry_each(self, minimal_recommendation_data):
+        # WorkBench gives a rule's profiles as one text with a Markdown line break between them.
+        rec = Recommendation(
+            **minimal_recommendation_data,
+            profiles=["Level 1 - Server  \nLevel 1 - Workstation"],
+        )
+        assert rec.profiles == ["Level 1 - Server", "Level 1 - Workstation"]
+
+    def test_profiles_are_stripped_kept_in_order_and_listed_once(self, minimal_recommendation_data):
+        rec = Recommendation(
+            **minimal_recommendation_data,
+            profiles=[
+                "  Level 2 - Server  ",
+                "",
+                "Level 1 - Server\r\nLevel 2 - Server",
+                "\n",
+                "Level 2 - Workstation",
+            ],
+        )
+        assert rec.profiles == ["Level 2 - Server", "Level 1 - Server", "Level 2 - Workstation"]
+
+    def test_a_cached_copy_with_joined_profiles_loads_one_entry_per_profile(
+        self, minimal_benchmark_data, minimal_recommendation_data
+    ):
+        stored = json.dumps(
+            {
+                **minimal_benchmark_data,
+                "total_recommendations": 1,
+                "recommendations": [
+                    {
+                        **minimal_recommendation_data,
+                        "profiles": ["Level 2 - Server  \nLevel 2 - Workstation"],
+                    }
+                ],
+            }
+        )
+
+        benchmark = deserialize_benchmark_json(stored)
+
+        assert benchmark.recommendations[0].profiles == [
+            "Level 2 - Server",
+            "Level 2 - Workstation",
+        ]
 
     def test_recommendation_requires_ref(self):
         """Test ref field is required."""

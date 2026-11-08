@@ -386,6 +386,90 @@ class TestIdentAttributes:
             )
 
 
+class TestProfileGeneration:
+    """Each profile selects the rules of its own mapping and of every profile it includes."""
+
+    MAPPINGS = [
+        {"match": "Level 1 - Server", "id": "l1s", "title": "Level 1 - Server"},
+        {
+            "match": "Level 2 - Server",
+            "id": "l2s",
+            "title": "Level 2 - Server",
+            "includes": ["Level 1 - Server"],
+        },
+        {
+            "match": "Level 3 - Server",
+            "id": "l3s",
+            "title": "Level 3 - Server",
+            "includes": ["Level 2 - Server"],
+        },
+    ]
+
+    @staticmethod
+    def _recs(*profiles_by_ref):
+        return [
+            Recommendation(
+                ref=ref,
+                title=f"Rule {ref}",
+                url=f"https://workbench.cisecurity.org/sections/1/recommendations/{i}",
+                assessment_status="Automated",
+                profiles=profiles,
+            )
+            for i, (ref, profiles) in enumerate(profiles_by_ref, start=1)
+        ]
+
+    @staticmethod
+    def _selected(profiles):
+        return {p.id: [s.idref for s in p.select] for p in profiles}
+
+    def _generate(self, cis_config_path, recs, mappings):
+        return MappingEngine(cis_config_path).generate_profiles_from_rules(
+            recs, {"generate_from_rules": True, "profile_mappings": mappings}
+        )
+
+    def test_a_profile_selects_the_rules_of_the_profiles_it_includes(self, cis_config_path):
+        recs = self._recs(
+            ("1.1", ["Level 1 - Server"]),
+            ("1.2", ["Level 2 - Server"]),
+            ("1.3", ["Level 1 - Server", "Level 2 - Server"]),
+            ("1.4", ["Level 1 - Workstation"]),
+            ("1.5", ["Level 3 - Server"]),
+        )
+
+        selected = self._selected(self._generate(cis_config_path, recs, self.MAPPINGS))
+
+        rule = "xccdf_org.cisecurity.benchmarks_rule_{}".format
+        assert selected == {
+            "l1s": [rule("1_1"), rule("1_3")],
+            "l2s": [rule("1_1"), rule("1_2"), rule("1_3")],
+            "l3s": [rule("1_1"), rule("1_2"), rule("1_3"), rule("1_5")],
+        }
+
+    def test_an_include_that_names_no_profile_mapping_is_refused(self, cis_config_path):
+        mappings = [{**self.MAPPINGS[1], "includes": ["Level 9 - Server"]}]
+        recs = self._recs(("1.1", ["Level 2 - Server"]))
+
+        with pytest.raises(ValueError, match="'Level 9 - Server'"):
+            self._generate(cis_config_path, recs, mappings)
+
+    def test_a_profile_mapping_without_a_match_is_refused(self, cis_config_path):
+        mappings = [{"id": "l1s", "title": "Level 1 - Server"}]
+        recs = self._recs(("1.1", ["Level 1 - Server"]))
+
+        with pytest.raises(ValueError, match="profile mapping needs a match"):
+            self._generate(cis_config_path, recs, mappings)
+
+    def test_profiles_that_include_each_other_are_refused(self, cis_config_path):
+        mappings = [
+            {**self.MAPPINGS[0], "includes": ["Level 2 - Server"]},
+            self.MAPPINGS[1],
+        ]
+        recs = self._recs(("1.1", ["Level 1 - Server"]))
+
+        with pytest.raises(ValueError, match="include each other"):
+            self._generate(cis_config_path, recs, mappings)
+
+
 class TestStyleInheritance:
     """A style that extends another keeps what its parent declares unless it overrides it."""
 

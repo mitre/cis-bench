@@ -1478,18 +1478,20 @@ class MappingEngine:
             return []
 
         profiles = []
+        by_match = {mapping.get("match"): mapping for mapping in profile_mappings}
 
         # Build profiles from config
         for mapping in profile_mappings:
-            match_pattern = mapping.get("match")
             profile_id = mapping.get("id")
             profile_title = mapping.get("title")
             profile_desc = mapping.get("description", "")
+            # The profile's own name and every profile it includes (Level 2 includes Level 1)
+            names = self._profile_names(mapping, by_match)
 
-            # Find all rules that match this profile
+            # Find all rules in this profile or in a profile it includes
             select_list = []
             for rec in recommendations:
-                if match_pattern in rec.profiles:
+                if names.intersection(rec.profiles):
                     # Generate rule ID using config template (same logic as map_rule)
                     ref_normalized = self.normalize_ref(rec.ref)
                     stig_number = self.ref_to_stig_number(rec.ref)
@@ -1526,6 +1528,34 @@ class MappingEngine:
 
         logger.debug(f"Generated {len(profiles)} Profile elements")
         return profiles
+
+    @staticmethod
+    def _profile_names(mapping: dict, by_match: dict[str, dict]) -> set[str]:
+        """The profile names a mapping selects: its own match and, through each mapping's
+        includes, every profile it includes directly or through another.
+
+        Raises:
+            ValueError: A mapping has no match, an include names no profile mapping, or
+                profiles include each other.
+        """
+        names: set[str] = set()
+
+        def visit(current: dict, path: list[str]) -> None:
+            name = current.get("match")
+            if not isinstance(name, str) or not name:
+                raise ValueError(f"a profile mapping needs a match: {current!r}")
+            if name in path:
+                raise ValueError(f"profiles {path + [name]} include each other")
+            names.add(name)
+            for included in current.get("includes", []):
+                if included not in by_match:
+                    raise ValueError(
+                        f"profile {name!r} includes {included!r}, which no profile mapping matches"
+                    )
+                visit(by_match[included], path + [name])
+
+        visit(mapping, [])
+        return names
 
     def generate_metadata_from_config(
         self, recommendation: "Recommendation", field_mapping: dict

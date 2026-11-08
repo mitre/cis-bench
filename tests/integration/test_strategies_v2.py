@@ -305,6 +305,24 @@ class TestV2RecommendationModelValidation:
         assert len(rec.cis_controls) == 2
         assert rec.mitre_mapping is not None
 
+    def test_a_page_with_two_profiles_gives_one_entry_each(self, v2_full_html):
+        # The page's profiles text holds both names with a Markdown line break between them.
+        html = v2_full_html.replace(
+            'text="Level 2 - Docker - Linux"',
+            'text="Level 1 - Server  \nLevel 1 - Workstation"',
+        )
+        assert html != v2_full_html
+        data = WorkbenchV2Strategy().extract_recommendation(html)
+
+        rec = Recommendation(
+            ref="1.1.15",
+            title="Ensure auditing is configured for containerd-shim",
+            url="https://workbench.cisecurity.org/sections/1/recommendations/2",
+            **data,
+        )
+
+        assert rec.profiles == ["Level 1 - Server", "Level 1 - Workstation"]
+
 
 # ============ Detector Integration ============
 

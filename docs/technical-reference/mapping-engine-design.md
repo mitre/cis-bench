@@ -183,11 +183,12 @@ benchmark:
         id: "level-2-server"
         title: "Level 2 - Server"
         description: "CIS Level 2 for server environments"
+        includes: ["Level 1 - Server"]  # Profiles whose rules this one also selects
 ```
 
 **How It Works:**
 1. Scans all recommendations
-2. For each profile mapping, finds recommendations where `profile_mapping.match` is in `recommendation.profiles`
+2. For each profile mapping, finds recommendations where `profile_mapping.match`, or a profile it `includes` (directly or through another mapping), is in `recommendation.profiles`
 3. Creates Profile element with select list of matching rule IDs
 4. Adds to Benchmark (not Rules)
 

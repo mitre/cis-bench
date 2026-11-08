@@ -124,6 +124,19 @@ class Recommendation(BaseModel):
         None, description="External references and citations (HTML format)"
     )
 
+    @field_validator("profiles")
+    @classmethod
+    def one_entry_per_profile(cls, profiles: list[str]) -> list[str]:
+        """One entry per profile, whatever the source gave.
+
+        WorkBench's recommendation page gives a rule's profiles as one text with a line
+        break between the names, and copies saved before this rule hold that text as a
+        single entry. Every line is a profile: stripped, empty lines dropped, first
+        appearance kept in order.
+        """
+        names = (line.strip() for entry in profiles for line in entry.splitlines())
+        return list(dict.fromkeys(name for name in names if name))
+
 
 class BenchmarkPage(BaseModel):
     """What a benchmark's own WorkBench page says about the release.

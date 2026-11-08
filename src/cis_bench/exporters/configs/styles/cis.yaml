@@ -57,10 +57,12 @@ benchmark:
         id: "xccdf_org.cisecurity.benchmarks_profile_level_2_server"
         title: "Level 2 - Server"
         description: "CIS Level 2 recommendations for server environments"
+        includes: ["Level 1 - Server"]  # Level 2 extends Level 1 (WorkBench profile definitions)
       - match: "Level 2 - Workstation"
         id: "xccdf_org.cisecurity.benchmarks_profile_level_2_workstation"
         title: "Level 2 - Workstation"
         description: "CIS Level 2 recommendations for workstation environments"
+        includes: ["Level 1 - Workstation"]  # Level 2 extends Level 1 (WorkBench profile definitions)
       - match: "Level 3 - Server"
         id: "xccdf_org.cisecurity.benchmarks_profile_level_3_server"
         title: "Level 3 - Server"
