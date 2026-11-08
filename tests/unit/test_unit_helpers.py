@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from cis_bench.exporters.mapping_engine import (
+    ConfigLoader,
     MappingEngine,
     TransformRegistry,
     VariableSubstituter,
@@ -288,8 +289,193 @@ class TestTransformRegistry:
 # ============================================================================
 
 
+class TestDottedNumberPath:
+    """A dotted numbered ID ("8.5") as a URI path whose sub-levels the config names."""
+
+    @pytest.mark.parametrize(
+        ("value", "labels", "path"),
+        [
+            ("8.5", ("subcontrol",), "8/subcontrol/5"),
+            ("3.10", ("subcontrol",), "3/subcontrol/10"),
+            ("13", ("subcontrol",), "13"),
+            (" 4.8 ", ("subcontrol",), "4/subcontrol/8"),
+            ("1.2.3", ("section", "item"), "1/section/2/item/3"),
+            (8, (), "8"),
+        ],
+    )
+    def test_each_sub_level_gets_its_label(self, value, labels, path):
+        assert TransformRegistry.get("dotted_number_path")(value, *labels) == path
+
+    @pytest.mark.parametrize(
+        "value", ["", "8.", ".5", "8.5.1", "v8", "8,5", "8.x", "\u0668.\u0665", None]
+    )
+    def test_any_other_shape_is_refused(self, value):
+        with pytest.raises(ValueError, match="dotted number"):
+            TransformRegistry.get("dotted_number_path")(value, "subcontrol")
+
+    @pytest.mark.parametrize(("value", "labels"), [("8.5", ("",)), ("1.2.3", ("subcontrol", " "))])
+    def test_an_empty_label_is_refused(self, value, labels):
+        # "{item.control|dotted_number_path:subcontrol,}" must not make "1/subcontrol/2//3".
+        with pytest.raises(ValueError, match="empty label"):
+            TransformRegistry.get("dotted_number_path")(value, *labels)
+
+
+class TestIdentAttributes:
+    """Namespaced ident attributes come from the style's namespaces, or the export stops."""
+
+    CONTROL_URI = {
+        "source_field": "cis_controls",
+        "ident_spec": {
+            "system_template": "http://cisecurity.org/20-cc/v{item.version}.0",
+            "value_template": "",
+            "attributes": [
+                {
+                    "name": "controlURI",
+                    "template": "u/{item.control|dotted_number_path:subcontrol}",
+                    "namespace_prefix": "cc{item.version}",
+                }
+            ],
+        },
+    }
+
+    def test_the_attribute_is_written_in_the_declared_namespace(
+        self, cis_config_path, sample_recommendation
+    ):
+        (ident,) = MappingEngine(cis_config_path).generate_idents_from_config(
+            sample_recommendation, self.CONTROL_URI
+        )
+        assert ident.system == "http://cisecurity.org/20-cc/v8.0"
+        assert ident.other_attributes == {
+            "{http://cisecurity.org/20-cc/v8.0}controlURI": "u/4/subcontrol/8"
+        }
+
+    def test_an_undeclared_namespace_prefix_stops_the_export(
+        self, cis_config_path, sample_recommendation
+    ):
+        mapping = {
+            **self.CONTROL_URI,
+            "ident_spec": {
+                **self.CONTROL_URI["ident_spec"],
+                "attributes": [{"name": "controlURI", "template": "u", "namespace_prefix": "cc99"}],
+            },
+        }
+        with pytest.raises(ValueError, match="'cc99' is not declared"):
+            MappingEngine(cis_config_path).generate_idents_from_config(
+                sample_recommendation, mapping
+            )
+
+    def test_an_attribute_without_a_name_is_refused(self, cis_config_path, sample_recommendation):
+        mapping = {
+            **self.CONTROL_URI,
+            "ident_spec": {
+                **self.CONTROL_URI["ident_spec"],
+                "attributes": [{"template": "u", "namespace_prefix": "cc8"}],
+            },
+        }
+        with pytest.raises(ValueError, match="ident attribute needs a name"):
+            MappingEngine(cis_config_path).generate_idents_from_config(
+                sample_recommendation, mapping
+            )
+
+    def test_an_xccdf_1_1_ident_cannot_carry_namespaced_attributes(
+        self, disa_config_path, sample_recommendation
+    ):
+        with pytest.raises(ValueError, match="ident allows attributes from other namespaces"):
+            MappingEngine(disa_config_path).generate_idents_from_config(
+                sample_recommendation, self.CONTROL_URI
+            )
+
+
+class TestStyleInheritance:
+    """A style that extends another keeps what its parent declares unless it overrides it."""
+
+    @staticmethod
+    def _child(tmp_path, parent, body=""):
+        child = tmp_path / "child.yaml"
+        child.write_text(f"extends: {parent}\nmetadata:\n  style_name: child\n{body}")
+        return ConfigLoader.load(child)
+
+    def test_a_style_extending_cis_keeps_its_namespaces(self, tmp_path, cis_config_path):
+        parent = ConfigLoader.load(cis_config_path)
+
+        child = self._child(tmp_path, cis_config_path)
+
+        assert child.namespaces == parent.namespaces
+        assert child.namespaces["cc8"] == "http://cisecurity.org/20-cc/v8.0"
+
+    def test_a_child_adds_and_overrides_namespaces(self, tmp_path, cis_config_path):
+        child = self._child(
+            tmp_path,
+            cis_config_path,
+            "benchmark:\n  namespaces:\n    cc8: urn:example:cc8\n    ex: urn:example\n",
+        )
+
+        assert child.namespaces["cc8"] == "urn:example:cc8"
+        assert child.namespaces["ex"] == "urn:example"
+        assert child.namespaces["cc7"] == "http://cisecurity.org/20-cc/v7.0"
+
+    def test_a_top_level_namespaces_section_is_refused(self, tmp_path):
+        # Namespaces live in benchmark.namespaces; a top-level section would be ignored.
+        style = tmp_path / "style.yaml"
+        style.write_text("namespaces:\n  default: urn:example\n")
+
+        with pytest.raises(ValueError, match="benchmark.namespaces"):
+            ConfigLoader.load(style)
+
+    def test_a_child_inherits_and_overrides_post_processing(self, tmp_path, cis_config_path):
+        parent = ConfigLoader.load(cis_config_path)
+
+        child = self._child(
+            tmp_path, cis_config_path, "post_processing:\n  strip_namespace_prefixes: true\n"
+        )
+
+        assert child.post_processing == {
+            **parent.post_processing,
+            "strip_namespace_prefixes": True,
+        }
+        assert child.post_processing["handlers"] == parent.post_processing["handlers"] != []
+
+
 class TestVariableSubstituter:
     """Unit tests for variable substitution."""
+
+    def test_a_filter_applies_a_registered_transform_to_the_variable(self):
+        control = CISControl(version=8, control="8.5", title="t", ig1=True, ig2=True, ig3=True)
+        template = (
+            "http://cisecurity.org/20-cc/v{item.version}.0/control/"
+            "{item.control|dotted_number_path:subcontrol}"
+        )
+
+        result = VariableSubstituter.substitute(template, {"item": control})
+
+        assert result == "http://cisecurity.org/20-cc/v8.0/control/8/subcontrol/5"
+
+    def test_a_filter_on_the_whole_template_returns_the_transformed_value(self):
+        assert VariableSubstituter.substitute("{value|dotted_number_path}", {"value": "13"}) == "13"
+
+    def test_filter_arguments_follow_a_colon_separated_by_commas(self):
+        result = VariableSubstituter.substitute(
+            "{value|dotted_number_path:section, item}", {"value": "1.2.3"}
+        )
+        assert result == "1/section/2/item/3"
+
+    def test_an_unknown_filter_is_refused(self):
+        with pytest.raises(ValueError, match="Unknown transformation: no_such_filter"):
+            VariableSubstituter.substitute("x {value|no_such_filter}", {"value": "a"})
+
+    @pytest.mark.parametrize("template", ["{value|}", "{value| }", "{value|:subcontrol}"])
+    def test_a_filter_without_a_name_is_refused(self, template):
+        with pytest.raises(ValueError, match="filter without a transform name"):
+            VariableSubstituter.substitute(template, {"value": "8.5"})
+
+    def test_arguments_a_transform_does_not_take_are_refused(self):
+        with pytest.raises(ValueError, match="strip_html does not take the arguments"):
+            VariableSubstituter.substitute("{value|strip_html:keep}", {"value": "<p>a</p>"})
+
+    def test_a_filter_is_applied_to_an_empty_value_too(self):
+        # The transform decides what an empty value means; it is never skipped silently.
+        with pytest.raises(ValueError, match="dotted number"):
+            VariableSubstituter.substitute("{missing|dotted_number_path:subcontrol}", {})
 
     def test_simple_variable_substitution(self, sample_context):
         """Test simple variable substitution."""

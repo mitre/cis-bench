@@ -68,16 +68,15 @@ metadata:
     - "PCI Compliance Tools"
     - "OpenSCAP"
 
-# Namespaces (required for XCCDF)
-namespaces:
-  default: "http://checklists.nist.gov/xccdf/1.2"
-  xccdf: "http://checklists.nist.gov/xccdf/1.2"
-  dc: "http://purl.org/dc/elements/1.1/"
-  pci: "http://pci-dss.org/xccdf/1.0"  # Your custom namespace
-
 # Benchmark-level configuration
 benchmark:
   id_template: "xccdf_org.pcisecuritystandards_benchmark_{version}_{title_slug}"
+  # Namespaces (required for XCCDF); a style that extends another inherits its parent's
+  namespaces:
+    default: "http://checklists.nist.gov/xccdf/1.2"
+    xccdf: "http://checklists.nist.gov/xccdf/1.2"
+    dc: "http://purl.org/dc/elements/1.1/"
+    pci: "http://pci-dss.org/xccdf/1.0"  # Your custom namespace
   title:
     source: "title"
     transform: "none"

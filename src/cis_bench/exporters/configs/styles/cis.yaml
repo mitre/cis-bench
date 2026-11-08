@@ -28,6 +28,19 @@ benchmark:
   # {version} and {title_slug} are the benchmark version and title reduced to NCName-safe text.
   id_template: "xccdf_org.cisecurity.benchmarks_benchmark_{version}_{title_slug}"
 
+  # Namespace declarations (prefix -> URI); a style that extends this one inherits them
+  namespaces:
+    default: "http://checklists.nist.gov/xccdf/1.2"
+    xccdf: "http://checklists.nist.gov/xccdf/1.2"
+    xhtml: "http://www.w3.org/1999/xhtml"
+    controls: "http://cisecurity.org/controls"
+    cc6: "http://cisecurity.org/20-cc/v6.1"
+    cc7: "http://cisecurity.org/20-cc/v7.0"
+    cc8: "http://cisecurity.org/20-cc/v8.0"
+    dc: "http://purl.org/dc/elements/1.1/"
+    enhanced: "http://cisecurity.org/xccdf/enhanced/1.0"
+    xsi: "http://www.w3.org/2001/XMLSchema-instance"
+
   # Profile generation - XCCDF 1.2 profileIdType pattern (xccdf_[^_]+_profile_.+)
   profiles:
     generate_from_rules: true
@@ -261,17 +274,20 @@ field_mappings:
             - element: "security_function"
               content: "Protect"
 
-  # CIS Controls as IDENT (With cc7/cc8 controlURI attributes)
+  # CIS Controls as IDENT, in the form CIS-CAT benchmark XCCDF uses:
+  #   <ident system="http://cisecurity.org/20-cc/v8.0"
+  #          cc8:controlURI="http://cisecurity.org/20-cc/v8.0/control/8/subcontrol/5"/>
+  # A whole control ("13") ends .../control/13. The value is empty.
   cis_controls_ident:
     target_element: "ident"
     structure: "ident_from_list"
     source_field: "cis_controls"
     ident_spec:
-      system_template: "http://cisecurity.org/20-cc/v{item.version}"
+      system_template: "http://cisecurity.org/20-cc/v{item.version}.0"
       value_template: ""  # Empty per CIS convention
       attributes:
         - name: "controlURI"
-          template: "http://cisecurity.org/20-cc/v{item.version}/control/{item.control}"
+          template: "http://cisecurity.org/20-cc/v{item.version}.0/control/{item.control|dotted_number_path:subcontrol}"
           namespace_prefix: "cc{item.version}"
 
   # === MITRE ATT&CK AS IDENT ELEMENTS (Not metadata - cleaner) ===
@@ -353,19 +369,6 @@ formatting:
   pretty_print: true
   xml_declaration: true
   encoding: "UTF-8"
-
-# Namespace declarations for metadata
-namespaces:
-  default: "http://checklists.nist.gov/xccdf/1.2"
-  xccdf: "http://checklists.nist.gov/xccdf/1.2"
-  xhtml: "http://www.w3.org/1999/xhtml"
-  controls: "http://cisecurity.org/controls"
-  cc6: "http://cisecurity.org/20-cc/v6.1"
-  cc7: "http://cisecurity.org/20-cc/v7.0"
-  cc8: "http://cisecurity.org/20-cc/v8.0"
-  dc: "http://purl.org/dc/elements/1.1/"
-  enhanced: "http://cisecurity.org/xccdf/enhanced/1.0"
-  xsi: "http://www.w3.org/2001/XMLSchema-instance"
 
 # Notes for implementers
 implementation_notes:

@@ -6,12 +6,10 @@ Tests for XCCDFExporter class covering:
 - Export method with both CIS and DISA styles
 - Post-processing pipeline
 - Metadata injection
-- CIS Controls ident URI generation
 """
 
-from unittest.mock import mock_open, patch
-
 import pytest
+from lxml import etree
 
 from cis_bench.exporters.xccdf_unified_exporter import XCCDFExporter
 from cis_bench.models.benchmark import Benchmark, CISControl, Recommendation
@@ -292,45 +290,32 @@ class TestCreateBenchmark:
 class TestPostProcessing:
     """Tests for _apply_post_processing method."""
 
-    def test_post_processing_handles_namespaces_in_benchmark_section(
+    def test_the_root_declares_the_namespaces_of_the_loaded_config(
         self, tmp_path, minimal_benchmark
     ):
-        """Should handle namespaces defined in benchmark section of config."""
-        # DISA config has namespaces in benchmark section
-        exporter = XCCDFExporter(style="disa")
-        output_file = tmp_path / "test_output.xml"
-
-        # Should not raise error
-        result = exporter.export(minimal_benchmark, str(output_file))
-        assert output_file.exists()
-
-    def test_post_processing_handles_top_level_namespaces(self, tmp_path, minimal_benchmark):
-        """Should handle namespaces at top-level of config."""
-        # CIS config has namespaces at top level
         exporter = XCCDFExporter(style="cis")
-        output_file = tmp_path / "test_output.xml"
+        exporter.config.benchmark["namespaces"]["ex"] = "urn:example"
+        output_file = tmp_path / "out.xml"
 
-        # Should not raise error
-        result = exporter.export(minimal_benchmark, str(output_file))
-        assert output_file.exists()
+        exporter.export(minimal_benchmark, str(output_file))
 
-    def test_post_processing_unknown_handler_warning(self, tmp_path, minimal_benchmark, caplog):
-        """Should log warning for unknown post-processing handlers."""
-        exporter = XCCDFExporter(style="disa")
+        assert etree.parse(str(output_file)).getroot().nsmap.get("ex") == "urn:example"
 
-        # Create a mock config that has an unknown handler
-        with patch.object(exporter, "_apply_post_processing") as mock_post:
-            # Simulate the original method but inject unknown handler
-            original_method = XCCDFExporter._apply_post_processing
+    def test_post_processing_follows_the_loaded_config(self, tmp_path, sample_benchmark):
+        def controls_metadata(exporter):
+            output_file = tmp_path / "out.xml"
+            exporter.export(sample_benchmark, str(output_file))
+            return (
+                etree.parse(str(output_file))
+                .getroot()
+                .xpath("//*[namespace-uri()='http://cisecurity.org/controls']")
+            )
 
-            def side_effect(xml_output, benchmark):
-                # Call original but we'll test the warning separately
-                return xml_output
+        without_injection = XCCDFExporter(style="cis")
+        without_injection.config.post_processing["handlers"] = ["dublin_core_injection"]
 
-            mock_post.side_effect = side_effect
-
-            output_file = tmp_path / "test_output.xml"
-            exporter.export(minimal_benchmark, str(output_file))
+        assert controls_metadata(XCCDFExporter(style="cis"))
+        assert controls_metadata(without_injection) == []
 
     def test_post_processing_missing_xccdf_namespace_raises_error(self, minimal_benchmark):
         """Should raise ValueError if no XCCDF namespace in config."""
@@ -339,18 +324,12 @@ class TestPostProcessing:
         # Create minimal XML to process
         test_xml = '<?xml version="1.0"?><Benchmark id="test"/>'
 
-        # Patch the YAML loading to return config without xccdf namespace
-        with patch("builtins.open", mock_open(read_data="post_processing:\n  handlers: []")):
-            with patch("yaml.safe_load") as mock_yaml:
-                mock_yaml.return_value = {
-                    "namespaces": {},  # No default or xccdf key
-                    "post_processing": {"handlers": []},
-                }
+        exporter._dc_elements = []
+        exporter.config.benchmark["namespaces"] = {}  # No default or xccdf key
+        exporter.config.post_processing = {"handlers": []}
 
-                with pytest.raises(ValueError) as exc_info:
-                    exporter._apply_post_processing(test_xml, minimal_benchmark)
-
-                assert "No XCCDF namespace found" in str(exc_info.value)
+        with pytest.raises(ValueError, match="No XCCDF namespace found"):
+            exporter._apply_post_processing(test_xml, minimal_benchmark)
 
 
 # ============================================================================
@@ -440,233 +419,6 @@ class TestMetadataInjection:
 # ============================================================================
 # Test: CIS Controls Ident URIs
 # ============================================================================
-
-
-class TestCISControlsIdentURIs:
-    """Tests for _add_cis_controls_ident_uris method."""
-
-    def test_add_cis_controls_ident_uris_with_safeguards(self):
-        """Should add controlURI attributes to ident elements."""
-
-        exporter = XCCDFExporter(style="cis")
-
-        # Create XML with CIS Controls metadata and ident elements
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.2"
-        cc7_ns = "http://cisecurity.org/20-cc/v7.0"
-        cc8_ns = "http://cisecurity.org/20-cc/v8.0"
-        controls_ns = "http://cisecurity.org/controls"
-
-        test_xml = f'''<?xml version="1.0"?>
-        <Benchmark xmlns="{xccdf_ns}">
-            <Rule id="test-rule">
-                <ident system="http://cisecurity.org/20-cc/v8">CIS-8-4.1</ident>
-                <metadata>
-                    <cis_controls xmlns="{controls_ns}">
-                        <safeguard urn="urn:cisecurity.org:controls:8:4:1"/>
-                    </cis_controls>
-                </metadata>
-            </Rule>
-        </Benchmark>'''
-
-        result = exporter._add_cis_controls_ident_uris(test_xml, xccdf_ns, cc7_ns, cc8_ns)
-
-        # Should contain controlURI
-        assert "controlURI" in result or "control" in result
-
-    def test_add_cis_controls_ident_uris_no_safeguards(self):
-        """Should handle rules without safeguard elements."""
-        exporter = XCCDFExporter(style="cis")
-
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.2"
-        cc7_ns = "http://cisecurity.org/20-cc/v7.0"
-        cc8_ns = "http://cisecurity.org/20-cc/v8.0"
-
-        test_xml = f'''<?xml version="1.0"?>
-        <Benchmark xmlns="{xccdf_ns}">
-            <Rule id="test-rule">
-                <ident system="http://cisecurity.org/20-cc/v8">CIS-8-4.1</ident>
-                <metadata>
-                    <cis_controls xmlns="http://cisecurity.org/controls">
-                    </cis_controls>
-                </metadata>
-            </Rule>
-        </Benchmark>'''
-
-        result = exporter._add_cis_controls_ident_uris(test_xml, xccdf_ns, cc7_ns, cc8_ns)
-
-        # Should not raise error, return valid XML
-        from lxml import etree
-
-        root = etree.fromstring(result.encode("utf-8"))
-        assert root is not None
-
-    def test_add_cis_controls_ident_uris_no_metadata(self):
-        """Should handle rules without metadata element."""
-        exporter = XCCDFExporter(style="cis")
-
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.2"
-        cc7_ns = "http://cisecurity.org/20-cc/v7.0"
-        cc8_ns = "http://cisecurity.org/20-cc/v8.0"
-
-        test_xml = f'''<?xml version="1.0"?>
-        <Benchmark xmlns="{xccdf_ns}">
-            <Rule id="test-rule">
-                <ident system="http://cisecurity.org/20-cc/v8">CIS-8-4.1</ident>
-            </Rule>
-        </Benchmark>'''
-
-        result = exporter._add_cis_controls_ident_uris(test_xml, xccdf_ns, cc7_ns, cc8_ns)
-
-        # Should not raise error
-        from lxml import etree
-
-        root = etree.fromstring(result.encode("utf-8"))
-        assert root is not None
-
-    def test_add_cis_controls_ident_uris_v7_controls(self):
-        """Should handle v7 CIS Controls."""
-        from lxml import etree
-
-        exporter = XCCDFExporter(style="cis")
-
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.2"
-        cc7_ns = "http://cisecurity.org/20-cc/v7.0"
-        cc8_ns = "http://cisecurity.org/20-cc/v8.0"
-        controls_ns = "http://cisecurity.org/controls"
-
-        test_xml = f'''<?xml version="1.0"?>
-        <Benchmark xmlns="{xccdf_ns}">
-            <Rule id="test-rule">
-                <ident system="http://cisecurity.org/20-cc/v7">CIS-7-9.2</ident>
-                <metadata>
-                    <cis_controls xmlns="{controls_ns}">
-                        <safeguard urn="urn:cisecurity.org:controls:7:9:2"/>
-                    </cis_controls>
-                </metadata>
-            </Rule>
-        </Benchmark>'''
-
-        result = exporter._add_cis_controls_ident_uris(test_xml, xccdf_ns, cc7_ns, cc8_ns)
-
-        # Should produce valid XML
-        root = etree.fromstring(result.encode("utf-8"))
-        assert root is not None
-
-    def test_add_cis_controls_ident_uris_mixed_versions(self):
-        """Should handle mixed v7 and v8 controls."""
-        from lxml import etree
-
-        exporter = XCCDFExporter(style="cis")
-
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.2"
-        cc7_ns = "http://cisecurity.org/20-cc/v7.0"
-        cc8_ns = "http://cisecurity.org/20-cc/v8.0"
-        controls_ns = "http://cisecurity.org/controls"
-
-        test_xml = f'''<?xml version="1.0"?>
-        <Benchmark xmlns="{xccdf_ns}">
-            <Rule id="test-rule">
-                <ident system="http://cisecurity.org/20-cc/v7">CIS-7-9.2</ident>
-                <ident system="http://cisecurity.org/20-cc/v8">CIS-8-4.1</ident>
-                <metadata>
-                    <cis_controls xmlns="{controls_ns}">
-                        <safeguard urn="urn:cisecurity.org:controls:7:9:2"/>
-                        <safeguard urn="urn:cisecurity.org:controls:8:4:1"/>
-                    </cis_controls>
-                </metadata>
-            </Rule>
-        </Benchmark>'''
-
-        result = exporter._add_cis_controls_ident_uris(test_xml, xccdf_ns, cc7_ns, cc8_ns)
-
-        root = etree.fromstring(result.encode("utf-8"))
-        assert root is not None
-
-    def test_add_cis_controls_ident_uris_no_idents(self):
-        """Should handle rules without ident elements."""
-        exporter = XCCDFExporter(style="cis")
-
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.2"
-        cc7_ns = "http://cisecurity.org/20-cc/v7.0"
-        cc8_ns = "http://cisecurity.org/20-cc/v8.0"
-        controls_ns = "http://cisecurity.org/controls"
-
-        test_xml = f'''<?xml version="1.0"?>
-        <Benchmark xmlns="{xccdf_ns}">
-            <Rule id="test-rule">
-                <metadata>
-                    <cis_controls xmlns="{controls_ns}">
-                        <safeguard urn="urn:cisecurity.org:controls:8:4:1"/>
-                    </cis_controls>
-                </metadata>
-            </Rule>
-        </Benchmark>'''
-
-        result = exporter._add_cis_controls_ident_uris(test_xml, xccdf_ns, cc7_ns, cc8_ns)
-
-        # Should not raise error
-        from lxml import etree
-
-        root = etree.fromstring(result.encode("utf-8"))
-        assert root is not None
-
-    def test_add_cis_controls_ident_uris_unversioned_system(self):
-        """Should skip idents without v7 or v8 in system URI."""
-        exporter = XCCDFExporter(style="cis")
-
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.2"
-        cc7_ns = "http://cisecurity.org/20-cc/v7.0"
-        cc8_ns = "http://cisecurity.org/20-cc/v8.0"
-        controls_ns = "http://cisecurity.org/controls"
-
-        test_xml = f'''<?xml version="1.0"?>
-        <Benchmark xmlns="{xccdf_ns}">
-            <Rule id="test-rule">
-                <ident system="http://some-other-system">OTHER-ID</ident>
-                <metadata>
-                    <cis_controls xmlns="{controls_ns}">
-                        <safeguard urn="urn:cisecurity.org:controls:8:4:1"/>
-                    </cis_controls>
-                </metadata>
-            </Rule>
-        </Benchmark>'''
-
-        result = exporter._add_cis_controls_ident_uris(test_xml, xccdf_ns, cc7_ns, cc8_ns)
-
-        # Should produce valid XML without controlURI on the unversioned ident
-        from lxml import etree
-
-        root = etree.fromstring(result.encode("utf-8"))
-        assert root is not None
-
-    def test_add_cis_controls_ident_uris_safeguard_with_subcontrol(self):
-        """Should handle safeguard URNs with subcontrols."""
-        from lxml import etree
-
-        exporter = XCCDFExporter(style="cis")
-
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.2"
-        cc7_ns = "http://cisecurity.org/20-cc/v7.0"
-        cc8_ns = "http://cisecurity.org/20-cc/v8.0"
-        controls_ns = "http://cisecurity.org/controls"
-
-        # URN with subcontrol (6 parts)
-        test_xml = f'''<?xml version="1.0"?>
-        <Benchmark xmlns="{xccdf_ns}">
-            <Rule id="test-rule">
-                <ident system="http://cisecurity.org/20-cc/v8">CIS-8-4.1.2</ident>
-                <metadata>
-                    <cis_controls xmlns="{controls_ns}">
-                        <safeguard urn="urn:cisecurity.org:controls:8:4:1:2"/>
-                    </cis_controls>
-                </metadata>
-            </Rule>
-        </Benchmark>'''
-
-        result = exporter._add_cis_controls_ident_uris(test_xml, xccdf_ns, cc7_ns, cc8_ns)
-
-        root = etree.fromstring(result.encode("utf-8"))
-        assert root is not None
 
 
 # ============================================================================
@@ -787,17 +539,13 @@ class TestApplyPostProcessingAdditional:
         # Create minimal XML to process
         test_xml = '<?xml version="1.0"?><Benchmark xmlns="http://checklists.nist.gov/xccdf/1.1" id="test"/>'
 
-        # Patch YAML loading to return config with 'xccdf' key instead of 'default'
-        with patch("builtins.open", mock_open(read_data="namespaces:\n  xccdf: http://test.ns")):
-            with patch("yaml.safe_load") as mock_yaml:
-                mock_yaml.return_value = {
-                    "namespaces": {"xccdf": "http://checklists.nist.gov/xccdf/1.1"},
-                    "post_processing": {"handlers": []},
-                }
+        # A config naming the XCCDF namespace "xccdf" instead of "default"
+        exporter.config.benchmark["namespaces"] = {"xccdf": "http://checklists.nist.gov/xccdf/1.1"}
+        exporter.config.post_processing = {"handlers": []}
 
-                # Should use xccdf key namespace and not raise
-                result = exporter._apply_post_processing(test_xml, minimal_benchmark)
-                assert result is not None
+        # Should use xccdf key namespace and not raise
+        result = exporter._apply_post_processing(test_xml, minimal_benchmark)
+        assert result is not None
 
     def test_post_processing_unknown_handler_logs_warning(self, minimal_benchmark, caplog):
         """Should log warning for unknown handler (line 197)."""
@@ -810,135 +558,12 @@ class TestApplyPostProcessingAdditional:
 
         test_xml = '<?xml version="1.0"?><Benchmark xmlns="http://checklists.nist.gov/xccdf/1.1" id="test"/>'
 
-        with patch("builtins.open", mock_open(read_data="test")):
-            with patch("yaml.safe_load") as mock_yaml:
-                mock_yaml.return_value = {
-                    "namespaces": {"default": "http://checklists.nist.gov/xccdf/1.1"},
-                    "post_processing": {"handlers": ["unknown_handler_xyz"]},
-                }
+        exporter.config.post_processing = {"handlers": ["unknown_handler_xyz"]}
 
-                with caplog.at_level(logging.WARNING):
-                    exporter._apply_post_processing(test_xml, minimal_benchmark)
+        with caplog.at_level(logging.WARNING):
+            exporter._apply_post_processing(test_xml, minimal_benchmark)
 
-                assert "Unknown post-processing handler" in caplog.text
-
-
-class TestCISControlsIdentURIsAdditional:
-    """Additional tests for _add_cis_controls_ident_uris edge cases."""
-
-    def test_add_cis_controls_safeguard_without_urn(self):
-        """Should skip safeguards without urn attribute (line 300)."""
-        from lxml import etree
-
-        exporter = XCCDFExporter(style="cis")
-
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.2"
-        cc7_ns = "http://cisecurity.org/20-cc/v7.0"
-        cc8_ns = "http://cisecurity.org/20-cc/v8.0"
-        controls_ns = "http://cisecurity.org/controls"
-
-        # Safeguard without urn attribute
-        test_xml = f'''<?xml version="1.0"?>
-        <Benchmark xmlns="{xccdf_ns}">
-            <Rule id="test-rule">
-                <ident system="http://cisecurity.org/20-cc/v8">CIS-8-4.1</ident>
-                <metadata>
-                    <cis_controls xmlns="{controls_ns}">
-                        <safeguard/>
-                    </cis_controls>
-                </metadata>
-            </Rule>
-        </Benchmark>'''
-
-        result = exporter._add_cis_controls_ident_uris(test_xml, xccdf_ns, cc7_ns, cc8_ns)
-
-        # Should not raise error
-        root = etree.fromstring(result.encode("utf-8"))
-        assert root is not None
-
-    def test_add_cis_controls_urn_too_short(self):
-        """Should skip URNs with fewer than 5 parts (line 304)."""
-        from lxml import etree
-
-        exporter = XCCDFExporter(style="cis")
-
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.2"
-        cc7_ns = "http://cisecurity.org/20-cc/v7.0"
-        cc8_ns = "http://cisecurity.org/20-cc/v8.0"
-        controls_ns = "http://cisecurity.org/controls"
-
-        # URN with only 4 parts (too short)
-        test_xml = f'''<?xml version="1.0"?>
-        <Benchmark xmlns="{xccdf_ns}">
-            <Rule id="test-rule">
-                <ident system="http://cisecurity.org/20-cc/v8">CIS-8-4.1</ident>
-                <metadata>
-                    <cis_controls xmlns="{controls_ns}">
-                        <safeguard urn="short:urn:only:four"/>
-                    </cis_controls>
-                </metadata>
-            </Rule>
-        </Benchmark>'''
-
-        result = exporter._add_cis_controls_ident_uris(test_xml, xccdf_ns, cc7_ns, cc8_ns)
-
-        root = etree.fromstring(result.encode("utf-8"))
-        assert root is not None
-
-    def test_add_cis_controls_without_cis_controls_element(self):
-        """Should skip rules without cis_controls element (line 290)."""
-        from lxml import etree
-
-        exporter = XCCDFExporter(style="cis")
-
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.2"
-        cc7_ns = "http://cisecurity.org/20-cc/v7.0"
-        cc8_ns = "http://cisecurity.org/20-cc/v8.0"
-
-        # Metadata without cis_controls element
-        test_xml = f'''<?xml version="1.0"?>
-        <Benchmark xmlns="{xccdf_ns}">
-            <Rule id="test-rule">
-                <ident system="http://cisecurity.org/20-cc/v8">CIS-8-4.1</ident>
-                <metadata>
-                    <other_element>content</other_element>
-                </metadata>
-            </Rule>
-        </Benchmark>'''
-
-        result = exporter._add_cis_controls_ident_uris(test_xml, xccdf_ns, cc7_ns, cc8_ns)
-
-        root = etree.fromstring(result.encode("utf-8"))
-        assert root is not None
-
-    def test_add_cis_controls_control_uri_without_subcontrol(self):
-        """Should generate URI without subcontrol when not provided (line 312)."""
-        from lxml import etree
-
-        exporter = XCCDFExporter(style="cis")
-
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.2"
-        cc7_ns = "http://cisecurity.org/20-cc/v7.0"
-        cc8_ns = "http://cisecurity.org/20-cc/v8.0"
-        controls_ns = "http://cisecurity.org/controls"
-
-        # URN with exactly 5 parts (no subcontrol) - format: urn:cisecurity.org:controls:version:control
-        test_xml = f'''<?xml version="1.0"?>
-        <Benchmark xmlns="{xccdf_ns}">
-            <Rule id="test-rule">
-                <ident system="http://cisecurity.org/20-cc/v8">CIS-8-4</ident>
-                <metadata>
-                    <cis_controls xmlns="{controls_ns}">
-                        <safeguard urn="urn:cisecurity.org:controls:8:4"/>
-                    </cis_controls>
-                </metadata>
-            </Rule>
-        </Benchmark>'''
-
-        result = exporter._add_cis_controls_ident_uris(test_xml, xccdf_ns, cc7_ns, cc8_ns)
-
-        root = etree.fromstring(result.encode("utf-8"))
-        assert root is not None
+        assert "Unknown post-processing handler" in caplog.text
 
 
 class TestMetadataInjectionAdditional:

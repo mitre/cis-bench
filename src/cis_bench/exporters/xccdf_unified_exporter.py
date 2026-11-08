@@ -10,7 +10,7 @@ from pathlib import Path
 
 from cis_bench.exceptions import ExportError
 from cis_bench.exporters.base import BaseExporter, ExporterFactory
-from cis_bench.exporters.mapping_engine import ConfigLoader, MappingEngine
+from cis_bench.exporters.mapping_engine import MappingEngine
 from cis_bench.models.benchmark import Benchmark, Recommendation
 from cis_bench.utils.xml_utils import DublinCoreInjector, XCCDFPostProcessor, XCCDFSerializer
 
@@ -56,8 +56,9 @@ class XCCDFExporter(BaseExporter):
             )
 
         logger.debug(f"Initializing XCCDF exporter with style: {style}")
-        self.config = ConfigLoader.load(config_path)
         self.engine = MappingEngine(config_path)
+        # One loaded config (with its extends chain) drives mapping and post-processing.
+        self.config = self.engine.config
         logger.debug(f"Loaded config: {config_filename}")
 
     @staticmethod
@@ -171,26 +172,11 @@ class XCCDFExporter(BaseExporter):
         """Apply post-processing pipeline based on style config.
 
         All behavior is CONFIG-DRIVEN - no hardcoded style checks.
-        Reads post_processing section from YAML config.
+        Reads the post_processing and benchmark.namespaces sections of the loaded style
+        config, inherited through extends like every other section.
         """
-        from pathlib import Path
-
-        import yaml
-
-        # Load raw config to get post_processing and namespaces sections
-        config_file = Path(__file__).parent / "configs" / "styles" / f"{self.style}.yaml"
-        with open(config_file) as f:
-            raw_config = yaml.safe_load(f)
-
-        # Get namespaces config (CIS: top-level, DISA: benchmark.namespaces)
-        namespaces_config = {}
-        if "namespaces" in raw_config:
-            namespaces_config = raw_config["namespaces"]
-        elif "benchmark" in raw_config and "namespaces" in raw_config["benchmark"]:
-            namespaces_config = raw_config["benchmark"]["namespaces"]
-
-        # Get post_processing config (with defaults from base.yaml via inheritance)
-        post_processing_config = raw_config.get("post_processing", {})
+        namespaces_config = self.config.namespaces
+        post_processing_config = self.config.post_processing
 
         logger.debug(f"Loaded namespaces: {list(namespaces_config.keys())}")
         logger.debug(f"Post-processing config: {post_processing_config}")
@@ -308,85 +294,6 @@ class XCCDFExporter(BaseExporter):
                 metadata_wrapper.append(metadata_elem)
                 rule.insert(insert_idx + offset, metadata_wrapper)
 
-        return str(etree.tostring(root, encoding="unicode", pretty_print=True))
-
-    def _add_cis_controls_ident_uris(
-        self, xml_str: str, xccdf_ns: str, cc7_ns: str, cc8_ns: str
-    ) -> str:
-        """Add cc7:controlURI and cc8:controlURI attributes to ident elements."""
-        from lxml import etree
-
-        root = etree.fromstring(xml_str.encode("utf-8"))
-        ns = {"xccdf": xccdf_ns}
-        ns_controls = {"controls": "http://cisecurity.org/controls"}
-
-        rules = root.xpath(".//xccdf:Rule", namespaces=ns)
-        added_count = 0
-
-        for rule in rules:
-            # Find metadata with CIS Controls
-            metadata = rule.xpath("./xccdf:metadata", namespaces=ns)
-            if not metadata:
-                metadata = rule.xpath("./metadata")
-            if not metadata:
-                continue
-
-            metadata = metadata[0]
-
-            # Find CIS Controls
-            cis_controls_list = metadata.xpath(".//controls:cis_controls", namespaces=ns_controls)
-            if not cis_controls_list:
-                continue
-
-            cis_controls = cis_controls_list[0]
-            safeguards = cis_controls.xpath(".//controls:safeguard", namespaces=ns_controls)
-
-            # Build control URI mapping from safeguard URNs
-            control_uris_by_version: dict[str, list[str]] = {}
-            for safeguard in safeguards:
-                urn = safeguard.get("urn")
-                if not urn:
-                    continue
-
-                # Parse: urn:cisecurity.org:controls:VERSION:CONTROL:SUBCONTROL
-                urn_parts = urn.split(":")
-                if len(urn_parts) >= 5:
-                    version = urn_parts[3]
-                    control = urn_parts[4]
-                    subcontrol = urn_parts[5] if len(urn_parts) > 5 else None
-
-                    if subcontrol:
-                        control_uri = f"http://cisecurity.org/20-cc/v{version}.0/control/{control}/subcontrol/{subcontrol}"
-                    else:
-                        control_uri = f"http://cisecurity.org/20-cc/v{version}.0/control/{control}"
-
-                    if version not in control_uris_by_version:
-                        control_uris_by_version[version] = []
-                    control_uris_by_version[version].append(control_uri)
-
-            # Find idents and add controlURI attributes
-            idents = rule.xpath("./xccdf:ident", namespaces=ns)
-            if not idents:
-                idents = rule.xpath("./ident")
-
-            for ident in idents:
-                system = ident.get("system", "")
-
-                if "/v7" in system:
-                    version = "7"
-                    ns_prefix = f"{{{cc7_ns}}}controlURI"
-                elif "/v8" in system:
-                    version = "8"
-                    ns_prefix = f"{{{cc8_ns}}}controlURI"
-                else:
-                    continue
-
-                if version in control_uris_by_version and control_uris_by_version[version]:
-                    control_uri = control_uris_by_version[version].pop(0)
-                    ident.set(ns_prefix, control_uri)
-                    added_count += 1
-
-        logger.debug(f"Added cc7/cc8 controlURI attributes to {added_count} ident elements")
         return str(etree.tostring(root, encoding="unicode", pretty_print=True))
 
     def format_name(self) -> str:

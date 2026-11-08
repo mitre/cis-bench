@@ -7,8 +7,55 @@ import pytest
 from lxml import etree
 
 from cis_bench.exporters import ExporterFactory
-from cis_bench.models.benchmark import Benchmark
+from cis_bench.models.benchmark import Benchmark, CISControl
 from cis_bench.validators.xccdf_schema import validate_xccdf
+
+CC7 = "http://cisecurity.org/20-cc/v7.0"
+CC8 = "http://cisecurity.org/20-cc/v8.0"
+CC = {7: CC7, 8: CC8}
+
+
+def _rule(root, ref_slug: str):
+    return root.xpath(
+        f".//*[local-name()='Rule'][@id='xccdf_org.cisecurity.benchmarks_rule_{ref_slug}']"
+    )[0]
+
+
+def _with_cis_controls(benchmark: Benchmark, mappings: list[tuple[int, str]]) -> Benchmark:
+    """The benchmark with recommendation 3.2.1 mapped to exactly these (version, control)s."""
+    controls = [
+        CISControl(
+            version=version,
+            control=control,
+            title="Synthetic control",
+            ig1=True,
+            ig2=True,
+            ig3=True,
+        )
+        for version, control in mappings
+    ]
+    recs = [
+        rec.model_copy(update={"cis_controls": controls}) if rec.ref == "3.2.1" else rec
+        for rec in benchmark.recommendations
+    ]
+    return benchmark.model_copy(update={"recommendations": recs})
+
+
+def _cis_idents(rule) -> list[tuple[str, str, str]]:
+    """(system, controlURI namespace, controlURI) of each CIS Controls ident on a Rule."""
+    found = []
+    for ident in rule.xpath("./*[local-name()='ident']"):
+        system = ident.get("system", "")
+        if not system.startswith("http://cisecurity.org/20-cc/"):
+            continue
+        uris = [
+            (etree.QName(name).namespace, value)
+            for name, value in ident.attrib.items()
+            if etree.QName(name).localname == "controlURI"
+        ]
+        assert len(uris) == 1, f"ident {system} has controlURI attributes {uris}"
+        found.append((system, *uris[0]))
+    return found
 
 
 @pytest.fixture
@@ -122,41 +169,104 @@ class TestCISXCCDFExport:
         finally:
             Path(output_path).unlink()
 
-    def test_cis_controls_ident_elements(self, sample_benchmark):
-        """Test that ident elements have cc7/cc8 controlURI attributes."""
-        exporter = ExporterFactory.create("xccdf", style="cis")
+    def test_cis_controls_ident_elements(self, sample_benchmark, tmp_path):
+        """Each CIS Controls mapping is an ident in the CIS-CAT form: system names the
+        Controls version, the cc7/cc8 controlURI names the safeguard, the value is empty."""
+        output_path = tmp_path / "cis.xml"
+        ExporterFactory.create("xccdf", style="cis").export(sample_benchmark, str(output_path))
 
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", delete=False) as f:
-            output_path = f.name
+        root = etree.parse(str(output_path)).getroot()
+        cis_idents = root.xpath(
+            ".//*[local-name()='ident'][starts-with(@system, 'http://cisecurity.org/20-cc/')]"
+        )
+        mapped = sum(len(rec.cis_controls) for rec in sample_benchmark.recommendations)
+        assert mapped == 38
+        assert len(cis_idents) == mapped
 
-        try:
-            exporter.export(sample_benchmark, output_path)
+        rule = root.xpath(
+            ".//*[local-name()='Rule'][@id='xccdf_org.cisecurity.benchmarks_rule_3_2_1']"
+        )[0]
+        assert _cis_idents(rule) == [
+            (
+                "http://cisecurity.org/20-cc/v8.0",
+                CC8,
+                "http://cisecurity.org/20-cc/v8.0/control/13/subcontrol/1",
+            ),
+            (
+                "http://cisecurity.org/20-cc/v7.0",
+                CC7,
+                "http://cisecurity.org/20-cc/v7.0/control/12/subcontrol/4",
+            ),
+        ]
+        assert all((ident.text or "") == "" for ident in cis_idents)
 
-            # Read raw XML to check attributes
-            with open(output_path) as f:
-                xml_content = f.read()
+        xml_content = output_path.read_text()
+        assert (
+            '<ident system="http://cisecurity.org/20-cc/v8.0" '
+            'cc8:controlURI="http://cisecurity.org/20-cc/v8.0/control/13/subcontrol/1"/>'
+        ) in xml_content
 
-            # Parse and validate structure
-            tree = etree.parse(output_path)
-            root = tree.getroot()
+    @pytest.mark.parametrize(
+        ("version", "control", "control_uri"),
+        [
+            (8, "3.10", "http://cisecurity.org/20-cc/v8.0/control/3/subcontrol/10"),
+            (8, "13.1", "http://cisecurity.org/20-cc/v8.0/control/13/subcontrol/1"),
+            (8, "16", "http://cisecurity.org/20-cc/v8.0/control/16"),
+            (7, "13.6", "http://cisecurity.org/20-cc/v7.0/control/13/subcontrol/6"),
+            (7, "8.11", "http://cisecurity.org/20-cc/v7.0/control/8/subcontrol/11"),
+            (7, "13", "http://cisecurity.org/20-cc/v7.0/control/13"),
+        ],
+    )
+    def test_each_cis_controls_mapping_is_written_in_the_cis_cat_form(
+        self, sample_benchmark, tmp_path, version, control, control_uri
+    ):
+        # CIS-CAT names a safeguard as .../control/N/subcontrol/M and a whole control
+        # (WorkBench maps some recommendations to one, such as "13") as .../control/N.
+        benchmark = _with_cis_controls(sample_benchmark, [(version, control)])
+        output_path = tmp_path / "cis.xml"
 
-            # Find CIS Controls idents
-            cis_v8_idents = root.xpath(
-                ".//*[local-name()='ident'][@system='http://cisecurity.org/20-cc/v8']"
-            )
-            cis_v7_idents = root.xpath(
-                ".//*[local-name()='ident'][@system='http://cisecurity.org/20-cc/v7']"
-            )
+        ExporterFactory.create("xccdf", style="cis").export(benchmark, str(output_path))
 
-            assert len(cis_v8_idents) > 0, "Should have CIS Controls v8 idents"
-            assert len(cis_v7_idents) > 0, "Should have CIS Controls v7 idents"
+        root = etree.parse(str(output_path)).getroot()
+        assert _cis_idents(_rule(root, "3_2_1")) == [
+            (f"http://cisecurity.org/20-cc/v{version}.0", CC[version], control_uri)
+        ]
 
-            # Note: cc7:controlURI and cc8:controlURI attributes defined in config
-            # but not yet implemented in attribute injection post-processor
-            # This is a future enhancement (optional for basic compatibility)
+    def test_a_rule_mapped_to_every_form_keeps_its_order_and_validates(
+        self, sample_benchmark, tmp_path
+    ):
+        mappings = [(8, "3.10"), (8, "16"), (7, "13"), (7, "8.11")]
+        benchmark = _with_cis_controls(sample_benchmark, mappings)
+        output_path = tmp_path / "cis.xml"
 
-        finally:
-            Path(output_path).unlink()
+        ExporterFactory.create("xccdf", style="cis").export(benchmark, str(output_path))
+
+        root = etree.parse(str(output_path)).getroot()
+        assert _cis_idents(_rule(root, "3_2_1")) == [
+            (
+                "http://cisecurity.org/20-cc/v8.0",
+                CC8,
+                "http://cisecurity.org/20-cc/v8.0/control/3/subcontrol/10",
+            ),
+            (
+                "http://cisecurity.org/20-cc/v8.0",
+                CC8,
+                "http://cisecurity.org/20-cc/v8.0/control/16",
+            ),
+            (
+                "http://cisecurity.org/20-cc/v7.0",
+                CC7,
+                "http://cisecurity.org/20-cc/v7.0/control/13",
+            ),
+            (
+                "http://cisecurity.org/20-cc/v7.0",
+                CC7,
+                "http://cisecurity.org/20-cc/v7.0/control/8/subcontrol/11",
+            ),
+        ]
+        assert {root.nsmap.get("cc7"), root.nsmap.get("cc8")} == {CC7, CC8}
+        result = validate_xccdf(output_path)
+        assert result.is_valid, f"XCCDF 1.2 schema validation failed: {result.errors[:5]}"
 
     def test_mitre_as_ident_elements(self, sample_benchmark):
         """Test that MITRE ATT&CK is exported as ident elements (not metadata)."""

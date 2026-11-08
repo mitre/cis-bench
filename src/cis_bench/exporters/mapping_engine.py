@@ -23,10 +23,11 @@ See ARCHITECTURE_PRINCIPLES.md for complete guidelines.
 Adding PCI-DSS, ISO 27001, HIPAA, etc. MUST require ZERO code changes (YAML only).
 """
 
+import inspect
 import logging
 import re
 from collections.abc import Callable
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -49,20 +50,32 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class MappingConfig:
-    """Loaded mapping configuration."""
+    """Loaded mapping configuration: one field per top-level section of a style's YAML.
 
-    metadata: dict[str, Any]
-    benchmark: dict[str, Any]
-    rule_defaults: dict[str, Any]
-    rule_id: dict[str, str]
-    group_id: dict[str, str]  # Group ID template configuration
-    field_mappings: dict[str, Any]
-    transformations: dict[str, Any]
-    cci_deduplication: dict[str, Any]
-    rule_elements: dict[str, Any]  # Specification of each Rule element and its xsdata type
-    group_elements: dict[str, Any]  # Specification of each Group element and its xsdata type
+    ConfigLoader fills and inherits (extends) every field the same way, so a section
+    added here is loaded and inherited without further code.
+    """
+
+    metadata: dict[str, Any] = field(default_factory=dict)
+    benchmark: dict[str, Any] = field(default_factory=dict)
+    rule_defaults: dict[str, Any] = field(default_factory=dict)
+    rule_id: dict[str, str] = field(default_factory=dict)
+    group_id: dict[str, str] = field(default_factory=dict)  # Group ID template configuration
+    field_mappings: dict[str, Any] = field(default_factory=dict)
+    transformations: dict[str, Any] = field(default_factory=dict)
+    cci_deduplication: dict[str, Any] = field(default_factory=dict)
+    # Specification of each Rule and Group element and its xsdata type
+    rule_elements: dict[str, Any] = field(default_factory=dict)
+    group_elements: dict[str, Any] = field(default_factory=dict)
     legacy_vms_tags: dict[str, Any] | None = None
     validation: dict[str, Any] | None = None
+    # How the serialized XML is finished (handlers, namespace prefixes, root declarations)
+    post_processing: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def namespaces(self) -> dict[str, str]:
+        """Prefix -> namespace URI, declared in benchmark.namespaces."""
+        return dict(self.benchmark.get("namespaces") or {})
 
 
 class TransformRegistry:
@@ -130,6 +143,36 @@ def strip_html_keep_code(html: str | None) -> str:
 TransformRegistry.register("strip_html_keep_code", strip_html_keep_code)
 
 
+_DOTTED_NUMBER = re.compile(r"[0-9]+(?:\.[0-9]+)*")
+
+
+def dotted_number_path(value: Any, *labels: str) -> str:
+    """A dotted numbered ID as a URI path, each sub-level after a label the config names.
+
+    With the label "subcontrol", "8.5" is "8/subcontrol/5" and "13" is "13" (the form CIS
+    Controls URIs use). An ID with more levels than labels allow, or with anything but
+    numbers between the dots, is refused, so a malformed ID never becomes a URI.
+
+    Examples:
+        dotted_number_path("8.5", "subcontrol") -> "8/subcontrol/5"
+        dotted_number_path("1.2.3", "section", "item") -> "1/section/2/item/3"
+    """
+    if any(not label.strip() for label in labels):
+        raise ValueError(f"empty label in {labels!r}: each sub-level needs a name")
+    text = "" if value is None else str(value).strip()
+    parts = text.split(".") if _DOTTED_NUMBER.fullmatch(text) else []
+    if not parts or len(parts) > len(labels) + 1:
+        raise ValueError(
+            f"{value!r} is not a dotted number of at most {len(labels) + 1} levels "
+            "(such as 13 or 8.5)"
+        )
+    sublevels = zip(labels[: len(parts) - 1], parts[1:], strict=True)
+    return parts[0] + "".join(f"/{label}/{part}" for label, part in sublevels)
+
+
+TransformRegistry.register("dotted_number_path", dotted_number_path)
+
+
 class ConfigLoader:
     """Loads and validates mapping configuration from YAML with inheritance support."""
 
@@ -194,6 +237,11 @@ class ConfigLoader:
             # Load the current file
             with open(config_path) as f:
                 config_data = yaml.safe_load(f) or {}
+            if "namespaces" in config_data:
+                raise ValueError(
+                    f"{config_path.name}: declare namespaces in benchmark.namespaces "
+                    "(a top-level namespaces section is not read)"
+                )
 
             # Check for inheritance
             if "extends" in config_data:
@@ -208,18 +256,8 @@ class ConfigLoader:
 
                 # Convert parent MappingConfig back to dict for merging
                 parent_dict = {
-                    "metadata": parent_config_obj.metadata,
-                    "benchmark": parent_config_obj.benchmark,
-                    "rule_defaults": parent_config_obj.rule_defaults,
-                    "rule_id": parent_config_obj.rule_id,
-                    "group_id": parent_config_obj.group_id,
-                    "field_mappings": parent_config_obj.field_mappings,
-                    "transformations": parent_config_obj.transformations,
-                    "cci_deduplication": parent_config_obj.cci_deduplication,
-                    "rule_elements": parent_config_obj.rule_elements,
-                    "group_elements": parent_config_obj.group_elements,
-                    "legacy_vms_tags": parent_config_obj.legacy_vms_tags,
-                    "validation": parent_config_obj.validation,
+                    section.name: getattr(parent_config_obj, section.name)
+                    for section in fields(MappingConfig)
                 }
 
                 # Deep merge parent with current (current overrides parent)
@@ -229,20 +267,12 @@ class ConfigLoader:
             else:
                 logger.debug(f"Loaded {config_path.name} (no inheritance)")
 
-            # Extract sections
             return MappingConfig(
-                metadata=config_data.get("metadata", {}),
-                benchmark=config_data.get("benchmark", {}),
-                rule_defaults=config_data.get("rule_defaults", {}),
-                rule_id=config_data.get("rule_id", {}),
-                group_id=config_data.get("group_id", {}),
-                field_mappings=config_data.get("field_mappings", {}),
-                transformations=config_data.get("transformations", {}),
-                cci_deduplication=config_data.get("cci_deduplication", {}),
-                rule_elements=config_data.get("rule_elements", {}),
-                group_elements=config_data.get("group_elements", {}),
-                legacy_vms_tags=config_data.get("legacy_vms_tags"),
-                validation=config_data.get("validation"),
+                **{
+                    section.name: config_data[section.name]
+                    for section in fields(MappingConfig)
+                    if section.name in config_data
+                }
             )
 
         finally:
@@ -254,11 +284,45 @@ class VariableSubstituter:
     """Handles variable substitution in templates."""
 
     @staticmethod
+    def _resolve(expression: str, context: dict[str, Any]) -> Any:
+        """The value of one {expression}: a dotted path, optionally piped through a
+        registered transform with arguments ("item.control|dotted_number_path:subcontrol").
+
+        Raises:
+            ValueError: The filter names no registered transform, or the transform refuses
+                the value.
+        """
+        path, pipe, filter_spec = expression.partition("|")
+        value: Any = context
+        for part in path.strip().split("."):
+            if isinstance(value, dict):
+                value = value.get(part, "")
+            else:
+                value = getattr(value, part, "")
+        if pipe:
+            # "name" or "name:arg1, arg2"; the transform itself is called, so it decides
+            # what an empty value means.
+            raw_name, _, raw_args = filter_spec.partition(":")
+            name = raw_name.strip()
+            if not name:
+                raise ValueError(f"filter without a transform name in {{{expression}}}")
+            args = [arg.strip() for arg in raw_args.split(",")] if raw_args.strip() else []
+            transform = TransformRegistry.get(name)
+            try:
+                inspect.signature(transform).bind(value, *args)
+            except TypeError:
+                raise ValueError(f"{name} does not take the arguments {args}") from None
+            value = transform(value, *args)
+        return value
+
+    @staticmethod
     def substitute(template: str, context: dict[str, Any]) -> Any:
         """Replace {variables} in template with context values.
 
         Preserves type if template is a single variable (e.g., "{item.ig1}" returns bool).
         Converts to string if mixing text and variables (e.g., "F-{ref}" returns string).
+        A variable may name a registered transform after a "|", with arguments after a
+        ":", which is applied to its value: "{item.control|dotted_number_path:subcontrol}".
 
         Examples:
             template: "F-{ref_normalized}"
@@ -268,37 +332,22 @@ class VariableSubstituter:
             template: "{item.ig1}"
             context: {"item": obj with ig1=False}
             result: False (bool preserved!)
+
+            template: "control/{item.control|dotted_number_path:subcontrol}"
+            context: {"item": obj with control="8.5"}
+            result: "control/8/subcontrol/5"
         """
         # Check if template is a single variable (preserve type)
         single_var_match = re.fullmatch(r"\{([^}]+)\}", template)
         if single_var_match:
-            var_name = single_var_match.group(1)
-            parts = var_name.split(".")
-            value = context
-
-            for part in parts:
-                if isinstance(value, dict):
-                    value = value.get(part, "")
-                else:
-                    value = getattr(value, part, "")
-
-            return value  # Preserve original type!
+            return VariableSubstituter._resolve(single_var_match.group(1), context)
 
         # Mixed template - convert all to strings
-        def replacer(match):
-            var_name = match.group(1)
-            parts = var_name.split(".")
-            value = context
-
-            for part in parts:
-                if isinstance(value, dict):
-                    value = value.get(part, "")
-                else:
-                    value = getattr(value, part, "")
-
-            return str(value)
-
-        return re.sub(r"\{([^}]+)\}", replacer, template)
+        return re.sub(
+            r"\{([^}]+)\}",
+            lambda match: str(VariableSubstituter._resolve(match.group(1), context)),
+            template,
+        )
 
 
 class MappingEngine:
@@ -1314,31 +1363,51 @@ class MappingEngine:
             system = VariableSubstituter.substitute(system_template, context)
             value = VariableSubstituter.substitute(value_template, context)
 
-            # Create ident element
-            ident = IdentType(system=system, value=value)
+            # Namespaced attributes (e.g. cc8:controlURI) go in IdentType's wildcard
+            # attribute field, keyed by qualified name, so xsdata writes them.
+            other_attributes: dict[str, str] = {}
+            for attr_config in custom_attrs:
+                attr_name = attr_config.get("name")
+                if not attr_name:
+                    raise ValueError(f"an ident attribute needs a name: {attr_config!r}")
+                attr_value = VariableSubstituter.substitute(
+                    attr_config.get("template", ""), context
+                )
+                prefix = VariableSubstituter.substitute(
+                    attr_config.get("namespace_prefix", ""), context
+                )
+                other_attributes[f"{{{self._namespace_uri(prefix)}}}{attr_name}"] = str(attr_value)
 
-            # Add custom namespace attributes if specified (e.g., cc7:controlURI)
-            if custom_attrs:
-                ident._custom_attrs = {}
-                for attr_config in custom_attrs:
-                    attr_name = attr_config.get("name")
-                    attr_template = attr_config.get("template", "")
-                    namespace_prefix = attr_config.get("namespace_prefix", "")
-
-                    attr_value = VariableSubstituter.substitute(attr_template, context)
-                    resolved_prefix = VariableSubstituter.substitute(namespace_prefix, context)
-
-                    ident._custom_attrs[attr_name] = {
-                        "value": attr_value,
-                        "namespace_prefix": resolved_prefix,
-                    }
-
-            idents.append(ident)
+            if other_attributes:
+                if "other_attributes" not in {f.name for f in fields(IdentType)}:
+                    raise ValueError(
+                        f"ident attributes {sorted(other_attributes)} need an XCCDF version whose "
+                        "ident allows attributes from other namespaces"
+                    )
+                idents.append(
+                    IdentType(system=system, value=value, other_attributes=other_attributes)
+                )
+            else:
+                idents.append(IdentType(system=system, value=value))
 
         logger.debug(
             f"Generated {len(idents)} idents from {source_field} (system={system_template})"
         )
         return idents
+
+    def _namespace_uri(self, prefix: str) -> str:
+        """The namespace URI the style's config declares for a prefix (namespaces section).
+
+        Raises:
+            ValueError: The prefix is not declared, so the attribute could not be written
+                in a namespace a reader would recognise.
+        """
+        declared = self.config.namespaces
+        if prefix not in declared:
+            raise ValueError(
+                f"namespace prefix {prefix!r} is not declared in the style's namespaces"
+            )
+        return str(declared[prefix])
 
     def _get_nested_field(self, obj: Any, field_path: str) -> Any:
         """Get nested field from object using dot notation.

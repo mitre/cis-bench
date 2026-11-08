@@ -401,6 +401,23 @@ Available variables for substitution in templates:
 {profile} # Profile name (e.g., "Level 1 - Server")
 ```
 
+### Filters
+
+A variable can be passed through a registered transform: write the transform's name after
+`|`, and its arguments, if any, after `:` separated by commas. A `|` with no transform name,
+an unknown transform, arguments the transform does not take, or a value the transform
+refuses, stops the export with an error naming it.
+
+```yaml
+# CIS Controls ident in the CIS-CAT form: "8.5" -> control/8/subcontrol/5, "13" -> control/13
+template: "http://cisecurity.org/20-cc/v{item.version}.0/control/{item.control|dotted_number_path:subcontrol}"
+```
+
+`dotted_number_path` turns a dotted number into a path, putting each argument before the
+level after it (`1.2.3` with `section, item` is `1/section/2/item/3`); a value that is not a
+dotted number (ASCII digits between dots), that has more levels than labels, or an empty
+label, is refused.
+
 ## Source Field Reference
 
 Available source fields from Recommendation model:
@@ -779,16 +796,19 @@ content: "{control.title}"
 
 ### Issue: Transform Not Found
 
-```yaml
-Error: Transform 'unknown_transform' not found
+```text
+ValueError: Unknown transformation: unknown_transform
 ```
 
-**Solution**: Check `transformations` section. Available transforms:
+**Solution**: Use a transform registered in `mapping_engine.py` (`TransformRegistry.register`):
 
 - none
 - strip_html
 - strip_html_keep_code
 - html_to_markdown
+- wrap_xhtml_paragraphs
+- strip_version_prefix
+- dotted_number_path (with arguments; see [Filters](#filters))
 
 ### Issue: Source Field Not Found
 

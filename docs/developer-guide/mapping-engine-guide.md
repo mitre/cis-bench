@@ -128,11 +128,12 @@ extract: "primary"
 | Section | Purpose | Required |
 |---------|---------|----------|
 | `metadata` | Style identification and XCCDF version | Yes |
-| `benchmark` | Benchmark-level elements and namespaces | Yes |
+| `benchmark` | Benchmark-level elements and namespaces (`benchmark.namespaces`) | Yes |
 | `field_mappings` | Rule-level field transformations | Yes |
 | `rule_defaults` | Default attributes for all rules | No |
 | `transformations` | Custom transformation definitions | No |
 | `validation` | Validation rules and constraints | No |
+| `post_processing` | Handlers and namespace clean-up after serialization | No |
 
 ### Benchmark ID
 
@@ -693,11 +694,11 @@ source_field: "title" # Uses strip_html from base
 ```
 
 **Inheritance Rules:**
-1. `transformations` - Merged (child adds to base)
-2. `field_mappings` - Merged (child adds/overrides)
-3. `metadata` - Child overrides base
-4. `benchmark` - Child overrides base
-5. `namespaces` - Merged (child adds to base)
+Every section is inherited the same way. Mappings merge key by key, and the child's value
+wins where both set one; a list or a single value in the child replaces the parent's.
+So a child adds to or overrides `transformations`, `field_mappings`, `metadata`,
+`benchmark` (including `benchmark.namespaces`) and `post_processing`, while a child that
+sets `post_processing.handlers` replaces the parent's list of handlers.
 
 ---
 
