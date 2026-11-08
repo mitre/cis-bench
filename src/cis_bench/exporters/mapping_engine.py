@@ -663,29 +663,25 @@ class MappingEngine:
         RearMatterType = self.get_xccdf_class(type_name)
         return RearMatterType(content=[])
 
-    def create_reference(self, benchmark: Benchmark) -> tuple:
-        """Create reference configuration (for post-processing).
+    @staticmethod
+    def dublin_core_markers(dc_elements_config: list[dict], values: dict[str, Any]) -> str:
+        """A reference's Dublin Core elements as the markers the dublin_core_injection
+        post-processing handler turns into elements: "DC:dc:title:NIST SP 800-53||DC:dc:
+        identifier:CM-7" (xsdata cannot serialize lxml elements in mixed content). Each
+        element's content template is filled from values."""
+        return "||".join(
+            f"DC:{dc['element']}:{VariableSubstituter.substitute(dc['content'], values)}"
+            for dc in dc_elements_config
+        )
 
-        xsdata can't serialize lxml Elements in mixed content,
-        so return config for post-processing injection.
-
-        Returns:
-            (href, dc_elements_dict) for post-processing
-        """
-        ref_config = self.config.benchmark.get("reference", {})
-
-        # Prepare DC element data
-        dc_elements = {}
-        for dc_elem_config in ref_config.get("dc_elements", []):
-            elem_name = dc_elem_config["element"]  # 'dc:publisher', 'dc:source'
-            content = dc_elem_config["content"]
-
-            # Substitute variables
-            content = VariableSubstituter.substitute(content, {"benchmark": benchmark.__dict__})
-
-            dc_elements[elem_name] = content
-
-        return str(benchmark.url), dc_elements
+    def create_reference(self, benchmark: Benchmark) -> tuple[str, list[str]]:
+        """The Benchmark's own reference: its href and content, the Dublin Core markers of
+        the style's benchmark.reference.dc_elements (none when the style declares none)."""
+        dc_elements_config = self.config.benchmark.get("reference", {}).get("dc_elements", [])
+        if not dc_elements_config:
+            return str(benchmark.url), []
+        markers = self.dublin_core_markers(dc_elements_config, {"benchmark": benchmark.__dict__})
+        return str(benchmark.url), [markers]
 
     def create_plain_texts(self, benchmark: Benchmark):
         """Create plain-text elements from config (version-agnostic).
@@ -893,20 +889,36 @@ class MappingEngine:
 
         return None
 
+    def ref_values(self, ref: str) -> dict[str, str]:
+        """The values made from a recommendation ref that templates use: {ref_normalized}
+        ("3_1_1") and {stig_number} ("030101")."""
+        return {
+            "ref_normalized": self.normalize_ref(ref),
+            "stig_number": self.ref_to_stig_number(ref),
+        }
+
+    def _id_from_ref(self, section: str, ref: str) -> str:
+        """An id from the style's <section>.template (rule_id, group_id) and the ref's values.
+
+        Raises:
+            ValueError: The style has no template, or the template gives no id.
+        """
+        template = (getattr(self.config, section) or {}).get("template")
+        if not template:
+            raise ValueError(f"the style has no {section}.template")
+        made = VariableSubstituter.substitute(template, self.ref_values(ref))
+        if not isinstance(made, str) or not made:
+            raise ValueError(f"{section} template {template!r} gives no id for ref {ref!r}")
+        return made
+
     def rule_id_for_ref(self, ref: str) -> str:
-        """The Rule id for a recommendation ref, from the style's rule_id template; the one
-        place a Rule id is made, so a Rule and every Profile select naming it agree."""
-        template = self.config.rule_id.get("template", "CIS-{ref_normalized}_rule")
-        rule_id = VariableSubstituter.substitute(
-            template,
-            {
-                "ref_normalized": self.normalize_ref(ref),
-                "stig_number": self.ref_to_stig_number(ref),
-            },
-        )
-        if not isinstance(rule_id, str) or not rule_id:
-            raise ValueError(f"rule_id template {template!r} gives no Rule id for ref {ref!r}")
-        return rule_id
+        """The Rule id for a recommendation ref: the one place a Rule id is made, so a Rule
+        and every Profile select naming it agree."""
+        return self._id_from_ref("rule_id", ref)
+
+    def group_id_for_ref(self, ref: str) -> str:
+        """The Group id for a recommendation ref, from the style's group_id template."""
+        return self._id_from_ref("group_id", ref)
 
     def _cci_split(self, rec: Recommendation, context: dict) -> tuple[list[str], list[str]]:
         """The rule's (CCIs, NIST controls no CCI covers), computed once per rule by map_rule
@@ -934,16 +946,8 @@ class MappingEngine:
         """
         Rule = self.get_xccdf_class("Rule")
 
-        # Generate ID
-        ref_norm = self.normalize_ref(rec.ref)
-        stig_number = self.ref_to_stig_number(rec.ref)
-        context.update(
-            {
-                "ref_normalized": ref_norm,
-                "stig_number": stig_number,
-                "rec": rec,
-            }
-        )
+        # The ref's values serve every template below (ids, fixref, check systems)
+        context.update({**self.ref_values(rec.ref), "rec": rec})
         # The context is shared across rules: drop the previous rule's CCI split.
         context.pop("cci_split", None)
 
@@ -1040,36 +1044,18 @@ class MappingEngine:
                     if nist_controls and isinstance(nist_controls, list):
                         dc_elements_config = field_mapping.get("dc_elements", [])
                         href = field_mapping.get("attributes", {}).get("href", "")
-
-                        # Create one reference per NIST control
-                        # Build content with DC markers that post-processor handles
-                        references = []
-                        for nist_id in nist_controls:
-                            # Build content string with DC element markers
-                            # Format: "DC:dc:title:NIST SP 800-53||DC:dc:identifier:CM-7"
-                            # Using || as separator to avoid confusion with colons in values
-                            content_parts = []
-                            for dc_config in dc_elements_config:
-                                dc_elem = dc_config["element"]  # "dc:title" or "dc:identifier"
-                                dc_template = dc_config[
-                                    "content"
-                                ]  # "NIST SP 800-53" or "{nist_control_id}"
-
-                                # Substitute variables
-                                dc_value = dc_template.replace("{nist_control_id}", nist_id)
-
-                                # Store as marker for post-processing
-                                content_parts.append(f"DC:{dc_elem}:{dc_value}")
-
-                            # Create ReferenceType with concatenated marker as single string
-                            marker_string = "||".join(content_parts)
-                            references.append(FieldType(href=href, content=[marker_string]))
-
-                        rule_fields[target_element] = references
-                        # Store DC element names for post-processing
-                        if not hasattr(self, "_dc_elements"):
-                            self._dc_elements = []
-                        self._dc_elements = [dc["element"] for dc in dc_elements_config]
+                        # One reference per NIST control
+                        rule_fields[target_element] = [
+                            FieldType(
+                                href=href,
+                                content=[
+                                    self.dublin_core_markers(
+                                        dc_elements_config, {"nist_control_id": nist_id}
+                                    )
+                                ],
+                            )
+                            for nist_id in nist_controls
+                        ]
                 continue
 
             # For ident_from_list structure - generic ident generation (CIS, MITRE, PCI-DSS, etc.)
@@ -1191,22 +1177,8 @@ class MappingEngine:
         """
         Group = self.get_xccdf_class("Group")
 
-        # Generate Group ID from config template (config-driven, no hardcoded patterns)
-        ref_norm = context.get("ref_normalized", self.normalize_ref(rec.ref))
-        stig_number = context.get("stig_number", self.ref_to_stig_number(rec.ref))
-        context.update(
-            {
-                "ref_normalized": ref_norm,
-                "stig_number": stig_number,
-                "rec": rec,
-            }
-        )
-
-        # Use config-driven template with fallback for backward compatibility
-        default_template = "xccdf_org.cisecurity_group_{ref_normalized}"
-        group_id = VariableSubstituter.substitute(
-            self.config.group_id.get("template", default_template), context
-        )
+        context.update({**self.ref_values(rec.ref), "rec": rec})
+        group_id = self.group_id_for_ref(rec.ref)
 
         # Build Group fields from config
         group_fields = {
@@ -1336,15 +1308,11 @@ class MappingEngine:
         benchmark_fields["rear_matter"] = [self.create_rear_matter(benchmark)]
         benchmark_fields["plain_text"] = self.create_plain_texts(benchmark)
 
-        # Reference (returns tuple for post-processing)
-        ref_href, dc_elements = self.create_reference(benchmark)
+        # Reference: its Dublin Core markers are expanded by the dublin_core_injection
+        # handler, the same one that expands every Rule reference
+        ref_href, ref_content = self.create_reference(benchmark)
         ReferenceType = self.get_xccdf_class("ReferenceType")
-        benchmark_fields["reference"] = [
-            ReferenceType(href=ref_href, content=[])
-        ]  # List per schema
-
-        # Store DC elements for post-processing
-        self._dc_elements = dc_elements
+        benchmark_fields["reference"] = [ReferenceType(href=ref_href, content=ref_content)]
 
         # Generate Profile elements if configured
         profile_config = self.config.benchmark.get("profiles")

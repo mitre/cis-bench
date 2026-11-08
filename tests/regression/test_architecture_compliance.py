@@ -63,16 +63,23 @@ class TestConfigDrivenPrinciple:
 
         lines = content.split("\n")
         violations = []
-        in_docstring = False
+
+        # Lines inside docstrings (examples there are prose, not structure logic), from the
+        # parsed module rather than by counting quote marks on a line
+        docstring_lines: set[int] = set()
+        for node in ast.walk(ast.parse(content)):
+            body = getattr(node, "body", None)
+            if (
+                isinstance(body, list)
+                and body
+                and isinstance(body[0], ast.Expr)
+                and isinstance(body[0].value, ast.Constant)
+                and isinstance(body[0].value.value, str)
+            ):
+                docstring_lines.update(range(body[0].lineno, (body[0].end_lineno or 0) + 1))
 
         for i, line in enumerate(lines, 1):
-            # Track docstrings
-            if '"""' in line or "'''" in line:
-                in_docstring = not in_docstring
-                continue
-
-            # Skip if in docstring
-            if in_docstring:
+            if i in docstring_lines:
                 continue
 
             # Skip comments

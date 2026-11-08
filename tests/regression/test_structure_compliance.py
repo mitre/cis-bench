@@ -104,8 +104,28 @@ class TestControlMappingFidelity:
         engine = MappingEngine(disa_config_path)
         engine.config.rule_id["template"] = "{platform}"
 
-        with pytest.raises(ValueError, match="gives no Rule id"):
+        with pytest.raises(ValueError, match="gives no id"):
             engine.map_rule(sample_benchmark.recommendations[0], {"platform": "ubuntu"})
+
+    @pytest.mark.parametrize(
+        ("style", "dc_elements"),
+        [
+            (
+                "disa",
+                [("publisher", "CIS Security"), ("source", "https://workbench.cisecurity.org")],
+            ),
+            ("cis", []),
+        ],
+    )
+    def test_the_benchmark_reference_carries_the_dublin_core_its_style_declares(
+        self, sample_benchmark, tmp_path, style, dc_elements
+    ):
+        root = _export(sample_benchmark, tmp_path, style).getroot()
+        reference = root.find("{*}reference")
+
+        assert reference.get("href") == str(sample_benchmark.url)
+        assert [(etree.QName(child).localname, child.text) for child in reference] == dc_elements
+        assert not (reference.text or "").strip()
 
     @pytest.mark.parametrize("style", ["cis", "disa"])
     def test_profiles_select_every_rule_listing_them(self, sample_benchmark, tmp_path, style):

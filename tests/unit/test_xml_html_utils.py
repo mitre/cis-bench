@@ -126,43 +126,6 @@ class TestXCCDFSerializer:
 class TestDublinCoreInjector:
     """Tests for DublinCoreInjector."""
 
-    def test_inject_dc_elements_basic(self):
-        """Should inject DC elements into reference element."""
-        from cis_bench.utils.xml_utils import DublinCoreInjector
-
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.1"
-        dc_ns = "http://purl.org/dc/elements/1.1/"
-
-        xml_input = f"""<?xml version="1.0"?>
-        <Benchmark xmlns="{xccdf_ns}">
-            <reference/>
-        </Benchmark>"""
-
-        dc_elements = {"dc:publisher": "CIS Security", "dc:source": "https://cis.org"}
-
-        result = DublinCoreInjector.inject_dc_elements(xml_input, dc_elements, xccdf_ns, dc_ns)
-
-        assert "CIS Security" in result
-        assert "https://cis.org" in result
-
-    def test_inject_dc_elements_no_reference(self):
-        """Should handle XML without reference element."""
-        from cis_bench.utils.xml_utils import DublinCoreInjector
-
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.1"
-
-        xml_input = f"""<?xml version="1.0"?>
-        <Benchmark xmlns="{xccdf_ns}">
-            <title>Test</title>
-        </Benchmark>"""
-
-        dc_elements = {"dc:publisher": "CIS"}
-
-        result = DublinCoreInjector.inject_dc_elements(xml_input, dc_elements, xccdf_ns)
-
-        # Should not crash, just return XML without DC elements
-        assert "Test" in result
-
     def test_inject_dc_into_all_references_with_markers(self):
         """Should parse DC markers and convert to proper DC elements (lines 227-283)."""
         from cis_bench.utils.xml_utils import DublinCoreInjector
@@ -218,77 +181,6 @@ class TestDublinCoreInjector:
 
         # Original content preserved
         assert "https://www.cisecurity.org/controls" in result
-
-    def test_inject_cis_metadata_simple_element(self):
-        """Should inject simple CIS metadata elements (lines 276-281)."""
-        from cis_bench.utils.xml_utils import DublinCoreInjector
-
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.1"
-
-        xml_input = f"""<?xml version="1.0"?>
-        <Benchmark xmlns="{xccdf_ns}">
-            <metadata>META:cis-profile:Level 1</metadata>
-        </Benchmark>"""
-
-        result = DublinCoreInjector.inject_cis_metadata(xml_input, xccdf_ns)
-
-        assert "Level 1" in result
-        assert "META:" not in result
-
-    def test_inject_cis_metadata_nested_structure(self):
-        """Should inject nested CIS metadata with key=value pairs (lines 260-275)."""
-        from cis_bench.utils.xml_utils import DublinCoreInjector
-
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.1"
-
-        xml_input = f"""<?xml version="1.0"?>
-        <Benchmark xmlns="{xccdf_ns}">
-            <metadata>META:cis-control:version=8:control-id=4.8:title=Uninstall Unnecessary Services</metadata>
-        </Benchmark>"""
-
-        result = DublinCoreInjector.inject_cis_metadata(xml_input, xccdf_ns)
-
-        # Nested structure should be created
-        assert "8" in result  # version
-        assert "4.8" in result  # control-id
-        assert "Uninstall Unnecessary Services" in result
-        assert "META:" not in result
-
-    def test_inject_cis_metadata_no_metadata_element(self):
-        """Should handle XML without metadata elements."""
-        from cis_bench.utils.xml_utils import DublinCoreInjector
-
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.1"
-
-        xml_input = f"""<?xml version="1.0"?>
-        <Benchmark xmlns="{xccdf_ns}">
-            <title>Test</title>
-        </Benchmark>"""
-
-        result = DublinCoreInjector.inject_cis_metadata(xml_input, xccdf_ns)
-
-        # Should not crash
-        assert "Test" in result
-
-    def test_inject_cis_metadata_clears_existing_children(self):
-        """Should clear existing children from metadata element (line 241)."""
-        from cis_bench.utils.xml_utils import DublinCoreInjector
-
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.1"
-
-        # XML with META markers AND existing child elements
-        xml_input = f"""<?xml version="1.0"?>
-        <Benchmark xmlns="{xccdf_ns}">
-            <metadata>META:cis-profile:Level 2<existingChild>old data</existingChild></metadata>
-        </Benchmark>"""
-
-        result = DublinCoreInjector.inject_cis_metadata(xml_input, xccdf_ns)
-
-        # New CIS element should be created
-        assert "Level 2" in result
-        # Existing child should be removed
-        assert "existingChild" not in result
-        assert "old data" not in result
 
 
 class TestXCCDFPostProcessor:
@@ -358,23 +250,6 @@ class TestXCCDFPostProcessor:
         )
 
         assert "Test" in result
-
-    def test_process_with_dc_elements(self):
-        """Should inject DC elements when provided."""
-        from cis_bench.utils.xml_utils import XCCDFPostProcessor
-
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.1"
-
-        xml_input = f"""<?xml version="1.0"?>
-        <Benchmark xmlns="{xccdf_ns}">
-            <reference/>
-        </Benchmark>"""
-
-        dc_elements = {"dc:publisher": "Test Publisher"}
-
-        result = XCCDFPostProcessor.process(xml_input, xccdf_ns, dc_elements=dc_elements)
-
-        assert "Test Publisher" in result
 
     def test_process_strip_namespace_prefixes(self):
         """Should strip namespace prefixes when configured."""

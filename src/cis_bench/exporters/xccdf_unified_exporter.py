@@ -147,26 +147,7 @@ class XCCDFExporter(BaseExporter):
         # Build Benchmark (will generate Profiles if configured)
         xccdf_bench = self.engine.map_benchmark(benchmark, groups, context)
 
-        # Store elements needed for post-processing
-        logger.debug(
-            f"Before storing, engine._dc_elements exists: {hasattr(self.engine, '_dc_elements')}"
-        )
-        if hasattr(self.engine, "_dc_elements"):
-            logger.debug(f"Before storing, engine._dc_elements value: {self.engine._dc_elements}")
-
-        self._store_post_processing_data()
-
         return xccdf_bench
-
-    def _store_post_processing_data(self):
-        """Store data from mapping engine needed for post-processing."""
-        # Dublin Core elements (all styles)
-        has_dc = hasattr(self.engine, "_dc_elements")
-        self._dc_elements = getattr(self.engine, "_dc_elements", [])
-        logger.debug(f"Engine has _dc_elements: {has_dc}, value: {self._dc_elements}")
-
-        # Post-processing data (Dublin Core for NIST references)
-        logger.debug("Post-processing setup: Dublin Core elements ready for injection")
 
     def _apply_post_processing(self, xml_output: str, benchmark: Benchmark) -> str:
         """Apply post-processing pipeline based on style config.
@@ -220,7 +201,6 @@ class XCCDFExporter(BaseExporter):
         xml_output = XCCDFPostProcessor.process(
             xml_output,
             xccdf_namespace=xccdf_ns,
-            dc_elements=self._dc_elements,
             namespace_map=nsmap_for_lxml,
             post_processing_config=post_processing_config,
         )
