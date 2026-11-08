@@ -24,11 +24,14 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    # Run if: CI succeeded OR manual dispatch
+    # Run if: manual dispatch, or CI succeeded for a push to main (branches: main above matches
+    # the CI run's head branch, which a pull request from a branch named main also has)
     if: >-
       ${{
         github.event_name == 'workflow_dispatch' ||
-        (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+        (github.event_name == 'workflow_run' &&
+         github.event.workflow_run.conclusion == 'success' &&
+         github.event.workflow_run.event == 'push')
       }}
     steps:
       - name: Checkout code
