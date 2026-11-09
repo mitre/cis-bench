@@ -375,8 +375,8 @@ class VariableSubstituter:
         path, pipe, filter_spec = expression.partition("|")
         path = path.strip()
         parts = path.split(".")
-        if not parts[0]:
-            raise ValueError(f"template {template!r} has a variable without a name")
+        if any(not part for part in parts):
+            raise ValueError(f"template {template!r} has an empty name in {{{expression}}}")
         if parts[0] not in context:
             raise ValueError(
                 f"template {template!r} names {path!r}; {parts[0]!r} is not a value this "
@@ -422,8 +422,8 @@ class VariableSubstituter:
         """Replace {variables} in template with context values.
 
         Preserves type if template is a single variable (e.g., "{item.ig1}" returns bool).
-        Converts to string if mixing text and variables (e.g., "F-{ref}" returns string);
-        a None value becomes empty text there. A variable may name a registered transform
+        Converts to string if mixing text and variables (e.g., "F-{ref}" returns string).
+        A None value is empty text in both cases. A variable may name a registered transform
         after a "|", with arguments after a ":", which is applied to its value:
         "{item.control|dotted_number_path:subcontrol}".
 
@@ -446,8 +446,9 @@ class VariableSubstituter:
         """
         pieces = VariableSubstituter._pieces(template)
         if len(pieces) == 1 and pieces[0][0] == "" and pieces[0][1] is not None:
-            # The whole template is one variable: keep the value's type
-            return VariableSubstituter._resolve(pieces[0][1], context, template)
+            # The whole template is one variable: keep the value's type; None is empty text
+            value = VariableSubstituter._resolve(pieces[0][1], context, template)
+            return "" if value is None else value
         out = []
         for literal, expression in pieces:
             out.append(literal)
@@ -1106,6 +1107,11 @@ class MappingEngine:
         context.update({**self.ref_values(rec.ref), "rec": rec})
         # The context is shared across rules: drop the previous rule's CCI split.
         context.pop("cci_split", None)
+        # What a rule's templates may name: the ref's values, the recommendation and the
+        # benchmark; not the engine's working keys (the CCI split, the recommendation list)
+        template_values: dict[str, Any] = {**self.ref_values(rec.ref), "rec": rec}
+        if "benchmark" in context:
+            template_values["benchmark"] = context["benchmark"]
 
         rule_id = self.rule_id_for_ref(rec.ref)
 
@@ -1163,7 +1169,7 @@ class MappingEngine:
 
                             # Get parent attributes
                             system_val = VariableSubstituter.substitute(
-                                attributes_config.get("system", ""), context
+                                attributes_config.get("system", ""), template_values
                             )
 
                             # Construct nested structure
@@ -1262,7 +1268,7 @@ class MappingEngine:
                     if "system" in attr_template:
                         # ident case: system attribute
                         system_val = VariableSubstituter.substitute(
-                            attr_template["system"], context
+                            attr_template["system"], template_values
                         )
                         rule_fields[target_element] = [
                             FieldType(system=system_val, value=item) for item in value
@@ -1277,7 +1283,7 @@ class MappingEngine:
             if attributes_config:
                 # Substitute variables in attributes
                 attr_values = {
-                    k: VariableSubstituter.substitute(v, context)
+                    k: VariableSubstituter.substitute(v, template_values)
                     for k, v in attributes_config.items()
                 }
 

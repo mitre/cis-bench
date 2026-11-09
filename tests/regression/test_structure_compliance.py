@@ -148,6 +148,26 @@ class TestControlMappingFidelity:
         with pytest.raises(ValueError, match="ref_norm"):
             engine.map_rule(sample_benchmark.recommendations[0], {})
 
+    def test_a_rule_attribute_template_sees_only_the_rule_values(
+        self, sample_benchmark, disa_config_path
+    ):
+        # The engine's working dictionary (its CCI cache, the recommendation list) is not
+        # the template's namespace: a template naming such a key is refused, and the
+        # message lists only the values a rule template can use.
+        from cis_bench.exporters.mapping_engine import MappingEngine
+
+        engine = MappingEngine(disa_config_path)
+        engine.config.field_mappings["fix"]["attributes"]["id"] = "F-{recommendations}"
+        context = {
+            "benchmark": sample_benchmark,
+            "recommendations": sample_benchmark.recommendations,
+        }
+
+        with pytest.raises(ValueError, match="recommendations") as refused:
+            engine.map_rule(sample_benchmark.recommendations[0], context)
+        assert "cci_split" not in str(refused.value)
+        assert "it can use benchmark, rec, ref, ref_normalized, stig_number" in str(refused.value)
+
     def test_a_rule_id_template_reading_an_attribute_of_a_ref_value_is_refused(
         self, sample_benchmark, disa_config_path
     ):

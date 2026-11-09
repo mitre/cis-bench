@@ -736,9 +736,29 @@ class TestVariableSubstituter:
         with pytest.raises(ValueError, match=re.escape(template)):
             VariableSubstituter.substitute(template, {"stig_number": "030101"})
 
+    @pytest.mark.parametrize("template", ["{item..control}", "{rec.mitre_mapping.}", "{.x}"])
+    def test_an_empty_name_in_a_path_is_refused(self, template):
+        context = {"item": {"control": "4.8"}, "rec": {"mitre_mapping": None}}
+        with pytest.raises(ValueError, match="empty name"):
+            VariableSubstituter.substitute(template, context)
+
     def test_a_known_variable_with_an_empty_value_substitutes_empty_text(self):
         # Empty data is data; only an unknown name is an error.
         assert VariableSubstituter.substitute("P: {platform}.", {"platform": ""}) == "P: ."
+
+    @pytest.mark.parametrize(
+        ("template", "context"),
+        [
+            ("{platform}", {"platform": None}),
+            ("{rec.mitre_mapping}", {"rec": {"mitre_mapping": None}}),
+        ],
+    )
+    def test_a_none_value_reads_as_empty_text_in_a_single_variable_template_too(
+        self, template, context
+    ):
+        # Mixed text already writes None as empty; a template that is one variable must
+        # not hand None to the element instead.
+        assert VariableSubstituter.substitute(template, context) == ""
 
     def test_an_absent_optional_value_along_a_path_reads_as_empty_text(self):
         # A recommendation without a MITRE mapping has mitre_mapping None; its fields read
@@ -775,13 +795,12 @@ class TestVariableSubstituter:
         result = VariableSubstituter.substitute(template, context)
         assert result == "Deep: deep_value"
 
-    def test_context_with_none_values(self):
-        """Test substitution when context has None values."""
+    def test_a_none_value_in_mixed_text_reads_as_empty_text(self):
         context = {"platform": None, "ref": "3.1.1"}
-        template = "Platform: {platform}, Ref: {ref}"
-        result = VariableSubstituter.substitute(template, context)
-        # None should be converted to string
-        assert "None" in result or result == "Platform: , Ref: 3.1.1"
+        assert (
+            VariableSubstituter.substitute("Platform: {platform}, Ref: {ref}", context)
+            == "Platform: , Ref: 3.1.1"
+        )
 
 
 # ============================================================================

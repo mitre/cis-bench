@@ -385,9 +385,10 @@ function: "HTMLCleaner.html_to_markdown"
 Every template is filled by one strict substituter. A variable the template's context
 does not have, an attribute or key a value does not have, or a stray or unclosed brace
 stops the export with an error naming the template and the variable, so a typo in a style
-cannot write an empty part. A known variable whose value is empty substitutes as empty
-text; a `None` met along a dotted path (a recommendation without a MITRE mapping, say)
-reads as empty text too. `{{` and `}}` write a literal brace. Each template sees the
+cannot write an empty part; an empty name in a path (`{item..control}`) is refused too. A
+known variable whose value is empty substitutes as empty
+text; a `None` value, met along a dotted path or at its end (a recommendation without a
+MITRE mapping, say), reads as empty text too. `{{` and `}}` write a literal brace. Each template sees the
 variables of its own context:
 
 ### Benchmark-Level Variables
@@ -408,6 +409,7 @@ variables of its own context:
 {ref_normalized} # Normalized ref (e.g., "3_1_1")
 {stig_number} # Zero-padded ref for DISA ids (e.g., "030101")
 {rec.title} # Any field of the recommendation, in attribute templates (rec.<field>)
+{benchmark.title} # Any field of the benchmark, in attribute templates (benchmark.<field>)
 ```
 
 ### Per-Item Variables (ident_from_list, metadata_from_config)
@@ -914,10 +916,13 @@ ValueError: template 'SV-{stig_number_rule': expected '}' before end of string
 
 Check the variable against the context of that template (see "Variables Reference"):
 
-- {ref}, {ref_normalized}, {stig_number}
-- {control.version}, {control.control}
-- {nist_control_id}, {technique}, {tactic}
-- See "Variables Reference" section
+- rule id and group id templates: {ref}, {ref_normalized}, {stig_number}
+- a rule's attribute templates: those three, {rec.<field>} and {benchmark.<field>}
+- ident_from_list and metadata_from_config: {item}, {item.<field>}; group attributes: {group_key}
+- dublin_core dc_elements: {nist_control_id}
+- benchmark.profiles.id_template: {profile.title}
+- benchmark.id_template: {benchmark_id}, {version}, {title_slug}
+- benchmark.reference, notice and plain_text: {benchmark.<field>}; plain_text also {download_date}
 
 ### Issue: Invalid YAML Syntax
 
