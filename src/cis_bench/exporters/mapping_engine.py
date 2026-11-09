@@ -26,6 +26,7 @@ Adding PCI-DSS, ISO 27001, HIPAA, etc. MUST require ZERO code changes (YAML only
 import inspect
 import logging
 import re
+import string
 import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass, field, fields
@@ -329,24 +330,77 @@ def _model_in(annotation: Any) -> type[BaseModel] | None:
 
 
 class VariableSubstituter:
-    """Handles variable substitution in templates."""
+    """Fills a style template's {variables} from a context, strictly: a name the context
+    does not have, an attribute a value does not have, or a stray brace stops the export,
+    since the alternative is an empty part written without a word. An empty value is data
+    and substitutes as empty text."""
 
     @staticmethod
-    def _resolve(expression: str, context: dict[str, Any]) -> Any:
-        """The value of one {expression}: a dotted path, optionally piped through a
-        registered transform with arguments ("item.control|dotted_number_path:subcontrol").
+    def _pieces(template: str) -> list[tuple[str, str | None]]:
+        """The template as (literal text, variable expression or None) pairs, parsed by the
+        standard library's format-string parser, which refuses a stray or unclosed brace.
 
         Raises:
-            ValueError: The filter names no registered transform, or the transform refuses
-                the value.
+            ValueError: The template has a single "{" or "}" or an unclosed field.
+        """
+        try:
+            parsed = list(string.Formatter().parse(template))
+        except ValueError as error:
+            raise ValueError(f"template {template!r}: {error}") from None
+        pieces = []
+        for literal, field_name, format_spec, conversion in parsed:
+            expression = None
+            if field_name is not None:
+                # The parser splits "{name|filter:args}" at the ":"; put it back together.
+                expression = field_name
+                if conversion:
+                    expression += f"!{conversion}"
+                if format_spec:
+                    expression += f":{format_spec}"
+            pieces.append((literal, expression))
+        return pieces
+
+    @staticmethod
+    def _resolve(expression: str, context: dict[str, Any], template: str) -> Any:
+        """The value of one {expression}: a dotted path into the context, optionally piped
+        through a registered transform with arguments ("item.control|dotted_number_path:
+        subcontrol"). A None met along the path reads as empty text (an absent optional
+        value, such as a recommendation without a MITRE mapping).
+
+        Raises:
+            ValueError: The path's first name is not in the context, a later name is not a
+                key or attribute of the value before it, the filter names no registered
+                transform, or the transform refuses the value.
         """
         path, pipe, filter_spec = expression.partition("|")
-        value: Any = context
-        for part in path.strip().split("."):
+        path = path.strip()
+        parts = path.split(".")
+        if not parts[0]:
+            raise ValueError(f"template {template!r} has a variable without a name")
+        if parts[0] not in context:
+            raise ValueError(
+                f"template {template!r} names {path!r}; {parts[0]!r} is not a value this "
+                f"template can use (it can use {', '.join(sorted(context))})"
+            )
+        value: Any = context[parts[0]]
+        for depth, part in enumerate(parts[1:], 1):
+            if value is None:
+                value = ""
+                break
+            holder = ".".join(parts[:depth])
             if isinstance(value, dict):
-                value = value.get(part, "")
+                if part not in value:
+                    raise ValueError(
+                        f"template {template!r} names {path!r}; {part!r} is not a key of {holder}"
+                    )
+                value = value[part]
+            elif hasattr(value, part):
+                value = getattr(value, part)
             else:
-                value = getattr(value, part, "")
+                raise ValueError(
+                    f"template {template!r} names {path!r}; {part!r} is not an attribute of "
+                    f"{holder} ({type(value).__name__})"
+                )
         if pipe:
             # "name" or "name:arg1, arg2"; the transform itself is called, so it decides
             # what an empty value means.
@@ -368,9 +422,10 @@ class VariableSubstituter:
         """Replace {variables} in template with context values.
 
         Preserves type if template is a single variable (e.g., "{item.ig1}" returns bool).
-        Converts to string if mixing text and variables (e.g., "F-{ref}" returns string).
-        A variable may name a registered transform after a "|", with arguments after a
-        ":", which is applied to its value: "{item.control|dotted_number_path:subcontrol}".
+        Converts to string if mixing text and variables (e.g., "F-{ref}" returns string);
+        a None value becomes empty text there. A variable may name a registered transform
+        after a "|", with arguments after a ":", which is applied to its value:
+        "{item.control|dotted_number_path:subcontrol}".
 
         Examples:
             template: "F-{ref_normalized}"
@@ -384,18 +439,22 @@ class VariableSubstituter:
             template: "control/{item.control|dotted_number_path:subcontrol}"
             context: {"item": obj with control="8.5"}
             result: "control/8/subcontrol/5"
-        """
-        # Check if template is a single variable (preserve type)
-        single_var_match = re.fullmatch(r"\{([^}]+)\}", template)
-        if single_var_match:
-            return VariableSubstituter._resolve(single_var_match.group(1), context)
 
-        # Mixed template - convert all to strings
-        return re.sub(
-            r"\{([^}]+)\}",
-            lambda match: str(VariableSubstituter._resolve(match.group(1), context)),
-            template,
-        )
+        Raises:
+            ValueError: A stray brace, a name the context does not have, an attribute a
+                value does not have, or a filter problem (see _resolve).
+        """
+        pieces = VariableSubstituter._pieces(template)
+        if len(pieces) == 1 and pieces[0][0] == "" and pieces[0][1] is not None:
+            # The whole template is one variable: keep the value's type
+            return VariableSubstituter._resolve(pieces[0][1], context, template)
+        out = []
+        for literal, expression in pieces:
+            out.append(literal)
+            if expression is not None:
+                value = VariableSubstituter._resolve(expression, context, template)
+                out.append("" if value is None else str(value))
+        return "".join(out)
 
 
 class MappingEngine:
@@ -985,9 +1044,10 @@ class MappingEngine:
         return None
 
     def ref_values(self, ref: str) -> dict[str, str]:
-        """The values made from a recommendation ref that templates use: {ref_normalized}
-        ("3_1_1") and {stig_number} ("030101")."""
+        """The values made from a recommendation ref that templates use: {ref} ("3.1.1"),
+        {ref_normalized} ("3_1_1") and {stig_number} ("030101")."""
         return {
+            "ref": ref,
             "ref_normalized": self.normalize_ref(ref),
             "stig_number": self.ref_to_stig_number(ref),
         }
@@ -997,26 +1057,12 @@ class MappingEngine:
 
         Raises:
             ValueError: The style has no template, the template names a value the ref does
-                not give, or the template gives no id.
+                not give (VariableSubstituter refuses it), or the template gives no id.
         """
         template = (getattr(self.config, section) or {}).get("template")
         if not template:
             raise ValueError(f"the style has no {section}.template")
-        values = self.ref_values(ref)
-        # An unknown variable would resolve to "" and leave a wrong but non-empty id.
-        unknown = sorted(
-            {
-                name
-                for expression in re.findall(r"\{([^}]+)\}", template)
-                if (name := expression.partition("|")[0].strip()) not in values
-            }
-        )
-        if unknown:
-            raise ValueError(
-                f"{section} template {template!r} names {', '.join(unknown)}; "
-                f"it can use only {', '.join(sorted(values))}"
-            )
-        made = VariableSubstituter.substitute(template, values)
+        made = VariableSubstituter.substitute(template, self.ref_values(ref))
         if not isinstance(made, str) or not made:
             raise ValueError(f"{section} template {template!r} gives no id for ref {ref!r}")
         return made

@@ -135,6 +135,19 @@ class TestControlMappingFidelity:
         with pytest.raises(ValueError, match="platform"):
             engine.map_rule(sample_benchmark.recommendations[0], {"platform": "ubuntu"})
 
+    def test_a_rule_attribute_template_naming_an_unknown_variable_is_refused(
+        self, sample_benchmark, disa_config_path
+    ):
+        # Every template is checked, not only the id templates: a typo here would write
+        # <fix id="F-_fix"/> on every rule.
+        from cis_bench.exporters.mapping_engine import MappingEngine
+
+        engine = MappingEngine(disa_config_path)
+        engine.config.field_mappings["fix"]["attributes"]["id"] = "F-{ref_norm}_fix"
+
+        with pytest.raises(ValueError, match="ref_norm"):
+            engine.map_rule(sample_benchmark.recommendations[0], {})
+
     def test_a_rule_id_template_reading_an_attribute_of_a_ref_value_is_refused(
         self, sample_benchmark, disa_config_path
     ):

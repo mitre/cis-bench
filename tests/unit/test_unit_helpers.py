@@ -706,7 +706,7 @@ class TestVariableSubstituter:
     def test_a_filter_is_applied_to_an_empty_value_too(self):
         # The transform decides what an empty value means; it is never skipped silently.
         with pytest.raises(ValueError, match="dotted number"):
-            VariableSubstituter.substitute("{missing|dotted_number_path:subcontrol}", {})
+            VariableSubstituter.substitute("{value|dotted_number_path:subcontrol}", {"value": ""})
 
     def test_simple_variable_substitution(self, sample_context):
         """Test simple variable substitution."""
@@ -726,11 +726,25 @@ class TestVariableSubstituter:
         result = VariableSubstituter.substitute(template, sample_context)
         assert result == "Platform: eks, Ref: 3.1.1, Normalized: 3_1_1"
 
-    def test_missing_variable_returns_empty_string(self):
-        """Test that missing variables are replaced with empty string."""
-        template = "Test {missing_var} value"
-        result = VariableSubstituter.substitute(template, {})
-        assert result == "Test  value"
+    def test_an_unknown_variable_is_refused(self):
+        # A typo in a style would otherwise write an empty part and no error.
+        with pytest.raises(ValueError, match="missing_var"):
+            VariableSubstituter.substitute("Test {missing_var} value", {"present": "x"})
+
+    @pytest.mark.parametrize("template", ["SV-{stig_number_rule", "SV-}x", "{", "a}b"])
+    def test_an_unclosed_or_stray_brace_is_refused(self, template):
+        with pytest.raises(ValueError, match=re.escape(template)):
+            VariableSubstituter.substitute(template, {"stig_number": "030101"})
+
+    def test_a_known_variable_with_an_empty_value_substitutes_empty_text(self):
+        # Empty data is data; only an unknown name is an error.
+        assert VariableSubstituter.substitute("P: {platform}.", {"platform": ""}) == "P: ."
+
+    def test_an_absent_optional_value_along_a_path_reads_as_empty_text(self):
+        # A recommendation without a MITRE mapping has mitre_mapping None; its fields read
+        # as empty, not as an error.
+        context = {"rec": {"mitre_mapping": None}}
+        assert VariableSubstituter.substitute("T: {rec.mitre_mapping.techniques}", context) == "T: "
 
     def test_empty_template(self):
         """Test substitution with empty template."""
@@ -743,11 +757,9 @@ class TestVariableSubstituter:
         result = VariableSubstituter.substitute(template, sample_context)
         assert result == template
 
-    def test_nested_missing_attribute(self, sample_context):
-        """Test nested variable with missing attribute."""
-        template = "Value: {control.nonexistent}"
-        result = VariableSubstituter.substitute(template, sample_context)
-        assert result == "Value: "
+    def test_an_unknown_attribute_of_a_value_is_refused(self, sample_context):
+        with pytest.raises(ValueError, match="nonexistent"):
+            VariableSubstituter.substitute("Value: {control.nonexistent}", sample_context)
 
     def test_variable_with_special_characters_in_value(self):
         """Test substitution where value contains special characters."""
@@ -1809,14 +1821,9 @@ class TestEdgeCases:
         assert result1 == ""
         assert result2 == ""
 
-    def test_variable_substitution_with_missing_nested_keys(self):
-        """Test substitution when nested keys are missing."""
-        context = {"top": {}}  # Missing nested keys
-        template = "Value: {top.missing.key}"
-        result = VariableSubstituter.substitute(template, context)
-
-        # Should handle gracefully (empty string)
-        assert result == "Value: "
+    def test_a_missing_nested_key_is_refused(self):
+        with pytest.raises(ValueError, match="missing"):
+            VariableSubstituter.substitute("Value: {top.missing.key}", {"top": {"other": 1}})
 
     def test_malformed_json_in_parsers(self):
         """Test parsers with malformed JSON."""
@@ -1951,6 +1958,33 @@ class TestBenchmarkIdTemplate:
             engine.map_benchmark(
                 synthetic_complete_benchmark, [], {"benchmark": synthetic_complete_benchmark}
             )
+
+    def test_an_id_template_naming_an_unknown_variable_is_refused(
+        self, cis_config_path, synthetic_complete_benchmark
+    ):
+        # The variable is benchmark_id; a typo would write id="CIS-" without a word.
+        engine = MappingEngine(cis_config_path)
+        engine.config.benchmark["id_template"] = "CIS-{bench_id}"
+
+        with pytest.raises(ValueError, match="bench_id"):
+            engine.map_benchmark(
+                synthetic_complete_benchmark,
+                [],
+                {"benchmark": synthetic_complete_benchmark, "recommendations": []},
+            )
+
+    def test_a_profile_id_template_naming_an_unknown_variable_is_refused(
+        self, cis_config_path, synthetic_complete_benchmark
+    ):
+        engine = MappingEngine(cis_config_path)
+        engine.config.benchmark["profiles"]["id_template"] = "{profile.name|slug:-}"
+        context = {
+            "benchmark": synthetic_complete_benchmark,
+            "recommendations": synthetic_complete_benchmark.recommendations,
+        }
+
+        with pytest.raises(ValueError, match="profile.name"):
+            engine.map_benchmark(synthetic_complete_benchmark, [], context)
 
     def test_cis_template_substitutes_version_and_title_slug(
         self, cis_config_path, synthetic_complete_benchmark
