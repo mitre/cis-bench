@@ -210,7 +210,14 @@ reference:
 
 ### embedded_xml_tags
 
-DISA VulnDiscussion embedded XML tags.
+Tags inside an element's text: a STIG rule description's VulnDiscussion and the tags after it.
+Every component is one tag, written in the order given, always present (empty when the rule
+has no text for it): its text is the component's `content`, or its `sources` joined (each
+source names a `field`, a `transform`, default `none`, and the `separator` that follows its
+text when another source's text comes after it). Each tag is built and written by the XML
+library (lxml), which escapes its text, so a reader that unescapes the element's text once and
+parses the tags gets the text as stored, a placeholder such as `<user>` included; a tag name
+that is no XML name is refused when the style loads.
 
 **Config:**
 ```yaml
@@ -222,8 +229,9 @@ description:
       sources:
 
         - field: "description"
+          separator: "\n\n"   # follows the description when the rationale has text
+
         - field: "rationale"
-      separator: "\n\n"
 
     - tag: "FalsePositives"
       content: ""
@@ -238,6 +246,9 @@ Rationale text...</VulnDiscussion>
   <FalsePositives></FalsePositives>
 </description>
 ```
+
+(In the file the serializer escapes the description's text once, so the tags appear as `&lt;VulnDiscussion&gt;...`; shown unescaped here.)
+
 
 ---
 
@@ -255,7 +266,7 @@ check:
 
     - element: "check-content"
       source_field: "audit"
-      transform: "strip_html_keep_code"
+      transform: "none"
 ```
 
 **Output:**
@@ -275,7 +286,7 @@ check:
 | Hierarchical/grouped data | `metadata_from_config` | CIS Controls structure |
 | Rule applicability | `generate_profiles_from_rules` | Level 1/2 profiles |
 | W3C Dublin Core | `dublin_core` | NIST references |
-| DISA embedded tags | `embedded_xml_tags` | VulnDiscussion |
+| Tags inside an element's text | `embedded_xml_tags` | a STIG description's VulnDiscussion |
 | Simple nesting | `nested` | check/check-content |
 
 ---

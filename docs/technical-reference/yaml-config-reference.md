@@ -145,7 +145,7 @@ Add attributes to XCCDF element:
 fixtext:
 target_element: "fixtext"
 source_field: "remediation"
-transform: "strip_html_keep_code"
+transform: "none"
 attributes:
 fixref: "F-{ref_normalized}" # Variable substitution in attributes
 ```
@@ -182,7 +182,13 @@ separator: "\n\n"
 
 ### Embedded XML Structure
 
-Build nested XML tags within element:
+Tags inside an element's text (a STIG rule description). Every component is one tag, written
+in the order given and always present (empty when the rule has no text for it); its text is
+`content`, or its `sources` joined (`field`, `transform` default `none`, and the `separator`
+that follows a source's text when another's comes after it). Each tag is built and written by
+the XML library (lxml), which escapes its text, so a reader that unescapes the element once and
+parses the tags gets the stored text, placeholders included; a tag name that is no XML name is
+refused when the style loads:
 
 ```yaml
 description:
@@ -195,26 +201,24 @@ components:
 sources:
 
 - field: "description"
-transform: "strip_html"
-separator: "\n\n"
+transform: "none"
+separator: "\n\n" # follows the description when the rationale has text
 
 - field: "rationale"
-transform: "strip_html"
-combine: "join"
+transform: "none"
 
 # Component with static content
 
 - tag: "FalsePositives"
 content: ""
 
-# Optional component (only if source present)
+# Component from one source (written empty when the field has no text)
 
 - tag: "Mitigations"
 sources:
 
 - field: "additional_info"
-transform: "strip_html"
-optional: true
+transform: "none"
 
 # More components...
 
@@ -236,7 +240,7 @@ children:
 
 - element: "check-content"
 source_field: "audit"
-transform: "strip_html_keep_code"
+transform: "none"
 ```
 
 ### Multiple Elements
@@ -316,26 +320,24 @@ components:
 sources: # Multiple sources
 
 - field: "description" # Source field
-transform: "strip_html" # Transform to apply
-separator: "\n\n" # Separator between sources
+transform: "none" # Transform to apply (default none)
+separator: "\n\n" # Follows this source's text when another source's text comes after it
 
 - field: "rationale"
-transform: "strip_html"
-combine: "join" # How to combine sources
+transform: "none"
 
 # Component with static content
 
 - tag: "FalsePositives"
 content: "" # Static content
 
-# Optional component (skip if source empty)
+# Component from one source (written empty when the field has no text)
 
 - tag: "Mitigations"
 sources:
 
 - field: "additional_info"
-transform: "strip_html"
-optional: true # Skip if source is None/empty
+transform: "none"
 
 # Component with attributes
 
@@ -353,8 +355,9 @@ A benchmark's text fields hold Markdown (see the [data model](data-model.md)), s
 writes the text as it is names `none`: the CIS style does for every rule text field (title,
 description, rationale, warning, fixtext, check-content) and for the profile descriptions.
 `strip_html`, `strip_html_keep_code` and `html_to_markdown` parse the text as HTML, and read a
-placeholder such as `<user>` as a tag; the DISA style still names `strip_html` and
-`strip_html_keep_code` for the fields it writes as plain text.
+placeholder such as `<user>` as a tag; no shipped style names them for benchmark text any more
+(the DISA style writes its text fields and the description's embedded tags as stored too). They
+stay registered until they are removed.
 
 Define available transformations:
 
@@ -468,7 +471,7 @@ benchmark:
   profiles:
     generate_from_rules: true
     id_template: "{profile.title|slug:-}"   # every Profile id, from its title
-    description_transform: "strip_html"          # for descriptions read from the page
+    description_transform: "none"                # the stored Markdown, written as it is
     profile_mappings:
 
       - match: "Level 1 - Server"            # a profile name as recommendations give it
@@ -723,25 +726,22 @@ attributes:
 fixref: "F-{ref_normalized}"
 ```
 
-### 5. Handle Optional Fields Gracefully
+### 5. Write Every Embedded Tag
 
 ```yaml
-# Mark optional fields explicitly
+# Every component is written, in order, empty when the rule has no text for it
+# (official STIGs write all eleven tags of a description)
 components:
 
 - tag: "Mitigations"
 sources:
 
 - field: "additional_info"
-transform: "strip_html"
-optional: true # Skip if field is empty
 
 - tag: "PotentialImpacts"
 sources:
 
 - field: "impact"
-transform: "strip_html"
-optional: true # Skip if field is empty
 ```
 
 ### 6. Validate Your Config
@@ -783,7 +783,7 @@ transform: "strip_html"
 fixtext:
 target_element: "fixtext"
 source_field: "remediation"
-transform: "strip_html_keep_code"
+transform: "none"
 attributes:
 fixref: "F-{ref_normalized}"
 ```
@@ -826,21 +826,17 @@ components:
 sources:
 
 - field: "description"
-transform: "strip_html"
+separator: "\n\n" # follows the description when the rationale has text
 
 - field: "rationale"
-transform: "strip_html"
-separator: "\n\n"
 
 - tag: "FalsePositives"
 content: ""
 
-- tag: "Mitigations"
+- tag: "Mitigations" # written empty when the rule has no additional_info
 sources:
 
 - field: "additional_info"
-transform: "strip_html"
-optional: true
 ```
 
 ### Pattern 6: Multiple Elements from Array

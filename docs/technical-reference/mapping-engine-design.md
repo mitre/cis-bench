@@ -440,13 +440,10 @@ tag: Optional[str] = None # For embedded XML
 element: Optional[str] = None # For nested elements
 
 sources: Optional[List[SourceDef]] = None
-content: Optional[str] = None
-
-combine: Optional[str] = None # 'join', 'concat', etc.
-separator: str = "\n\n"
+content: Optional[str] = None # static text; a component has content or sources
 
 attributes: Optional[Dict[str, str]] = None
-optional: bool = False
+# Every component is written, in order, empty when its sources give no text
 
 @dataclass
 class SourceDef:
@@ -528,7 +525,7 @@ Built-in transformations:
 
 - none: Pass through unchanged
 - strip_html: Remove all HTML tags
-- strip_html_keep_code: Strip HTML but preserve code blocks
+- strip_html_keep_code: Today the same as strip_html (delegates to it); unused by the shipped styles
 - html_to_markdown: Convert HTML to Markdown
 
 Extensible: Register custom transforms
@@ -716,27 +713,24 @@ def apply(self, mapping: FieldMapping, source_obj: Any, context: MappingContext)
 xml_parts = []
 
 for component in mapping.components:
-tag = component.tag
+tag = component.tag # checked to be an XML name when the style loads
 
-if component.content:
-# Static content
-xml_parts.append(f"<{tag}>{component.content}</{tag}>")
-
-elif component.sources:
-# Dynamic content from sources
-values = []
+if component.sources:
+# Dynamic content: each source's separator follows its text when another text comes after it
+texts = []
 for source_def in component.sources:
-value = getattr(source_obj, source_def.field, None)
-if value and source_def.transform:
-value = transform_registry.apply(source_def.transform, value)
-if value:
-values.append(value)
+text = transform_registry.apply(source_def.transform or "none", getattr(source_obj, source_def.field))
+if text:
+texts.append((text, source_def.separator))
+content = "".join(text + (sep if i < len(texts) - 1 else "") for i, (text, sep) in enumerate(texts))
+else:
+content = component.content or ""
 
-if values or not component.optional:
-content = component.separator.join(values)
-xml_parts.append(f"<{tag}>{content}</{tag}>")
+# The XML library builds the tag and escapes its text; "" keeps the <Tag></Tag> form
+element = etree.Element(tag); element.text = content
+xml_parts.append(etree.tostring(element, encoding="unicode"))
 
-return "\n".join(xml_parts)
+return "".join(xml_parts)
 
 class CCILookupStrategy(MappingStrategy):
 """CCI lookup with NIST deduplication."""
@@ -1010,20 +1004,20 @@ Build embedded XML tags within XCCDF description element.
 
 Algorithm:
 
-1. For each component:
-a. Extract tag name
-b. Get content (static or from sources)
-c. Apply transformations
-d. Build XML tag
-e. Handle optional tags (skip if no content)
+1. For each component, in order:
+a. Take the tag name (checked to be an XML name when the style loads)
+b. Get the text: the static content, or the sources' texts joined, each source's
+separator following its text when another source's text comes after it
+c. Build the tag with the XML library, which escapes the text ("" keeps <Tag></Tag>)
 
-2. Join all tags
+2. Concatenate the tags (every one is written, empty when there is no text)
 
 3. Return as single string
 
 Example output:
 <VulnDiscussion>Combined description and rationale</VulnDiscussion>
 <FalsePositives></FalsePositives>
+<Documentable>false</Documentable>
 <Mitigations>Additional info content</Mitigations>
 <IAControls></IAControls>
 """
@@ -1033,38 +1027,26 @@ xml_parts = []
 for component in components:
 tag = component.tag
 
-# Static content
-if component.content is not None:
-xml_parts.append(f"<{tag}>{component.content}</{tag}>")
-continue
-
-# Dynamic content from sources
 if component.sources:
-values = []
-
+texts = []
 for source_def in component.sources:
-value = self.resolve_source_value(source_def.field, source_obj)
-
-# Transform
-if source_def.transform:
-value = self.transform_pipeline.apply_transform(
-source_def.transform,
-value
+text = self.transform_pipeline.apply_transform(
+source_def.transform or "none",
+self.resolve_source_value(source_def.field, source_obj),
 )
+if text:
+texts.append((text, source_def.separator))
+content = "".join(
+text + (sep if i < len(texts) - 1 else "") for i, (text, sep) in enumerate(texts)
+)
+else:
+content = component.content or ""
 
-if value:
-values.append(value)
+element = etree.Element(tag)
+element.text = content # the XML library escapes it
+xml_parts.append(etree.tostring(element, encoding="unicode"))
 
-# Join values
-if values:
-content = source_def.separator.join(values)
-xml_parts.append(f"<{tag}>{content}</{tag}>")
-
-elif not component.optional:
-# Required but empty
-xml_parts.append(f"<{tag}></{tag}>")
-
-return "\n".join(xml_parts)
+return "".join(xml_parts)
 ```
 
 ## Configuration Processing
@@ -1101,10 +1083,9 @@ components=[
 ComponentMapping(
 tag='VulnDiscussion',
 sources=[
-SourceDef(field='description', transform='strip_html'),
-SourceDef(field='rationale', transform='strip_html')
-],
-separator='\n\n'
+SourceDef(field='description', transform='none', separator='\n\n'),
+SourceDef(field='rationale', transform='none')
+]
 ),
 ComponentMapping(
 tag='FalsePositives',
@@ -1116,7 +1097,7 @@ content=''
 'fixtext': FieldMapping(
 target_element='fixtext',
 source_field='remediation',
-transform='strip_html_keep_code',
+transform='none',
 attributes={
 'fixref': 'F-{ref_normalized}'
 }

@@ -981,7 +981,7 @@ class TestDRYHelpers:
 
     def test_build_field_value_embedded_xml(self, engine, sample_recommendation):
         """Test _build_field_value with embedded_xml_tags structure."""
-        field_mapping = {"structure": "embedded_xml_tags"}
+        field_mapping = engine.config.field_mappings["description"]
         context = {"ref_normalized": "3_1_1"}
 
         value = engine._build_field_value(
@@ -991,6 +991,12 @@ class TestDRYHelpers:
         # Should return VulnDiscussion XML
         assert value is not None
         assert "<VulnDiscussion>" in value
+
+    def test_embedded_xml_tags_without_components_is_refused(self, engine, sample_recommendation):
+        with pytest.raises(ValueError, match="embedded_xml_tags needs components"):
+            engine._build_field_value(
+                "description", {"structure": "embedded_xml_tags"}, sample_recommendation, {}
+            )
 
     def test_build_field_value_cci_lookup(self, engine, sample_recommendation):
         """Test _build_field_value with CCI lookup."""
@@ -1301,19 +1307,67 @@ class TestIntegrationScenarios:
         """Create MappingEngine instance."""
         return MappingEngine(config_path)
 
-    def test_create_vuln_discussion_from_recommendation(self, engine, sample_recommendation):
-        """Test creating VulnDiscussion from a complete Recommendation."""
-        result = engine.create_vuln_discussion(sample_recommendation)
+    def test_embedded_tags_are_built_from_the_style_components(self, engine, sample_recommendation):
+        """The description's tags come from the style's components, in their order, each
+        part's text escaped once so a reader that unescapes the description and parses the
+        tags gets the stored text."""
+        from html import unescape
 
-        assert result is not None
-        assert "<VulnDiscussion>" in result
-        assert "</VulnDiscussion>" in result
+        components = engine.config.field_mappings["description"]["components"]
 
-        # Should contain content from description and rationale
-        assert "kubeconfig" in result.lower()
+        result = engine.create_embedded_xml_tags(components, sample_recommendation)
 
-        # Should have DISA-required tags
-        assert "<PotentialImpacts>" in result or "<Mitigations>" in result
+        tags = re.findall(r"<([A-Za-z]+)>", result)
+        assert tags == [component["tag"] for component in components]
+        vuln = re.search(r"<VulnDiscussion>(.*)</VulnDiscussion>", result, re.S).group(1)
+        assert unescape(vuln) == (
+            f"{sample_recommendation.description}\n\n{sample_recommendation.rationale}"
+        )
+
+    def test_each_part_is_escaped_so_a_placeholder_is_not_read_as_a_tag(self, engine):
+        rec = Recommendation(
+            ref="1.1.1",
+            title="t",
+            url="https://workbench.cisecurity.org/sections/1/recommendations/1",
+            assessment_status="Automated",
+            description="Owned by <user> & <group>",
+            impact=None,
+        )
+        components = [
+            {"tag": "VulnDiscussion", "sources": [{"field": "description"}]},
+            {"tag": "PotentialImpacts", "sources": [{"field": "impact"}]},
+            {"tag": "Documentable", "content": "false"},
+        ]
+
+        result = engine.create_embedded_xml_tags(components, rec)
+
+        assert result == (
+            "<VulnDiscussion>Owned by &lt;user&gt; &amp; &lt;group&gt;</VulnDiscussion>"
+            "<PotentialImpacts></PotentialImpacts><Documentable>false</Documentable>"
+        )
+
+    def test_a_separator_follows_a_source_only_when_another_text_comes_after_it(self, engine):
+        rec = Recommendation(
+            ref="1.1.1",
+            title="t",
+            url="https://workbench.cisecurity.org/sections/1/recommendations/1",
+            assessment_status="Automated",
+            description="First.",
+            rationale=None,
+        )
+        components = [
+            {
+                "tag": "VulnDiscussion",
+                "sources": [
+                    {"field": "description", "separator": "\n\n"},
+                    {"field": "rationale"},
+                ],
+            }
+        ]
+
+        assert engine.create_embedded_xml_tags(components, rec) == (
+            "<VulnDiscussion>First.</VulnDiscussion>"
+        )
 
     def test_get_ccis_with_deduplication(self, engine, sample_recommendation):
         """Test CCI lookup and deduplication with real recommendation."""
@@ -2126,3 +2180,62 @@ class TestRuleElementOrder:
         assert "metadata" not in order
         assert order[:3] == ["status", "version", "title"]
         assert order[-1] == "signature"
+
+
+class TestEmbeddedTagsAreCheckedWhenTheStyleLoads:
+    """A style's embedded_xml_tags components are checked when the engine loads it, not
+    when an export fails: every source names a field that exists, every tag is an XML name."""
+
+    @staticmethod
+    def _style(tmp_path, disa_config_path, components):
+        import yaml
+
+        style = tmp_path / "style.yaml"
+        style.write_text(
+            yaml.safe_dump(
+                {
+                    "extends": str(disa_config_path),
+                    "field_mappings": {
+                        "description": {
+                            "target_element": "description",
+                            "structure": "embedded_xml_tags",
+                            "components": components,
+                        }
+                    },
+                }
+            )
+        )
+        return style
+
+    def test_a_source_naming_no_field_is_refused(self, tmp_path, disa_config_path):
+        style = self._style(
+            tmp_path,
+            disa_config_path,
+            [{"tag": "VulnDiscussion", "sources": [{"field": "descriptoin"}]}],
+        )
+
+        with pytest.raises(ValueError, match="components\\[0\\].sources\\[0\\].*descriptoin"):
+            MappingEngine(style)
+
+    def test_a_source_without_a_field_is_refused(self, tmp_path, disa_config_path):
+        style = self._style(
+            tmp_path,
+            disa_config_path,
+            [{"tag": "VulnDiscussion", "sources": [{"source_field": "description"}]}],
+        )
+
+        with pytest.raises(ValueError, match="a component source needs field"):
+            MappingEngine(style)
+
+    @pytest.mark.parametrize("tag", ["bad tag", "1st", "", None])
+    def test_a_tag_that_is_no_xml_name_is_refused(self, tmp_path, disa_config_path, tag):
+        style = self._style(tmp_path, disa_config_path, [{"tag": tag, "content": ""}])
+
+        with pytest.raises(ValueError, match="is not a valid XML tag name"):
+            MappingEngine(style)
+
+    def test_the_shipped_disa_style_passes_the_checks(self, disa_config_path):
+        engine = MappingEngine(disa_config_path)
+
+        tags = [c["tag"] for c in engine.config.field_mappings["description"]["components"]]
+        assert tags[0] == "VulnDiscussion" and len(tags) == 11

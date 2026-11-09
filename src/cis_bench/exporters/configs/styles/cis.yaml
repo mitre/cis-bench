@@ -360,11 +360,6 @@ cci_deduplication:
   description: "CIS native style includes ALL NIST controls as direct references"
   rationale: "No DoD CCI requirement, cleaner to have direct NIST 800-53 citations"
 
-# Legacy VMS tags - NOT INCLUDED in CIS native style
-legacy_vms_tags:
-  include: false
-  description: "VMS tags (FalsePositives, etc.) are DoD-specific, not needed in CIS native"
-
 # Validation rules
 validation:
   require_nist_controls: false
