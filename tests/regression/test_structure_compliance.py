@@ -168,6 +168,22 @@ class TestControlMappingFidelity:
         assert "cci_split" not in str(refused.value)
         assert "it can use benchmark, rec, ref, ref_normalized, stig_number" in str(refused.value)
 
+    def test_a_rule_reference_href_is_a_template_too(self, sample_benchmark, disa_config_path):
+        # Every attribute of a rule's elements is a template, the reference's href included.
+        from cis_bench.exporters.mapping_engine import MappingEngine
+
+        engine = MappingEngine(disa_config_path)
+        engine.config.field_mappings["reference"]["attributes"]["href"] = (
+            "https://example.invalid/{ref}"
+        )
+        rec = next(r for r in sample_benchmark.recommendations if r.nist_controls)
+
+        rule = engine.map_rule(rec, {"benchmark": sample_benchmark})
+
+        assert {reference.href for reference in rule.reference} == {
+            f"https://example.invalid/{rec.ref}"
+        }
+
     def test_a_rule_id_template_reading_an_attribute_of_a_ref_value_is_refused(
         self, sample_benchmark, disa_config_path
     ):

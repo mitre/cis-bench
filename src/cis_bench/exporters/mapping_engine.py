@@ -1205,7 +1205,12 @@ class MappingEngine:
                         )
                     if nist_controls and isinstance(nist_controls, list):
                         dc_elements_config = field_mapping.get("dc_elements", [])
-                        href = field_mapping.get("attributes", {}).get("href", "")
+                        href = str(
+                            VariableSubstituter.substitute(
+                                field_mapping.get("attributes", {}).get("href", ""),
+                                template_values,
+                            )
+                        )
                         # One reference per NIST control
                         rule_fields[target_element] = [
                             FieldType(
