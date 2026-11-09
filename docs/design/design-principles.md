@@ -95,8 +95,9 @@ text = BeautifulSoup(html, "html.parser").get_text()
 ```
 
 The contrast is the point, not the recipe: a parser reads HTML as HTML. Text that mixes
-Markdown-like placeholders (`<user>`) with HTML needs the library the card chose for that
-input, not a tag-stripping call; `get_text()` drops such placeholders too.
+Markdown-like placeholders (`<user>`) with HTML needs the library chosen for that input
+after the card's prior-art check, not a tag-stripping call; `get_text()` drops such
+placeholders too.
 
 ### Organization Names in Method Names
 
