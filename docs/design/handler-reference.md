@@ -214,9 +214,10 @@ Tags inside an element's text: a STIG rule description's VulnDiscussion and the 
 Every component is one tag, written in the order given, always present (empty when the rule
 has no text for it): its text is the component's `content`, or its `sources` joined (each
 source names a `field`, a `transform`, default `none`, and the `separator` that follows its
-text when another source's text comes after it). Each part's text is XML-escaped before it is
-wrapped, so a reader that unescapes the element's text once and parses the tags gets the text
-as stored, a placeholder such as `<user>` included.
+text when another source's text comes after it). Each tag is built and written by the XML
+library (lxml), which escapes its text, so a reader that unescapes the element's text once and
+parses the tags gets the text as stored, a placeholder such as `<user>` included; a tag name
+that is no XML name is refused when the style loads.
 
 **Config:**
 ```yaml
@@ -228,8 +229,9 @@ description:
       sources:
 
         - field: "description"
+          separator: "\n\n"   # follows the description when the rationale has text
+
         - field: "rationale"
-      separator: "\n\n"
 
     - tag: "FalsePositives"
       content: ""
@@ -244,6 +246,9 @@ Rationale text...</VulnDiscussion>
   <FalsePositives></FalsePositives>
 </description>
 ```
+
+(In the file the serializer escapes the description's text once, so the tags appear as `&lt;VulnDiscussion&gt;...`; shown unescaped here.)
+
 
 ---
 

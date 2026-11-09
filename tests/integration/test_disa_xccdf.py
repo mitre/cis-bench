@@ -239,6 +239,10 @@ class TestTheStoredMarkdownIsWrittenAsItIs:
         assert _text(root.xpath("//*[local-name()='Profile']")[0], "description") == (
             "Items for every <user>."
         )
+        # The group's description is the rule's title, as stored
+        group = rule.getparent()
+        assert etree.QName(group).localname == "Group"
+        assert _text(group, "description") == "Ensure <path> is owned by <user>"
 
     def test_a_rule_whose_optional_fields_are_empty_writes_their_tags_empty(
         self, test_benchmark, tmp_path
