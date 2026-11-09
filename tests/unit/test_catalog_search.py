@@ -71,7 +71,8 @@ def temp_db(tmp_path):
         ),
     )
 
-    return db
+    yield db
+    db.close()
 
 
 @pytest.fixture
@@ -276,7 +277,7 @@ def releases(tmp_path):
             }
         )
     yield CatalogSearch(db)
-    db.engine.dispose()
+    db.close()
 
 
 def _ids(results):
@@ -379,7 +380,7 @@ def families(tmp_path):
         )
     db.mark_latest_versions()
     yield CatalogSearch(db)
-    db.engine.dispose()
+    db.close()
 
 
 class TestLatestOrNamedReleases:

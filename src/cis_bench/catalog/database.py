@@ -215,7 +215,19 @@ class CatalogDatabase:
         logger.debug(f"Initialized catalog database: {self.db_path}")
 
         if self.db_path.exists():
-            self._upgrade_schema()
+            try:
+                self._upgrade_schema()
+            except BaseException:
+                # The caller gets no object to close, so the connection the upgrade
+                # used must not outlive this failure.
+                self.close()
+                raise
+
+    def close(self) -> None:
+        """Close every connection the database holds (the engine's pool); safe to call
+        more than once, so `with closing(CatalogDatabase(path)) as db:` leaves nothing
+        for garbage collection to close."""
+        self.engine.dispose()
 
     def initialize_schema(self):
         """Create all tables and indexes."""

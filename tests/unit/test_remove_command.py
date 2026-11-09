@@ -37,7 +37,8 @@ def db(tmp_path):
         downloaded_at=datetime(2026, 11, 7, 2, 5, 58, tzinfo=UTC),
     )
     database.save_downloaded("24000", "{}", "h2", 300, version="v4.0.0")
-    return database
+    yield database
+    database.close()
 
 
 @pytest.fixture

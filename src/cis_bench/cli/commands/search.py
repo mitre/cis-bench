@@ -2,6 +2,7 @@
 
 import logging
 import sys
+from contextlib import closing
 
 import click
 from rich.console import Console
@@ -97,70 +98,70 @@ def search_cmd(query, platform, platform_type, status, latest, limit, output_for
         from cis_bench.catalog.search import CatalogSearch
 
         logger.debug(f"Loading catalog from {catalog_db_path}")
-        db = CatalogDatabase(catalog_db_path)
-        search = CatalogSearch(db)
+        with closing(CatalogDatabase(catalog_db_path)) as db:
+            search = CatalogSearch(db)
 
-        # Build filters; the database normalizes the status value (None/blank/'all' -> unfiltered)
-        filters: dict[str, object] = {"status": status}
-        if platform:
-            filters["platform"] = platform
-        if platform_type:
-            filters["platform_type"] = platform_type
-        if latest:
-            filters["latest_only"] = True
+            # Build filters; the database normalizes the status value (None/blank/'all' -> unfiltered)
+            filters: dict[str, object] = {"status": status}
+            if platform:
+                filters["platform"] = platform
+            if platform_type:
+                filters["platform_type"] = platform_type
+            if latest:
+                filters["latest_only"] = True
 
-        # Execute search
-        if query:
-            logger.debug(f"Searching for: {query}")
-            if output_format == "table":
-                console.print(f"[cyan]Searching for:[/cyan] {escape(str(query))}\n")
-            results = search.search(query, limit=limit, **filters)
-        else:
-            logger.debug("Listing all benchmarks")
-            if output_format == "table":
-                console.print("[cyan]Listing benchmarks...[/cyan]\n")
-            # Use search with empty query instead of list_all
-            results = search.search("", limit=limit, **filters)
-
-        if not results:
-            if output_format == "table":
-                console.print("[yellow]No results found[/yellow]")
-                # Only suggest loosening filters when one is actually narrowing the results
-                status_narrows = normalize_status_filter(status) is not None
-                if platform or platform_type or status_narrows or latest:
-                    console.print("\n[dim]Try removing some filters to see more results[/dim]")
+            # Execute search
+            if query:
+                logger.debug(f"Searching for: {query}")
+                if output_format == "table":
+                    console.print(f"[cyan]Searching for:[/cyan] {escape(str(query))}\n")
+                results = search.search(query, limit=limit, **filters)
             else:
-                output_data([], output_format)
-            sys.exit(0)
+                logger.debug("Listing all benchmarks")
+                if output_format == "table":
+                    console.print("[cyan]Listing benchmarks...[/cyan]\n")
+                # Use search with empty query instead of list_all
+                results = search.search("", limit=limit, **filters)
 
-        # Output in requested format
-        if output_format != "table":
-            csv_fields = [
-                "benchmark_id",
-                "title",
-                "version",
-                "status",
-                "platform",
-                "community",
-                "url",
-            ]
-            output_data(results, output_format, csv_fields=csv_fields)
+            if not results:
+                if output_format == "table":
+                    console.print("[yellow]No results found[/yellow]")
+                    # Only suggest loosening filters when one is actually narrowing the results
+                    status_narrows = normalize_status_filter(status) is not None
+                    if platform or platform_type or status_narrows or latest:
+                        console.print("\n[dim]Try removing some filters to see more results[/dim]")
+                else:
+                    output_data([], output_format)
+                sys.exit(0)
 
-        # Display results (human-friendly table)
-        console.print(f"[green]Found {len(results)} benchmark(s)[/green]\n")
+            # Output in requested format
+            if output_format != "table":
+                csv_fields = [
+                    "benchmark_id",
+                    "title",
+                    "version",
+                    "status",
+                    "platform",
+                    "community",
+                    "url",
+                ]
+                output_data(results, output_format, csv_fields=csv_fields)
 
-        console.print(benchmark_table(results, title_width=settings.table_title_width))
+            # Display results (human-friendly table)
+            console.print(f"[green]Found {len(results)} benchmark(s)[/green]\n")
 
-        # Show usage hints
-        # A list shorter than the limit is complete; only a full one may have been cut off.
-        total = search.count(query or "", **filters) if len(results) >= limit else len(results)
-        console.print(f"\n[dim]{showing_line(len(results), total)}[/dim]")
-        console.print("\n[cyan]Next steps:[/cyan]")
-        console.print("  cis-bench download <ID>                     # Download a benchmark")
-        console.print("  cis-bench catalog info <ID>                 # Show detailed info")
-        console.print(
-            '  cis-bench get "<query>" --format xccdf        # Search + download + export in one step'
-        )
+            console.print(benchmark_table(results, title_width=settings.table_title_width))
+
+            # Show usage hints
+            # A list shorter than the limit is complete; only a full one may have been cut off.
+            total = search.count(query or "", **filters) if len(results) >= limit else len(results)
+            console.print(f"\n[dim]{showing_line(len(results), total)}[/dim]")
+            console.print("\n[cyan]Next steps:[/cyan]")
+            console.print("  cis-bench download <ID>                     # Download a benchmark")
+            console.print("  cis-bench catalog info <ID>                 # Show detailed info")
+            console.print(
+                '  cis-bench get "<query>" --format xccdf        # Search + download + export in one step'
+            )
 
     except Exception as e:
         logger.debug("Search failed", exc_info=True)

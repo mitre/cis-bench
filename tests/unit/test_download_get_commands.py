@@ -1303,9 +1303,9 @@ class TestCanonicalContentHashConsistency:
             for row in (row_catalog, row_download, row_get):
                 assert row["downloaded_at"] == sample_benchmark.downloaded_at
         finally:
-            db_catalog.engine.dispose()
-            db_download.engine.dispose()
-            db_get.engine.dispose()
+            db_catalog.close()
+            db_download.close()
+            db_get.close()
 
 
 class TestVerifiedTLSByDefault:
@@ -1711,7 +1711,8 @@ class TestDownloadAndGetCacheThroughTheCatalogDownloader:
                 "status": "Published",
             }
         )
-        return db
+        yield db
+        db.close()
 
     @pytest.fixture
     def scraper(self, sample_benchmark):

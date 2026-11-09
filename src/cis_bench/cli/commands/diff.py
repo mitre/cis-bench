@@ -5,6 +5,7 @@ from __future__ import annotations
 import difflib
 import json
 import sys
+from contextlib import closing
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -118,14 +119,16 @@ class _BenchmarkLoader:
                 f"Benchmark {benchmark_id} is not downloaded, and there is no catalog to "
                 "download it from. Build the catalog first:\n  cis-bench catalog refresh"
             )
-        db = CatalogDatabase(self.settings.catalog_db_path)
-        downloaded = db.get_downloaded(benchmark_id)
-        if downloaded is None:
-            self._download(db, benchmark_id)
+        with closing(CatalogDatabase(self.settings.catalog_db_path)) as db:
             downloaded = db.get_downloaded(benchmark_id)
-        if downloaded is None:
-            raise click.ClickException(f"Benchmark {benchmark_id} was downloaded but not cached")
-        return _parse_benchmark(downloaded["content_json"], f"benchmark {benchmark_id}")
+            if downloaded is None:
+                self._download(db, benchmark_id)
+                downloaded = db.get_downloaded(benchmark_id)
+            if downloaded is None:
+                raise click.ClickException(
+                    f"Benchmark {benchmark_id} was downloaded but not cached"
+                )
+            return _parse_benchmark(downloaded["content_json"], f"benchmark {benchmark_id}")
 
     def _download(self, db: CatalogDatabase, benchmark_id: str) -> None:
         """Download a catalog benchmark into the cache, as download and get do."""

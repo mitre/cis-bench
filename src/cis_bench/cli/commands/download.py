@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import sys
+from contextlib import closing
 from typing import TYPE_CHECKING
 
 import click
@@ -180,8 +181,8 @@ def download(
                 try:
                     from cis_bench.catalog.database import CatalogDatabase
 
-                    db = CatalogDatabase(catalog_db_path)
-                    existing = db.get_downloaded(benchmark_id)
+                    with closing(CatalogDatabase(catalog_db_path)) as db:
+                        existing = db.get_downloaded(benchmark_id)
 
                     if existing:
                         console.print(
@@ -237,9 +238,8 @@ def download(
                 from cis_bench.catalog.downloader import CatalogDownloader
 
                 try:
-                    CatalogDownloader(CatalogDatabase(catalog_db_path)).cache(
-                        benchmark_id, benchmark
-                    )
+                    with closing(CatalogDatabase(catalog_db_path)) as db:
+                        CatalogDownloader(db).cache(benchmark_id, benchmark)
                     console.print(f"      [green]✓[/green] Cached in database (ID: {benchmark_id})")
                 except (SQLAlchemyError, OSError) as e:
                     logger.debug("Failed to cache the benchmark", exc_info=True)

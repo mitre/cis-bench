@@ -34,7 +34,7 @@ def temp_db(tmp_path):
     )
 
     yield db
-    db.engine.dispose()
+    db.close()
 
 
 @pytest.fixture

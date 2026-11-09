@@ -565,7 +565,7 @@ class TestListCommand:
             content_json, content_hash = serialize_benchmark_json(benchmark)
             db.save_downloaded(benchmark_id, content_json, content_hash, 1, version=version)
         finally:
-            db.engine.dispose()
+            db.close()
 
     def test_list_with_nothing_downloaded_and_an_empty_folder(self, runner, tmp_path, monkeypatch):
         monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path / "home"))

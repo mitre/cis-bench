@@ -506,7 +506,7 @@ class TestCatalogSearchCommand:
         with patch("cis_bench.cli.commands.catalog.get_catalog_db", return_value=missing_db):
             result = runner.invoke(cli, ["catalog", "search", "ubuntu"])
 
-        missing_db.engine.dispose()
+        missing_db.close()
         assert result.exit_code == 1
         assert "Catalog not found. Run 'cis-bench catalog refresh' first." in result.output
         assert "Search failed" not in result.output
@@ -719,7 +719,7 @@ class TestCatalogSearchCommand:
                     "604",
                 ]
                 assert search_spy.call_args.kwargs["status"] == flag_val
-        real_db.engine.dispose()
+        real_db.close()
 
 
 class TestCatalogListCommand:
@@ -745,7 +745,7 @@ class TestCatalogListCommand:
                 )
             db.mark_withdrawn_except({"1"})
         finally:
-            db.engine.dispose()
+            db.close()
         monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path))
 
     @pytest.mark.parametrize(
@@ -1664,13 +1664,13 @@ class TestGetCatalogDb:
         with patch("cis_bench.cli.commands.catalog.get_catalog_db", return_value=missing_db):
             with pytest.raises(click.Abort):
                 require_catalog_db()
-        missing_db.engine.dispose()
+        missing_db.close()
 
         ready_db = CatalogDatabase(tmp_path / "ready.db")
         ready_db.initialize_schema()
         with patch("cis_bench.cli.commands.catalog.get_catalog_db", return_value=ready_db):
             assert require_catalog_db() is ready_db
-        ready_db.engine.dispose()
+        ready_db.close()
 
     @pytest.mark.parametrize(
         ("subcommand_args", "expected_message", "forbidden_banner"),
@@ -1722,7 +1722,7 @@ class TestGetCatalogDb:
         missing_db = CatalogDatabase(tmp_path / "absent.db")
         with patch("cis_bench.cli.commands.catalog.get_catalog_db", return_value=missing_db):
             result = runner.invoke(cli, ["catalog", *subcommand_args])
-        missing_db.engine.dispose()
+        missing_db.close()
 
         assert result.exit_code == 1
         assert expected_message in result.output
@@ -1757,7 +1757,7 @@ class TestGetCatalogDb:
         with patch("cis_bench.cli.commands.catalog.get_catalog_db", return_value=real_db):
             info_res = runner.invoke(cli, ["catalog", "info", "99999"])
 
-        real_db.engine.dispose()
+        real_db.close()
         assert info_res.exit_code == 1
         assert "Benchmark 99999 not found in catalog." in info_res.output
         assert "Info failed" not in info_res.output

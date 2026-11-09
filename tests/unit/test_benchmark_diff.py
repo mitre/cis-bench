@@ -496,7 +496,8 @@ class TestDownloadedBenchmarksByID:
             data = {**data, "benchmark_id": bid}
             content_json, content_hash = serialize_benchmark_json(Benchmark.model_validate(data))
             db.save_downloaded(bid, content_json, content_hash, len(data["recommendations"]))
-        return db
+        yield db
+        db.close()
 
     def test_two_downloaded_ids_are_compared_from_the_cache(self, runner, cached):
         result = runner.invoke(cli, ["diff", "12345", "12346", "--format", "json"])
@@ -616,7 +617,8 @@ class TestFetchingAnIDThatIsNotDownloaded:
         old = {**old_benchmark_json, "benchmark_id": "12345"}
         content_json, content_hash = serialize_benchmark_json(Benchmark.model_validate(old))
         db.save_downloaded("12345", content_json, content_hash, 4, version="1.0.0")
-        return db
+        yield db
+        db.close()
 
     @pytest.fixture
     def scraper(self, new_benchmark_json):

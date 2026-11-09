@@ -6,6 +6,7 @@ which the user may move, rename or delete, and are listed separately.
 
 import logging
 import os
+from contextlib import closing
 
 import click
 from rich.console import Console
@@ -102,33 +103,36 @@ def _downloaded_benchmarks(catalog_db_path) -> list[dict]:
     """
     if not catalog_db_path.exists():
         return []
-    db = CatalogDatabase(catalog_db_path)
-    rows = []
-    for row in db.list_downloaded():
-        item = {
-            "benchmark_id": row["benchmark_id"],
-            "title": row["title"],
-            "version": row["version"],
-            "downloaded_at": row["downloaded_at"],
-        }
-        try:
-            cached = db.get_downloaded(row["benchmark_id"])
-            benchmark = deserialize_benchmark_json(cached["content_json"] if cached else "")
-        except Exception as error:
-            logger.debug(f"Cached copy of {row['benchmark_id']} cannot be read", exc_info=True)
-            item["error"] = f"unreadable cached copy: {error}".splitlines()[0]
-        else:
-            item.update(
-                title=item["title"] or benchmark.title,
-                recommendations=benchmark.total_recommendations,
-                cis_v8=sum(
-                    1 for r in benchmark.recommendations for c in r.cis_controls if c.version == 8
-                ),
-                mitre=sum(1 for r in benchmark.recommendations if r.mitre_mapping),
-                nist=sum(len(r.nist_controls) for r in benchmark.recommendations),
-            )
-        rows.append(item)
-    return rows
+    with closing(CatalogDatabase(catalog_db_path)) as db:
+        rows = []
+        for row in db.list_downloaded():
+            item = {
+                "benchmark_id": row["benchmark_id"],
+                "title": row["title"],
+                "version": row["version"],
+                "downloaded_at": row["downloaded_at"],
+            }
+            try:
+                cached = db.get_downloaded(row["benchmark_id"])
+                benchmark = deserialize_benchmark_json(cached["content_json"] if cached else "")
+            except Exception as error:
+                logger.debug(f"Cached copy of {row['benchmark_id']} cannot be read", exc_info=True)
+                item["error"] = f"unreadable cached copy: {error}".splitlines()[0]
+            else:
+                item.update(
+                    title=item["title"] or benchmark.title,
+                    recommendations=benchmark.total_recommendations,
+                    cis_v8=sum(
+                        1
+                        for r in benchmark.recommendations
+                        for c in r.cis_controls
+                        if c.version == 8
+                    ),
+                    mitre=sum(1 for r in benchmark.recommendations if r.mitre_mapping),
+                    nist=sum(len(r.nist_controls) for r in benchmark.recommendations),
+                )
+            rows.append(item)
+        return rows
 
 
 def _exported_files(folder) -> list[str]:

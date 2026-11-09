@@ -130,7 +130,7 @@ def catalog(data_dir, sample_recommendation_complete, no_network, auth_manager_c
 
     db.cached = cached
     yield db
-    db.engine.dispose()
+    db.close()
 
 
 def _refused(result, command: str, needs: str):

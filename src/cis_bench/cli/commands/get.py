@@ -2,6 +2,7 @@
 
 import logging
 import sys
+from contextlib import closing
 from typing import TYPE_CHECKING
 
 import click
@@ -115,114 +116,115 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
         sys.exit(1)
 
     # Step 2: Find the benchmark: by its catalog ID, or by searching the catalog
-    try:
-        from cis_bench.catalog.database import CatalogDatabase
-        from cis_bench.catalog.search import CatalogSearch
+    from cis_bench.catalog.database import CatalogDatabase
 
-        db = CatalogDatabase(catalog_db_path)
-        search = CatalogSearch(db)
-
-        if is_benchmark_id(query):
-            selected = _benchmark_with_id(search, query.strip())
-        else:
-            selected = _benchmark_matching(search, query, settings, non_interactive)
-    except Exception as e:
-        logger.debug("Search failed", exc_info=True)
-        console.print(f"[red]✗ Search failed: {escape(str(e))}[/red]")
-        sys.exit(1)
-
-    benchmark_id = str(selected["benchmark_id"])
-    logger.debug(f"Selected benchmark ID: {benchmark_id}")
-
-    # Step 3: Use the cached copy, unless there is none or --force says to replace it
-    existing = None if force else db.get_downloaded(benchmark_id)
-
-    if existing:
-        console.print(
-            "[green]✓[/green] Benchmark already cached "
-            f"(downloaded {display_time(existing['downloaded_at'])})\n"
-        )
-        logger.debug(f"Using cached benchmark {benchmark_id}")
-    else:
-        # Step 4: Download benchmark
+    with closing(CatalogDatabase(catalog_db_path)) as db:
         try:
-            # The catalog row's ID becomes a canonical WorkBench URL on the configured origin
-            _, benchmark_url = resolve_benchmark_reference(
-                str(benchmark_id), base_url=settings.workbench_url
-            )
-        except ValueError as e:
-            console.print(f"[red]✗ {escape(str(e))}[/red]")
-            sys.exit(1)
+            from cis_bench.catalog.search import CatalogSearch
 
-        try:
-            # Get authenticated session (uses saved session only)
-            logger.debug("Getting authenticated session for download")
-            session = workbench_session(settings, needs=f"download benchmark {benchmark_id}")
-            console.print("[cyan]Downloading benchmark...[/cyan]\n")
+            search = CatalogSearch(db)
 
-            from cis_bench.catalog.downloader import CatalogDownloader
-            from cis_bench.cli.helpers.download_helper import download_with_progress
-
-            scraper = workbench_scraper(settings, session)
-            benchmark = download_with_progress(scraper, benchmark_url, prefix="  ")
-            CatalogDownloader(db).cache(benchmark_id, benchmark)
-
-            console.print(f"[green]✓[/green] Downloaded: {escape(benchmark.title)}")
-            console.print(f"  Recommendations: {benchmark.total_recommendations}\n")
-
-        except click.ClickException:
-            raise  # Click reports its own errors (offline mode refuses with one)
-        except DOWNLOAD_ERRORS as e:
-            report_download_error(console, e)
-            sys.exit(1)
+            if is_benchmark_id(query):
+                selected = _benchmark_with_id(search, query.strip())
+            else:
+                selected = _benchmark_matching(search, query, settings, non_interactive)
         except Exception as e:
-            logger.debug("Download failed", exc_info=True)
-            console.print(f"[red]✗ Download failed: {escape(str(e))}[/red]")
+            logger.debug("Search failed", exc_info=True)
+            console.print(f"[red]✗ Search failed: {escape(str(e))}[/red]")
             sys.exit(1)
 
-    # Step 5: Export to requested format
-    try:
-        from cis_bench.catalog.database import deserialize_benchmark_json
+        benchmark_id = str(selected["benchmark_id"])
+        logger.debug(f"Selected benchmark ID: {benchmark_id}")
 
-        console.print(f"[cyan]Exporting to {export_format}...[/cyan]")
+        # Step 3: Use the cached copy, unless there is none or --force says to replace it
+        existing = None if force else db.get_downloaded(benchmark_id)
 
-        # Load from database
-        downloaded = db.get_downloaded(benchmark_id)
-        if not downloaded:
-            raise ValueError(f"Benchmark {benchmark_id} not found in catalog cache")
-        benchmark = deserialize_benchmark_json(downloaded["content_json"])
+        if existing:
+            console.print(
+                "[green]✓[/green] Benchmark already cached "
+                f"(downloaded {display_time(existing['downloaded_at'])})\n"
+            )
+            logger.debug(f"Using cached benchmark {benchmark_id}")
+        else:
+            # Step 4: Download benchmark
+            try:
+                # The catalog row's ID becomes a canonical WorkBench URL on the configured origin
+                _, benchmark_url = resolve_benchmark_reference(
+                    str(benchmark_id), base_url=settings.workbench_url
+                )
+            except ValueError as e:
+                console.print(f"[red]✗ {escape(str(e))}[/red]")
+                sys.exit(1)
 
-        # Create exporter
-        exporter_kwargs = {}
-        if export_format in ["xccdf", "xml"]:
-            exporter_kwargs["style"] = style
+            try:
+                # Get authenticated session (uses saved session only)
+                logger.debug("Getting authenticated session for download")
+                session = workbench_session(settings, needs=f"download benchmark {benchmark_id}")
+                console.print("[cyan]Downloading benchmark...[/cyan]\n")
 
-        exporter = ExporterFactory.create(export_format, **exporter_kwargs)
+                from cis_bench.catalog.downloader import CatalogDownloader
+                from cis_bench.cli.helpers.download_helper import download_with_progress
 
-        # Determine output filename
-        if not output:
-            base = f"benchmark_{benchmark_id}"
-            ext = exporter.get_file_extension()
-            output = f"{base}.{ext}"
+                scraper = workbench_scraper(settings, session)
+                benchmark = download_with_progress(scraper, benchmark_url, prefix="  ")
+                CatalogDownloader(db).cache(benchmark_id, benchmark)
 
-        # Export
-        exporter.export(benchmark, output)
+                console.print(f"[green]✓[/green] Downloaded: {escape(benchmark.title)}")
+                console.print(f"  Recommendations: {benchmark.total_recommendations}\n")
 
-        import os
+            except click.ClickException:
+                raise  # Click reports its own errors (offline mode refuses with one)
+            except DOWNLOAD_ERRORS as e:
+                report_download_error(console, e)
+                sys.exit(1)
+            except Exception as e:
+                logger.debug("Download failed", exc_info=True)
+                console.print(f"[red]✗ Download failed: {escape(str(e))}[/red]")
+                sys.exit(1)
 
-        file_size = os.path.getsize(output) / 1024
+        # Step 5: Export to requested format
+        try:
+            from cis_bench.catalog.database import deserialize_benchmark_json
 
-        console.print("\n[bold green]✓ Success![/bold green]")
-        console.print(f"  Format: {exporter.format_name()}")
-        console.print(f"  Output: [bold]{escape(str(output))}[/bold]")
-        console.print(f"  Size: {file_size:.1f} KB")
+            console.print(f"[cyan]Exporting to {export_format}...[/cyan]")
 
-        logger.debug(f"Export complete: {output}")
+            # Load from database
+            downloaded = db.get_downloaded(benchmark_id)
+            if not downloaded:
+                raise ValueError(f"Benchmark {benchmark_id} not found in catalog cache")
+            benchmark = deserialize_benchmark_json(downloaded["content_json"])
 
-    except Exception as e:
-        logger.debug("Export failed", exc_info=True)
-        console.print(f"[red]✗ Export failed: {escape(str(e))}[/red]")
-        sys.exit(1)
+            # Create exporter
+            exporter_kwargs = {}
+            if export_format in ["xccdf", "xml"]:
+                exporter_kwargs["style"] = style
+
+            exporter = ExporterFactory.create(export_format, **exporter_kwargs)
+
+            # Determine output filename
+            if not output:
+                base = f"benchmark_{benchmark_id}"
+                ext = exporter.get_file_extension()
+                output = f"{base}.{ext}"
+
+            # Export
+            exporter.export(benchmark, output)
+
+            import os
+
+            file_size = os.path.getsize(output) / 1024
+
+            console.print("\n[bold green]✓ Success![/bold green]")
+            console.print(f"  Format: {exporter.format_name()}")
+            console.print(f"  Output: [bold]{escape(str(output))}[/bold]")
+            console.print(f"  Size: {file_size:.1f} KB")
+
+            logger.debug(f"Export complete: {output}")
+
+        except Exception as e:
+            logger.debug("Export failed", exc_info=True)
+            console.print(f"[red]✗ Export failed: {escape(str(e))}[/red]")
+            sys.exit(1)
 
 
 def _benchmark_with_id(search: "CatalogSearch", benchmark_id: str) -> dict:

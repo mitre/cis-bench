@@ -1,6 +1,7 @@
 """Unit tests for catalog database operations."""
 
 import tempfile
+from contextlib import closing
 from pathlib import Path
 
 import pytest
@@ -19,7 +20,7 @@ def temp_db():
         try:
             yield db
         finally:
-            db.engine.dispose()
+            db.close()
 
 
 @pytest.fixture
@@ -39,6 +40,74 @@ def sample_benchmark_data():
     }
 
 
+class TestClosingTheDatabase:
+    """A CatalogDatabase closes every connection it opened when asked (and so under
+    contextlib.closing); nothing is left for garbage collection to close."""
+
+    @staticmethod
+    def _raw_connections(db):
+        """The DBAPI connections the engine opens from now on."""
+        from sqlalchemy import event
+
+        opened = []
+        event.listen(db.engine, "connect", lambda raw, _record: opened.append(raw))
+        return opened
+
+    @staticmethod
+    def _assert_closed(raw_connections):
+        import sqlite3
+
+        assert raw_connections, "the database opened no connection"
+        for raw in raw_connections:
+            with pytest.raises(sqlite3.ProgrammingError, match="closed database"):
+                raw.execute("SELECT 1")
+
+    def test_close_closes_every_connection_the_database_opened(self, tmp_path):
+        db = CatalogDatabase(tmp_path / "catalog.db")
+        opened = self._raw_connections(db)
+        db.initialize_schema()
+        assert db.list_downloaded() == []
+
+        db.close()
+
+        self._assert_closed(opened)
+
+    def test_a_database_that_fails_to_open_leaves_no_connection_behind(self, tmp_path, monkeypatch):
+        # The schema upgrade can fail (a full disk, a locked file); the connection it used
+        # must be closed before the error reaches the caller, who has no object to close.
+        from sqlalchemy import event
+        from sqlalchemy.engine import Engine
+
+        db = CatalogDatabase(tmp_path / "catalog.db")
+        db.initialize_schema()
+        db.close()
+        opened = []
+
+        def remember(raw, _record):
+            opened.append(raw)
+
+        event.listen(Engine, "connect", remember)
+        try:
+
+            def fail(*_args, **_kwargs):
+                raise RuntimeError("disk full")
+
+            monkeypatch.setattr(CatalogDatabase, "_pending_upgrades", staticmethod(fail))
+            with pytest.raises(RuntimeError, match="disk full"):
+                CatalogDatabase(tmp_path / "catalog.db")
+        finally:
+            event.remove(Engine, "connect", remember)
+
+        self._assert_closed(opened)
+
+    def test_closing_twice_is_safe(self, tmp_path):
+        db = CatalogDatabase(tmp_path / "catalog.db")
+        db.initialize_schema()
+        db.close()
+
+        db.close()
+
+
 class TestDatabaseInitialization:
     """Test database initialization and schema creation."""
 
@@ -48,7 +117,7 @@ class TestDatabaseInitialization:
         with caplog.at_level("INFO", logger="cis_bench.catalog.database"):
             db.initialize_schema()
             db.initialize_schema()
-        db.engine.dispose()
+        db.close()
         assert [r.getMessage() for r in caplog.records if r.levelname == "INFO"] == []
 
     def test_database_creation(self, temp_db):
@@ -77,18 +146,15 @@ class TestDatabaseInitialization:
             assert reopened.db_path.parent.stat().st_mode & 0o777 == 0o700
             assert reopened.db_path.stat().st_mode & 0o777 == 0o600
         finally:
-            reopened.engine.dispose()
-            db.engine.dispose()
+            reopened.close()
+            db.close()
 
     def test_schema_tables_created(self, temp_db):
         """Test all tables are created."""
         import sqlite3
 
-        conn = sqlite3.connect(temp_db.db_path)
-        cursor = conn.cursor()
-
-        # Check main tables exist
-        tables = cursor.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+        with closing(sqlite3.connect(temp_db.db_path)) as conn:
+            tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         table_names = [t[0] for t in tables]
 
         expected_tables = [
@@ -112,13 +178,10 @@ class TestDatabaseInitialization:
         """Test FTS5 virtual table is created."""
         import sqlite3
 
-        conn = sqlite3.connect(temp_db.db_path)
-        cursor = conn.cursor()
-
-        # Check virtual table exists
-        tables = cursor.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='benchmarks_fts'"
-        ).fetchall()
+        with closing(sqlite3.connect(temp_db.db_path)) as conn:
+            tables = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='benchmarks_fts'"
+            ).fetchall()
 
         assert len(tables) == 1
         conn.close()
@@ -159,31 +222,31 @@ class TestDatabaseInitialization:
 
         from cis_bench.catalog.models import BenchmarkStatusModel
 
-        db = CatalogDatabase(tmp_path / "legacy_catalog.db")
-        db.initialize_schema()
+        with closing(CatalogDatabase(tmp_path / "legacy_catalog.db")) as db:
+            db.initialize_schema()
 
-        with Session(db.engine) as session:
-            original_published_id = (
-                session.exec(
-                    select(BenchmarkStatusModel).where(BenchmarkStatusModel.name == "Published")
+            with Session(db.engine) as session:
+                original_published_id = (
+                    session.exec(
+                        select(BenchmarkStatusModel).where(BenchmarkStatusModel.name == "Published")
+                    )
+                    .one()
+                    .status_id
                 )
-                .one()
-                .status_id
-            )
-            session.execute(
-                text("DELETE FROM benchmark_statuses WHERE name = :name"),
-                {"name": "Final Update"},
-            )
-            session.commit()
+                session.execute(
+                    text("DELETE FROM benchmark_statuses WHERE name = :name"),
+                    {"name": "Final Update"},
+                )
+                session.commit()
 
-        db.initialize_schema()
+            db.initialize_schema()
 
-        assert self._fetch_ordered_statuses(db) == self._EXPECTED_DEFAULT_STATUSES
-        with Session(db.engine) as session:
-            published_after = session.exec(
-                select(BenchmarkStatusModel).where(BenchmarkStatusModel.name == "Published")
-            ).one()
-            assert published_after.status_id == original_published_id
+            assert self._fetch_ordered_statuses(db) == self._EXPECTED_DEFAULT_STATUSES
+            with Session(db.engine) as session:
+                published_after = session.exec(
+                    select(BenchmarkStatusModel).where(BenchmarkStatusModel.name == "Published")
+                ).one()
+                assert published_after.status_id == original_published_id
 
 
 class TestBenchmarkOperations:
@@ -284,7 +347,7 @@ class TestBenchmarkOperations:
             r["benchmark_id"] for r in temp_db.search("", platform_type="cloud", limit=None)
         ] == ["7001"]
 
-        with sqlite3.connect(temp_db.db_path) as conn:
+        with closing(sqlite3.connect(temp_db.db_path)) as conn:
             linked = [
                 row[0]
                 for row in conn.execute(
@@ -778,7 +841,7 @@ class TestLookupTables:
                 session.commit()
 
             assert temp_db.get_metadata(f"pending-{label}") == f"preserved-{label}"
-        competing_db.engine.dispose()
+        competing_db.close()
 
     def test_savepoint_lookup_creation_rolls_back_with_outer_session(self, temp_db):
         """SAVEPOINT release inside _get_or_create must not auto-commit lookup rows before outer commit."""
@@ -806,7 +869,7 @@ class TestLookupTables:
                 ).first()
                 assert persisted_after_rollback is None
         finally:
-            observer_db.engine.dispose()
+            observer_db.close()
 
     def test_catalog_database_init_tolerates_eperm_on_unowned_paths(self, temp_db, monkeypatch):
         """Opening a readable catalog database owned by another user tolerates chmod PermissionError."""
@@ -825,7 +888,7 @@ class TestLookupTables:
         try:
             assert shared_db.get_catalog_stats()["total_benchmarks"] == 0
         finally:
-            shared_db.engine.dispose()
+            shared_db.close()
 
 
 class TestDownloadedBenchmarks:
@@ -1370,19 +1433,13 @@ class TestCollections:
         # Verify collections were created and linked
         import sqlite3
 
-        conn = sqlite3.connect(temp_db.db_path)
-
-        # Check collections table
-        collections = conn.execute("SELECT name FROM collections").fetchall()
+        with closing(sqlite3.connect(temp_db.db_path)) as conn:
+            collections = conn.execute("SELECT name FROM collections").fetchall()
+            links = conn.execute(
+                "SELECT * FROM benchmark_collections WHERE benchmark_id = '1'"
+            ).fetchall()
         assert len(collections) == 3
-
-        # Check link table
-        links = conn.execute(
-            "SELECT * FROM benchmark_collections WHERE benchmark_id = '1'"
-        ).fetchall()
         assert len(links) == 3
-
-        conn.close()
 
     def test_update_benchmark_collections(self, temp_db):
         """Test updating benchmark collections replaces old ones."""
@@ -1403,13 +1460,11 @@ class TestCollections:
         # Should have Tag3 and Tag4, not Tag1 and Tag2
         import sqlite3
 
-        conn = sqlite3.connect(temp_db.db_path)
-        links = conn.execute(
-            "SELECT * FROM benchmark_collections WHERE benchmark_id = '1'"
-        ).fetchall()
+        with closing(sqlite3.connect(temp_db.db_path)) as conn:
+            links = conn.execute(
+                "SELECT * FROM benchmark_collections WHERE benchmark_id = '1'"
+            ).fetchall()
         assert len(links) == 2
-
-        conn.close()
 
     def test_get_benchmark_includes_sorted_collections(self, temp_db):
         """get_benchmark returns sorted collection names and an empty list when none exist."""
@@ -1594,7 +1649,7 @@ class TestOpeningAnOlderCatalog:
                     "community": "CIS Kubernetes Benchmarks",
                 }
             )
-        db.engine.dispose()
+        db.close()
         con = sqlite3.connect(path)
         con.executescript(sql_afterwards)
         con.close()
@@ -1627,7 +1682,7 @@ class TestOpeningAnOlderCatalog:
             assert self._found(db, "kubernetes") == ["200", "210"]
             assert self._found(db, "container") == ["200", "210"]
         finally:
-            db.engine.dispose()
+            db.close()
         assert self._index_rows(path) == ["200", "210"]
 
     # The layout an earlier version of this branch wrote: versions, and a description column
@@ -1651,7 +1706,7 @@ class TestOpeningAnOlderCatalog:
         try:
             assert self._found(db, "kubernetes 2.1.0") == ["210"]
         finally:
-            db.engine.dispose()
+            db.close()
         con = sqlite3.connect(path)
         try:
             columns = [row[1] for row in con.execute("PRAGMA table_info(benchmarks_fts)")]
@@ -1666,20 +1721,20 @@ class TestOpeningAnOlderCatalog:
         path = tmp_path / "older.db"
         self._catalog(path, "ALTER TABLE downloaded_benchmarks DROP COLUMN published_date;")
 
-        CatalogDatabase(path).engine.dispose()
+        CatalogDatabase(path).close()
         db = CatalogDatabase(path)
         try:
             db.save_downloaded("210", "{}", "hash", 20, published_date=date(2025, 8, 28))
             assert db.get_downloaded("210")["published_date"] == date(2025, 8, 28)
         finally:
-            db.engine.dispose()
+            db.close()
 
     def test_opening_it_again_leaves_one_index_row_per_benchmark(self, tmp_path):
         path = tmp_path / "older.db"
         self._catalog(path, self.OLD_FTS)
 
         for _ in range(2):
-            CatalogDatabase(path).engine.dispose()
+            CatalogDatabase(path).close()
 
         assert self._index_rows(path) == ["200", "210"]
 
@@ -1688,7 +1743,7 @@ class TestOpeningAnOlderCatalog:
         marker = "INSERT INTO benchmarks_fts (benchmark_id, title) VALUES ('marker', 'kept');"
         self._catalog(path, marker)
 
-        CatalogDatabase(path).engine.dispose()
+        CatalogDatabase(path).close()
 
         assert self._index_rows(path) == ["200", "210", "marker"]
 
@@ -1696,13 +1751,13 @@ class TestOpeningAnOlderCatalog:
         path = tmp_path / "older.db"
         self._catalog(path, "ALTER TABLE downloaded_benchmarks DROP COLUMN version;")
 
-        CatalogDatabase(path).engine.dispose()
+        CatalogDatabase(path).close()
         db = CatalogDatabase(path)
         try:
             db.save_downloaded("210", '{"version": "v2.1.0"}', "hash", 20, version="v2.1.0")
             assert db.get_downloaded("210")["version"] == "v2.1.0"
         finally:
-            db.engine.dispose()
+            db.close()
 
     def test_a_rebuild_that_fails_part_way_leaves_the_old_index_in_place(
         self, tmp_path, monkeypatch
@@ -1755,7 +1810,7 @@ class TestOpeningAnOlderCatalog:
         monkeypatch.setattr(CatalogDatabase, "_pending_upgrades", staticmethod(stale_then_real))
 
         with caplog.at_level("WARNING", logger="cis_bench.catalog.database"):
-            CatalogDatabase(path).engine.dispose()
+            CatalogDatabase(path).close()
 
         assert self._warnings(caplog) == []
         assert self._index_rows(path) == ["200", "210", "marker"]
@@ -1779,7 +1834,7 @@ class TestOpeningAnOlderCatalog:
             with pytest.raises(OperationalError, match="no such column: version"):
                 db.search("kubernetes", limit=None)
         finally:
-            db.engine.dispose()
+            db.close()
         (warning,) = self._warnings(caplog)
         assert warning.startswith(f"Could not update the catalog database {path} for this ")
         assert warning.endswith("Searching it needs the update.")
@@ -1798,7 +1853,7 @@ class TestOpeningAnOlderCatalog:
             with pytest.raises(DatabaseError, match="not a database"):
                 db.search("kubernetes", limit=None)
         finally:
-            db.engine.dispose()
+            db.close()
         (warning,) = self._warnings(caplog)
         assert warning.startswith(f"Could not update the catalog database {path} for this ")
 
@@ -1828,7 +1883,7 @@ class TestOpeningAnOlderCatalog:
         path.touch()
 
         with caplog.at_level("WARNING", logger="cis_bench.catalog.database"):
-            CatalogDatabase(path).engine.dispose()
+            CatalogDatabase(path).close()
 
         assert self._warnings(caplog) == []
         con = sqlite3.connect(path)
@@ -1894,7 +1949,7 @@ class TestMarkingWithdrawnBenchmarks:
 
         db = CatalogDatabase(tmp_path / "older.db")
         db.initialize_schema()
-        db.engine.dispose()
+        db.close()
         con = sqlite3.connect(tmp_path / "older.db")
         con.execute("DELETE FROM benchmark_statuses WHERE name = 'Withdrawn'")
         con.commit()
@@ -1907,7 +1962,7 @@ class TestMarkingWithdrawnBenchmarks:
             assert db.mark_withdrawn_except(set()) == 1
             assert db.get_benchmark("1")["status"] == "Withdrawn"
         finally:
-            db.engine.dispose()
+            db.close()
 
 
 class TestPublishDatesAndTheUpdateRule:

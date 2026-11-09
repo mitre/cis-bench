@@ -460,7 +460,7 @@ class TestGetTitleWidthSetting:
                 )
             db.mark_latest_versions()
         finally:
-            db.engine.dispose()
+            db.close()
         monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path))
 
         with patch("cis_bench.cli.commands.get.questionary.select", return_value=_cancelled()):
@@ -507,7 +507,7 @@ def cached_releases(tmp_path, sample_benchmark, monkeypatch):
             db.save_downloaded(benchmark_id, content_json, content_hash, 2, version=version)
         db.mark_latest_versions()
     finally:
-        db.engine.dispose()
+        db.close()
     monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path))
 
 
