@@ -394,7 +394,7 @@ class TestCISXCCDFExport:
             update={
                 "recommendations": recs,
                 "profile_definitions": [
-                    ProfileDefinition(title="Alpha", description="<p>First tier.</p>"),
+                    ProfileDefinition(title="Alpha", description="First tier."),
                     ProfileDefinition(title="Beta", parent="Alpha"),
                 ],
             }
