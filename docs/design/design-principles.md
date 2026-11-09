@@ -60,7 +60,44 @@ def generate_pci_idents(self, recommendation):
 
 ---
 
+## Core Principle: An Established Tool Before Our Own Code
+
+For parsing, conversion or format work (HTML, Markdown, XML, YAML, CSV, dates, URLs,
+identifiers), an established, tested library is chosen before any code of our own is
+written. The card's "Prior art checked" section names the candidates, and for the one
+chosen: the version read, the license as read from its repository, its dependency health
+(last release, last merged change, archived or not) and the verdict. Our own code is
+written only when no library fits, and the card records why.
+
+Hand-written code of this kind met in a card's path (a regex that strips HTML, a loop
+that rebuilds an XML element from a marker string, a parser for a format a library
+reads) is flagged for replacement on that card or on a linked one; it is not extended.
+
+The reason is the record. Hand-written code in this project cut Dublin Core values at a
+marker delimiter and parsed templates with a regex that let an unclosed brace through;
+both were replaced by what the project already had (xsdata's own element type, the
+standard library's format parser). The hand-written HTML conversions still lose
+`<user>`-style placeholders from recommendation text; replacing them with a library is
+the work of the epic that wrote this rule.
+
+---
+
 ## Red Flags to Avoid
+
+### Hand-Written Parsing or Conversion
+
+```python
+# Bad - our own rule for what a tag is
+text = re.sub(r"<[^>]+>", "", html)
+
+# Good - a tested parser, chosen on the card with its prior-art check
+text = BeautifulSoup(html, "html.parser").get_text()
+```
+
+The contrast is the point, not the recipe: a parser reads HTML as HTML. Text that mixes
+Markdown-like placeholders (`<user>`) with HTML needs the library chosen for that input
+after the card's prior-art check, not a tag-stripping call; `get_text()` drops such
+placeholders too.
 
 ### Organization Names in Method Names
 
@@ -180,6 +217,11 @@ Before committing any handler code, verify:
 - [ ] All structure comes from YAML config
 - [ ] Uses VariableSubstituter for templates
 - [ ] Adding new framework requires zero code changes
+- [ ] Parsing, conversion or format work uses an established library named in the card's
+      prior-art check; any new code of our own for such work records why no library fits
+
+- [ ] No hand-written parsing or conversion met in the change was extended instead of
+      flagged for replacement
 
 ---
 

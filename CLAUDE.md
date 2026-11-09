@@ -156,6 +156,7 @@ All test data via fixtures in `tests/conftest.py`. NO hardcoded paths.
 - Use `MappingEngine.get_xccdf_class()` instead of direct model imports
 - No version-specific imports (xccdf_1_2, xccdf_v1_1) in exporters
 - If design doc exists, follow it exactly; update design first if wrong
+- For parsing, conversion or format work, an established, tested library comes before code of our own: the rule and its check are in `docs/design/design-principles.md`
 
 ### Red Flags (Stop and Reconsider)
 - Hard-coded type names in Python code
