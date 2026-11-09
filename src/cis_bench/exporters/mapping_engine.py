@@ -23,7 +23,6 @@ See ARCHITECTURE_PRINCIPLES.md for complete guidelines.
 Adding PCI-DSS, ISO 27001, HIPAA, etc. MUST require ZERO code changes (YAML only).
 """
 
-import html
 import inspect
 import logging
 import re
@@ -36,6 +35,7 @@ from types import ModuleType, UnionType
 from typing import Annotated, Any, Union, get_args, get_origin
 
 import yaml
+from lxml import etree
 from pydantic import BaseModel
 from xsdata.formats.dataclass.models.generics import AnyElement
 
@@ -469,6 +469,7 @@ class MappingEngine:
         """
         self.config = ConfigLoader.load(config_path)
         self._refuse_unknown_field_names()
+        self._refuse_invalid_embedded_tags()
         self.cci_service = get_cci_service()
 
         # Dynamically load XCCDF models based on config version
@@ -481,6 +482,28 @@ class MappingEngine:
     # Structures whose source_field is read as a dotted path (_get_nested_field); every
     # other reader takes one field name.
     _DOTTED_PATH_STRUCTURES = frozenset({"ident_from_list", "metadata_from_config"})
+
+    def _refuse_invalid_embedded_tags(self) -> None:
+        """Refuse a style whose embedded_xml_tags component names a tag that is no XML name.
+
+        Such a tag would be written into an element's text and only fail for the reader that
+        parses the tags, long after the export.
+
+        Raises:
+            ValueError: A component's tag is missing or is not a valid XML element name.
+        """
+        for name, mapping in self.config.field_mappings.items():
+            if not isinstance(mapping, dict) or mapping.get("structure") != "embedded_xml_tags":
+                continue
+            for i, component in enumerate(mapping.get("components") or []):
+                tag = component.get("tag") if isinstance(component, dict) else None
+                try:
+                    etree.Element(tag)
+                except (ValueError, TypeError) as error:
+                    raise ValueError(
+                        f"field_mappings.{name}.components[{i}]: {tag!r} is not a valid XML tag "
+                        f"name ({error})"
+                    ) from error
 
     def _refuse_unknown_field_names(self) -> None:
         """Refuse a style that names a recommendation or benchmark field that does not exist.
@@ -526,15 +549,12 @@ class MappingEngine:
                 if not isinstance(component, dict):
                     continue
                 for j, source in enumerate(component.get("sources") or []):
-                    if isinstance(source, dict) and source.get("field"):
-                        named.append(
-                            (
-                                f"field_mappings.{name}.components[{i}].sources[{j}]",
-                                source["field"],
-                                Recommendation,
-                                False,
-                            )
+                    where = f"field_mappings.{name}.components[{i}].sources[{j}]"
+                    if not isinstance(source, dict) or not source.get("field"):
+                        raise ValueError(
+                            f"{where}: a component source needs field, the field it reads"
                         )
+                    named.append((where, source["field"], Recommendation, False))
         for name, element in self.config.group_elements.items():
             if isinstance(element, dict) and element.get("source"):
                 named.append((f"group_elements.{name}", element["source"], Recommendation, False))
@@ -641,9 +661,10 @@ class MappingEngine:
         Each component is one tag, in the order given, always written: its text is the
         component's ``content``, or its ``sources`` joined (each source names a ``field`` of
         the recommendation, a ``transform``, default none, and the ``separator`` that follows
-        its text when another source's text comes after it). Each part's text is XML-escaped
-        before it is wrapped, so a reader that unescapes the element's text once and parses
-        the tags gets the text as stored, a placeholder such as <user> included.
+        its text when another source's text comes after it). Each tag is built and written by
+        the XML library, which escapes its text, so a reader that unescapes the element's text
+        once and parses the tags gets the text as stored, a placeholder such as <user>
+        included; a tag whose name is not a valid XML name is refused when the style loads.
         """
         parts = []
         for component in components:
@@ -664,8 +685,9 @@ class MappingEngine:
                 )
             else:
                 content = component.get("content", "")
-            # &, < and > escaped (quotes are text inside an element)
-            parts.append(f"<{tag}>{html.escape(content, quote=False)}</{tag}>")
+            element = etree.Element(tag)
+            element.text = content  # "" keeps the <Tag></Tag> form official STIGs write
+            parts.append(etree.tostring(element, encoding="unicode"))
         return "".join(parts)
 
     def get_ccis_with_deduplication(self, rec: Recommendation) -> tuple[list[str], list[str]]:

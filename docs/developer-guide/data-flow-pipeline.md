@@ -259,17 +259,12 @@ components:
 sources:
 
 - field: "description"
-transform: "strip_html"
+separator: "\n\n" # follows the description when the rationale has text
 
 - field: "rationale"
-transform: "strip_html"
-separator: "\n\n"
 
 - tag: "FalsePositives"
-sources:
-
-- field: "additional_info"
-transform: "strip_html"
+content: ""
 xccdf_type: "HtmlTextWithSubType"
 
 # List field with CCI lookup
@@ -378,11 +373,14 @@ content_parts = []
 for source in component['sources']:
 field = source['field'] # "description"
 value = getattr(recommendation, field)
-transformed = apply_transform(value, source.get('transform'))
-content_parts.append(transformed)
+text = apply_transform(value, source.get('transform', 'none'))
+if text:
+content_parts.append((text, source.get('separator', '')))
 
-content = separator.join(content_parts)
-xml_content += f"<{tag}>{html.escape(content, quote=False)}</{tag}>"
+# each source's separator follows its text when another text comes after it
+content = ''.join(text + (sep if i < len(content_parts) - 1 else '') for i, (text, sep) in enumerate(content_parts))
+element = etree.Element(tag); element.text = content # lxml escapes the text; "" keeps <Tag></Tag>
+xml_content += etree.tostring(element, encoding="unicode")
 
 # 5. Create xsdata object
 description = HtmlTextWithSubType(value=xml_content)
@@ -409,6 +407,7 @@ value="<VulnDiscussion>The cramfs filesystem type is a compressed "
 
 Removing support for unneeded filesystem types reduces the attack surface...</VulnDiscussion>
 </description>
+<!-- in the file the description's text is escaped once by the serializer: &lt;VulnDiscussion&gt;... -->
 <ident system="http://cyber.mil/cci">CCI-000366</ident>
 <ident system="http://cyber.mil/cci">CCI-000778</ident>
 <fix fixref="F-1_1_1">modprobe -n -v cramfs</fix>
@@ -758,6 +757,7 @@ weight=Decimal("10.0")
 
 Removing support for unneeded filesystem types reduces the local attack surface of the system.</VulnDiscussion>
 </description>
+<!-- in the file the description's text is escaped once by the serializer: &lt;VulnDiscussion&gt;... -->
 <ident system="http://cyber.mil/cci">CCI-000381</ident>
 <ident system="http://cyber.mil/cci">CCI-000366</ident>
 <fix fixref="F-1_1_1">

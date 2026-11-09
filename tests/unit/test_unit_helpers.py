@@ -2180,3 +2180,62 @@ class TestRuleElementOrder:
         assert "metadata" not in order
         assert order[:3] == ["status", "version", "title"]
         assert order[-1] == "signature"
+
+
+class TestEmbeddedTagsAreCheckedWhenTheStyleLoads:
+    """A style's embedded_xml_tags components are checked when the engine loads it, not
+    when an export fails: every source names a field that exists, every tag is an XML name."""
+
+    @staticmethod
+    def _style(tmp_path, disa_config_path, components):
+        import yaml
+
+        style = tmp_path / "style.yaml"
+        style.write_text(
+            yaml.safe_dump(
+                {
+                    "extends": str(disa_config_path),
+                    "field_mappings": {
+                        "description": {
+                            "target_element": "description",
+                            "structure": "embedded_xml_tags",
+                            "components": components,
+                        }
+                    },
+                }
+            )
+        )
+        return style
+
+    def test_a_source_naming_no_field_is_refused(self, tmp_path, disa_config_path):
+        style = self._style(
+            tmp_path,
+            disa_config_path,
+            [{"tag": "VulnDiscussion", "sources": [{"field": "descriptoin"}]}],
+        )
+
+        with pytest.raises(ValueError, match="components\\[0\\].sources\\[0\\].*descriptoin"):
+            MappingEngine(style)
+
+    def test_a_source_without_a_field_is_refused(self, tmp_path, disa_config_path):
+        style = self._style(
+            tmp_path,
+            disa_config_path,
+            [{"tag": "VulnDiscussion", "sources": [{"source_field": "description"}]}],
+        )
+
+        with pytest.raises(ValueError, match="a component source needs field"):
+            MappingEngine(style)
+
+    @pytest.mark.parametrize("tag", ["bad tag", "1st", "", None])
+    def test_a_tag_that_is_no_xml_name_is_refused(self, tmp_path, disa_config_path, tag):
+        style = self._style(tmp_path, disa_config_path, [{"tag": tag, "content": ""}])
+
+        with pytest.raises(ValueError, match="is not a valid XML tag name"):
+            MappingEngine(style)
+
+    def test_the_shipped_disa_style_passes_the_checks(self, disa_config_path):
+        engine = MappingEngine(disa_config_path)
+
+        tags = [c["tag"] for c in engine.config.field_mappings["description"]["components"]]
+        assert tags[0] == "VulnDiscussion" and len(tags) == 11

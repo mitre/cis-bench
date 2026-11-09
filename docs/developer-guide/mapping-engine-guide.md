@@ -64,8 +64,9 @@ components:
 sources:
 
 - field: "description"
+separator: "\n\n" # follows the description when the rationale has text
+
 - field: "rationale"
-separator: "\n\n"
 
 - tag: "FalsePositives"
 content: ""
@@ -242,8 +243,9 @@ components:
 sources:
 
 - field: "description"
+separator: "\n\n" # follows the description when the rationale has text
+
 - field: "rationale"
-separator: "\n\n"
 
 - tag: "FalsePositives"
 content: "" # Empty (DISA legacy)
@@ -255,9 +257,10 @@ sources:
 ```
 
 Every tag is written in the order given, empty when the rule has no text for it, as DISA
-writes them. Each part's text is XML-escaped before it is wrapped, so a reader that unescapes
-the description once and parses the tags gets the stored text, placeholders such as `<user>`
-included (the serializer escapes the whole description once more on write).
+writes them. Each tag is built and written by the XML library (lxml), which escapes its text,
+so a reader that unescapes the description once and parses the tags gets the stored text,
+placeholders such as `<user>` included (the serializer escapes the whole description once more
+on write); a tag name that is no XML name is refused when the style loads.
 
 **Example:**
 ```python
@@ -280,6 +283,8 @@ Removing support for unneeded filesystem types reduces attack surface.</VulnDisc
 <PotentialImpacts>Minimal impact expected.</PotentialImpacts>
 </description>
 ```
+
+(In the file the serializer escapes the description's text once, so the tags appear as `&lt;VulnDiscussion&gt;...`; shown unescaped here.)
 
 ### 4. List Field Mapping
 
@@ -355,7 +360,8 @@ Output: "Ensure cramfs is disabled"
 ```
 
 ### strip_html_keep_code
-Strips HTML but preserves code blocks and lists.
+Today the same as `strip_html` (it delegates to it); no shipped style names it for benchmark
+text any more. Slated for removal.
 
 ```yaml
 audit:
@@ -437,7 +443,7 @@ fills every template), so a typo cannot write an empty part.
 fixtext:
 target_element: "fixtext"
 source_field: "remediation"
-transform: "strip_html_keep_code"
+transform: "none"
 attributes:
 fixref: "F-{ref_normalized}" # F-1_1_1, F-1_1_2, etc.
 ```
@@ -634,7 +640,7 @@ children:
 
 - element: "check-content"
 source_field: "audit"
-transform: "strip_html_keep_code"
+transform: "none"
 ```
 
 ### Step 3: Register in Exporter
@@ -745,7 +751,7 @@ href: "oval-definitions.xml"
 
 - element: "check-content"
 source_field: "audit"
-transform: "strip_html_keep_code"
+transform: "none"
 ```
 
 **Output:**
@@ -1135,7 +1141,7 @@ children:
 
 - element: "check-content"
 source_field: "audit"
-transform: "strip_html_keep_code"
+transform: "none"
 ```
 
 **This produces:**

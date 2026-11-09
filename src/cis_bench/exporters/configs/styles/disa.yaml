@@ -183,9 +183,9 @@ field_mappings:
   # === DESCRIPTION (Complex - Embedded XML Tags) ===
   # A STIG rule description carries tags inside its text: VulnDiscussion and the ten tags
   # after it, in the order DISA writes them, every one present (empty when the rule has no
-  # text for it). Each part's text is the stored Markdown, XML-escaped before it is wrapped,
-  # so a reader that unescapes the description once and parses the tags gets the text as
-  # stored, a placeholder such as <user> included.
+  # text for it). Each part's text is the stored Markdown; each tag is built by the XML
+  # library, which escapes its text, so a reader that unescapes the description once and
+  # parses the tags gets the text as stored, a placeholder such as <user> included.
   description:
     target_element: "description"
     structure: "embedded_xml_tags"
@@ -354,7 +354,6 @@ cci_deduplication:
         cis_cites: "CM-7(5)"
         result: "written"  # a different enhancement
 
-# Legacy VMS tags (keep for compatibility)
 # Validation rules
 validation:
   require_cci_for_cis_controls: false  # Warn if missing, don't fail
@@ -375,7 +374,7 @@ rule_elements:
 
   description:
     xccdf_type: "HtmlTextWithSubType"
-    source: "vuln_discussion"  # Created by engine
+    source: "vuln_discussion"  # built from field_mappings.description's components
 
   ident:
     xccdf_type: "IdentType"
