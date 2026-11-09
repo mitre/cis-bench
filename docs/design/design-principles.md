@@ -60,7 +60,37 @@ def generate_pci_idents(self, recommendation):
 
 ---
 
+## Core Principle: An Established Tool Before Our Own Code
+
+For parsing, conversion or format work (HTML, Markdown, XML, YAML, CSV, dates, URLs,
+identifiers), an established, tested library is chosen before any code of our own is
+written. The card's "Prior art checked" section names the candidates, and for the one
+chosen: the version read, the license as read from its repository, its dependency health
+(last release, last merged change, archived or not) and the verdict. Our own code is
+written only when no library fits, and the card records why.
+
+Hand-written code of this kind met in a card's path (a regex that strips HTML, a loop
+that rebuilds an XML element from a marker string, a parser for a format a library
+reads) is flagged for replacement on that card or on a linked one; it is not extended.
+
+The reason is the record: the hand-written conversions this project carried lost
+`<user>`-style placeholders from recommendation text, cut Dublin Core values at a
+delimiter, and parsed templates with a regex that let an unclosed brace through. Each
+was replaced by a library the project already depended on or by the standard library.
+
+---
+
 ## Red Flags to Avoid
+
+### Hand-Written Parsing or Conversion
+
+```python
+# Bad - our own HTML-to-text rules
+text = re.sub(r"<[^>]+>", "", html)
+
+# Good - a tested library, chosen on the card with its prior-art check
+text = BeautifulSoup(html, "html.parser").get_text()
+```
 
 ### Organization Names in Method Names
 
@@ -180,6 +210,11 @@ Before committing any handler code, verify:
 - [ ] All structure comes from YAML config
 - [ ] Uses VariableSubstituter for templates
 - [ ] Adding new framework requires zero code changes
+- [ ] Parsing, conversion or format work uses an established library named in the card's
+      prior-art check; any new code of our own for such work records why no library fits
+
+- [ ] No hand-written parsing or conversion met in the change was extended instead of
+      flagged for replacement
 
 ---
 
