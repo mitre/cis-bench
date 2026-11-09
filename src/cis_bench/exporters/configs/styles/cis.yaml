@@ -46,8 +46,8 @@ benchmark:
     generate_from_rules: true
     # Every Profile id, from the profile's title (one rule for defined and named profiles)
     id_template: "xccdf_org.cisecurity.benchmarks_profile_{profile.title|slug:_}"
-    # A profile description read from the benchmark's page is HTML: same transform as rule descriptions
-    description_transform: "html_to_markdown"
+    # A profile description is stored as Markdown (converted when the page is read): written as it is
+    description_transform: "none"
     # Copies saved without the page's profile definitions: per profile name on the rules,
     # the title, description and the profiles it includes (any other name gets a profile too)
     profile_mappings:
@@ -190,28 +190,28 @@ field_mappings:
   title:
     target_element: "title"
     source_field: "title"
-    transform: "strip_html"
+    transform: "none"
 
   # === CLEAN SEPARATED CONTENT ===
+  # The stored text is Markdown (WorkBench's own form; a placeholder such as <user> is bare
+  # angle brackets), written as it is: an HTML parser would read the placeholders as tags.
   description:
     target_element: "description"
     source_field: "description"
-    transform: "html_to_markdown"
-    description: "Description in Markdown format"
-    # TODO: Add XHTML formatting later (xsdata can't serialize lxml Elements)
+    transform: "none"
+    description: "Description, the stored Markdown"
 
   rationale:
     target_element: "rationale"
     source_field: "rationale"
-    transform: "html_to_markdown"
-    description: "Separate rationale element in Markdown"
-    # TODO: Add XHTML formatting later (xsdata can't serialize lxml Elements)
+    transform: "none"
+    description: "Separate rationale element, the stored Markdown"
 
   # === IMPACT AS WARNING (XCCDF standard for caveats) ===
   warning:
     target_element: "warning"
     source_field: "impact"
-    transform: "html_to_markdown"
+    transform: "none"
     attributes:
       category: "general"
     description: "Impact statement as XCCDF warning element"
@@ -236,8 +236,8 @@ field_mappings:
   fixtext:
     target_element: "fixtext"
     source_field: "remediation"
-    transform: "html_to_markdown"
-    description: "Remediation steps in Markdown format"
+    transform: "none"
+    description: "Remediation steps, the stored Markdown"
 
   # === AUDIT/CHECK ===
   check:
@@ -246,8 +246,8 @@ field_mappings:
     children:
       - element: "check-content"
         source_field: "audit"
-        transform: "html_to_markdown"
-    description: "Audit procedure in Markdown format"
+        transform: "none"
+    description: "Audit procedure, the stored Markdown"
 
   # === CIS CONTROLS (Dual Representation - Official Pattern) ===
 
@@ -392,19 +392,15 @@ implementation_notes:
     Simple and transparent.
 
   metadata_richness: |
-    CIS-specific metadata is comprehensive:
+    CIS-specific metadata written:
     - CIS Controls v7 and v8 with IG levels
     - MITRE ATT&CK techniques, tactics, mitigations
     - CIS Profiles (Level 1/2, Server/Workstation)
-    - Assessment status (Automated/Manual)
-    - Artifacts (test scripts if present)
 
-  markdown_benefits: |
-    HTML-to-Markdown transformation improves:
-    - Readability in text editors
-    - Compatibility with documentation tools
-    - Cleaner diffs in version control
-    - Better for automated processing
+  markdown_text: |
+    Rule text and profile descriptions are the Markdown WorkBench gives, written as stored:
+    - Placeholders such as <user> and <path> survive (an HTML pass would read them as tags)
+    - Code fences, lists and headings stay as written
 
   target_audience: |
     This style targets:
