@@ -826,21 +826,17 @@ components:
 sources:
 
 - field: "description"
-transform: "strip_html"
+separator: "\n\n" # follows the description when the rationale has text
 
 - field: "rationale"
-transform: "strip_html"
-separator: "\n\n"
 
 - tag: "FalsePositives"
 content: ""
 
-- tag: "Mitigations"
+- tag: "Mitigations" # written empty when the rule has no additional_info
 sources:
 
 - field: "additional_info"
-transform: "strip_html"
-optional: true
 ```
 
 ### Pattern 6: Multiple Elements from Array

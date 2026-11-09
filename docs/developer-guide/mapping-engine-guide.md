@@ -856,7 +856,7 @@ install cramfs /bin/true
 **Requirements:**
 1. Element name: `fixtext`
 2. Attribute: `fixref` with format "F-{ref_normalized}"
-3. Content: Remediation text with code preserved
+3. Content: the stored remediation text (Markdown, written as it is)
 4. Type: FixTextType (xsdata)
 
 ### YAML Configuration
@@ -865,7 +865,7 @@ install cramfs /bin/true
 fixtext:
 target_element: "fixtext" # 1. Element name
 source_field: "remediation" # Source from Pydantic
-transform: "strip_html_keep_code" # 3. Preserve code blocks
+transform: "none" # 3. The stored Markdown, as it is
 attributes: # 2. Dynamic attribute
 fixref: "F-{ref_normalized}"
 xccdf_type: "FixTextType" # 4. xsdata type
@@ -877,12 +877,12 @@ xccdf_type: "FixTextType" # 4. xsdata type
 # 1. Load config
 config = field_mappings['fixtext']
 
-# 2. Get source data
+# 2. Get source data (the stored text is Markdown)
 source_value = getattr(recommendation, 'remediation')
-# "<p>Edit <code>/etc/modprobe.d/cramfs.conf</code> and add:<pre>install cramfs /bin/true</pre></p>"
+# "Edit `/etc/modprobe.d/cramfs.conf` and add:\n\n```\ninstall cramfs /bin/true\n```"
 
-# 3. Apply transformation
-transformed = apply_transform(source_value, 'strip_html_keep_code')
+# 3. Apply transformation: none leaves the text as it is
+transformed = apply_transform(source_value, 'none')
 # "Edit `/etc/modprobe.d/cramfs.conf` and add:\n\n```\ninstall cramfs /bin/true\n```"
 
 # 4. Substitute variables in attributes
