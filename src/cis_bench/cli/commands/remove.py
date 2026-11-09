@@ -1,6 +1,7 @@
 """`cis-bench remove`: delete downloaded benchmarks from the local cache."""
 
 import sys
+from contextlib import closing
 
 import click
 from rich.console import Console
@@ -50,41 +51,40 @@ def remove_cmd(references: tuple[str, ...], yes: bool) -> None:
             f"[yellow]No catalog database at {escape(str(catalog_db_path))}; nothing is downloaded.[/yellow]"
         )
         sys.exit(1)
-    db = CatalogDatabase(catalog_db_path)
-
-    to_remove: list[str] = []
-    not_downloaded: list[str] = []
-    for benchmark_id in benchmark_ids:
-        downloaded = db.get_downloaded(benchmark_id)
-        if downloaded is None:
-            not_downloaded.append(benchmark_id)
-            continue
-        to_remove.append(benchmark_id)
-        catalog_row = db.get_benchmark(benchmark_id) or {}
-        title = catalog_row.get("title") or "(not in catalog)"
-        version = downloaded.get("version") or catalog_row.get("version") or "?"
-        downloaded_at = downloaded.get("downloaded_at")
-        when = display_time(downloaded_at) if downloaded_at else "?"
-        console.print(
-            f"  [{benchmark_id}] {escape(str(title))} {escape(str(version))} (downloaded {when})"
-        )
-
-    for benchmark_id in not_downloaded:
-        console.print(f"[yellow]  [{benchmark_id}] not downloaded; nothing to remove[/yellow]")
-
-    if to_remove:
-        if not yes:
-            click.confirm(
-                f"Remove {len(to_remove)} cached benchmark(s)?", default=False, abort=True
+    with closing(CatalogDatabase(catalog_db_path)) as db:
+        to_remove: list[str] = []
+        not_downloaded: list[str] = []
+        for benchmark_id in benchmark_ids:
+            downloaded = db.get_downloaded(benchmark_id)
+            if downloaded is None:
+                not_downloaded.append(benchmark_id)
+                continue
+            to_remove.append(benchmark_id)
+            catalog_row = db.get_benchmark(benchmark_id) or {}
+            title = catalog_row.get("title") or "(not in catalog)"
+            version = downloaded.get("version") or catalog_row.get("version") or "?"
+            downloaded_at = downloaded.get("downloaded_at")
+            when = display_time(downloaded_at) if downloaded_at else "?"
+            console.print(
+                f"  [{benchmark_id}] {escape(str(title))} {escape(str(version))} (downloaded {when})"
             )
-        for benchmark_id in to_remove:
-            db.delete_downloaded(benchmark_id)
-            console.print(f"[green]✓[/green] Removed {benchmark_id} from the local cache")
-        console.print(
-            f"\n[dim]Exported files in {escape(str(settings.benchmarks_dir))} and other output "
-            "directories were not touched. To replace a bad copy instead of removing it, run:[/dim]",
-            soft_wrap=True,
-        )
-        console.print(f"  cis-bench download {to_remove[0]} --force", soft_wrap=True)
 
-    sys.exit(1 if not_downloaded else 0)
+        for benchmark_id in not_downloaded:
+            console.print(f"[yellow]  [{benchmark_id}] not downloaded; nothing to remove[/yellow]")
+
+        if to_remove:
+            if not yes:
+                click.confirm(
+                    f"Remove {len(to_remove)} cached benchmark(s)?", default=False, abort=True
+                )
+            for benchmark_id in to_remove:
+                db.delete_downloaded(benchmark_id)
+                console.print(f"[green]✓[/green] Removed {benchmark_id} from the local cache")
+            console.print(
+                f"\n[dim]Exported files in {escape(str(settings.benchmarks_dir))} and other output "
+                "directories were not touched. To replace a bad copy instead of removing it, run:[/dim]",
+                soft_wrap=True,
+            )
+            console.print(f"  cis-bench download {to_remove[0]} --force", soft_wrap=True)
+
+        sys.exit(1 if not_downloaded else 0)

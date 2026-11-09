@@ -62,6 +62,26 @@ def sample_benchmark():
 # ============================================================================
 
 
+class TestGetReportsADatabaseItCannotOpen:
+    def test_a_catalog_that_fails_to_open_is_reported_and_the_command_exits_1(
+        self, runner, tmp_path, monkeypatch
+    ):
+        # Opening the catalog is part of the search step: its failure gets the same
+        # report and exit code as a failed search, not a traceback.
+        catalog_path = tmp_path / "catalog.db"
+        catalog_path.touch()
+        monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path))
+
+        with patch(
+            "cis_bench.catalog.database.CatalogDatabase", side_effect=RuntimeError("disk full")
+        ):
+            result = runner.invoke(cli, ["get", "23598", "--format", "yaml"])
+
+        assert result.exit_code == 1
+        assert "Search failed: disk full" in result.output
+        assert result.exception is None or isinstance(result.exception, SystemExit)
+
+
 class TestGetCommandNoCatalog:
     """Test get command when catalog doesn't exist."""
 
@@ -460,7 +480,7 @@ class TestGetTitleWidthSetting:
                 )
             db.mark_latest_versions()
         finally:
-            db.engine.dispose()
+            db.close()
         monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path))
 
         with patch("cis_bench.cli.commands.get.questionary.select", return_value=_cancelled()):
@@ -507,7 +527,7 @@ def cached_releases(tmp_path, sample_benchmark, monkeypatch):
             db.save_downloaded(benchmark_id, content_json, content_hash, 2, version=version)
         db.mark_latest_versions()
     finally:
-        db.engine.dispose()
+        db.close()
     monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path))
 
 

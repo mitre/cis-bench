@@ -350,7 +350,7 @@ class TestSearchCommand:
                     }
                 )
         finally:
-            db.engine.dispose()
+            db.close()
 
         monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
         monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "1000")
@@ -448,7 +448,7 @@ class TestSearchTitleWidthSetting:
             )
             db.mark_latest_versions()
         finally:
-            db.engine.dispose()
+            db.close()
         monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path))
 
         monkeypatch.delenv("CIS_BENCH_TABLE_TITLE_WIDTH", raising=False)
@@ -484,7 +484,7 @@ class TestSearchLogsNothingAtInfo:
                 }
             )
         finally:
-            db.engine.dispose()
+            db.close()
         monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path))
 
         result = runner.invoke(cli, ["search", "ubuntu"])

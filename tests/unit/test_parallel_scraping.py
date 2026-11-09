@@ -26,7 +26,8 @@ def temp_db(tmp_path):
     db_path = tmp_path / "test_catalog.db"
     db = CatalogDatabase(db_path)
     db.initialize_schema()
-    return db
+    yield db
+    db.close()
 
 
 def get_sample_html(max_page=100):

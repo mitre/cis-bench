@@ -132,11 +132,19 @@ pytest tests/ -s # Show print statements
 ```python
 @pytest.fixture
 def temp_db(tmp_path):
-"""Create temporary catalog database."""
+"""Create temporary catalog database, closed when the test is done."""
 db = CatalogDatabase(tmp_path / "test.db")
 db.initialize_schema()
-return db
+yield db
+db.close()
 ```
+
+A database left open is a defect: the suite runs with `ResourceWarning` (and pytest's
+unraisable-exception warning, the form a warning raised at garbage collection takes) as
+errors, so an unclosed connection fails a test on Python 3.13. Close a database you open
+(`db.close()`, or `with closing(CatalogDatabase(path)) as db:`), and close raw
+`sqlite3.connect(...)` connections with `contextlib.closing` (sqlite3's own `with` block
+only commits).
 
 **E2E tests:**
 
@@ -176,7 +184,7 @@ return {
 ```python
 def test_database_operation(tmp_path):
 """Test with isolated database."""
-db = CatalogDatabase(tmp_path / "test.db")
+with closing(CatalogDatabase(tmp_path / "test.db")) as db:
 db.initialize_schema()
 
 # Test operation

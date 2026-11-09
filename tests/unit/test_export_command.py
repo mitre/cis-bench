@@ -245,7 +245,7 @@ class TestExportFromFile:
             content_json, content_hash = serialize_benchmark_json(sample_benchmark)
             db.save_downloaded("23598", content_json, content_hash, 3, version="v4.0.0")
         finally:
-            db.engine.dispose()
+            db.close()
         monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path))
 
         result = runner.invoke(cli, ["export", " 23598 ", "--format", "yaml"])
@@ -579,7 +579,7 @@ class TestRealDatabaseCanonicalDeserialize:
             assert "1.1.1" in exported
             assert "1.1.2" in exported
         finally:
-            db.engine.dispose()
+            db.close()
 
 
 class TestExportLogsNothingAtInfo:

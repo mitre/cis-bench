@@ -468,7 +468,7 @@ def small_catalog(tmp_path):
             )
         db.mark_latest_versions()  # as a catalog refresh does
     finally:
-        db.engine.dispose()
+        db.close()
     return path
 
 

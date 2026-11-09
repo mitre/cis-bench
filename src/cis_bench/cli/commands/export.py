@@ -3,6 +3,7 @@
 import logging
 import os
 import sys
+from contextlib import closing
 
 import click
 from rich.console import Console
@@ -43,14 +44,14 @@ def _load_benchmark_from_db(identifier, catalog_db_path):
     """
     from cis_bench.catalog.database import CatalogDatabase, deserialize_benchmark_json
 
-    db = CatalogDatabase(catalog_db_path)
-    downloaded = db.get_downloaded(identifier)
+    with closing(CatalogDatabase(catalog_db_path)) as db:
+        downloaded = db.get_downloaded(identifier)
 
-    if not downloaded:
-        return None, f"Benchmark {identifier} not downloaded"
+        if not downloaded:
+            return None, f"Benchmark {identifier} not downloaded"
 
-    benchmark = deserialize_benchmark_json(downloaded["content_json"])
-    return benchmark, identifier
+        benchmark = deserialize_benchmark_json(downloaded["content_json"])
+        return benchmark, identifier
 
 
 def _load_benchmark_from_file(identifier, input_dir):

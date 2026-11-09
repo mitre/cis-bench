@@ -3,6 +3,7 @@
 import logging
 import os
 import sys
+from contextlib import closing
 
 import click
 from rich.console import Console
@@ -142,11 +143,10 @@ def info(benchmark, output_dir, output_format):
 
 def _cached_benchmark(catalog_db_path, benchmark_id: str) -> Benchmark:
     """The downloaded copy of a benchmark from the cache; exit 1 when it is not downloaded."""
-    downloaded = (
-        CatalogDatabase(catalog_db_path).get_downloaded(benchmark_id)
-        if catalog_db_path.exists()
-        else None
-    )
+    downloaded = None
+    if catalog_db_path.exists():
+        with closing(CatalogDatabase(catalog_db_path)) as db:
+            downloaded = db.get_downloaded(benchmark_id)
     if downloaded is None:
         console.print(f"[yellow]Benchmark {escape(benchmark_id)} is not downloaded[/yellow]")
         console.print("[dim]Download it first:[/dim]")

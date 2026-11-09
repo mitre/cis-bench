@@ -21,7 +21,8 @@ def temp_db(tmp_path):
     """Create temporary database."""
     db = CatalogDatabase(tmp_path / "test.db")
     db.initialize_schema()
-    return db
+    yield db
+    db.close()
 
 
 @pytest.fixture

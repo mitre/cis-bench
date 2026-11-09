@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import math
+from contextlib import closing
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -62,6 +63,7 @@ def require_catalog_db(
     """Return an existing catalog database or abort with a user-facing prompt."""
     db = get_catalog_db()
     if not db.db_path.exists():
+        db.close()
         console.print(f"[yellow]{missing_message}[/yellow]")
         raise click.Abort()
     return db
@@ -127,41 +129,41 @@ def refresh(browser, max_pages, rate_limit):
             )
         console.print("[green]✓[/green] Session valid\n")
 
-        db = get_catalog_db()
-        db.initialize_schema()
+        with closing(get_catalog_db()) as db:
+            db.initialize_schema()
 
-        # Create scraper
-        scraper = catalog_scraper(settings, db, session)
+            # Create scraper
+            scraper = catalog_scraper(settings, db, session)
 
-        # Scrape catalog
-        pages_msg = f"{max_pages} pages" if max_pages else "all pages"
-        console.print(f"[cyan]Scraping catalog ({pages_msg})...[/cyan]")
+            # Scrape catalog
+            pages_msg = f"{max_pages} pages" if max_pages else "all pages"
+            console.print(f"[cyan]Scraping catalog ({pages_msg})...[/cyan]")
 
-        stats = scraper.scrape_full_catalog(max_pages=max_pages)
+            stats = scraper.scrape_full_catalog(max_pages=max_pages)
 
-        # Show results
-        console.print("\n[green]✓[/green] Catalog refresh complete!")
-        console.print(f"  Benchmarks: [yellow]{stats['total_benchmarks']}[/yellow]")
-        console.print(f"  Pages: [yellow]{stats['pages_scraped']}[/yellow]")
-        if stats["withdrawn"] is None:
-            console.print("  Withdrawn: not checked (the refresh was not complete)")
-        else:
-            console.print(f"  Withdrawn: [yellow]{stats['withdrawn']}[/yellow]")
+            # Show results
+            console.print("\n[green]✓[/green] Catalog refresh complete!")
+            console.print(f"  Benchmarks: [yellow]{stats['total_benchmarks']}[/yellow]")
+            console.print(f"  Pages: [yellow]{stats['pages_scraped']}[/yellow]")
+            if stats["withdrawn"] is None:
+                console.print("  Withdrawn: not checked (the refresh was not complete)")
+            else:
+                console.print(f"  Withdrawn: [yellow]{stats['withdrawn']}[/yellow]")
 
-        if stats["failed_pages"]:
+            if stats["failed_pages"]:
+                console.print(
+                    f"  Failed pages: [red]{len(stats['failed_pages'])}[/red] - {stats['failed_pages']}"
+                )
+
+            # Show database stats
+            db_stats = db.get_catalog_stats()
+            console.print("\n[cyan]Catalog statistics:[/cyan]")
             console.print(
-                f"  Failed pages: [red]{len(stats['failed_pages'])}[/red] - {stats['failed_pages']}"
+                f"  Total benchmarks: {db_stats['total_benchmarks']} "
+                f"(of which withdrawn: {db_stats['withdrawn_benchmarks']})"
             )
-
-        # Show database stats
-        db_stats = db.get_catalog_stats()
-        console.print("\n[cyan]Catalog statistics:[/cyan]")
-        console.print(
-            f"  Total benchmarks: {db_stats['total_benchmarks']} "
-            f"(of which withdrawn: {db_stats['withdrawn_benchmarks']})"
-        )
-        console.print(f"  Platforms: {db_stats['platforms']}")
-        console.print(f"  Communities: {db_stats['communities']}")
+            console.print(f"  Platforms: {db_stats['platforms']}")
+            console.print(f"  Communities: {db_stats['communities']}")
 
     except (click.Abort, click.ClickException):
         raise  # Click reports its own errors (offline mode refuses with one)
@@ -191,25 +193,26 @@ def update(browser):
         cis-bench catalog update
     """
     try:
-        db = require_catalog_db(
-            missing_message="Catalog not initialized. Run 'cis-bench catalog refresh' first."
-        )
+        with closing(
+            require_catalog_db(
+                missing_message="Catalog not initialized. Run 'cis-bench catalog refresh' first."
+            )
+        ) as db:
+            db.initialize_schema()
 
-        db.initialize_schema()
+            settings = settings_from()
+            session = workbench_session(
+                settings, needs="read the catalog", browser=browser or settings.browser
+            )
+            scraper = catalog_scraper(settings, db, session)
 
-        settings = settings_from()
-        session = workbench_session(
-            settings, needs="read the catalog", browser=browser or settings.browser
-        )
-        scraper = catalog_scraper(settings, db, session)
+            console.print("[cyan]Updating catalog (page 1)...[/cyan]")
 
-        console.print("[cyan]Updating catalog (page 1)...[/cyan]")
+            stats = scraper.scrape_page_one_update()
 
-        stats = scraper.scrape_page_one_update()
-
-        console.print("[green]✓[/green] Catalog updated!")
-        console.print(f"  New benchmarks: [yellow]{stats['new_count']}[/yellow]")
-        console.print(f"  Updated: [yellow]{stats['updated_count']}[/yellow]")
+            console.print("[green]✓[/green] Catalog updated!")
+            console.print(f"  New benchmarks: [yellow]{stats['new_count']}[/yellow]")
+            console.print(f"  Updated: [yellow]{stats['updated_count']}[/yellow]")
 
     except (click.Abort, click.ClickException):
         raise  # Click reports its own errors (offline mode refuses with one)
@@ -255,60 +258,59 @@ def search(query, platform, status, latest, limit, output_format):
         cis-bench catalog search --latest
     """
     try:
-        db = require_catalog_db()
+        with closing(require_catalog_db()) as db:
+            search_obj = CatalogSearch(db)
 
-        search_obj = CatalogSearch(db)
+            if limit is None:
+                limit = settings_from().search_limit
 
-        if limit is None:
-            limit = settings_from().search_limit
-
-        results = search_obj.search(
-            query=query or "",
-            platform=platform,
-            status=status,
-            latest_only=latest,
-            limit=limit,
-        )
-
-        if not results:
-            if output_format != "table":
-                output_data([], output_format)
-            else:
-                console.print(
-                    f"[yellow]No benchmarks found matching: {escape(str(query))}[/yellow]"
-                )
-            return
-
-        # Output in requested format
-        if output_format != "table":
-            csv_fields = [
-                "benchmark_id",
-                "title",
-                "version",
-                "status",
-                "platform",
-                "community",
-                "url",
-            ]
-            output_data(results, output_format, csv_fields=csv_fields)
-
-        # Human-friendly display
-        console.print(f"\n[cyan]Found {len(results)} benchmarks:[/cyan]\n")
-
-        for r in results:
-            formatted = search_obj.format_result_for_display(r)
-            console.print(escape(formatted))
-            console.print()  # Blank line
-
-        # A list shorter than the limit is complete; only a full one may have been cut off.
-        total = (
-            search_obj.count(
-                query=query or "", platform=platform, status=status, latest_only=latest
+            results = search_obj.search(
+                query=query or "",
+                platform=platform,
+                status=status,
+                latest_only=latest,
+                limit=limit,
             )
-            if len(results) >= limit
-            else len(results)
-        )
-        console.print(f"[dim]{showing_line(len(results), total)}[/dim]")
+
+            if not results:
+                if output_format != "table":
+                    output_data([], output_format)
+                else:
+                    console.print(
+                        f"[yellow]No benchmarks found matching: {escape(str(query))}[/yellow]"
+                    )
+                return
+
+            # Output in requested format
+            if output_format != "table":
+                csv_fields = [
+                    "benchmark_id",
+                    "title",
+                    "version",
+                    "status",
+                    "platform",
+                    "community",
+                    "url",
+                ]
+                output_data(results, output_format, csv_fields=csv_fields)
+
+            # Human-friendly display
+            console.print(f"\n[cyan]Found {len(results)} benchmarks:[/cyan]\n")
+
+            for r in results:
+                formatted = search_obj.format_result_for_display(r)
+                console.print(escape(formatted))
+                console.print()  # Blank line
+
+            # A list shorter than the limit is complete; only a full one may have been cut off.
+            total = (
+                search_obj.count(
+                    query=query or "", platform=platform, status=status, latest_only=latest
+                )
+                if len(results) >= limit
+                else len(results)
+            )
+            console.print(f"[dim]{showing_line(len(results), total)}[/dim]")
 
     except (click.Abort, click.ClickException):
         raise  # Click reports its own errors (offline mode refuses with one)
@@ -332,28 +334,27 @@ def list_cmd(platform, status, latest, limit):
         cis-bench catalog list --status Withdrawn
     """
     try:
-        db = require_catalog_db()
+        with closing(require_catalog_db()) as db:
+            search_obj = CatalogSearch(db)
+            if limit is None:
+                limit = settings_from().search_limit
 
-        search_obj = CatalogSearch(db)
-        if limit is None:
-            limit = settings_from().search_limit
+            filters = {"platform": platform, "status": status, "latest_only": latest}
+            results = search_obj.search(query="", limit=limit, **filters)
 
-        filters = {"platform": platform, "status": status, "latest_only": latest}
-        results = search_obj.search(query="", limit=limit, **filters)
+            if not results:
+                console.print("[yellow]No benchmarks found.[/yellow]")
+                return
 
-        if not results:
-            console.print("[yellow]No benchmarks found.[/yellow]")
-            return
+            console.print(f"\n[cyan]{len(results)} benchmarks:[/cyan]\n")
 
-        console.print(f"\n[cyan]{len(results)} benchmarks:[/cyan]\n")
+            for r in results:
+                formatted = search_obj.format_result_for_display(r)
+                console.print(escape(formatted))
+                console.print()
 
-        for r in results:
-            formatted = search_obj.format_result_for_display(r)
-            console.print(escape(formatted))
-            console.print()
-
-        total = search_obj.count(**filters) if len(results) >= limit else len(results)
-        console.print(f"[dim]{showing_line(len(results), total)}[/dim]")
+            total = search_obj.count(**filters) if len(results) >= limit else len(results)
+            console.print(f"[dim]{showing_line(len(results), total)}[/dim]")
 
     except (click.Abort, click.ClickException):
         raise  # Click reports its own errors (offline mode refuses with one)
@@ -379,47 +380,48 @@ def info(benchmark_id, output_format):
         cis-bench catalog info 23598
     """
     try:
-        db = require_catalog_db()
+        with closing(require_catalog_db()) as db:
+            bench = db.get_benchmark(benchmark_id)
 
-        bench = db.get_benchmark(benchmark_id)
+            if not bench:
+                console.print(
+                    f"[red]Benchmark {escape(str(benchmark_id))} not found in catalog.[/red]"
+                )
+                raise click.Abort()
 
-        if not bench:
-            console.print(f"[red]Benchmark {escape(str(benchmark_id))} not found in catalog.[/red]")
-            raise click.Abort()
+            # Output in requested format
+            if output_format != "table":
+                output_data(bench, output_format)
 
-        # Output in requested format
-        if output_format != "table":
-            output_data(bench, output_format)
+            # Display detailed info (table format)
+            console.print(f"\n[bold]{escape(str(bench['title']))}[/bold]")
 
-        # Display detailed info (table format)
-        console.print(f"\n[bold]{escape(str(bench['title']))}[/bold]")
+            if bench.get("version"):
+                console.print(f"Version: {escape(str(bench['version']))}")
 
-        if bench.get("version"):
-            console.print(f"Version: {escape(str(bench['version']))}")
+            console.print(f"ID: {escape(str(bench['benchmark_id']))}")
+            console.print(f"Status: {escape(str(bench['status']))}")
 
-        console.print(f"ID: {escape(str(bench['benchmark_id']))}")
-        console.print(f"Status: {escape(str(bench['status']))}")
+            if bench.get("platform"):
+                console.print(f"Platform: {escape(str(bench['platform']))}")
 
-        if bench.get("platform"):
-            console.print(f"Platform: {escape(str(bench['platform']))}")
+            if bench.get("community"):
+                console.print(f"Community: {escape(str(bench['community']))}")
 
-        if bench.get("community"):
-            console.print(f"Community: {escape(str(bench['community']))}")
+            if bench.get("owner"):
+                console.print(f"Owner: {escape(str(bench['owner']))}")
 
-        if bench.get("owner"):
-            console.print(f"Owner: {escape(str(bench['owner']))}")
+            if bench.get("published_date"):
+                console.print(f"Published: {escape(str(bench['published_date']))}")
 
-        if bench.get("published_date"):
-            console.print(f"Published: {escape(str(bench['published_date']))}")
+            console.print(f"\nURL: {escape(str(bench['url']))}")
 
-        console.print(f"\nURL: {escape(str(bench['url']))}")
+            if bench.get("description"):
+                console.print(f"\n[dim]{escape(bench['description'][:200])}...[/dim]")
 
-        if bench.get("description"):
-            console.print(f"\n[dim]{escape(bench['description'][:200])}...[/dim]")
-
-        console.print(
-            f"\n[cyan]Download:[/cyan] cis-bench catalog download {escape(str(benchmark_id))}"
-        )
+            console.print(
+                f"\n[cyan]Download:[/cyan] cis-bench catalog download {escape(str(benchmark_id))}"
+            )
 
     except (click.Abort, click.ClickException):
         raise  # Click reports its own errors (offline mode refuses with one)
@@ -444,32 +446,31 @@ def platforms(output_format):
         cis-bench catalog platforms
     """
     try:
-        db = require_catalog_db()
+        with closing(require_catalog_db()) as db:
+            platforms = db.list_platforms()
 
-        platforms = db.list_platforms()
+            if not platforms:
+                if output_format != "table":
+                    output_data([], output_format)
+                else:
+                    console.print("[yellow]No platforms found.[/yellow]")
+                return
 
-        if not platforms:
+            # Output in requested format
             if output_format != "table":
-                output_data([], output_format)
-            else:
-                console.print("[yellow]No platforms found.[/yellow]")
-            return
+                csv_fields = ["name", "count"]
+                output_data(platforms, output_format, csv_fields=csv_fields)
 
-        # Output in requested format
-        if output_format != "table":
-            csv_fields = ["name", "count"]
-            output_data(platforms, output_format, csv_fields=csv_fields)
+            # Create table for human display
+            table = Table(title="Platforms")
+            table.add_column("Platform", style="cyan")
+            table.add_column("Benchmarks", justify="right", style="yellow")
 
-        # Create table for human display
-        table = Table(title="Platforms")
-        table.add_column("Platform", style="cyan")
-        table.add_column("Benchmarks", justify="right", style="yellow")
+            for p in platforms:
+                table.add_row(escape(str(p["name"])), str(p["count"]))
 
-        for p in platforms:
-            table.add_row(escape(str(p["name"])), str(p["count"]))
-
-        console.print()
-        console.print(table)
+            console.print()
+            console.print(table)
 
     except (click.Abort, click.ClickException):
         raise  # Click reports its own errors (offline mode refuses with one)
@@ -494,33 +495,32 @@ def stats(output_format):
         cis-bench catalog stats
     """
     try:
-        db = require_catalog_db()
+        with closing(require_catalog_db()) as db:
+            catalog_stats = db.get_catalog_stats()
+            last_scrape = db.get_metadata("last_full_scrape")
 
-        catalog_stats = db.get_catalog_stats()
-        last_scrape = db.get_metadata("last_full_scrape")
+            stats_payload: dict[str, int | str | None] = {
+                **catalog_stats,
+                "last_full_scrape": last_scrape,
+            }
 
-        stats_payload: dict[str, int | str | None] = {
-            **catalog_stats,
-            "last_full_scrape": last_scrape,
-        }
+            # Output in requested format
+            if output_format != "table":
+                output_data(stats_payload, output_format)
 
-        # Output in requested format
-        if output_format != "table":
-            output_data(stats_payload, output_format)
+            # Human display
+            console.print("\n[bold]Catalog Statistics[/bold]\n")
+            console.print(f"Total benchmarks: [yellow]{catalog_stats['total_benchmarks']}[/yellow]")
+            console.print(f"Published: [yellow]{catalog_stats['published_benchmarks']}[/yellow]")
+            console.print(f"Withdrawn: [yellow]{catalog_stats['withdrawn_benchmarks']}[/yellow]")
+            console.print(f"Downloaded: [yellow]{catalog_stats['downloaded_benchmarks']}[/yellow]")
+            console.print(f"Platforms: [yellow]{catalog_stats['platforms']}[/yellow]")
+            console.print(f"Communities: [yellow]{catalog_stats['communities']}[/yellow]")
 
-        # Human display
-        console.print("\n[bold]Catalog Statistics[/bold]\n")
-        console.print(f"Total benchmarks: [yellow]{catalog_stats['total_benchmarks']}[/yellow]")
-        console.print(f"Published: [yellow]{catalog_stats['published_benchmarks']}[/yellow]")
-        console.print(f"Withdrawn: [yellow]{catalog_stats['withdrawn_benchmarks']}[/yellow]")
-        console.print(f"Downloaded: [yellow]{catalog_stats['downloaded_benchmarks']}[/yellow]")
-        console.print(f"Platforms: [yellow]{catalog_stats['platforms']}[/yellow]")
-        console.print(f"Communities: [yellow]{catalog_stats['communities']}[/yellow]")
-
-        if last_scrape:
-            console.print(
-                f"\nLast catalog refresh: [dim]{display_time(datetime.fromisoformat(last_scrape))}[/dim]"
-            )
+            if last_scrape:
+                console.print(
+                    f"\nLast catalog refresh: [dim]{display_time(datetime.fromisoformat(last_scrape))}[/dim]"
+                )
 
     except (click.Abort, click.ClickException):
         raise  # Click reports its own errors (offline mode refuses with one)
@@ -545,46 +545,45 @@ def download(benchmark_id_or_name, browser, force, interactive):
         cis-bench catalog download "ubuntu 20.04" --interactive
     """
     try:
-        db = require_catalog_db()
+        with closing(require_catalog_db()) as db:
+            from cis_bench.catalog.downloader import CatalogDownloader
 
-        from cis_bench.catalog.downloader import CatalogDownloader
+            settings = settings_from()
 
-        settings = settings_from()
+            def connect() -> WorkbenchScraper:
+                # Logs in (saved session, else the browser's cookies) only when a download is
+                # needed: an up-to-date copy is reported without contacting WorkBench.
+                session = workbench_session(
+                    settings, needs="download a benchmark", browser=browser or settings.browser
+                )
+                return workbench_scraper(settings, session)
 
-        def connect() -> WorkbenchScraper:
-            # Logs in (saved session, else the browser's cookies) only when a download is
-            # needed: an up-to-date copy is reported without contacting WorkBench.
-            session = workbench_session(
-                settings, needs="download a benchmark", browser=browser or settings.browser
-            )
-            return workbench_scraper(settings, session)
+            downloader = CatalogDownloader(db, connect)
 
-        downloader = CatalogDownloader(db, connect)
+            # Determine if ID or name
+            if is_benchmark_id(benchmark_id_or_name):
+                # Download by ID
+                benchmark_id = benchmark_id_or_name.strip()
+                console.print(f"[cyan]Downloading benchmark {escape(benchmark_id)}...[/cyan]")
+                result = downloader.download_by_id(benchmark_id, force=force)
+            else:
+                # Download by name
+                console.print(f"[cyan]Searching for: {escape(str(benchmark_id_or_name))}[/cyan]")
+                result = downloader.download_by_name(
+                    benchmark_id_or_name, latest=True, interactive=interactive, force=force
+                )
 
-        # Determine if ID or name
-        if is_benchmark_id(benchmark_id_or_name):
-            # Download by ID
-            benchmark_id = benchmark_id_or_name.strip()
-            console.print(f"[cyan]Downloading benchmark {escape(benchmark_id)}...[/cyan]")
-            result = downloader.download_by_id(benchmark_id, force=force)
-        else:
-            # Download by name
-            console.print(f"[cyan]Searching for: {escape(str(benchmark_id_or_name))}[/cyan]")
-            result = downloader.download_by_name(
-                benchmark_id_or_name, latest=True, interactive=interactive, force=force
-            )
-
-        # Show result
-        if result["status"] == "already_current":
-            console.print(f"[green]✓[/green] {escape(str(result['message']))}")
-        elif result["status"] == "unchanged":
-            console.print(f"[green]✓[/green] {escape(str(result['message']))}")
-        else:
-            console.print(
-                f"[green]✓[/green] Downloaded benchmark {escape(str(result['benchmark_id']))}"
-            )
-            console.print(f"  Recommendations: {result['recommendation_count']}")
-            console.print(f"  Size: {result['file_size'] / 1024:.1f} KB")
+            # Show result
+            if result["status"] == "already_current":
+                console.print(f"[green]✓[/green] {escape(str(result['message']))}")
+            elif result["status"] == "unchanged":
+                console.print(f"[green]✓[/green] {escape(str(result['message']))}")
+            else:
+                console.print(
+                    f"[green]✓[/green] Downloaded benchmark {escape(str(result['benchmark_id']))}"
+                )
+                console.print(f"  Recommendations: {result['recommendation_count']}")
+                console.print(f"  Size: {result['file_size'] / 1024:.1f} KB")
 
     except (click.Abort, click.ClickException):
         raise  # Click reports its own errors (offline mode refuses with one)
@@ -624,42 +623,43 @@ def check_updates(offline):
         cis-bench catalog check-updates --offline
     """
     try:
-        db = require_catalog_db()
+        with closing(require_catalog_db()) as db:
+            if not db.list_downloaded_benchmark_ids():
+                console.print("No benchmarks are downloaded, so there is nothing to check.")
+                console.print("[dim]Download one first:[/dim]")
+                console.print("  cis-bench download <ID>")
+                return
 
-        if not db.list_downloaded_benchmark_ids():
-            console.print("No benchmarks are downloaded, so there is nothing to check.")
-            console.print("[dim]Download one first:[/dim]")
-            console.print("  cis-bench download <ID>")
-            return
+            # Its own --offline, or offline mode, compares versions only.
+            settings = settings_from()
+            if not (offline or settings.offline):
+                session = workbench_session(settings, needs="read publication dates")
+                console.print("[cyan]Checking WorkBench publication dates...[/cyan]")
+                refreshed = catalog_scraper(settings, db, session).refresh_downloaded_pages()
+                console.print(f"[green]✓[/green] Checked {refreshed} downloaded benchmark(s)\n")
 
-        # Its own --offline, or offline mode, compares versions only.
-        settings = settings_from()
-        if not (offline or settings.offline):
-            session = workbench_session(settings, needs="read publication dates")
-            console.print("[cyan]Checking WorkBench publication dates...[/cyan]")
-            refreshed = catalog_scraper(settings, db, session).refresh_downloaded_pages()
-            console.print(f"[green]✓[/green] Checked {refreshed} downloaded benchmark(s)\n")
+            updates = db.check_updates_available()
 
-        updates = db.check_updates_available()
+            if not updates:
+                console.print("[green]✓[/green] All downloaded benchmarks are up-to-date!")
+                return
 
-        if not updates:
-            console.print("[green]✓[/green] All downloaded benchmarks are up-to-date!")
-            return
+            console.print(f"\n[yellow]Updates available for {len(updates)} benchmarks:[/yellow]\n")
 
-        console.print(f"\n[yellow]Updates available for {len(updates)} benchmarks:[/yellow]\n")
+            for u in updates:
+                console.print(f"  [{u['benchmark_id']}] {escape(str(u['title']))}")
+                if u["reason"] == "newer version in catalog":
+                    console.print(
+                        f"      Version: {escape(str(u['downloaded_version'] or '?'))} -> {escape(str(u['catalog_version']))}"
+                    )
+                else:
+                    console.print(f"      WorkBench published {escape(str(u['published_date']))}")
+                console.print(f"      Downloaded: {display_time(u['downloaded_at'])}")
+                console.print()
 
-        for u in updates:
-            console.print(f"  [{u['benchmark_id']}] {escape(str(u['title']))}")
-            if u["reason"] == "newer version in catalog":
-                console.print(
-                    f"      Version: {escape(str(u['downloaded_version'] or '?'))} -> {escape(str(u['catalog_version']))}"
-                )
-            else:
-                console.print(f"      WorkBench published {escape(str(u['published_date']))}")
-            console.print(f"      Downloaded: {display_time(u['downloaded_at'])}")
-            console.print()
-
-        console.print("[cyan]Use 'cis-bench catalog download <id>' to download the update.[/cyan]")
+            console.print(
+                "[cyan]Use 'cis-bench catalog download <id>' to download the update.[/cyan]"
+            )
 
     except (click.Abort, click.ClickException):
         raise  # Click reports its own errors (offline mode refuses with one)

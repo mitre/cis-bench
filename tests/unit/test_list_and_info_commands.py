@@ -68,7 +68,7 @@ def home(tmp_path, monkeypatch):
         )
         db.save_downloaded("201", content_json, content_hash, 1, version="v2.0.1")
     finally:
-        db.engine.dispose()
+        db.close()
     exports = tmp_path / "benchmarks"
     exports.mkdir()
     (exports / "cis_exported_only_benchmark_v300.json").write_text(
@@ -154,7 +154,7 @@ class TestListCopesWithWhatTheCacheMayHold:
             )
             db.save_downloaded("6467", content_json, content_hash, 1, version="v1.0.0")
         finally:
-            db.engine.dispose()
+            db.close()
 
         result = runner.invoke(cli, ["list", "--output-format", "json"])
 
@@ -174,7 +174,7 @@ class TestListCopesWithWhatTheCacheMayHold:
                 )
                 db.save_downloaded(bid, content_json, content_hash, 1, version="v1")
         finally:
-            db.engine.dispose()
+            db.close()
 
         result = runner.invoke(cli, ["list", "--output-format", "csv"])
 
@@ -190,7 +190,7 @@ class TestListCopesWithWhatTheCacheMayHold:
         try:
             db.save_downloaded("300", "{not json", "hash-bad", 0, version="v3.0.0")
         finally:
-            db.engine.dispose()
+            db.close()
 
         result = runner.invoke(cli, ["list"])
 
@@ -224,7 +224,7 @@ class TestInfoReadsTheCacheByIdAndAFileByPath:
         try:
             db.save_downloaded("300", "{not json", "hash-bad", 0, version="v3.0.0")
         finally:
-            db.engine.dispose()
+            db.close()
 
         result = runner.invoke(cli, ["info", "300"])
 
@@ -294,7 +294,7 @@ class TestDownloadTimes:
                 downloaded_at=benchmark.downloaded_at,
             )
         finally:
-            db.engine.dispose()
+            db.close()
         (tmp_path / "benchmarks").mkdir()
         monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path))
         monkeypatch.setenv("COLUMNS", "120")
