@@ -272,15 +272,6 @@ class TestCreateBenchmark:
         assert hasattr(xccdf_bench, "group")
         assert len(xccdf_bench.group) == len(minimal_benchmark.recommendations)
 
-    def test_create_benchmark_stores_post_processing_data(self, minimal_benchmark):
-        """Should store DC elements for post-processing."""
-        exporter = XCCDFExporter(style="disa")
-
-        exporter._create_benchmark(minimal_benchmark)
-
-        # Should have stored DC elements for post-processing
-        assert hasattr(exporter, "_dc_elements")
-
 
 # ============================================================================
 # Test: Post-Processing Pipeline
@@ -324,7 +315,6 @@ class TestPostProcessing:
         # Create minimal XML to process
         test_xml = '<?xml version="1.0"?><Benchmark id="test"/>'
 
-        exporter._dc_elements = []
         exporter.config.benchmark["namespaces"] = {}  # No default or xccdf key
         exporter.config.post_processing = {"handlers": []}
 
@@ -422,39 +412,6 @@ class TestMetadataInjection:
 
 
 # ============================================================================
-# Test: Store Post Processing Data
-# ============================================================================
-
-
-class TestStorePostProcessingData:
-    """Tests for _store_post_processing_data method."""
-
-    def test_store_post_processing_data_with_dc_elements(self, minimal_benchmark):
-        """Should store DC elements from mapping engine."""
-        exporter = XCCDFExporter(style="disa")
-
-        # Set up engine with DC elements
-        exporter.engine._dc_elements = ["dc:publisher", "dc:source"]
-
-        exporter._store_post_processing_data()
-
-        assert exporter._dc_elements == ["dc:publisher", "dc:source"]
-
-    def test_store_post_processing_data_no_dc_elements(self, minimal_benchmark):
-        """Should handle missing DC elements gracefully."""
-        exporter = XCCDFExporter(style="disa")
-
-        # Ensure no DC elements on engine
-        if hasattr(exporter.engine, "_dc_elements"):
-            delattr(exporter.engine, "_dc_elements")
-
-        exporter._store_post_processing_data()
-
-        # Should set empty list as default
-        assert exporter._dc_elements == []
-
-
-# ============================================================================
 # Test: Edge Cases and Error Handling
 # ============================================================================
 
@@ -533,9 +490,6 @@ class TestApplyPostProcessingAdditional:
         """Should handle config with 'xccdf' key for namespace (line 177)."""
         exporter = XCCDFExporter(style="disa")
 
-        # Initialize _dc_elements (normally done by _store_post_processing_data)
-        exporter._dc_elements = []
-
         # Create minimal XML to process
         test_xml = '<?xml version="1.0"?><Benchmark xmlns="http://checklists.nist.gov/xccdf/1.1" id="test"/>'
 
@@ -552,9 +506,6 @@ class TestApplyPostProcessingAdditional:
         import logging
 
         exporter = XCCDFExporter(style="disa")
-
-        # Initialize _dc_elements (normally done by _store_post_processing_data)
-        exporter._dc_elements = []
 
         test_xml = '<?xml version="1.0"?><Benchmark xmlns="http://checklists.nist.gov/xccdf/1.1" id="test"/>'
 

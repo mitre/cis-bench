@@ -30,13 +30,19 @@ import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass, field, fields
 from pathlib import Path
-from types import ModuleType
-from typing import Any
+from types import ModuleType, UnionType
+from typing import Annotated, Any, Union, get_args, get_origin
 
 import yaml
+from pydantic import BaseModel
 
 from cis_bench.exceptions import ExportError
-from cis_bench.models.benchmark import Benchmark, ProfileDefinition, Recommendation
+from cis_bench.models.benchmark import (
+    Benchmark,
+    CISControl,
+    ProfileDefinition,
+    Recommendation,
+)
 
 # Import XCCDF types for element creation (XCCDF 1.2 - for type hints only)
 # Note: Engine dynamically loads version-specific types based on config
@@ -305,6 +311,22 @@ class ConfigLoader:
             _loading_stack.pop()
 
 
+def _model_in(annotation: Any) -> type[BaseModel] | None:
+    """The Pydantic model a field holds, directly or inside "X | None"; None for a list or a
+    value that is not a model. A dotted path reads attributes one by one (getattr), so it
+    can pass through an optional model but not through a list."""
+    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        return annotation
+    if get_origin(annotation) is Annotated:
+        return _model_in(get_args(annotation)[0])
+    if get_origin(annotation) in (UnionType, Union):
+        for arg in get_args(annotation):
+            model = _model_in(arg)
+            if model is not None:
+                return model
+    return None
+
+
 class VariableSubstituter:
     """Handles variable substitution in templates."""
 
@@ -385,6 +407,7 @@ class MappingEngine:
             config_path: Path to YAML configuration file
         """
         self.config = ConfigLoader.load(config_path)
+        self._refuse_unknown_field_names()
         self.cci_service = get_cci_service()
 
         # Dynamically load XCCDF models based on config version
@@ -393,6 +416,70 @@ class MappingEngine:
 
         # Pre-load all types specified in config (stable code, config-driven types)
         self._load_types_from_config()
+
+    # Structures whose source_field is read as a dotted path (_get_nested_field); every
+    # other reader takes one field name.
+    _DOTTED_PATH_STRUCTURES = frozenset({"ident_from_list", "metadata_from_config"})
+
+    def _refuse_unknown_field_names(self) -> None:
+        """Refuse a style that names a recommendation or benchmark field that does not exist.
+
+        A name that is no field reads as empty, and an empty element is left out, so a
+        misspelled name would drop the element without a word.
+
+        Raises:
+            ValueError: A source_field (field_mappings, their children, a cci_lookup) or
+                source (group_elements, benchmark elements) names no field.
+        """
+        named: list[tuple[str, str, type[BaseModel], bool]] = []
+        for name, mapping in self.config.field_mappings.items():
+            if not isinstance(mapping, dict):
+                continue
+            dotted = mapping.get("structure") in self._DOTTED_PATH_STRUCTURES
+            if mapping.get("source_field"):
+                named.append(
+                    (f"field_mappings.{name}", mapping["source_field"], Recommendation, dotted)
+                )
+            lookup = mapping.get("cci_lookup")
+            if isinstance(lookup, dict) and lookup.get("source_field"):
+                # The CCI lookup reads CIS controls, so the field must be declared to hold
+                # them; a list of anything else would read as no controls.
+                field_info = Recommendation.model_fields.get(lookup["source_field"])
+                if field_info is None or field_info.annotation != list[CISControl]:
+                    raise ValueError(
+                        f"field_mappings.{name}.cci_lookup names {lookup['source_field']!r}, "
+                        f"which is not a field of Recommendation holding CIS controls"
+                    )
+            for i, child in enumerate(mapping.get("children") or []):
+                if isinstance(child, dict) and child.get("source_field"):
+                    named.append(
+                        (
+                            f"field_mappings.{name}.children[{i}]",
+                            child["source_field"],
+                            Recommendation,
+                            False,
+                        )
+                    )
+        for name, element in self.config.group_elements.items():
+            if isinstance(element, dict) and element.get("source"):
+                named.append((f"group_elements.{name}", element["source"], Recommendation, False))
+        for name, element in self.config.benchmark.items():
+            if isinstance(element, dict) and element.get("source"):
+                named.append((f"benchmark.{name}", element["source"], Benchmark, False))
+
+        for where, path, model, dotted in named:
+            parts = path.split(".") if dotted else [path]
+            current: Any = model
+            for part in parts:
+                fields = (
+                    current.model_fields
+                    if isinstance(current, type) and issubclass(current, BaseModel)
+                    else {}
+                )
+                if part not in fields:
+                    holder = current.__name__ if isinstance(current, type) else model.__name__
+                    raise ValueError(f"{where} names {path!r}: {part!r} is not a field of {holder}")
+                current = _model_in(fields[part].annotation)
 
     def _load_xccdf_models(self, version: str):
         """Dynamically import XCCDF models based on version.
@@ -541,13 +628,26 @@ class MappingEngine:
             # No deduplication - return empty CCIs, all NIST as extras
             return [], rec.nist_controls
 
-        # Get CIS control IDs
-        cis_control_ids = [c.control for c in rec.cis_controls]
-
         # Get extract parameter from ident field mapping (default: "all")
         ident_mapping = self.config.field_mappings.get("ident", {})
         cci_lookup_config = ident_mapping.get("cci_lookup", {})
         extract = cci_lookup_config.get("extract", "all")
+
+        # The CIS controls come from the field the style names. The mapping file is keyed
+        # by one CIS Controls version, named in the style (cci_lookup.cis_controls_version);
+        # other versions reuse the same numbers for unrelated safeguards, so only that
+        # version's controls are looked up.
+        source_field = cci_lookup_config.get("source_field")
+        if not source_field:
+            raise ValueError(
+                "ident.cci_lookup needs source_field, the field holding the CIS controls"
+            )
+        controls_version = cci_lookup_config.get("cis_controls_version")
+        cis_control_ids = [
+            c.control
+            for c in getattr(rec, source_field)
+            if controls_version is None or c.version == controls_version
+        ]
 
         # Use CCI service for deduplication
         ccis, extra_nist = self.cci_service.deduplicate_nist_controls(
@@ -656,29 +756,34 @@ class MappingEngine:
         RearMatterType = self.get_xccdf_class(type_name)
         return RearMatterType(content=[])
 
-    def create_reference(self, benchmark: Benchmark) -> tuple:
-        """Create reference configuration (for post-processing).
+    @staticmethod
+    def dublin_core_markers(dc_elements_config: list[dict], values: dict[str, Any]) -> str:
+        """A reference's Dublin Core elements as the markers the dublin_core_injection
+        post-processing handler turns into elements: "DC:dc:title:NIST SP 800-53||DC:dc:
+        identifier:CM-7" (xsdata cannot serialize lxml elements in mixed content). Each
+        element's content template is filled from values."""
+        return "||".join(
+            f"DC:{dc['element']}:{VariableSubstituter.substitute(dc['content'], values)}"
+            for dc in dc_elements_config
+        )
 
-        xsdata can't serialize lxml Elements in mixed content,
-        so return config for post-processing injection.
-
-        Returns:
-            (href, dc_elements_dict) for post-processing
-        """
-        ref_config = self.config.benchmark.get("reference", {})
-
-        # Prepare DC element data
-        dc_elements = {}
-        for dc_elem_config in ref_config.get("dc_elements", []):
-            elem_name = dc_elem_config["element"]  # 'dc:publisher', 'dc:source'
-            content = dc_elem_config["content"]
-
-            # Substitute variables
-            content = VariableSubstituter.substitute(content, {"benchmark": benchmark.__dict__})
-
-            dc_elements[elem_name] = content
-
-        return str(benchmark.url), dc_elements
+    def create_reference(self, benchmark: Benchmark) -> tuple[str, list[str]]:
+        """The Benchmark's own reference: its href from the style's
+        benchmark.reference.attributes.href (the benchmark's URL when the style names none)
+        and the Dublin Core markers of benchmark.reference.dc_elements (none when the style
+        declares none)."""
+        reference_config = self.config.benchmark.get("reference", {})
+        href_template = (reference_config.get("attributes") or {}).get("href")
+        values = {"benchmark": benchmark}
+        href = (
+            str(VariableSubstituter.substitute(href_template, values))
+            if href_template
+            else str(benchmark.url)
+        )
+        dc_elements_config = reference_config.get("dc_elements", [])
+        if not dc_elements_config:
+            return href, []
+        return href, [self.dublin_core_markers(dc_elements_config, values)]
 
     def create_plain_texts(self, benchmark: Benchmark):
         """Create plain-text elements from config (version-agnostic).
@@ -703,7 +808,7 @@ class MappingEngine:
 
             # Substitute variables
             content = VariableSubstituter.substitute(
-                content_template, {"download_date": download_date, "benchmark": benchmark.__dict__}
+                content_template, {"download_date": download_date, "benchmark": benchmark}
             )
 
             plain_texts.append(PlainTextType(id=pt_id, value=content))
@@ -864,7 +969,7 @@ class MappingEngine:
 
         elif field_mapping.get("source_logic") == "cci_lookup_with_deduplication":
             # CCI lookup - returns list of CCIs
-            ccis, _ = self.get_ccis_with_deduplication(rec)
+            ccis, _ = self._cci_split(rec, context)
             return ccis  # Return raw list, caller will wrap in IdentType
 
         elif structure == "nested":
@@ -886,6 +991,60 @@ class MappingEngine:
 
         return None
 
+    def ref_values(self, ref: str) -> dict[str, str]:
+        """The values made from a recommendation ref that templates use: {ref_normalized}
+        ("3_1_1") and {stig_number} ("030101")."""
+        return {
+            "ref_normalized": self.normalize_ref(ref),
+            "stig_number": self.ref_to_stig_number(ref),
+        }
+
+    def _id_from_ref(self, section: str, ref: str) -> str:
+        """An id from the style's <section>.template (rule_id, group_id) and the ref's values.
+
+        Raises:
+            ValueError: The style has no template, the template names a value the ref does
+                not give, or the template gives no id.
+        """
+        template = (getattr(self.config, section) or {}).get("template")
+        if not template:
+            raise ValueError(f"the style has no {section}.template")
+        values = self.ref_values(ref)
+        # An unknown variable would resolve to "" and leave a wrong but non-empty id.
+        unknown = sorted(
+            {
+                name
+                for expression in re.findall(r"\{([^}]+)\}", template)
+                if (name := expression.partition("|")[0].strip()) not in values
+            }
+        )
+        if unknown:
+            raise ValueError(
+                f"{section} template {template!r} names {', '.join(unknown)}; "
+                f"it can use only {', '.join(sorted(values))}"
+            )
+        made = VariableSubstituter.substitute(template, values)
+        if not isinstance(made, str) or not made:
+            raise ValueError(f"{section} template {template!r} gives no id for ref {ref!r}")
+        return made
+
+    def rule_id_for_ref(self, ref: str) -> str:
+        """The Rule id for a recommendation ref: the one place a Rule id is made, so a Rule
+        and every Profile select naming it agree."""
+        return self._id_from_ref("rule_id", ref)
+
+    def group_id_for_ref(self, ref: str) -> str:
+        """The Group id for a recommendation ref, from the style's group_id template."""
+        return self._id_from_ref("group_id", ref)
+
+    def _cci_split(self, rec: Recommendation, context: dict) -> tuple[list[str], list[str]]:
+        """The rule's (CCIs, NIST controls no CCI covers), computed once per rule by map_rule
+        and shared by the CCI idents and the NIST references."""
+        if "cci_split" not in context:
+            context["cci_split"] = self.get_ccis_with_deduplication(rec)
+        split: tuple[list[str], list[str]] = context["cci_split"]
+        return split
+
     def map_rule(self, rec: Recommendation, context: dict):
         """Map Recommendation to Rule using config (LOOP-DRIVEN - no hard-coded fields).
 
@@ -904,20 +1063,12 @@ class MappingEngine:
         """
         Rule = self.get_xccdf_class("Rule")
 
-        # Generate ID
-        ref_norm = self.normalize_ref(rec.ref)
-        stig_number = self.ref_to_stig_number(rec.ref)
-        context.update(
-            {
-                "ref_normalized": ref_norm,
-                "stig_number": stig_number,
-                "rec": rec,
-            }
-        )
+        # The ref's values serve every template below (ids, fixref, check systems)
+        context.update({**self.ref_values(rec.ref), "rec": rec})
+        # The context is shared across rules: drop the previous rule's CCI split.
+        context.pop("cci_split", None)
 
-        rule_id = VariableSubstituter.substitute(
-            self.config.rule_id.get("template", "CIS-{ref_normalized}_rule"), context
-        )
+        rule_id = self.rule_id_for_ref(rec.ref)
 
         # Start with required fields and defaults
         # Note: status belongs at Benchmark level, not Rule level
@@ -994,41 +1145,34 @@ class MappingEngine:
             if structure == "dublin_core":
                 # Build NIST references with Dublin Core elements
                 source_field = field_mapping.get("source_field")
+                source_logic = field_mapping.get("source_logic")
                 if source_field:
-                    nist_controls = getattr(rec, source_field, None)
+                    nist_controls: list[str] | None
+                    if source_logic == "nist_after_cci_deduplication":
+                        # Only the NIST controls no CCI ident on this rule already covers
+                        _, nist_controls = self._cci_split(rec, context)
+                    elif source_logic is None:
+                        nist_controls = getattr(rec, source_field, None)
+                    else:
+                        raise ValueError(
+                            f"field {field_name!r}: unknown source_logic {source_logic!r} "
+                            "for a dublin_core reference"
+                        )
                     if nist_controls and isinstance(nist_controls, list):
                         dc_elements_config = field_mapping.get("dc_elements", [])
                         href = field_mapping.get("attributes", {}).get("href", "")
-
-                        # Create one reference per NIST control
-                        # Build content with DC markers that post-processor handles
-                        references = []
-                        for nist_id in nist_controls:
-                            # Build content string with DC element markers
-                            # Format: "DC:dc:title:NIST SP 800-53||DC:dc:identifier:CM-7"
-                            # Using || as separator to avoid confusion with colons in values
-                            content_parts = []
-                            for dc_config in dc_elements_config:
-                                dc_elem = dc_config["element"]  # "dc:title" or "dc:identifier"
-                                dc_template = dc_config[
-                                    "content"
-                                ]  # "NIST SP 800-53" or "{nist_control_id}"
-
-                                # Substitute variables
-                                dc_value = dc_template.replace("{nist_control_id}", nist_id)
-
-                                # Store as marker for post-processing
-                                content_parts.append(f"DC:{dc_elem}:{dc_value}")
-
-                            # Create ReferenceType with concatenated marker as single string
-                            marker_string = "||".join(content_parts)
-                            references.append(FieldType(href=href, content=[marker_string]))
-
-                        rule_fields[target_element] = references
-                        # Store DC element names for post-processing
-                        if not hasattr(self, "_dc_elements"):
-                            self._dc_elements = []
-                        self._dc_elements = [dc["element"] for dc in dc_elements_config]
+                        # One reference per NIST control
+                        rule_fields[target_element] = [
+                            FieldType(
+                                href=href,
+                                content=[
+                                    self.dublin_core_markers(
+                                        dc_elements_config, {"nist_control_id": nist_id}
+                                    )
+                                ],
+                            )
+                            for nist_id in nist_controls
+                        ]
                 continue
 
             # For ident_from_list structure - generic ident generation (CIS, MITRE, PCI-DSS, etc.)
@@ -1150,22 +1294,8 @@ class MappingEngine:
         """
         Group = self.get_xccdf_class("Group")
 
-        # Generate Group ID from config template (config-driven, no hardcoded patterns)
-        ref_norm = context.get("ref_normalized", self.normalize_ref(rec.ref))
-        stig_number = context.get("stig_number", self.ref_to_stig_number(rec.ref))
-        context.update(
-            {
-                "ref_normalized": ref_norm,
-                "stig_number": stig_number,
-                "rec": rec,
-            }
-        )
-
-        # Use config-driven template with fallback for backward compatibility
-        default_template = "xccdf_org.cisecurity_group_{ref_normalized}"
-        group_id = VariableSubstituter.substitute(
-            self.config.group_id.get("template", default_template), context
-        )
+        context.update({**self.ref_values(rec.ref), "rec": rec})
+        group_id = self.group_id_for_ref(rec.ref)
 
         # Build Group fields from config
         group_fields = {
@@ -1295,15 +1425,11 @@ class MappingEngine:
         benchmark_fields["rear_matter"] = [self.create_rear_matter(benchmark)]
         benchmark_fields["plain_text"] = self.create_plain_texts(benchmark)
 
-        # Reference (returns tuple for post-processing)
-        ref_href, dc_elements = self.create_reference(benchmark)
+        # Reference: its Dublin Core markers are expanded by the dublin_core_injection
+        # handler, the same one that expands every Rule reference
+        ref_href, ref_content = self.create_reference(benchmark)
         ReferenceType = self.get_xccdf_class("ReferenceType")
-        benchmark_fields["reference"] = [
-            ReferenceType(href=ref_href, content=[])
-        ]  # List per schema
-
-        # Store DC elements for post-processing
-        self._dc_elements = dc_elements
+        benchmark_fields["reference"] = [ReferenceType(href=ref_href, content=ref_content)]
 
         # Generate Profile elements if configured
         profile_config = self.config.benchmark.get("profiles")
@@ -1537,18 +1663,9 @@ class MappingEngine:
             select_list = []
             for rec in recommendations:
                 if names.intersection(rec.profiles):
-                    # Generate rule ID using config template (same logic as map_rule)
-                    ref_normalized = self.normalize_ref(rec.ref)
-                    stig_number = self.ref_to_stig_number(rec.ref)
-                    rule_context = {
-                        "ref_normalized": ref_normalized,
-                        "stig_number": stig_number,
-                    }
-                    rule_id = VariableSubstituter.substitute(
-                        self.config.rule_id.get("template", "CIS-{ref_normalized}_rule"),
-                        rule_context,
+                    select_list.append(
+                        ProfileSelectType(idref=self.rule_id_for_ref(rec.ref), selected=True)
                     )
-                    select_list.append(ProfileSelectType(idref=rule_id, selected=True))
 
             if not select_list:
                 # Only a page definition can get here: a name on the rules selects its rules.

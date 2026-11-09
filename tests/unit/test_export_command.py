@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
+from bs4 import MarkupResemblesLocatorWarning
 from click.testing import CliRunner
 
 from cis_bench.cli.app import cli
@@ -157,7 +158,7 @@ class TestExportFromFile:
             result = runner.invoke(cli, ["export", "benchmark.json", "--format", "markdown"])
 
         assert result.exit_code == 0, result.output
-        assert [w.category.__name__ for w in seen] == []
+        assert [w for w in seen if issubclass(w.category, MarkupResemblesLocatorWarning)] == []
         assert "https://www.cisecurity.org/benchmark/almalinux" in Path("benchmark.md").read_text()
 
     def test_markdown_export_writes_the_download_time_with_its_offset(

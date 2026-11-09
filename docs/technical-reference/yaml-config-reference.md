@@ -115,6 +115,11 @@ template: "xccdf_org.cisecurity.benchmarks_rule_{ref_normalized}"
 ref_normalized: "replace('.', '_')" # 3.1.1 3_1_1
 ```
 
+The template sees two values made from the recommendation's ref: `{ref_normalized}`
+(`3_1_1`) and `{stig_number}` (`030101`). The same id names the Rule and every Profile
+`select` of it. A template that names any other variable, or gives no id (an empty
+template, or a filter whose result is not text), stops the export with an error.
+
 ## Field Mappings
 
 Core of the configuration. Each field mapping defines how to map one field.
@@ -247,11 +252,23 @@ cci_lookup:
 enabled: true
 mapping_file: "data/cis-cci-mapping.json"
 source_field: "cis_controls"
-extract: "all" # primary + supporting
+cis_controls_version: 8 # the CIS Controls version the mapping file is keyed by
+extract: "all" # every CCI of the safeguard, primary first ("primary": only the first)
 deduplicate_nist: true
 attributes:
 system: "http://cyber.mil/cci"
 ```
+
+`cis_controls_version` names the CIS Controls version the mapping file is keyed by (the
+shipped `cis-cci-mapping.json` is keyed by v8). Only a rule's controls of that version are
+looked up: v7 reuses the same numbers for unrelated safeguards. A rule with no control of
+that version gets `fallback_cci`. Without the key, every control is looked up.
+
+The NIST controls no CCI on the rule covers are written as references by a field with
+`source_logic: "nist_after_cci_deduplication"` (the DISA style's `reference`, listed in its
+`rule_elements`); each reference carries the `dc_elements` the field names (`dc:title`
+"NIST SP 800-53" and `dc:identifier`). A `dublin_core` field with any other `source_logic`
+stops the export with an error. The CCI lookup runs once per rule for both.
 
 ### Custom Namespace Elements
 
@@ -522,27 +539,27 @@ description: "Use CCIs where available, NIST references for extras"
 steps:
 
 - "Extract all CIS Controls from recommendation"
-- "Look up CCIs for each CIS Control (primary + supporting)"
-- "Determine which NIST controls are covered by those CCIs"
+- "Look up every CCI of each CIS Controls v8 safeguard (extract: all)"
+- "Note the control and enhancement each CCI sits under"
 - "Add CCIs as <ident> elements"
-- "Add uncovered NIST controls as <reference> elements"
+- "Add every cited NIST control as a <reference>, except one a CCI restates exactly"
 
 matching_rules:
-description: "How to determine if CCI covers a NIST citation"
-hierarchical: true # CM-7.1 covers CM-7
+description: "A CCI restates only the control and enhancement it sits under"
+hierarchical: false # CM-7 (1) (b) does not stand for CM-7 or CM-7(2)
 examples:
 
-- cci_maps_to: "CM-7.1"
-cis_cites: "CM-7"
-result: "covered" # CCI is more specific
+- cci_maps_to: "CM-7 (1) (b)"
+cis_cites: "CM-7(1)"
+result: "restated" # same control and enhancement; not written again
 
-- cci_maps_to: "CM-7"
-cis_cites: "CM-7.1"
-result: "not_covered" # CCI too broad
-
-- cci_maps_to: "CM-7(5)"
+- cci_maps_to: "CM-7 (1) (b)"
 cis_cites: "CM-7"
-result: "covered" # Enhancement covers base
+result: "written" # the base control is a broader requirement
+
+- cci_maps_to: "CM-7 b"
+cis_cites: "CM-7(5)"
+result: "written" # a different enhancement
 ```
 
 ## Validation Section
@@ -854,11 +871,17 @@ ValueError: Unknown transformation: unknown_transform
 
 ### Issue: Source Field Not Found
 
-```yaml
-Error: Source field 'nonexistent_field' not found on Recommendation
+Loading a style refuses a `source_field` (in `field_mappings` and their `children`) or a
+`source` (in `group_elements` and the benchmark elements) that names no field:
+
+```text
+ValueError: field_mappings.title names 'titel', which is not a field of Recommendation
 ```
 
-**Solution**: Check field name spelling. Available fields:
+A dotted path (`mitre_mapping.techniques`) is read only by the `ident_from_list` and
+`metadata_from_config` structures; anywhere else the name must be one field.
+
+**Solution**: Check the name against the available fields:
 
 - ref, title, url, assessment_status
 - description, rationale, impact, audit, remediation
@@ -867,11 +890,15 @@ Error: Source field 'nonexistent_field' not found on Recommendation
 
 ### Issue: Variable Not Resolved
 
-```yaml
-Error: Variable 'unknown_var' not found in template
+In an id template (`rule_id`, `group_id`), a variable the ref does not give stops the
+export:
+
+```text
+ValueError: rule_id template 'SV-{platform}-{stig_number}' names platform; it can use only ref_normalized, stig_number
 ```
 
-**Solution**: Check variable name. Available variables:
+In other templates an unknown variable becomes empty text, so check the output.
+Available variables:
 
 - {ref}, {ref_normalized}, {stig_number}
 - {control.version}, {control.control}
@@ -880,11 +907,15 @@ Error: Variable 'unknown_var' not found in template
 
 ### Issue: Invalid YAML Syntax
 
-```yaml
-Error: YAML parsing failed
+PyYAML's error names the file, line and column:
+
+```text
+yaml.scanner.ScannerError: while scanning a quoted scalar
+  in "my-style.yaml", line 2, column 13
+found unexpected end of stream
 ```
 
-**Solution**: Validate YAML syntax:
+**Solution**: Check the YAML syntax at that line:
 
 - Consistent indentation (spaces, not tabs)
 - Proper quoting of strings with special characters

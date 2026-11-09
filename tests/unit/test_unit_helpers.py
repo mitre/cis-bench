@@ -9,6 +9,7 @@ Tests the core helper functions that power the mapping engine:
 - HTMLCleaner: HTML transformation methods
 """
 
+import re
 from pathlib import Path
 
 import pytest
@@ -853,36 +854,6 @@ class TestCCILookupService:
         assert isinstance(ccis, list)
         # No extras
         assert extra_nist == []
-
-    def test_get_base_nist_control_simple(self):
-        """Test extracting base NIST control (simple case)."""
-        base = CCILookupService._get_base_nist_control("CM-7")
-        assert base == "CM-7"
-
-    def test_get_base_nist_control_with_subcontrol(self):
-        """Test extracting base from subcontrol (CM-7.1 → CM-7)."""
-        base = CCILookupService._get_base_nist_control("CM-7.1")
-        assert base == "CM-7"
-
-    def test_get_base_nist_control_with_enhancement(self):
-        """Test extracting base from enhancement (CM-7(5) → CM-7)."""
-        base = CCILookupService._get_base_nist_control("CM-7(5)")
-        assert base == "CM-7"
-
-    def test_get_base_nist_control_complex(self):
-        """Test extracting base from complex control (CM-7.1(5) → CM-7)."""
-        base = CCILookupService._get_base_nist_control("CM-7.1(5)")
-        assert base == "CM-7"
-
-    def test_hierarchical_matching(self, cci_service):
-        """Test that hierarchical matching works (CM-7.1 covers CM-7)."""
-        # This is testing the CONCEPT - actual implementation depends on mapping data
-        # If we have a CCI that maps to CM-7.1, it should cover CM-7
-        base_cm7 = CCILookupService._get_base_nist_control("CM-7.1")
-        base_cm7_cited = CCILookupService._get_base_nist_control("CM-7")
-
-        # Both should resolve to CM-7
-        assert base_cm7 == base_cm7_cited == "CM-7"
 
 
 # ============================================================================
@@ -1994,6 +1965,75 @@ class TestBenchmarkIdTemplate:
         assert xccdf_bench.id == (
             "xccdf_org.cisecurity.benchmarks_benchmark_v2.0.0_CIS_Red_Hat_Enterprise_Linux_9_Benchmark"
         )
+
+
+class TestStyleFieldNames:
+    """A style names the recommendation and benchmark fields it reads; a name that is no
+    field would read as empty and drop the element without a word, so loading refuses it."""
+
+    @pytest.mark.parametrize(
+        ("override", "bad_name"),
+        [
+            ("field_mappings:\n  title:\n    source_field: titel\n", "titel"),
+            (
+                "field_mappings:\n  mitre_techniques:\n    source_field: mitre_mapping.techiques\n",
+                "mitre_mapping.techiques",
+            ),
+            (
+                "field_mappings:\n  check:\n    children:\n"
+                "      - element: check-content\n        source_field: audti\n",
+                "audti",
+            ),
+            # A dotted path where the reader takes one field name reads as empty too.
+            (
+                "field_mappings:\n  title:\n    source_field: mitre_mapping.techniques\n",
+                "mitre_mapping.techniques",
+            ),
+            # A dotted path through a list reads the list's attribute, which is no value.
+            (
+                "field_mappings:\n  mitre_techniques:\n    source_field: cis_controls.control\n",
+                "cis_controls.control",
+            ),
+            (
+                "field_mappings:\n  ident:\n    cci_lookup:\n      source_field: cis_controlz\n",
+                "cis_controlz",
+            ),
+            # A real field that does not hold CIS controls (artifacts is a list of
+            # another model, and may be empty) is refused by name too.
+            (
+                "field_mappings:\n  ident:\n    cci_lookup:\n      source_field: artifacts\n",
+                "artifacts",
+            ),
+            ("group_elements:\n  title:\n    source: titel\n", "titel"),
+            ("benchmark:\n  title:\n    source: titel\n", "titel"),
+        ],
+    )
+    def test_a_style_naming_a_field_that_does_not_exist_is_refused(
+        self, styles_dir, tmp_path, override, bad_name
+    ):
+        config = tmp_path / "misspelled.yaml"
+        config.write_text(f"extends: {Path(styles_dir) / 'disa.yaml'}\n{override}")
+
+        with pytest.raises(ValueError, match=re.escape(bad_name)):
+            MappingEngine(config)
+
+    def test_the_refusal_names_the_model_the_path_fails_on(self, styles_dir, tmp_path):
+        config = tmp_path / "nested.yaml"
+        config.write_text(
+            f"extends: {Path(styles_dir) / 'disa.yaml'}\n"
+            "field_mappings:\n  mitre_techniques:\n    source_field: mitre_mapping.techniqes\n"
+        )
+
+        with pytest.raises(ValueError, match="MITREMapping"):
+            MappingEngine(config)
+
+    def test_a_dotted_path_sees_through_an_annotated_optional_model(self):
+        from typing import Annotated
+
+        from cis_bench.exporters.mapping_engine import _model_in
+
+        assert _model_in(Annotated[MITREMapping, "constraint"] | None) is MITREMapping
+        assert _model_in(list[MITREMapping]) is None
 
 
 class TestRuleElementOrder:

@@ -17,6 +17,174 @@ def sample_benchmark(synthetic_complete_file):
     return Benchmark.from_json_file(str(synthetic_complete_file))
 
 
+# The DISA style's CCI mapping file is keyed by CIS Controls v8.
+CCI_CONTROLS_VERSION = 8
+FALLBACK_CCI = "CCI-000366"
+DC = "{http://purl.org/dc/elements/1.1/}"
+
+
+def _v8_control_ids(rec):
+    return [c.control for c in rec.cis_controls if c.version == CCI_CONTROLS_VERSION]
+
+
+def _expected_ccis(rec):
+    """Every CCI the mapping file gives for the rule's v8 controls (the export is a
+    transform: what the mapping has, the rule carries), primary first, once each; the
+    fallback CCI when there are none."""
+    from cis_bench.utils.cci_lookup import get_cci_service
+
+    service = get_cci_service()
+    ccis = []
+    for control in _v8_control_ids(rec):
+        for mapping in service.get_ccis_for_cis_control(control, extract="all"):
+            if mapping.cci not in ccis:
+                ccis.append(mapping.cci)
+    return ccis or [FALLBACK_CCI]
+
+
+def _rules_by_ref(tree):
+    """Each Rule element by its CIS ref (the Rule's version text)."""
+    return {rule.find("{*}version").text: rule for rule in tree.xpath(".//*[local-name()='Rule']")}
+
+
+def _export(benchmark, tmp_path, style):
+    output = tmp_path / f"{style}.xml"
+    ExporterFactory.create("xccdf", style=style).export(benchmark, str(output))
+    return etree.parse(str(output))
+
+
+class TestControlMappingFidelity:
+    """Every control mapping in the stored benchmark survives into the XCCDF."""
+
+    def test_disa_ccis_come_only_from_v8_controls(self, sample_benchmark, tmp_path):
+        # v7 control numbers name unrelated v8 safeguards, so they must not be looked up.
+        rules = _rules_by_ref(_export(sample_benchmark, tmp_path, "disa"))
+
+        for rec in sample_benchmark.recommendations:
+            got = [
+                ident.text
+                for ident in rules[rec.ref].findall("{*}ident")
+                if ident.get("system") == "http://cyber.mil/cci"
+            ]
+            assert got == _expected_ccis(rec), rec.ref
+
+    def test_disa_keeps_nist_controls_not_covered_by_ccis(self, sample_benchmark, tmp_path):
+        from cis_bench.utils.cci_lookup import get_cci_service
+
+        rules = _rules_by_ref(_export(sample_benchmark, tmp_path, "disa"))
+        service = get_cci_service()
+
+        written = 0
+        for rec in sample_benchmark.recommendations:
+            _, uncovered = service.deduplicate_nist_controls(
+                _v8_control_ids(rec), rec.nist_controls, extract="all"
+            )
+            references = rules[rec.ref].findall("{*}reference")
+            assert [ref.findtext(f"{DC}identifier") for ref in references] == uncovered, rec.ref
+            assert {ref.findtext(f"{DC}title") for ref in references} <= {"NIST SP 800-53"}
+            written += len(references)
+        assert written > 0, "the fixture has NIST controls no CCI covers"
+
+    def test_the_benchmark_reference_takes_its_href_from_the_style(
+        self, sample_benchmark, disa_config_path
+    ):
+        from cis_bench.exporters.mapping_engine import MappingEngine
+
+        engine = MappingEngine(disa_config_path)
+        engine.config.benchmark["reference"]["attributes"]["href"] = (
+            "https://example.invalid/?from={benchmark.url}"
+        )
+
+        href, _ = engine.create_reference(sample_benchmark)
+
+        assert href == f"https://example.invalid/?from={sample_benchmark.url}"
+
+    def test_a_reference_with_an_unknown_source_logic_is_refused(
+        self, sample_benchmark, disa_config_path
+    ):
+        from cis_bench.exporters.mapping_engine import MappingEngine
+
+        engine = MappingEngine(disa_config_path)
+        engine.config.field_mappings["reference"]["source_logic"] = "nist_after_everything"
+
+        with pytest.raises(ValueError, match="nist_after_everything"):
+            engine.map_rule(sample_benchmark.recommendations[0], {})
+
+    def test_a_rule_id_template_that_gives_no_id_is_refused(
+        self, sample_benchmark, disa_config_path
+    ):
+        # A filter can turn a ref value into something that is not text: XHTML elements here.
+        from cis_bench.exporters.mapping_engine import MappingEngine
+
+        engine = MappingEngine(disa_config_path)
+        engine.config.rule_id["template"] = "{ref_normalized|wrap_xhtml_paragraphs}"
+
+        with pytest.raises(ValueError, match="gives no id"):
+            engine.map_rule(sample_benchmark.recommendations[0], {})
+
+    def test_a_rule_id_template_naming_a_value_the_ref_does_not_give_is_refused(
+        self, sample_benchmark, disa_config_path
+    ):
+        # Text around the unknown variable still makes a non-empty id ("SV--030101"),
+        # so the id would be wrong without being empty.
+        from cis_bench.exporters.mapping_engine import MappingEngine
+
+        engine = MappingEngine(disa_config_path)
+        engine.config.rule_id["template"] = "SV-{platform}-{stig_number}"
+
+        with pytest.raises(ValueError, match="platform"):
+            engine.map_rule(sample_benchmark.recommendations[0], {"platform": "ubuntu"})
+
+    def test_a_rule_id_template_reading_an_attribute_of_a_ref_value_is_refused(
+        self, sample_benchmark, disa_config_path
+    ):
+        # The ref's values are plain text; an attribute of one reads as "" ("SV-").
+        from cis_bench.exporters.mapping_engine import MappingEngine
+
+        engine = MappingEngine(disa_config_path)
+        engine.config.rule_id["template"] = "SV-{ref_normalized.foo}"
+
+        with pytest.raises(ValueError, match="ref_normalized.foo"):
+            engine.map_rule(sample_benchmark.recommendations[0], {})
+
+    @pytest.mark.parametrize(
+        ("style", "dc_elements"),
+        [
+            (
+                "disa",
+                [("publisher", "CIS Security"), ("source", "https://workbench.cisecurity.org")],
+            ),
+            ("cis", []),
+        ],
+    )
+    def test_the_benchmark_reference_carries_the_dublin_core_its_style_declares(
+        self, sample_benchmark, tmp_path, style, dc_elements
+    ):
+        root = _export(sample_benchmark, tmp_path, style).getroot()
+        reference = root.find("{*}reference")
+
+        assert reference.get("href") == str(sample_benchmark.url)
+        assert [(etree.QName(child).localname, child.text) for child in reference] == dc_elements
+        assert not (reference.text or "").strip()
+
+    @pytest.mark.parametrize("style", ["cis", "disa"])
+    def test_profiles_select_every_rule_listing_them(self, sample_benchmark, tmp_path, style):
+        tree = _export(sample_benchmark, tmp_path, style)
+        rule_ids = {
+            rule.find("{*}version").text: rule.get("id")
+            for rule in tree.xpath(".//*[local-name()='Rule']")
+        }
+        selected = {
+            profile.find("{*}title").text: {s.get("idref") for s in profile.findall("{*}select")}
+            for profile in tree.xpath(".//*[local-name()='Profile']")
+        }
+
+        for rec in sample_benchmark.recommendations:
+            for profile in rec.profiles:
+                assert profile in selected, f"no Profile for {profile!r}"
+                assert rule_ids[rec.ref] in selected[profile], f"{rec.ref} missing from {profile}"
+
+
 class TestDISAStructureCompliance:
     """Ensure DISA exports match official DISA STIG structure."""
 
@@ -55,7 +223,9 @@ class TestDISAStructureCompliance:
             ".//*[local-name()='ident'][contains(@system, 'attack.mitre.org')]"
         )
 
-        assert len(cci_idents) == 38, f"Should have 38 deterministic CCIs, found {len(cci_idents)}"
+        assert len(cci_idents) == sum(
+            len(_expected_ccis(rec)) for rec in sample_benchmark.recommendations
+        )
         assert len(cis_idents) == 38, f"Should have 38 CIS Controls idents, found {len(cis_idents)}"
         assert len(mitre_idents) == 90, f"Should have 90 MITRE idents, found {len(mitre_idents)}"
 

@@ -122,46 +122,6 @@ class DublinCoreInjector:
     """
 
     @staticmethod
-    def inject_dc_elements(
-        xml_string: str,
-        dc_elements: dict,
-        xccdf_namespace: str,
-        dc_namespace: str = "http://purl.org/dc/elements/1.1/",
-    ) -> str:
-        """Inject Dublin Core elements into reference element.
-
-        Args:
-            xml_string: XML with reference element
-            dc_elements: Dict mapping DC element names to content
-                        e.g., {'dc:publisher': 'CIS Security', 'dc:source': 'https://...'}
-            xccdf_namespace: XCCDF namespace URI
-            dc_namespace: Dublin Core namespace URI
-
-        Returns:
-            XML with DC elements injected into reference element
-
-        Example:
-            >>> dc_els = {'dc:publisher': 'CIS', 'dc:source': 'https://cis.org'}
-            >>> xml = DublinCoreInjector.inject_dc_elements(xml, dc_els, xccdf_ns)
-        """
-        root = etree.fromstring(xml_string.encode("utf-8"))
-
-        # Find reference element
-        ref_elem = root.find(f".//{{{xccdf_namespace}}}reference")
-
-        if ref_elem is not None:
-            # Add DC elements
-            for dc_elem_name, dc_content in dc_elements.items():
-                # Extract element name (dc:publisher → publisher)
-                elem_name = dc_elem_name.replace("dc:", "")
-
-                # Create DC element with proper namespace
-                dc_elem = etree.SubElement(ref_elem, f"{{{dc_namespace}}}{elem_name}")
-                dc_elem.text = dc_content
-
-        return XCCDFSerializer.tree_to_string(root)
-
-    @staticmethod
     def inject_dc_into_all_references(
         xml_string: str,
         xccdf_namespace: str,
@@ -225,82 +185,6 @@ class DublinCoreInjector:
 
         return XCCDFSerializer.tree_to_string(root)
 
-    @staticmethod
-    def inject_cis_metadata(
-        xml_string: str,
-        xccdf_namespace: str,
-        cis_namespace: str = "http://cisecurity.org/xccdf/metadata/1.0",
-    ) -> str:
-        """Inject CIS-specific metadata elements into metadata elements with markers.
-
-        Looks for metadata content with META markers and converts to proper CIS XML.
-
-        Args:
-            xml_string: XML string
-            xccdf_namespace: XCCDF namespace
-            cis_namespace: CIS metadata namespace
-
-        Returns:
-            XML with CIS metadata elements injected
-        """
-        root = etree.fromstring(xml_string.encode("utf-8"))
-
-        # Find ALL metadata elements
-        metadata_elems = list(root.iter(f"{{{xccdf_namespace}}}metadata")) + list(
-            root.iter("metadata")
-        )
-
-        for meta_elem in metadata_elems:
-            if meta_elem.text and meta_elem.text.startswith("META:"):
-                content_text = meta_elem.text.strip()
-
-                # Clear existing content
-                meta_elem.text = None
-                for child in list(meta_elem):
-                    meta_elem.remove(child)
-
-                # Split by "||" to get each marker
-                markers = content_text.split("||")
-
-                for marker in markers:
-                    if marker.startswith("META:"):
-                        # Parse: "META:profile:Level 1" or "META:cis-control:version=8:id=4.8:title=..."
-                        marker_content = marker[5:]  # Remove "META:" prefix
-                        parts = marker_content.split(":", 1)
-
-                        if len(parts) >= 2:
-                            elem_name = parts[0]  # "cis-profile", "cis-control", "mitre-technique"
-                            elem_content = parts[1]  # Rest of the content
-
-                            # Check if this is a simple element or nested structure
-                            if "=" in elem_content and (
-                                "version=" in elem_content or "control-id=" in elem_content
-                            ):
-                                # Nested structure: "version=8:control-id=4.8:title=Uninstall..."
-                                # Create parent element
-                                cis_elem = etree.SubElement(
-                                    meta_elem, f"{{{cis_namespace}}}{elem_name}"
-                                )
-
-                                # Parse key=value pairs
-                                kv_parts = elem_content.split(":")
-                                for kv in kv_parts:
-                                    if "=" in kv:
-                                        key, value = kv.split("=", 1)
-                                        # Create child element
-                                        child = etree.SubElement(
-                                            cis_elem, f"{{{cis_namespace}}}{key}"
-                                        )
-                                        child.text = value
-                            else:
-                                # Simple element with text content
-                                cis_elem = etree.SubElement(
-                                    meta_elem, f"{{{cis_namespace}}}{elem_name}"
-                                )
-                                cis_elem.text = elem_content
-
-        return XCCDFSerializer.tree_to_string(root)
-
 
 class XCCDFPostProcessor:
     """Complete XCCDF post-processing pipeline.
@@ -316,7 +200,6 @@ class XCCDFPostProcessor:
     def process(
         xml_string: str,
         xccdf_namespace: str,
-        dc_elements: dict | None = None,
         namespace_map: dict | None = None,
         post_processing_config: dict | None = None,
     ) -> str:
@@ -325,7 +208,6 @@ class XCCDFPostProcessor:
         Args:
             xml_string: Raw XML from xsdata serializer
             xccdf_namespace: XCCDF namespace URI
-            dc_elements: Dublin Core elements to inject (optional)
             namespace_map: All available namespaces from config
                           e.g., {None: xccdf_ns, 'dc': dc_ns, 'controls': ...}
             post_processing_config: Config-driven settings (from YAML)
@@ -353,17 +235,10 @@ class XCCDFPostProcessor:
         # Step 1: Fix namespaces (always needed - xsdata bug workaround)
         xml_string = XCCDFNamespaceFixer.fix_namespaces(xml_string, xccdf_namespace)
 
-        # Step 2: Inject DC elements if provided
-        if dc_elements:
-            dc_ns = "http://purl.org/dc/elements/1.1/"
-            xml_string = DublinCoreInjector.inject_dc_elements(
-                xml_string, dc_elements, xccdf_namespace, dc_ns
-            )
-
-        # Step 3: Parse XML for remaining processing
+        # Step 2: Parse XML for remaining processing
         root = etree.fromstring(xml_string.encode("utf-8"))
 
-        # Step 4: Process elements based on config
+        # Step 3: Process elements based on config
         for elem in root.iter():
             # Remove 'override' attribute if configured
             if remove_override and "override" in elem.attrib:
@@ -376,7 +251,7 @@ class XCCDFPostProcessor:
                 if "purl.org/dc" not in ns:
                     elem.tag = local
 
-        # Step 6: Rebuild root with appropriate namespaces
+        # Step 4: Rebuild root with appropriate namespaces
         if namespace_map:
             # Determine which namespaces to include
             if preserve_ns_list is not None:
