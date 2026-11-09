@@ -1994,6 +1994,10 @@ class TestStyleFieldNames:
                 "field_mappings:\n  mitre_techniques:\n    source_field: cis_controls.control\n",
                 "cis_controls.control",
             ),
+            (
+                "field_mappings:\n  ident:\n    cci_lookup:\n      source_field: cis_controlz\n",
+                "cis_controlz",
+            ),
             ("group_elements:\n  title:\n    source: titel\n", "titel"),
             ("benchmark:\n  title:\n    source: titel\n", "titel"),
         ],
@@ -2006,6 +2010,24 @@ class TestStyleFieldNames:
 
         with pytest.raises(ValueError, match=re.escape(bad_name)):
             MappingEngine(config)
+
+    def test_the_refusal_names_the_model_the_path_fails_on(self, styles_dir, tmp_path):
+        config = tmp_path / "nested.yaml"
+        config.write_text(
+            f"extends: {Path(styles_dir) / 'disa.yaml'}\n"
+            "field_mappings:\n  mitre_techniques:\n    source_field: mitre_mapping.techniqes\n"
+        )
+
+        with pytest.raises(ValueError, match="MITREMapping"):
+            MappingEngine(config)
+
+    def test_a_dotted_path_sees_through_an_annotated_optional_model(self):
+        from typing import Annotated
+
+        from cis_bench.exporters.mapping_engine import _model_in
+
+        assert _model_in(Annotated[MITREMapping, "constraint"] | None) is MITREMapping
+        assert _model_in(list[MITREMapping]) is None
 
 
 class TestRuleElementOrder:

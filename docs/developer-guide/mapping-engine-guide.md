@@ -120,7 +120,7 @@ target_element: "ident"
 multiple: true
 cci_lookup:
 source_field: "cis_controls"
-extract: "primary"
+extract: "all"
 ```
 
 ### Configuration Sections
@@ -288,7 +288,7 @@ multiple: true # Creates one <ident> per CCI
 cci_lookup:
 enabled: true
 source_field: "cis_controls"
-extract: "primary"
+extract: "all"
 deduplicate_nist: true
 attributes:
 system: "http://cyber.mil/cci"
@@ -298,22 +298,23 @@ system: "http://cyber.mil/cci"
 ```python
 # Input (Pydantic)
 recommendation.cis_controls = [
-{"id": "4.1", ...},
-{"id": "4.8", ...}
+CISControl(version=8, control="4.1", ...),
+CISControl(version=8, control="4.8", ...),
 ]
 
-# CCI lookup
-# 4.1 ["CCI-001234", "CCI-001235"]
-# 4.8 ["CCI-000381", "CCI-000382"]
+# CCI lookup (every CCI of each safeguard, primary first)
+# 4.1 ["CCI-003941", "CCI-000290", "CCI-003906", "CCI-003909"]
+# 4.8 ["CCI-001762", "CCI-000382", "CCI-000381", "CCI-000384"]
 
-# After deduplication
-ccis = ["CCI-001234", "CCI-000381", "CCI-000382"]
+# Each CCI once (two safeguards can share one)
+ccis = ["CCI-003941", "CCI-000290", "CCI-003906", "CCI-003909",
+"CCI-001762", "CCI-000382", "CCI-000381", "CCI-000384"]
 
 # Output (xsdata)
 Rule.ident = [
-IdentType(value="CCI-001234", system="http://cyber.mil/cci"),
-IdentType(value="CCI-000381", system="http://cyber.mil/cci"),
-IdentType(value="CCI-000382", system="http://cyber.mil/cci")
+IdentType(value="CCI-003941", system="http://cyber.mil/cci"),
+IdentType(value="CCI-000290", system="http://cyber.mil/cci"),
+# ... one IdentType per CCI above, in that order
 ]
 ```
 
@@ -450,56 +451,44 @@ cci_lookup:
 enabled: true
 mapping_file: "data/cis-cci-mapping.json"
 source_field: "cis_controls" # Look up CCIs from CIS Controls
-extract: "primary" # "primary" or "all"
-deduplicate_nist: true # Remove duplicate NIST mappings
+extract: "all" # "all" or "primary"
+deduplicate_nist: true # Write cited NIST controls as references unless a CCI restates them
 attributes:
 system: "http://cyber.mil/cci"
 ```
 
 ### Extract Options
 
-**`extract: "primary"`** (Recommended for DISA)
+**`extract: "all"`** (the DISA style's setting)
 
-- Returns only the primary CCI for each NIST control
-- Result: 1-3 CCIs per recommendation
-- Cleaner XCCDF output
+- Every CCI the mapping file gives the safeguard, primary first
+- The export is a transform: what the mapping has, the rule carries; a wrong CCI is fixed
+  in `cis-cci-mapping.json`, not filtered here
 
-**`extract: "all"`** (Comprehensive)
+**`extract: "primary"`**
 
-- Returns primary + all supporting CCIs
-- Result: 6-20 CCIs per recommendation
-- More complete but verbose
+- Only the first (primary) CCI of each safeguard
 
 ### Example: CCI Lookup Flow
 
 ```python
-# Input
-recommendation.cis_controls = [
-{"id": "4.1", "title": "..."},
-{"id": "4.8", "title": "..."}
-]
+# Input: the recommendation's CIS Controls of the mapping file's version (v8)
+recommendation.cis_controls = [CISControl(version=8, control="4.8", ...)]
+recommendation.nist_controls = ["CM-7", "SI-3"]
 
-# Step 1: Look up NIST controls for each CIS Control
-# 4.1 CM-8, CM-8(1)
-# 4.8 CM-7, CM-7(1)
+# Step 1: each safeguard's CCIs, from cis-cci-mapping.json (OFFICIAL entries only)
+# 4.8 -> CCI-001762 [CM-7 (1) (b)], CCI-000382 [CM-7 b], CCI-000381 [CM-7 a],
+#        CCI-000384 [CM-7 (1) (a)]
 
-# Step 2: Look up CCIs for each NIST control
-# CM-8 CCI-000389 (primary) + 3 supporting
-# CM-8(1) CCI-000390 (primary) + 2 supporting
-# CM-7 CCI-000381 (primary) + 2 supporting
-# CM-7(1) CCI-000382 (primary) + 1 supporting
+# Step 2: the control and enhancement each CCI sits under
+# {"CM-7(1)", "CM-7"}
 
-# Step 3: Extract (based on config)
-if extract == "primary":
-ccis = ["CCI-000389", "CCI-000390", "CCI-000381", "CCI-000382"]
-else: # "all"
-ccis = ["CCI-000389", "CCI-xxx", "CCI-yyy", ...] # 12 total
-
-# Step 4: Deduplicate
-ccis = unique(ccis) # Remove any duplicates
+# Step 3: cited controls no CCI restates exactly
+# "CM-7" is restated (CCI-000382 sits under CM-7 b); "SI-3" is not
 
 # Output
-Rule.ident = [IdentType(value=cci) for cci in ccis]
+Rule.ident = [IdentType(value=cci) for cci in ccis]        # the four CCIs
+Rule.reference = [ReferenceType(... dc:identifier "SI-3")]  # the one reference
 ```
 
 ---

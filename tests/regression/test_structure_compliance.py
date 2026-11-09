@@ -28,14 +28,15 @@ def _v8_control_ids(rec):
 
 
 def _expected_ccis(rec):
-    """The primary CCIs the mapping file gives for the rule's v8 controls, in order, once
-    each; the fallback CCI when there are none."""
+    """Every CCI the mapping file gives for the rule's v8 controls (the export is a
+    transform: what the mapping has, the rule carries), primary first, once each; the
+    fallback CCI when there are none."""
     from cis_bench.utils.cci_lookup import get_cci_service
 
     service = get_cci_service()
     ccis = []
     for control in _v8_control_ids(rec):
-        for mapping in service.get_ccis_for_cis_control(control, extract="primary"):
+        for mapping in service.get_ccis_for_cis_control(control, extract="all"):
             if mapping.cci not in ccis:
                 ccis.append(mapping.cci)
     return ccis or [FALLBACK_CCI]
@@ -76,13 +77,41 @@ class TestControlMappingFidelity:
         written = 0
         for rec in sample_benchmark.recommendations:
             _, uncovered = service.deduplicate_nist_controls(
-                _v8_control_ids(rec), rec.nist_controls, extract="primary"
+                _v8_control_ids(rec), rec.nist_controls, extract="all"
             )
             references = rules[rec.ref].findall("{*}reference")
             assert [ref.findtext(f"{DC}identifier") for ref in references] == uncovered, rec.ref
             assert {ref.findtext(f"{DC}title") for ref in references} <= {"NIST SP 800-53"}
             written += len(references)
         assert written > 0, "the fixture has NIST controls no CCI covers"
+
+    def test_the_cci_lookup_reads_the_field_the_style_names(
+        self, sample_benchmark, disa_config_path
+    ):
+        # Pointed at a field that holds no CIS controls, the lookup refuses it by name, so
+        # the field read is the style's, not one the code picks.
+        from cis_bench.exporters.mapping_engine import MappingEngine
+
+        rec = next(r for r in sample_benchmark.recommendations if _v8_control_ids(r))
+        engine = MappingEngine(disa_config_path)
+        engine.config.field_mappings["ident"]["cci_lookup"]["source_field"] = "artifacts"
+
+        with pytest.raises(ValueError, match="artifacts"):
+            engine.get_ccis_with_deduplication(rec)
+
+    def test_the_benchmark_reference_takes_its_href_from_the_style(
+        self, sample_benchmark, disa_config_path
+    ):
+        from cis_bench.exporters.mapping_engine import MappingEngine
+
+        engine = MappingEngine(disa_config_path)
+        engine.config.benchmark["reference"]["attributes"]["href"] = (
+            "https://example.invalid/?from={benchmark.url}"
+        )
+
+        href, _ = engine.create_reference(sample_benchmark)
+
+        assert href == f"https://example.invalid/?from={sample_benchmark.url}"
 
     def test_a_reference_with_an_unknown_source_logic_is_refused(
         self, sample_benchmark, disa_config_path

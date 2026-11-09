@@ -31,13 +31,18 @@ from collections.abc import Callable
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 from types import ModuleType, UnionType
-from typing import Any, Union, get_args, get_origin
+from typing import Annotated, Any, Union, get_args, get_origin
 
 import yaml
 from pydantic import BaseModel
 
 from cis_bench.exceptions import ExportError
-from cis_bench.models.benchmark import Benchmark, ProfileDefinition, Recommendation
+from cis_bench.models.benchmark import (
+    Benchmark,
+    CISControl,
+    ProfileDefinition,
+    Recommendation,
+)
 
 # Import XCCDF types for element creation (XCCDF 1.2 - for type hints only)
 # Note: Engine dynamically loads version-specific types based on config
@@ -312,6 +317,8 @@ def _model_in(annotation: Any) -> type[BaseModel] | None:
     can pass through an optional model but not through a list."""
     if isinstance(annotation, type) and issubclass(annotation, BaseModel):
         return annotation
+    if get_origin(annotation) is Annotated:
+        return _model_in(get_args(annotation)[0])
     if get_origin(annotation) in (UnionType, Union):
         for arg in get_args(annotation):
             model = _model_in(arg)
@@ -421,8 +428,8 @@ class MappingEngine:
         misspelled name would drop the element without a word.
 
         Raises:
-            ValueError: A source_field (field_mappings, their children) or source
-                (group_elements, benchmark elements) names no field.
+            ValueError: A source_field (field_mappings, their children, a cci_lookup) or
+                source (group_elements, benchmark elements) names no field.
         """
         named: list[tuple[str, str, type[BaseModel], bool]] = []
         for name, mapping in self.config.field_mappings.items():
@@ -432,6 +439,16 @@ class MappingEngine:
             if mapping.get("source_field"):
                 named.append(
                     (f"field_mappings.{name}", mapping["source_field"], Recommendation, dotted)
+                )
+            lookup = mapping.get("cci_lookup")
+            if isinstance(lookup, dict) and lookup.get("source_field"):
+                named.append(
+                    (
+                        f"field_mappings.{name}.cci_lookup",
+                        lookup["source_field"],
+                        Recommendation,
+                        False,
+                    )
                 )
             for i, child in enumerate(mapping.get("children") or []):
                 if isinstance(child, dict) and child.get("source_field"):
@@ -460,9 +477,8 @@ class MappingEngine:
                     else {}
                 )
                 if part not in fields:
-                    raise ValueError(
-                        f"{where} names {path!r}, which is not a field of {model.__name__}"
-                    )
+                    holder = current.__name__ if isinstance(current, type) else model.__name__
+                    raise ValueError(f"{where} names {path!r}: {part!r} is not a field of {holder}")
                 current = _model_in(fields[part].annotation)
 
     def _load_xccdf_models(self, version: str):
@@ -617,14 +633,23 @@ class MappingEngine:
         cci_lookup_config = ident_mapping.get("cci_lookup", {})
         extract = cci_lookup_config.get("extract", "all")
 
-        # The CCI mapping file is keyed by one CIS Controls version, named in the style
-        # (cci_lookup.cis_controls_version); other versions reuse the same numbers for
-        # unrelated safeguards, so only that version's controls are looked up.
+        # The CIS controls come from the field the style names. The mapping file is keyed
+        # by one CIS Controls version, named in the style (cci_lookup.cis_controls_version);
+        # other versions reuse the same numbers for unrelated safeguards, so only that
+        # version's controls are looked up.
+        source_field = cci_lookup_config.get("source_field")
+        if not source_field:
+            raise ValueError(
+                "ident.cci_lookup needs source_field, the field holding the CIS controls"
+            )
+        controls = getattr(rec, source_field)
+        if not all(isinstance(c, CISControl) for c in controls):
+            raise ValueError(
+                f"ident.cci_lookup.source_field {source_field!r} holds no CIS controls"
+            )
         controls_version = cci_lookup_config.get("cis_controls_version")
         cis_control_ids = [
-            c.control
-            for c in rec.cis_controls
-            if controls_version is None or c.version == controls_version
+            c.control for c in controls if controls_version is None or c.version == controls_version
         ]
 
         # Use CCI service for deduplication
@@ -746,13 +771,22 @@ class MappingEngine:
         )
 
     def create_reference(self, benchmark: Benchmark) -> tuple[str, list[str]]:
-        """The Benchmark's own reference: its href and content, the Dublin Core markers of
-        the style's benchmark.reference.dc_elements (none when the style declares none)."""
-        dc_elements_config = self.config.benchmark.get("reference", {}).get("dc_elements", [])
+        """The Benchmark's own reference: its href from the style's
+        benchmark.reference.attributes.href (the benchmark's URL when the style names none)
+        and the Dublin Core markers of benchmark.reference.dc_elements (none when the style
+        declares none)."""
+        reference_config = self.config.benchmark.get("reference", {})
+        href_template = (reference_config.get("attributes") or {}).get("href")
+        values = {"benchmark": benchmark}
+        href = (
+            str(VariableSubstituter.substitute(href_template, values))
+            if href_template
+            else str(benchmark.url)
+        )
+        dc_elements_config = reference_config.get("dc_elements", [])
         if not dc_elements_config:
-            return str(benchmark.url), []
-        markers = self.dublin_core_markers(dc_elements_config, {"benchmark": benchmark.__dict__})
-        return str(benchmark.url), [markers]
+            return href, []
+        return href, [self.dublin_core_markers(dc_elements_config, values)]
 
     def create_plain_texts(self, benchmark: Benchmark):
         """Create plain-text elements from config (version-agnostic).
@@ -777,7 +811,7 @@ class MappingEngine:
 
             # Substitute variables
             content = VariableSubstituter.substitute(
-                content_template, {"download_date": download_date, "benchmark": benchmark.__dict__}
+                content_template, {"download_date": download_date, "benchmark": benchmark}
             )
 
             plain_texts.append(PlainTextType(id=pt_id, value=content))

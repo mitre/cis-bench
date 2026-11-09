@@ -240,7 +240,7 @@ field_mappings:
       mapping_file: "data/cis-cci-mapping.json"
       source_field: "cis_controls"
       cis_controls_version: 8  # the mapping file is keyed by CIS Controls v8 only
-      extract: "primary"  # primary only (key compliance mapping) - use "all" for primary + supporting
+      extract: "all"  # every CCI the mapping gives the safeguard, primary first; "primary" keeps only the first
       deduplicate_nist: true
       fallback_cci: "CCI-000366"  # Ensures every rule has at least one ident (DISA requirement)
     attributes:
@@ -330,27 +330,27 @@ field_mappings:
 cci_deduplication:
   enabled: true
   algorithm:
-    description: "Use CCIs where available, NIST references for extras"
+    description: "Every mapped CCI as an ident; every cited NIST control as a reference unless a CCI restates it"
     steps:
-      - "Extract all CIS Controls from recommendation"
-      - "Look up CCIs for each CIS Control (primary + supporting)"
-      - "Determine which NIST controls are covered by those CCIs"
-      - "Add CCIs as <ident> elements"
-      - "Add uncovered NIST controls as <reference> elements"
+      - "Take the recommendation's CIS Controls of the mapping file's version (cis_controls_version)"
+      - "Look up every CCI of each safeguard (extract: all), primary first, each once"
+      - "Note the control and enhancement each CCI sits under (CM-7 (1) (b) sits under CM-7(1))"
+      - "Add the CCIs as <ident> elements"
+      - "Add every cited NIST control as a <reference>, except one a CCI restates exactly"
 
   matching_rules:
-    description: "How to determine if CCI covers a NIST citation"
-    hierarchical: true  # CM-7.1 covers CM-7
+    description: "A CCI restates only the control and enhancement it sits under"
+    hierarchical: false  # CM-7 (1) (b) does not stand for CM-7 or for CM-7(2)
     examples:
-      - cci_maps_to: "CM-7.1"
+      - cci_maps_to: "CM-7 (1) (b)"
+        cis_cites: "CM-7(1)"
+        result: "restated"  # same control and enhancement; not written again
+      - cci_maps_to: "CM-7 (1) (b)"
         cis_cites: "CM-7"
-        result: "covered"  # CCI is more specific
-      - cci_maps_to: "CM-7"
-        cis_cites: "CM-7.1"
-        result: "not_covered"  # CCI too broad
-      - cci_maps_to: "CM-7(5)"
-        cis_cites: "CM-7"
-        result: "covered"  # Enhancement covers base
+        result: "written"  # the base control is a broader requirement
+      - cci_maps_to: "CM-7 b"
+        cis_cites: "CM-7(5)"
+        result: "written"  # a different enhancement
 
 # Legacy VMS tags (keep for compatibility)
 legacy_vms_tags:

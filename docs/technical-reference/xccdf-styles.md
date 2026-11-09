@@ -81,15 +81,19 @@ controls CM-7 and AC-3 (element text shortened):
 &lt;IAControls&gt;&lt;/IAControls&gt;
 </description>
 
-<!-- NIST controls the CCIs below do not cover: AC-3 (4.8's CCI covers CM-7) -->
+<!-- NIST controls the authors cite that no CCI below restates: AC-3 (CM-7 is
+     restated by the CCIs under CM-7 a and CM-7 b) -->
 <reference href="https://csrc.nist.gov/Projects/risk-management/sp800-53-controls">
 <dc:title>NIST SP 800-53</dc:title>
 <dc:identifier>AC-3</dc:identifier>
 </reference>
 
-<!-- The primary CCI of each CIS Controls v8 safeguard (cis-cci-mapping.json);
-     CCI-000366 when none has one -->
+<!-- Every CCI the mapping (cis-cci-mapping.json) gives each CIS Controls v8
+     safeguard, primary first; CCI-000366 when none has one -->
 <ident system="http://cyber.mil/cci">CCI-001762</ident>
+<ident system="http://cyber.mil/cci">CCI-000382</ident>
+<ident system="http://cyber.mil/cci">CCI-000381</ident>
+<ident system="http://cyber.mil/cci">CCI-000384</ident>
 
 <!-- CIS Controls and MITRE ATT&CK -->
 <ident system="https://www.cisecurity.org/controls/v7">7:9.2</ident>
@@ -125,8 +129,8 @@ controls CM-7 and AC-3 (element text shortened):
 | cis_controls | `<ident>` per CIS Controls version | Direct | `system` names the version, value `8:4.8` |
 | mitre_mapping | `<ident>` per technique, tactic and mitigation | Direct | `system` under attack.mitre.org |
 | profiles | Benchmark `<Profile>` with a `<select>` per Rule | Benchmark | One Profile per profile, e.g. `level-1-server` |
-| cis_controls (v8, via CCI mapping) | `<ident system="http://cyber.mil/cci">` | Direct | Primary CCI of each v8 safeguard (`cci_lookup.extract: primary`) |
-| nist_controls (extras) | `<reference>` with `dc:title` and `dc:identifier` | Direct | Only controls the CCIs do not cover |
+| cis_controls (v8, via CCI mapping) | `<ident system="http://cyber.mil/cci">` | Direct | Every CCI of each v8 safeguard, primary first (`cci_lookup.extract: all`) |
+| nist_controls | `<reference>` with `dc:title` and `dc:identifier` | Direct | Every cited control, except one a written CCI sits under exactly |
 
 ### Attributes
 
@@ -164,15 +168,21 @@ only for each cited NIST control no CCI on the rule covers. The full rules are i
 }
 ```
 
-**Step 1**: the DISA style takes the primary CCI (`extract: "primary"`): CCI-001762.
+**Step 1**: the DISA style takes every CCI of the safeguard (`extract: "all"`), primary
+first: CCI-001762, CCI-000382, CCI-000381, CCI-000384.
 
-**Step 2**: it covers the base control of its `nist_control`: CM-7.
+**Step 2**: they sit under the controls CM-7(1) (the "(1) (b)" and "(1) (a)" entries) and
+CM-7 (the "b" and "a" entries).
 
-**Step 3**: "CM-7" is covered; "SI-3" and "MP-7" are not.
+**Step 3**: the cited "CM-7" is restated by the CCIs under CM-7 and is not written again;
+"SI-3" and "MP-7" are written as references.
 
 **Step 4**: output
 ```xml
 <ident system="http://cyber.mil/cci">CCI-001762</ident>
+<ident system="http://cyber.mil/cci">CCI-000382</ident>
+<ident system="http://cyber.mil/cci">CCI-000381</ident>
+<ident system="http://cyber.mil/cci">CCI-000384</ident>
 <reference href="https://csrc.nist.gov/Projects/risk-management/sp800-53-controls">
 <dc:title>NIST SP 800-53</dc:title><dc:identifier>SI-3</dc:identifier>
 </reference>
@@ -373,22 +383,25 @@ For each recommendation, once:
 1. Look up only the CIS Controls of the version the mapping file is keyed by
    (`cci_lookup.cis_controls_version: 8` in `disa.yaml`); v7 numbers name unrelated v8
    safeguards.
-2. Collect each safeguard's CCIs (`extract: "primary"` in the DISA style: the primary CCI
-   only; `"all"` adds the supporting CCIs), each CCI once.
-3. A CCI covers the base control of its `nist_control`: the family and number at its
-   start ("CM-7 (1) (b)" covers CM-7, "SC-7 (4) (b)" covers SC-7).
-4. Every NIST control the recommendation cites whose base control no CCI covers becomes a
-   `<reference>` (`source_logic: "nist_after_cci_deduplication"`), with the `dc_elements`
-   the field names.
+2. Collect every CCI of each safeguard, primary first, each CCI once (`extract: "all"` in
+   the DISA style; `"primary"` would keep only the first). The export is a transform: what
+   the mapping gives a safeguard, the rule carries.
+3. A CCI restates the control and enhancement of its `nist_control`, without sub-parts:
+   "CM-7 (1) (b)" restates CM-7(1), "CM-7 b" restates CM-7, "SC-7 (4) (b)" restates SC-7(4).
+4. Every NIST control the recommendation's authors cite becomes a `<reference>`
+   (`source_logic: "nist_after_cci_deduplication"`, with the `dc_elements` the field names),
+   except one a written CCI restates exactly.
 5. A recommendation with no CCI gets `fallback_cci` (CCI-000366, CM-6 b), and all its NIST
    controls become references.
 
 ### NIST Control Matching Rules
 
-Matching compares base controls, both ways: a CCI for "CM-7 (5)" or "CM-7 b" covers a
-citation of "CM-7", "CM-7(4)" or "CM-7.1", and a CCI for "CM-7" covers "CM-7 (5)". The
-cited control is written as a reference only when its family and number differ from every
-covered base control.
+A cited control is left out only when a written CCI sits under exactly that control and
+enhancement: a CCI for "CM-7 (1) (b)" restates a citation of "CM-7(1)" or "CM-7 (1)"; it
+does not stand for "CM-7" (the base control is a broader requirement) or for "CM-7(2)" (a
+different enhancement), so those are written. Spacing, sub-parts ("a 1", "(b)") and the
+assessment suffix ("CM-7.1" is CM-7) do not matter. Nothing the authors cite is dropped
+for being "close" to a CCI.
 
 ### Edge Cases
 

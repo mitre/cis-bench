@@ -253,7 +253,7 @@ enabled: true
 mapping_file: "data/cis-cci-mapping.json"
 source_field: "cis_controls"
 cis_controls_version: 8 # the CIS Controls version the mapping file is keyed by
-extract: "all" # primary + supporting
+extract: "all" # every CCI of the safeguard, primary first ("primary": only the first)
 deduplicate_nist: true
 attributes:
 system: "http://cyber.mil/cci"
@@ -539,27 +539,27 @@ description: "Use CCIs where available, NIST references for extras"
 steps:
 
 - "Extract all CIS Controls from recommendation"
-- "Look up CCIs for each CIS Control (primary + supporting)"
-- "Determine which NIST controls are covered by those CCIs"
+- "Look up every CCI of each CIS Controls v8 safeguard (extract: all)"
+- "Note the control and enhancement each CCI sits under"
 - "Add CCIs as <ident> elements"
-- "Add uncovered NIST controls as <reference> elements"
+- "Add every cited NIST control as a <reference>, except one a CCI restates exactly"
 
 matching_rules:
-description: "How to determine if CCI covers a NIST citation"
-hierarchical: true # CM-7.1 covers CM-7
+description: "A CCI restates only the control and enhancement it sits under"
+hierarchical: false # CM-7 (1) (b) does not stand for CM-7 or CM-7(2)
 examples:
 
-- cci_maps_to: "CM-7.1"
-cis_cites: "CM-7"
-result: "covered" # CCI is more specific
+- cci_maps_to: "CM-7 (1) (b)"
+cis_cites: "CM-7(1)"
+result: "restated" # same control and enhancement; not written again
 
-- cci_maps_to: "CM-7"
-cis_cites: "CM-7.1"
-result: "not_covered" # CCI too broad
-
-- cci_maps_to: "CM-7(5)"
+- cci_maps_to: "CM-7 (1) (b)"
 cis_cites: "CM-7"
-result: "covered" # Enhancement covers base
+result: "written" # the base control is a broader requirement
+
+- cci_maps_to: "CM-7 b"
+cis_cites: "CM-7(5)"
+result: "written" # a different enhancement
 ```
 
 ## Validation Section

@@ -1,7 +1,8 @@
 """CCI (Control Correlation Identifier) lookup service.
 
-Maps CIS Controls to DoD CCIs using the official CIS-CCI mapping.
-Provides NIST deduplication to avoid redundant control references.
+Maps CIS Controls safeguards to DoD CCIs through the bundled CIS-CCI mapping, and tells
+which cited NIST controls a rule's CCIs already state, so only the others are written as
+references.
 """
 
 import json
@@ -12,8 +13,9 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# The family and number at the start of a NIST SP 800-53 control index ("CM-8" in "CM-8 a 1")
-_BASE_CONTROL_RE = re.compile(r"[A-Z]{2}-\d+")
+# A NIST SP 800-53 control and its enhancement at the start of an index: "CM-8" and "(3)" in
+# "CM-8 (3) (a)"; sub-parts ("a 1", "(b)") and assessment suffixes (".1") are not part of it
+_CONTROL_KEY_RE = re.compile(r"([A-Z]{2}-\d+)\s*(?:\((\d+)\))?")
 
 
 @dataclass
@@ -110,20 +112,20 @@ class CCILookupService:
         return ccis[:1] if extract == "primary" else list(ccis)
 
     def get_nist_controls_covered_by_ccis(self, ccis: list[str]) -> set[str]:
-        """Get all NIST controls covered by given CCIs.
+        """The control keys (control and enhancement) the given CCIs sit under.
 
         Args:
             ccis: List of CCI identifiers
 
         Returns:
-            Set of base NIST control IDs covered by these CCIs
+            Set of control keys, e.g. {"CM-7(1)", "SC-7(12)"}
         """
         covered = set()
 
         for cci in ccis:
             nist_ctrl = self._cci_to_nist.get(cci)
             if nist_ctrl:
-                covered.add(self.base_nist_control(nist_ctrl))
+                covered.add(self.control_key(nist_ctrl))
 
         return covered
 
@@ -140,7 +142,10 @@ class CCILookupService:
         Returns:
             Tuple of (cci_list, extra_nist_list)
             - cci_list: CCIs to add as <ident> elements (filtered by extract parameter)
-            - extra_nist_list: NIST controls NOT covered by CCIs (add as <reference>)
+            - extra_nist_list: the cited NIST controls to add as <reference>: every one
+              except a control (and enhancement) a written CCI sits under exactly. A CCI
+              under CM-7 (1) (b) restates CM-7(1); it does not stand for CM-7 or CM-7(2),
+              so those stay.
         """
         logger.debug(
             f"Deduplicating NIST controls: {len(cis_control_ids)} CIS controls, {len(cited_nist_controls)} cited NIST (extract={extract})"
@@ -160,10 +165,10 @@ class CCILookupService:
         # Determine which NIST controls are covered by these CCIs
         covered_nist = self.get_nist_controls_covered_by_ccis(all_ccis)
 
-        # Find extras (cited but not covered)
+        # Keep every cited control no written CCI restates
         extra_nist = []
         for cited in cited_nist_controls:
-            if self.base_nist_control(cited) not in covered_nist:
+            if self.control_key(cited) not in covered_nist:
                 extra_nist.append(cited)
 
         logger.debug(
@@ -172,16 +177,20 @@ class CCILookupService:
         return all_ccis, extra_nist
 
     @staticmethod
-    def base_nist_control(nist_control: str) -> str:
-        """The base NIST SP 800-53 control (family and number) of any index form.
+    def control_key(nist_control: str) -> str:
+        """The control and its enhancement in any index form, without sub-parts, spacing
+        or case: the unit that decides whether a CCI restates a cited control.
 
         Examples:
-            "CM-8 a 1" -> "CM-8" (DISA's CCI index), "CA-8 (1)" -> "CA-8",
-            "CM-7(5)" -> "CM-7", "CM-7.1" -> "CM-7" (assessment procedure)
+            "CM-8 a 1" -> "CM-8" (DISA's CCI index), "CA-8 (1)" -> "CA-8(1)",
+            "SC-7 (4) (b)" -> "SC-7(4)", "CM-7.1" -> "CM-7" (assessment procedure)
         """
         text = nist_control.strip().upper()
-        match = _BASE_CONTROL_RE.match(text)
-        return match.group(0) if match else text
+        match = _CONTROL_KEY_RE.match(text)
+        if not match:
+            return text
+        control, enhancement = match.groups()
+        return f"{control}({enhancement})" if enhancement else control
 
 
 # Singleton instance for easy access
