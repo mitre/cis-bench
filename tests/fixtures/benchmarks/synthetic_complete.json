@@ -4,7 +4,7 @@
   "url": "https://workbench.cisecurity.org/benchmarks/90001",
   "version": "v1.0.0",
   "downloaded_at": "2026-01-15T12:00:00",
-  "scraper_version": "1.0.0",
+  "scraper_version": "v1_2025_10",
   "total_recommendations": 20,
   "recommendations": [
     {

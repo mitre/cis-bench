@@ -683,7 +683,10 @@ class TestSyntheticBenchmarkData:
         assert len(resolved_ccis) >= 40
         assert all(re.fullmatch(r"CCI-\d{6}", cci) for cci in resolved_ccis)
 
-        combined_html = "\n".join(
+        # The fixture was saved by the v1 scraper, so its text loads as Markdown holding
+        # the shapes exports have to carry: inline code, fences, lists, tables, and the
+        # characters XML has to escape
+        combined_text = "\n".join(
             field
             for r in benchmark.recommendations
             for field in (
@@ -697,8 +700,8 @@ class TestSyntheticBenchmarkData:
             )
             if field
         )
-        for token in ("<code>", "<pre>", "<ul>", "<table>", "&amp;", "&lt;", "&gt;", '"', "'"):
-            assert token in combined_html, f"Expected HTML/XML token {token!r} in synthetic fixture"
+        for token in ("`", "```\n", "\n- ", "| --- |", "&", "<", ">", '"', "'"):
+            assert token in combined_text, f"Expected Markdown token {token!r} in synthetic fixture"
 
     def test_complete_benchmark_all_recommendations_valid(self, synthetic_complete_file):
         """Test all recommendations in complete synthetic benchmark are valid."""
@@ -1012,3 +1015,147 @@ class TestIntegration:
         assert reconstructed.title == original.title
         assert reconstructed.benchmark_id == original.benchmark_id
         assert reconstructed.version == original.version
+
+
+# ============================================================================
+# LOADED TEXT IS MARKDOWN WITH \n LINE BREAKS
+# ============================================================================
+
+
+def _copy(minimal_benchmark_data, scraper_version, **text_fields):
+    """A stored copy with one recommendation whose text fields are the given ones."""
+    recommendation = {
+        "ref": "5.4.1.2",
+        "title": "Ensure minimum password days is configured",
+        "url": "https://workbench.cisecurity.org/sections/1/recommendations/2",
+        "assessment_status": "Automated",
+        **text_fields,
+    }
+    return {
+        **minimal_benchmark_data,
+        "scraper_version": scraper_version,
+        "total_recommendations": 1,
+        "recommendations": [recommendation],
+    }
+
+
+class TestLoadedTextIsMarkdown:
+    """A loaded copy holds Markdown with \\n line breaks whatever scraper saved it.
+
+    The v1 scraper (v1_2025_10) saved the page's rendered HTML, with placeholders such as
+    <user> escaped as entities; the v2 scraper saves the Markdown WorkBench gives, where a
+    placeholder is bare angle brackets, and often with Windows line breaks.
+    """
+
+    def test_a_copy_saved_by_the_v1_scraper_loads_with_a_fenced_code_block(
+        self, minimal_benchmark_data
+    ):
+        data = _copy(
+            minimal_benchmark_data,
+            "v1_2025_10",
+            remediation="<p>Run:</p><pre><code># chage --mindays &lt;N&gt; &lt;user&gt;</code></pre>",
+        )
+
+        remediation = Benchmark(**data).recommendations[0].remediation
+
+        assert remediation == "Run:\n\n```\n# chage --mindays <N> <user>\n```"
+
+    def test_a_v1_copy_keeps_words_structure_and_placeholders(self, minimal_benchmark_data):
+        data = _copy(
+            minimal_benchmark_data,
+            "v1_2025_10",
+            audit=(
+                "<p>Run the following for each <code>&lt;user&gt;</code> and check "
+                "<strong>net.ipv4.ip_forward</strong>:</p>"
+                "<ul><li>one</li><li>two</li></ul>"
+                "<ol><li>first</li><li>second</li></ol>"
+            ),
+        )
+
+        audit = Benchmark(**data).recommendations[0].audit
+
+        assert audit == (
+            "Run the following for each `<user>` and check **net.ipv4.ip_forward**:\n\n"
+            "- one\n- two\n\n1. first\n2. second"
+        )
+
+    def test_every_text_field_of_a_v1_copy_is_converted(self, minimal_benchmark_data):
+        fields = {
+            name: f"<p>{name} with <code>&lt;path&gt;</code></p>"
+            for name in (
+                "description",
+                "rationale",
+                "impact",
+                "audit",
+                "remediation",
+                "additional_info",
+                "default_value",
+                "artifact_equation",
+                "references",
+            )
+        }
+
+        recommendation = Benchmark(**_copy(minimal_benchmark_data, "v1_2025_10", **fields))
+        loaded = recommendation.recommendations[0]
+
+        assert {name: getattr(loaded, name) for name in fields} == {
+            name: f"{name} with `<path>`" for name in fields
+        }
+
+    def test_a_v1_copy_with_a_field_left_empty_keeps_it_empty(self, minimal_benchmark_data):
+        data = _copy(minimal_benchmark_data, "v1_2025_10", impact=None, default_value="")
+
+        loaded = Benchmark(**data).recommendations[0]
+
+        assert (loaded.impact, loaded.default_value) == (None, "")
+
+    def test_a_v2_copy_is_not_converted_so_its_placeholders_survive(self, minimal_benchmark_data):
+        remediation = "Run:\n\n```\n# chage --mindays <N> <user>\n```\n\n# A heading\n\n- item"
+        data = _copy(minimal_benchmark_data, "v2_2026_01", remediation=remediation)
+
+        assert Benchmark(**data).recommendations[0].remediation == remediation
+
+    def test_a_v2_copy_with_windows_line_breaks_loads_with_unix_ones_and_nothing_else_changed(
+        self, minimal_benchmark_data
+    ):
+        downloaded = {**minimal_benchmark_data, "downloaded_at": "2026-04-18T12:00:00Z"}
+        windows = _copy(
+            downloaded,
+            "v2_2026_01",
+            description="First line\r\nSecond line\r\n\r\nThird\rFourth",
+            audit="```\r\n# stat <path>\r\n```",
+            remediation="unchanged",
+        )
+        unix = _copy(
+            downloaded,
+            "v2_2026_01",
+            description="First line\nSecond line\n\nThird\nFourth",
+            audit="```\n# stat <path>\n```",
+            remediation="unchanged",
+        )
+
+        assert Benchmark(**windows).model_dump() == Benchmark(**unix).model_dump()
+
+    def test_a_v1_copy_written_out_and_loaded_again_holds_the_same_text(
+        self, minimal_benchmark_data, tmp_path
+    ):
+        data = _copy(
+            minimal_benchmark_data,
+            "v1_2025_10",
+            remediation="<p>Run:</p><pre><code># chage --mindays &lt;N&gt; &lt;user&gt;</code></pre>",
+        )
+        loaded = Benchmark(**data)
+        path = tmp_path / "copy.json"
+        loaded.to_json_file(str(path))
+
+        reloaded = Benchmark.from_json_file(str(path))
+
+        assert reloaded.model_dump() == loaded.model_dump()
+
+    def test_the_html_era_versions_are_the_v1_strategy_and_not_the_v2_one(self):
+        from cis_bench.fetcher.strategies.v1_current import WorkbenchV1Strategy
+        from cis_bench.fetcher.strategies.v2_2026 import WorkbenchV2Strategy
+        from cis_bench.models.benchmark import HTML_ERA_SCRAPER_VERSIONS
+
+        assert WorkbenchV1Strategy().version in HTML_ERA_SCRAPER_VERSIONS
+        assert WorkbenchV2Strategy().version not in HTML_ERA_SCRAPER_VERSIONS

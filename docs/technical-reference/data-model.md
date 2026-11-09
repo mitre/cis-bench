@@ -15,7 +15,7 @@ This document defines our **canonical data format** for CIS benchmarks. All data
 ```mermaid
 flowchart LR
     subgraph Input["Input Sources"]
-        WB["CIS WorkBench<br/>(HTML)"]
+        WB["CIS WorkBench<br/>(text as Markdown)"]
         API["CIS API<br/>(JSON navtree)"]
         SCAP["Future: SCAP"]
         EXCEL["Future: Excel"]
@@ -150,7 +150,13 @@ flowchart LR
 "scraper_version": {
 "type": "string",
 "description": "Scraper strategy version used",
-"examples": ["v1_2025_10"]
+"examples": ["v1_2025_10", "v2_2026_01"]
+},
+"text_format": {
+"type": "string",
+"enum": ["html", "markdown"],
+"default": "markdown",
+"description": "The form of the recommendation text fields as written; a copy saved without this field is 'html' when its scraper_version is v1_2025_10"
 },
 "total_recommendations": {
 "type": "integer",
@@ -189,43 +195,43 @@ flowchart LR
 },
 "assessment": {
 "type": ["string", "null"],
-"description": "Automated scoring/assessment information (may contain HTML)"
+"description": "Automated scoring/assessment information (Markdown)"
 },
 "description": {
 "type": ["string", "null"],
-"description": "Detailed description of the recommendation (may contain HTML)"
+"description": "Detailed description of the recommendation (Markdown)"
 },
 "rationale": {
 "type": ["string", "null"],
-"description": "Rationale/justification for the recommendation (may contain HTML)"
+"description": "Rationale/justification for the recommendation (Markdown)"
 },
 "impact": {
 "type": ["string", "null"],
-"description": "Impact statement (may contain HTML)"
+"description": "Impact statement (Markdown)"
 },
 "audit": {
 "type": ["string", "null"],
-"description": "Audit procedure to verify compliance (may contain HTML)"
+"description": "Audit procedure to verify compliance (Markdown)"
 },
 "remediation": {
 "type": ["string", "null"],
-"description": "Remediation steps to achieve compliance (may contain HTML)"
+"description": "Remediation steps to achieve compliance (Markdown)"
 },
 "default_value": {
 "type": ["string", "null"],
-"description": "Default configuration value (may contain HTML)"
+"description": "Default configuration value (Markdown)"
 },
 "artifact_eq": {
 "type": ["string", "null"],
-"description": "Artifact equation (may contain HTML)"
+"description": "Artifact equation (Markdown)"
 },
 "mitre_mapping": {
 "type": ["string", "null"],
-"description": "MITRE ATT&CK framework mappings (may contain HTML)"
+"description": "MITRE ATT&CK framework mappings (Markdown)"
 },
 "references": {
 "type": ["string", "null"],
-"description": "External references and citations (may contain HTML)"
+"description": "External references and citations (Markdown)"
 }
 },
 "additionalProperties": false
@@ -357,13 +363,14 @@ f.write(xml_output)
 | `profile_definitions` | array | | The benchmark's profiles as its page defines them: `title`, `description` (HTML), `parent` (the title of the profile it extends, or null); each title once; empty for copies saved before they were read |
 | `downloaded_at` | string (ISO 8601) | | When it was downloaded, in UTC with its offset (`Z`); files from earlier versions carry no offset |
 | `scraper_version` | string | | Strategy version used |
+| `text_format` | `"html"` or `"markdown"` | | The form of the recommendation text fields as written. Every loaded copy holds `markdown`; a copy saved without this field is `html` when its `scraper_version` is `v1_2025_10` (the strategy that saved rendered HTML) and `markdown` otherwise |
 | `total_recommendations` | integer | | Count of recommendations |
 | `recommendations` | array | | Array of recommendation objects |
 
 ### Recommendation Level
 
-| Field | Type | Required | Description | HTML Allowed |
-|-------|------|----------|-------------|--------------|
+| Field | Type | Required | Description | Markdown text |
+|-------|------|----------|-------------|---------------|
 | `ref` | string | | Reference number (e.g., "3.1.1") | No |
 | `title` | string | | Recommendation title | No |
 | `url` | string (URI) | | Direct link to recommendation | No |
@@ -378,11 +385,18 @@ f.write(xml_output)
 | `mitre_mapping` | string/null | | MITRE ATT&CK mappings | Yes |
 | `references` | string/null | | External references | Yes |
 
-**HTML Allowed**: Fields may contain HTML markup that should be:
+**Markdown text**: these fields hold the Markdown WorkBench gives, with `\n` line breaks,
+whichever scraper saved the copy. A copy saved by the v1 scraper (`scraper_version`
+`v1_2025_10`) holds the page's rendered HTML instead; `Benchmark` converts it to Markdown as
+the copy loads (`cis_bench.utils.markdown_text`, on markdownify), keeping the words,
+paragraphs, code blocks, lists, tables, links and placeholders such as `<user>`. The stored
+copy is left as it was. Which form a copy holds is read from `text_format` (or, for a copy
+saved without that field, from `scraper_version`), never from the text itself: a placeholder
+looks like a tag. In exports the text is:
 
 - Preserved in JSON/YAML export
-- Stripped for CSV export
-- Converted to XCCDF-safe format for XCCDF export
+- Stripped of markup for CSV export
+- Run through the style's transforms for XCCDF export
 
 ## Validation Strategy
 

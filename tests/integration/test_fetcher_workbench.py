@@ -1312,7 +1312,8 @@ class TestCloudflareAddressesInADownload:
 
         assert benchmark.description == "Write us at feedback@cisecurity.org."
         stored = benchmark.model_dump_json()
-        assert '<a href=\\"mailto:info@example.com\\">info@example.com</a>' in stored
+        # The v1 strategy read this page's HTML; the stored copy holds it as Markdown
+        assert "[info@example.com](mailto:info@example.com)" in stored
         assert "protected" not in stored and "cfemail" not in stored
 
 

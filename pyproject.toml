@@ -33,6 +33,8 @@ dependencies = [
     "requests>=2.31.0",
     "beautifulsoup4>=4.12.2",
     "urllib3>=2.0.6",
+    # HTML to Markdown, for copies the v1 scraper saved with rendered HTML in their text
+    "markdownify>=1.2,<2",
     # Data modeling
     "pydantic>=2.0.0",
     "sqlmodel>=0.0.16",
