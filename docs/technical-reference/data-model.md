@@ -155,8 +155,7 @@ flowchart LR
 "text_format": {
 "type": "string",
 "enum": ["html", "markdown"],
-"default": "markdown",
-"description": "The form of the recommendation text fields as written; a copy saved without this field is 'html' when its scraper_version is v1_2025_10"
+"description": "The form of the recommendation text fields as written; a copy saved before this field existed is 'html' when its scraper_version is v1_2025_10"
 },
 "total_recommendations": {
 "type": "integer",
