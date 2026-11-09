@@ -461,8 +461,7 @@
       "type": "string"
     },
     "text_format": {
-      "default": "markdown",
-      "description": "The form of the recommendation text fields as written: 'markdown', the form WorkBench gives and every loaded copy holds, or 'html' for a copy the v1 scraper saved, which is converted to Markdown when it loads. A stored copy without this field is 'html' when its scraper_version saved HTML and 'markdown' otherwise",
+      "description": "The form of the recommendation text fields as written: 'markdown', the form WorkBench gives and every loaded copy holds, or 'html' for a copy the v1 scraper saved, which is converted to Markdown when it loads. A stored copy saved before this field existed is 'html' when its scraper_version saved HTML and 'markdown' otherwise",
       "enum": [
         "html",
         "markdown"
@@ -489,6 +488,7 @@
     "url",
     "version",
     "scraper_version",
+    "text_format",
     "total_recommendations",
     "recommendations"
   ],

@@ -1159,3 +1159,55 @@ class TestLoadedTextIsMarkdown:
 
         assert WorkbenchV1Strategy().version in HTML_ERA_SCRAPER_VERSIONS
         assert WorkbenchV2Strategy().version not in HTML_ERA_SCRAPER_VERSIONS
+
+    def test_a_v1_copy_built_twice_from_the_same_recommendation_objects_converts_each_time_once(
+        self, minimal_benchmark_data
+    ):
+        html = "<p>Run <code>chage --mindays &lt;N&gt; &lt;user&gt;</code></p>"
+        recommendation = Recommendation(
+            ref="5.4.1.2",
+            title="Ensure minimum password days is configured",
+            url="https://workbench.cisecurity.org/sections/1/recommendations/2",
+            assessment_status="Automated",
+            remediation=html,
+        )
+        data = {
+            **minimal_benchmark_data,
+            "scraper_version": "v1_2025_10",
+            "total_recommendations": 1,
+            "recommendations": [recommendation],
+        }
+
+        first = Benchmark(**data)
+        second = Benchmark(**data)
+
+        assert recommendation.remediation == html
+        assert first.recommendations[0].remediation == "Run `chage --mindays <N> <user>`"
+        assert second.recommendations[0].remediation == first.recommendations[0].remediation
+
+    def test_a_line_break_the_v1_html_spelled_as_an_entity_loads_as_a_newline(
+        self, minimal_benchmark_data
+    ):
+        data = _copy(
+            minimal_benchmark_data,
+            "v1_2025_10",
+            audit="<pre><code>line one&#13;\nline two&#13;</code></pre>",
+        )
+
+        audit = Benchmark(**data).recommendations[0].audit
+
+        assert audit == "```\nline one\nline two\n```"
+
+    def test_a_loaded_v1_copy_dumped_without_its_defaults_loads_again_unchanged(
+        self, minimal_benchmark_data
+    ):
+        data = _copy(
+            minimal_benchmark_data,
+            "v1_2025_10",
+            remediation="<p>Run:</p><pre><code># chage --mindays &lt;N&gt; &lt;user&gt;</code></pre>",
+        )
+        loaded = Benchmark(**data)
+
+        reloaded = Benchmark.model_validate_json(loaded.model_dump_json(exclude_defaults=True))
+
+        assert reloaded.model_dump() == loaded.model_dump()

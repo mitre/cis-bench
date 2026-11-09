@@ -11,11 +11,13 @@ from bs4 import MarkupResemblesLocatorWarning
 from markdownify import ATX, MarkdownConverter
 
 # The shapes the stored WorkBench Markdown uses (counted over the cached copies):
-# ATX headings, "-" bullets, bare fences, and no "_" or "*" escaped in text (2,711 fields
-# with a bare underscore, none escaped), so converted text looks like the rest.
+# ATX headings, "-" bullets, bare fences, links as [text](url) and never <url> (3 of 484
+# URLs), and no "_" or "*" escaped in text (2,711 fields with a bare underscore, none
+# escaped), so converted text looks like the rest.
 _converter = MarkdownConverter(
     heading_style=ATX,
     bullets="-",
+    autolinks=False,
     escape_asterisks=False,
     escape_underscores=False,
 )

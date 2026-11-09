@@ -250,11 +250,12 @@ class Benchmark(BaseModel):
     scraper_version: str = Field(..., description="Scraper strategy version used")
 
     text_format: Literal["html", "markdown"] = Field(
-        default="markdown",
+        ...,
         description="The form of the recommendation text fields as written: 'markdown', the "
         "form WorkBench gives and every loaded copy holds, or 'html' for a copy the v1 "
-        "scraper saved, which is converted to Markdown when it loads. A stored copy without "
-        "this field is 'html' when its scraper_version saved HTML and 'markdown' otherwise",
+        "scraper saved, which is converted to Markdown when it loads. A stored copy saved "
+        "before this field existed is 'html' when its scraper_version saved HTML and "
+        "'markdown' otherwise",
     )
 
     total_recommendations: int = Field(..., ge=0)
@@ -271,13 +272,27 @@ class Benchmark(BaseModel):
 
     @model_validator(mode="after")
     def text_as_markdown(self) -> "Benchmark":
-        """A loaded copy holds Markdown: HTML a v1-era copy saved is converted here."""
+        """A loaded copy holds Markdown: HTML a v1-era copy saved is converted here.
+
+        The converted recommendations are new, validated Recommendation objects: the
+        Markdown goes through the field validators (so a line break the HTML spelled as an
+        entity ends as \\n too), and Recommendation objects the caller passed in keep their
+        text (building twice from them converts each time from that text, once).
+        """
         if self.text_format == "html":
-            for recommendation in self.recommendations:
-                for name in RECOMMENDATION_TEXT_FIELDS:
-                    value = getattr(recommendation, name)
-                    if value:
-                        setattr(recommendation, name, html_to_markdown(value))
+            self.recommendations = [
+                Recommendation.model_validate(
+                    {
+                        **recommendation.model_dump(),
+                        **{
+                            name: html_to_markdown(value)
+                            for name in RECOMMENDATION_TEXT_FIELDS
+                            if (value := getattr(recommendation, name))
+                        },
+                    }
+                )
+                for recommendation in self.recommendations
+            ]
             self.text_format = "markdown"
         return self
 

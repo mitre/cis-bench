@@ -193,9 +193,9 @@ flowchart LR
 "format": "uri",
 "description": "Direct URL to recommendation page"
 },
-"assessment": {
-"type": ["string", "null"],
-"description": "Automated scoring/assessment information (Markdown)"
+"assessment_status": {
+"type": "string",
+"description": "Assessment type: 'Automated' or 'Manual'"
 },
 "description": {
 "type": ["string", "null"],
@@ -217,17 +217,21 @@ flowchart LR
 "type": ["string", "null"],
 "description": "Remediation steps to achieve compliance (Markdown)"
 },
+"additional_info": {
+"type": ["string", "null"],
+"description": "Additional information and notes (Markdown)"
+},
 "default_value": {
 "type": ["string", "null"],
 "description": "Default configuration value (Markdown)"
 },
-"artifact_eq": {
+"artifact_equation": {
 "type": ["string", "null"],
-"description": "Artifact equation (Markdown)"
+"description": "Artifact equation logic (Markdown)"
 },
 "mitre_mapping": {
-"type": ["string", "null"],
-"description": "MITRE ATT&CK framework mappings (Markdown)"
+"type": ["object", "null"],
+"description": "MITRE ATT&CK mapping: techniques, tactics, mitigations (lists of IDs)"
 },
 "references": {
 "type": ["string", "null"],
@@ -374,15 +378,21 @@ f.write(xml_output)
 | `ref` | string | | Reference number (e.g., "3.1.1") | No |
 | `title` | string | | Recommendation title | No |
 | `url` | string (URI) | | Direct link to recommendation | No |
-| `assessment` | string/null | | Automated scoring info | Yes |
+| `assessment_status` | string | | "Automated" or "Manual" | No |
+| `profiles` | array of string | | Profiles the rule belongs to | No |
+| `cis_controls` | array of object | | CIS Controls v7/v8 mappings with Implementation Groups | No |
+| `mitre_mapping` | object/null | | MITRE ATT&CK techniques, tactics, mitigations (lists of IDs) | No |
+| `nist_controls` | array of string | | NIST SP 800-53 control IDs | No |
+| `parent` | object/null | | Parent recommendation (url, title) | No |
+| `artifacts` | array of object | | Test artifacts | No |
 | `description` | string/null | | Detailed description | Yes |
 | `rationale` | string/null | | Justification | Yes |
 | `impact` | string/null | | Impact statement | Yes |
 | `audit` | string/null | | Audit procedure | Yes |
 | `remediation` | string/null | | Remediation steps | Yes |
+| `additional_info` | string/null | | Additional information and notes | Yes |
 | `default_value` | string/null | | Default config value | Yes |
-| `artifact_eq` | string/null | | Artifact equation | Yes |
-| `mitre_mapping` | string/null | | MITRE ATT&CK mappings | Yes |
+| `artifact_equation` | string/null | | Artifact equation logic | Yes |
 | `references` | string/null | | External references | Yes |
 
 **Markdown text**: these fields hold the Markdown WorkBench gives, with `\n` line breaks,
@@ -395,7 +405,7 @@ saved without that field, from `scraper_version`), never from the text itself: a
 looks like a tag. In exports the text is:
 
 - Preserved in JSON/YAML export
-- Stripped of markup for CSV export
+- Passed through the HTML stripper for CSV export (Markdown marks are left as they are)
 - Run through the style's transforms for XCCDF export
 
 ## Validation Strategy

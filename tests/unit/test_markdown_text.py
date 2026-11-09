@@ -79,3 +79,12 @@ class TestUnixLineBreaks:
     )
     def test_every_line_break_is_a_newline(self, text, expected):
         assert unix_line_breaks(text) == expected
+
+
+class TestLinksAndEntities:
+    def test_a_link_whose_text_is_its_address_is_written_as_text_and_address(self):
+        html = '<p>See <a href="https://example.invalid/g">https://example.invalid/g</a>.</p>'
+
+        assert (
+            html_to_markdown(html) == "See [https://example.invalid/g](https://example.invalid/g)."
+        )
