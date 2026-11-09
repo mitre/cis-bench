@@ -395,12 +395,21 @@ Use `{variable}` syntax to insert dynamic values:
 
 ### Available Variables
 
-**From Recommendation:**
+**In rule templates** (the `rule_id` and `group_id` templates, and the attribute
+templates of a rule's field mappings such as `fixref` and `system`):
 
 - `{ref}` - Recommendation number (e.g., "1.1.1")
 - `{ref_normalized}` - Underscored version (e.g., "1_1_1")
-- `{title}` - Recommendation title
-- Any Pydantic field name
+- `{stig_number}` - Zero-padded form for DISA ids (e.g., "010101")
+- `{rec.<field>}` - Any field of the recommendation (e.g., `{rec.title}`); attribute
+  templates only, not the id templates, which see the ref's three values alone
+
+- `{benchmark.<field>}` - Any field of the benchmark; attribute templates only
+
+A rule's templates see exactly these values, not the engine's working state.
+
+A name the template's context does not have stops the export (one strict substituter
+fills every template), so a typo cannot write an empty part.
 
 **From Benchmark:**
 
