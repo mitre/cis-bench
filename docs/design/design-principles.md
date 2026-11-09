@@ -73,10 +73,12 @@ Hand-written code of this kind met in a card's path (a regex that strips HTML, a
 that rebuilds an XML element from a marker string, a parser for a format a library
 reads) is flagged for replacement on that card or on a linked one; it is not extended.
 
-The reason is the record: the hand-written conversions this project carried lost
-`<user>`-style placeholders from recommendation text, cut Dublin Core values at a
-delimiter, and parsed templates with a regex that let an unclosed brace through. Each
-was replaced by a library the project already depended on or by the standard library.
+The reason is the record. Hand-written code in this project cut Dublin Core values at a
+marker delimiter and parsed templates with a regex that let an unclosed brace through;
+both were replaced by what the project already had (xsdata's own element type, the
+standard library's format parser). The hand-written HTML conversions still lose
+`<user>`-style placeholders from recommendation text; replacing them with a library is
+the work of the epic that wrote this rule.
 
 ---
 
@@ -85,12 +87,16 @@ was replaced by a library the project already depended on or by the standard lib
 ### Hand-Written Parsing or Conversion
 
 ```python
-# Bad - our own HTML-to-text rules
+# Bad - our own rule for what a tag is
 text = re.sub(r"<[^>]+>", "", html)
 
-# Good - a tested library, chosen on the card with its prior-art check
+# Good - a tested parser, chosen on the card with its prior-art check
 text = BeautifulSoup(html, "html.parser").get_text()
 ```
+
+The contrast is the point, not the recipe: a parser reads HTML as HTML. Text that mixes
+Markdown-like placeholders (`<user>`) with HTML needs the library the card chose for that
+input, not a tag-stripping call; `get_text()` drops such placeholders too.
 
 ### Organization Names in Method Names
 
