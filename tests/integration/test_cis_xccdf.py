@@ -637,3 +637,57 @@ def test_benchmark_id_slugs_a_version_that_is_not_ncname_safe(sample_benchmark, 
         "xccdf_org.cisecurity.benchmarks_benchmark_v7.1.0_vNext"
         "_CIS_Synthetic_Enterprise_Platform_Benchmark_v1.0.0"
     )
+
+
+class TestTheStoredMarkdownIsWrittenAsItIs:
+    """The CIS export carries the stored Markdown; a placeholder such as <user> survives."""
+
+    @pytest.fixture
+    def benchmark_with_placeholders(self, sample_benchmark):
+        from cis_bench.models.benchmark import ProfileDefinition
+
+        first, *rest = sample_benchmark.recommendations
+        rule = first.model_copy(
+            update={
+                "title": "Ensure <path> is owned by <user>",
+                "description": "Owned by the account named in `<user>`.",
+                "rationale": "A file owned by <user> is read by <user> alone.",
+                "impact": "Users in <group> lose access.",
+                "audit": "Run:\n\n```\n# stat -c %U <path>\n```",
+                "remediation": "Run:\n\n```\n# chage --mindays <N> <user>\n```",
+                "profiles": ["Alpha"],
+            }
+        )
+        return sample_benchmark.model_copy(
+            update={
+                "recommendations": [rule, *rest],
+                "profile_definitions": [
+                    ProfileDefinition(title="Alpha", description="Items for every <user>."),
+                ],
+            }
+        )
+
+    def test_every_rule_text_field_and_the_profile_description_keep_their_placeholders(
+        self, benchmark_with_placeholders, tmp_path
+    ):
+        output_path = tmp_path / "cis.xml"
+
+        ExporterFactory.create("xccdf", style="cis").export(
+            benchmark_with_placeholders, str(output_path)
+        )
+
+        root = etree.parse(str(output_path)).getroot()
+        rule = root.xpath("//*[local-name()='Rule']")[0]
+
+        def text(element, name):
+            return "".join(element.xpath(f"./*[local-name()='{name}']//text()"))
+
+        assert text(rule, "title") == "Ensure <path> is owned by <user>"
+        assert text(rule, "description") == "Owned by the account named in `<user>`."
+        assert text(rule, "rationale") == "A file owned by <user> is read by <user> alone."
+        assert text(rule, "warning") == "Users in <group> lose access."
+        assert text(rule, "fixtext") == "Run:\n\n```\n# chage --mindays <N> <user>\n```"
+        check = rule.xpath("./*[local-name()='check']")[0]
+        assert text(check, "check-content") == "Run:\n\n```\n# stat -c %U <path>\n```"
+        profile = root.xpath("//*[local-name()='Profile']")[0]
+        assert text(profile, "description") == "Items for every <user>."
