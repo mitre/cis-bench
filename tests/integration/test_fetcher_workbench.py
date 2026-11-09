@@ -2046,15 +2046,16 @@ class TestTheProfileDefinitions:
 
         page = parse_benchmark_page(_profiles_component(PROFILE_DEFINITIONS))
 
+        # The page gives each description as HTML; the copy holds it as Markdown
         assert page.profile_definitions == [
             ProfileDefinition(
                 title="Level 1 - Alpha",
-                description="<p>Items for every Alpha system.</p>",
+                description="Items for every Alpha system.",
                 parent=None,
             ),
             ProfileDefinition(
                 title="Level 2 - Alpha",
-                description="<p>Extends Level 1 - Alpha.</p><ul><li>Defense in depth.</li></ul>",
+                description="Extends Level 1 - Alpha.\n\n- Defense in depth.",
                 parent="Level 1 - Alpha",
             ),
         ]

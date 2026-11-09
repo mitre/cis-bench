@@ -154,7 +154,7 @@
             }
           ],
           "default": null,
-          "description": "What the profile is for (HTML format)",
+          "description": "What the profile is for (Markdown)",
           "title": "Description"
         },
         "parent": {

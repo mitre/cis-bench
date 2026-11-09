@@ -181,7 +181,7 @@ class ProfileDefinition(BaseModel):
     title: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)] = Field(
         ..., description="Profile title, as rules name it"
     )
-    description: str | None = Field(None, description="What the profile is for (HTML format)")
+    description: str | None = Field(None, description="What the profile is for (Markdown)")
     parent: Annotated[str, StringConstraints(strip_whitespace=True)] | None = Field(
         None, description="Title of the profile this one extends (its rules are included)"
     )

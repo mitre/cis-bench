@@ -31,6 +31,7 @@ from cis_bench.models.benchmark import (
     Recommendation,
 )
 from cis_bench.utils.html_parser import HTMLCleaner, attribute_text
+from cis_bench.utils.markdown_text import html_to_markdown
 from cis_bench.utils.parallel import parallel_execute_batched
 from cis_bench.utils.vue_payload import decode_vue_payload
 from cis_bench.utils.workbench_urls import navtree_url, recommendation_url
@@ -71,7 +72,10 @@ def parse_benchmark_page(html: str) -> BenchmarkPage:
 
 def _profile_definitions(soup: BeautifulSoup) -> list[ProfileDefinition]:
     """The profiles in the page's wb-benchmark-profiles component: each one's title,
-    description (HTML) and the title of the profile it extends; none without the component.
+    description and the title of the profile it extends; none without the component.
+
+    The component gives each description as HTML; it is stored as Markdown, the one form
+    benchmark text takes (a description that is not text is left for validation to refuse).
 
     Raises:
         ParserError: The component has no payload, or the payload is not JSON, not a list
@@ -102,7 +106,11 @@ def _profile_definitions(soup: BeautifulSoup) -> list[ProfileDefinition]:
             [
                 {
                     "title": profile.get("title"),
-                    "description": profile.get("description"),
+                    "description": (
+                        html_to_markdown(description)
+                        if isinstance(description := profile.get("description"), str)
+                        else description
+                    ),
                     "parent": profile.get("parent_title"),
                 }
                 for profile in profiles
