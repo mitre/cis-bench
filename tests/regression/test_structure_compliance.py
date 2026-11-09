@@ -98,13 +98,26 @@ class TestControlMappingFidelity:
     def test_a_rule_id_template_that_gives_no_id_is_refused(
         self, sample_benchmark, disa_config_path
     ):
-        # The template only sees the ref's values; any other variable leaves the id empty.
+        # A filter can turn a ref value into something that is not text: XHTML elements here.
         from cis_bench.exporters.mapping_engine import MappingEngine
 
         engine = MappingEngine(disa_config_path)
-        engine.config.rule_id["template"] = "{platform}"
+        engine.config.rule_id["template"] = "{ref_normalized|wrap_xhtml_paragraphs}"
 
         with pytest.raises(ValueError, match="gives no id"):
+            engine.map_rule(sample_benchmark.recommendations[0], {})
+
+    def test_a_rule_id_template_naming_a_value_the_ref_does_not_give_is_refused(
+        self, sample_benchmark, disa_config_path
+    ):
+        # Text around the unknown variable still makes a non-empty id ("SV--030101"),
+        # so the id would be wrong without being empty.
+        from cis_bench.exporters.mapping_engine import MappingEngine
+
+        engine = MappingEngine(disa_config_path)
+        engine.config.rule_id["template"] = "SV-{platform}-{stig_number}"
+
+        with pytest.raises(ValueError, match="platform"):
             engine.map_rule(sample_benchmark.recommendations[0], {"platform": "ubuntu"})
 
     @pytest.mark.parametrize(

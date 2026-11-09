@@ -55,82 +55,57 @@ cis-bench export benchmark.json --format xccdf
 
 ### Complete Rule Structure
 
-```xml
-<Rule id="xccdf_cis_almalinux8_rule_3_1_1"
-severity="medium"
-weight="10.0">
+A Rule for a recommendation with ref 3.1.1, CIS Controls v8 4.8 and v7 9.2, and the NIST
+controls CM-7 and AC-3 (element text shortened):
 
-<!-- STIG ID (maps to CIS ref) -->
+```xml
+<Rule id="SV-030101r1_rule" severity="medium" weight="10.0">
+
+<!-- The recommendation's ref, with the benchmark's version prefix when it has one -->
 <version>3.1.1</version>
 
-<!-- Title -->
-<title>Ensure kubeconfig file permissions are set to 644 or more restrictive</title>
+<title>Ensure the example service is disabled</title>
 
-<!-- Description with DISA embedded XML tags -->
+<!-- DISA's embedded tags; empty ones are kept -->
 <description>
-&lt;VulnDiscussion&gt;
-If kubelet is running, and if it is configured by a kubeconfig file, ensure
-that the proxy kubeconfig file has permissions of 644 or more restrictive.
-
-Improper access permissions could allow unauthorized users to access
-sensitive configuration data.
-&lt;/VulnDiscussion&gt;
+&lt;VulnDiscussion&gt;The recommendation's description and rationale.&lt;/VulnDiscussion&gt;
 &lt;FalsePositives&gt;&lt;/FalsePositives&gt;
 &lt;FalseNegatives&gt;&lt;/FalseNegatives&gt;
 &lt;Documentable&gt;false&lt;/Documentable&gt;
-&lt;Mitigations&gt;Additional configuration notes if present&lt;/Mitigations&gt;
+&lt;Mitigations&gt;Additional information, when the recommendation has it&lt;/Mitigations&gt;
 &lt;SeverityOverrideGuidance&gt;&lt;/SeverityOverrideGuidance&gt;
-&lt;PotentialImpacts&gt;None expected&lt;/PotentialImpacts&gt;
+&lt;PotentialImpacts&gt;The recommendation's impact, when it has one&lt;/PotentialImpacts&gt;
 &lt;ThirdPartyTools&gt;&lt;/ThirdPartyTools&gt;
 &lt;MitigationControl&gt;&lt;/MitigationControl&gt;
 &lt;Responsibility&gt;&lt;/Responsibility&gt;
 &lt;IAControls&gt;&lt;/IAControls&gt;
 </description>
 
-<!-- CCIs (from cis-cci-mapping.json) - DoD standard for NIST mapping -->
-<ident system="http://cyber.mil/cci">CCI-000381</ident>
-<ident system="http://cyber.mil/cci">CCI-000382</ident>
-<ident system="http://cyber.mil/cci">CCI-000380</ident>
-
-<!-- NIST controls NOT covered by CCIs (after deduplication) -->
+<!-- NIST controls the CCIs below do not cover: AC-3 (4.8's CCI covers CM-7) -->
 <reference href="https://csrc.nist.gov/Projects/risk-management/sp800-53-controls">
-<dc:identifier>SI-3</dc:identifier>
-</reference>
-<reference href="https://csrc.nist.gov/Projects/risk-management/sp800-53-controls">
-<dc:identifier>MP-7</dc:identifier>
+<dc:title>NIST SP 800-53</dc:title>
+<dc:identifier>AC-3</dc:identifier>
 </reference>
 
-<!-- Remediation (STIG convention) -->
-<fixtext fixref="F-3_1_1">
-Run the following command:
-chmod 644 /var/lib/kubelet/kubeconfig
-</fixtext>
+<!-- The primary CCI of each CIS Controls v8 safeguard (cis-cci-mapping.json);
+     CCI-000366 when none has one -->
+<ident system="http://cyber.mil/cci">CCI-001762</ident>
+
+<!-- CIS Controls and MITRE ATT&CK -->
+<ident system="https://www.cisecurity.org/controls/v7">7:9.2</ident>
+<ident system="https://www.cisecurity.org/controls/v8">8:4.8</ident>
+<ident system="https://attack.mitre.org/techniques">T1068</ident>
+<ident system="https://attack.mitre.org/tactics">TA0004</ident>
+<ident system="https://attack.mitre.org/mitigations">M1042</ident>
+
+<!-- Remediation -->
+<fixtext fixref="F-3_1_1">The recommendation's remediation.</fixtext>
 <fix id="F-3_1_1"/>
 
-<!-- Check/Audit (STIG convention) -->
+<!-- Audit -->
 <check system="C-3_1_1">
-<check-content>
-Run the following command:
-stat -c %a /var/lib/kubelet/kubeconfig
-
-Verify permissions are 644 or more restrictive.
-</check-content>
+<check-content>The recommendation's audit procedure.</check-content>
 </check>
-
-<!-- Additional metadata (CIS-specific, standard XCCDF elements) -->
-<metadata>
-<cis-control version="8" id="4.8">
-Uninstall or Disable Unnecessary Services on Enterprise Assets and Software
-</cis-control>
-<cis-control version="7" id="9.2">
-Ensure Only Approved Ports, Protocols and Services Are Running
-</cis-control>
-<profile>Level 1 - Server</profile>
-<profile>Level 1 - Workstation</profile>
-<mitre-technique>T1068</mitre-technique>
-<mitre-tactic>TA0001</mitre-tactic>
-<mitre-mitigation>M1022</mitre-mitigation>
-</metadata>
 
 </Rule>
 ```
@@ -147,11 +122,11 @@ Ensure Only Approved Ports, Protocols and Services Are Running
 | additional_info | `<description>` Mitigations | Embedded | If present |
 | remediation | `<fixtext>` | Direct | Strip HTML, preserve code blocks |
 | audit | `<check><check-content>` | Nested | Strip HTML, preserve code blocks |
-| cis_controls | `<metadata>` cis-control | Custom | CIS-specific metadata |
-| mitre_mapping | `<metadata>` mitre-* | Custom | Techniques, tactics, mitigations |
-| profiles | `<metadata>` profile | Custom | Level 1/2, Server/Workstation |
-| nist_controls (via CCI mapping) | `<ident system="http://cyber.mil/cci">` | Direct | Primary + supporting CCIs |
-| nist_controls (extras) | `<reference><dc:identifier>` | Direct | Only if NOT covered by CCIs |
+| cis_controls | `<ident>` per CIS Controls version | Direct | `system` names the version, value `8:4.8` |
+| mitre_mapping | `<ident>` per technique, tactic and mitigation | Direct | `system` under attack.mitre.org |
+| profiles | Benchmark `<Profile>` with a `<select>` per Rule | Benchmark | One Profile per profile, e.g. `level-1-server` |
+| cis_controls (v8, via CCI mapping) | `<ident system="http://cyber.mil/cci">` | Direct | Primary CCI of each v8 safeguard (`cci_lookup.extract: primary`) |
+| nist_controls (extras) | `<reference>` with `dc:title` and `dc:identifier` | Direct | Only controls the CCIs do not cover |
 
 ### Attributes
 

@@ -31,9 +31,10 @@ from collections.abc import Callable
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 from types import ModuleType
-from typing import Any
+from typing import Any, get_args
 
 import yaml
+from pydantic import BaseModel
 
 from cis_bench.exceptions import ExportError
 from cis_bench.models.benchmark import Benchmark, ProfileDefinition, Recommendation
@@ -305,6 +306,18 @@ class ConfigLoader:
             _loading_stack.pop()
 
 
+def _model_in(annotation: Any) -> type[BaseModel] | None:
+    """The Pydantic model a field holds, inside "X | None" or "list[X]"; None for a value
+    that is not a model (a str, a list of str)."""
+    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        return annotation
+    for arg in get_args(annotation):
+        model = _model_in(arg)
+        if model is not None:
+            return model
+    return None
+
+
 class VariableSubstituter:
     """Handles variable substitution in templates."""
 
@@ -385,6 +398,7 @@ class MappingEngine:
             config_path: Path to YAML configuration file
         """
         self.config = ConfigLoader.load(config_path)
+        self._refuse_unknown_field_names()
         self.cci_service = get_cci_service()
 
         # Dynamically load XCCDF models based on config version
@@ -393,6 +407,61 @@ class MappingEngine:
 
         # Pre-load all types specified in config (stable code, config-driven types)
         self._load_types_from_config()
+
+    # Structures whose source_field is read as a dotted path (_get_nested_field); every
+    # other reader takes one field name.
+    _DOTTED_PATH_STRUCTURES = frozenset({"ident_from_list", "metadata_from_config"})
+
+    def _refuse_unknown_field_names(self) -> None:
+        """Refuse a style that names a recommendation or benchmark field that does not exist.
+
+        A name that is no field reads as empty, and an empty element is left out, so a
+        misspelled name would drop the element without a word.
+
+        Raises:
+            ValueError: A source_field (field_mappings, their children) or source
+                (group_elements, benchmark elements) names no field.
+        """
+        named: list[tuple[str, str, type[BaseModel], bool]] = []
+        for name, mapping in self.config.field_mappings.items():
+            if not isinstance(mapping, dict):
+                continue
+            dotted = mapping.get("structure") in self._DOTTED_PATH_STRUCTURES
+            if mapping.get("source_field"):
+                named.append(
+                    (f"field_mappings.{name}", mapping["source_field"], Recommendation, dotted)
+                )
+            for i, child in enumerate(mapping.get("children") or []):
+                if isinstance(child, dict) and child.get("source_field"):
+                    named.append(
+                        (
+                            f"field_mappings.{name}.children[{i}]",
+                            child["source_field"],
+                            Recommendation,
+                            False,
+                        )
+                    )
+        for name, element in self.config.group_elements.items():
+            if isinstance(element, dict) and element.get("source"):
+                named.append((f"group_elements.{name}", element["source"], Recommendation, False))
+        for name, element in self.config.benchmark.items():
+            if isinstance(element, dict) and element.get("source"):
+                named.append((f"benchmark.{name}", element["source"], Benchmark, False))
+
+        for where, path, model, dotted in named:
+            parts = path.split(".") if dotted else [path]
+            current: Any = model
+            for part in parts:
+                fields = (
+                    current.model_fields
+                    if isinstance(current, type) and issubclass(current, BaseModel)
+                    else {}
+                )
+                if part not in fields:
+                    raise ValueError(
+                        f"{where} names {path!r}, which is not a field of {model.__name__}"
+                    )
+                current = _model_in(fields[part].annotation)
 
     def _load_xccdf_models(self, version: str):
         """Dynamically import XCCDF models based on version.
@@ -901,12 +970,27 @@ class MappingEngine:
         """An id from the style's <section>.template (rule_id, group_id) and the ref's values.
 
         Raises:
-            ValueError: The style has no template, or the template gives no id.
+            ValueError: The style has no template, the template names a value the ref does
+                not give, or the template gives no id.
         """
         template = (getattr(self.config, section) or {}).get("template")
         if not template:
             raise ValueError(f"the style has no {section}.template")
-        made = VariableSubstituter.substitute(template, self.ref_values(ref))
+        values = self.ref_values(ref)
+        # An unknown variable would resolve to "" and leave a wrong but non-empty id.
+        unknown = sorted(
+            {
+                name
+                for expression in re.findall(r"\{([^}]+)\}", template)
+                if (name := expression.partition("|")[0].strip().split(".")[0]) not in values
+            }
+        )
+        if unknown:
+            raise ValueError(
+                f"{section} template {template!r} names {', '.join(unknown)}; "
+                f"it can use only {', '.join(sorted(values))}"
+            )
+        made = VariableSubstituter.substitute(template, values)
         if not isinstance(made, str) or not made:
             raise ValueError(f"{section} template {template!r} gives no id for ref {ref!r}")
         return made

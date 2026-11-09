@@ -9,6 +9,7 @@ Tests the core helper functions that power the mapping engine:
 - HTMLCleaner: HTML transformation methods
 """
 
+import re
 from pathlib import Path
 
 import pytest
@@ -1964,6 +1965,42 @@ class TestBenchmarkIdTemplate:
         assert xccdf_bench.id == (
             "xccdf_org.cisecurity.benchmarks_benchmark_v2.0.0_CIS_Red_Hat_Enterprise_Linux_9_Benchmark"
         )
+
+
+class TestStyleFieldNames:
+    """A style names the recommendation and benchmark fields it reads; a name that is no
+    field would read as empty and drop the element without a word, so loading refuses it."""
+
+    @pytest.mark.parametrize(
+        ("override", "bad_name"),
+        [
+            ("field_mappings:\n  title:\n    source_field: titel\n", "titel"),
+            (
+                "field_mappings:\n  mitre_techniques:\n    source_field: mitre_mapping.techiques\n",
+                "mitre_mapping.techiques",
+            ),
+            (
+                "field_mappings:\n  check:\n    children:\n"
+                "      - element: check-content\n        source_field: audti\n",
+                "audti",
+            ),
+            # A dotted path where the reader takes one field name reads as empty too.
+            (
+                "field_mappings:\n  title:\n    source_field: mitre_mapping.techniques\n",
+                "mitre_mapping.techniques",
+            ),
+            ("group_elements:\n  title:\n    source: titel\n", "titel"),
+            ("benchmark:\n  title:\n    source: titel\n", "titel"),
+        ],
+    )
+    def test_a_style_naming_a_field_that_does_not_exist_is_refused(
+        self, styles_dir, tmp_path, override, bad_name
+    ):
+        config = tmp_path / "misspelled.yaml"
+        config.write_text(f"extends: {Path(styles_dir) / 'disa.yaml'}\n{override}")
+
+        with pytest.raises(ValueError, match=re.escape(bad_name)):
+            MappingEngine(config)
 
 
 class TestRuleElementOrder:

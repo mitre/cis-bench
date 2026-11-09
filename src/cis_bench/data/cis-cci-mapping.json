@@ -76,7 +76,7 @@
     "cis_title": "Use Dynamic Host Configuration Protocol (DHCP) Logging to Update Enterprise Asset Inventory",
     "primary_cci": {
       "cci": "CCI-000416",
-      "confidence": 0.85,
+      "confidence": 0.82,
       "reasoning": "Requires automated mechanisms that detect unauthorized components on a set frequency; DHCP and IP address management logs reviewed weekly serve that purpose.",
       "nist_control": "CM-8 (3) (a)"
     },
@@ -172,17 +172,17 @@
     "cis_id": "2.3",
     "cis_title": "Address Unauthorized Software",
     "primary_cci": {
-      "cci": "CCI-000416",
+      "cci": "CCI-001784",
       "confidence": 0.88,
-      "reasoning": "Requires automated detection of unauthorized software on a set frequency, matching the monthly review for unauthorized software.",
-      "nist_control": "CM-8 (3) (a)"
+      "reasoning": "Requires action when unauthorized components are found, such as isolating them or notifying personnel, which supports removing or excepting unauthorized software.",
+      "nist_control": "CM-8 (3) (b)"
     },
     "supporting_ccis": [
       {
-        "cci": "CCI-001784",
+        "cci": "CCI-000416",
         "confidence": 0.85,
-        "reasoning": "Requires action when unauthorized components are found, such as isolating them or notifying personnel, which supports removing or excepting unauthorized software.",
-        "nist_control": "CM-8 (3) (b)"
+        "reasoning": "Requires automated detection of unauthorized software on a set frequency, matching the monthly review for unauthorized software.",
+        "nist_control": "CM-8 (3) (a)"
       },
       {
         "cci": "CCI-001809",
@@ -191,7 +191,7 @@
         "nist_control": "CM-11 c"
       }
     ],
-    "nist_control": "CM-8 (3) (a)",
+    "nist_control": "CM-8 (3) (b)",
     "mapping_status": "OFFICIAL"
   },
   {
@@ -516,7 +516,7 @@
     "cis_title": "Encrypt Data on Removable Media",
     "primary_cci": {
       "cci": "CCI-004217",
-      "confidence": 0.85,
+      "confidence": 0.82,
       "reasoning": "Requires protecting defined media during transport with defined controls; encrypting removable media is the usual control.",
       "nist_control": "MP-5 a"
     },
@@ -678,7 +678,7 @@
     "cis_title": "Establish and Maintain a Secure Configuration Process for Network Infrastructure",
     "primary_cci": {
       "cci": "CCI-003941",
-      "confidence": 0.92,
+      "confidence": 0.9,
       "reasoning": "Requires establishing and documenting configuration settings in the most restrictive mode using common secure configurations, which applies to network devices.",
       "nist_control": "CM-6 a"
     },
@@ -761,17 +761,17 @@
     "cis_id": "4.5",
     "cis_title": "Implement and Manage a Firewall on End-User Devices",
     "primary_cci": {
-      "cci": "CCI-001109",
-      "confidence": 0.97,
-      "reasoning": "Requires denying network traffic by default and allowing it only by exception for defined systems, which is a default-deny host firewall.",
-      "nist_control": "SC-7 (5)"
+      "cci": "CCI-002406",
+      "confidence": 0.95,
+      "reasoning": "Requires host-based boundary protection on defined components, which is a firewall or port filter on the end-user device.",
+      "nist_control": "SC-7 (12)"
     },
     "supporting_ccis": [
       {
-        "cci": "CCI-002406",
+        "cci": "CCI-001109",
         "confidence": 0.92,
-        "reasoning": "Requires host-based boundary protection on defined components, which is a firewall or port filter on the end-user device.",
-        "nist_control": "SC-7 (12)"
+        "reasoning": "Requires denying network traffic by default and allowing it only by exception for defined systems, which is a default-deny host firewall.",
+        "nist_control": "SC-7 (5)"
       },
       {
         "cci": "CCI-001097",
@@ -780,7 +780,7 @@
         "nist_control": "SC-7 a"
       }
     ],
-    "nist_control": "SC-7 (5)",
+    "nist_control": "SC-7 (12)",
     "mapping_status": "OFFICIAL"
   },
   {
@@ -916,15 +916,9 @@
   {
     "cis_id": "4.11",
     "cis_title": "Enforce Remote Wipe Capability on Portable End-User Devices",
-    "primary_cci": {
-      "cci": "CCI-002325",
-      "confidence": 0.8,
-      "reasoning": "Requires configuration requirements for organization-controlled mobile devices, including when they leave controlled areas, the place a remote wipe capability is required.",
-      "nist_control": "AC-19 a"
-    },
     "supporting_ccis": [],
-    "nist_control": "AC-19 a",
-    "mapping_status": "OFFICIAL"
+    "nist_control": null,
+    "mapping_status": "UNMAPPED"
   },
   {
     "cis_id": "4.12",
@@ -1130,6 +1124,12 @@
         "confidence": 0.9,
         "reasoning": "Requires aligning account management with personnel termination and transfer processes, so access is revoked when a person leaves or changes role.",
         "nist_control": "AC-2 l"
+      },
+      {
+        "cci": "CCI-003628",
+        "confidence": 0.88,
+        "reasoning": "Requires disabling accounts that are no longer associated with a user, as when a person leaves.",
+        "nist_control": "AC-2 (3) (b)"
       }
     ],
     "nist_control": "PS-4 (2)",
@@ -1536,20 +1536,26 @@
     "cis_id": "8.4",
     "cis_title": "Standardize Time Synchronization",
     "primary_cci": {
-      "cci": "CCI-000174",
-      "confidence": 0.82,
-      "reasoning": "Requires compiling audit records into a system-wide trail that is time-correlated within a defined tolerance, which depends on synchronized time across assets.",
-      "nist_control": "AU-12 (1)"
+      "cci": "CCI-004926",
+      "confidence": 0.93,
+      "reasoning": "Requires synchronizing the internal system clocks to the authoritative time source, which is standardized time synchronization.",
+      "nist_control": "SC-45 (1) (b)"
     },
     "supporting_ccis": [
       {
-        "cci": "CCI-000159",
-        "confidence": 0.8,
-        "reasoning": "Requires system clocks to generate audit time stamps, the clocks that time synchronization keeps aligned.",
-        "nist_control": "AU-8 a"
+        "cci": "CCI-004929",
+        "confidence": 0.88,
+        "reasoning": "Requires synchronizing to a secondary authoritative time source when the primary one is unavailable, the reason for a second time source.",
+        "nist_control": "SC-45 (2) (b)"
+      },
+      {
+        "cci": "CCI-004923",
+        "confidence": 0.86,
+        "reasoning": "Requires comparing the internal system clocks with the authoritative time source on a set frequency.",
+        "nist_control": "SC-45 (1) (a)"
       }
     ],
-    "nist_control": "AU-12 (1)",
+    "nist_control": "SC-45 (1) (b)",
     "mapping_status": "OFFICIAL"
   },
   {
@@ -1910,20 +1916,20 @@
     "cis_id": "10.4",
     "cis_title": "Configure Automatic Anti-Malware Scanning of Removable Media",
     "primary_cci": {
-      "cci": "CCI-001032",
+      "cci": "CCI-002624",
       "confidence": 0.9,
-      "reasoning": "Requires nondestructive sanitization of portable storage, such as malware scanning, before it connects to the system.",
-      "nist_control": "MP-6 (3)"
+      "reasoning": "Requires real-time scanning of files from external sources at endpoints when they are opened or executed, which covers files on removable media.",
+      "nist_control": "SI-3 c 1"
     },
     "supporting_ccis": [
       {
-        "cci": "CCI-002624",
-        "confidence": 0.88,
-        "reasoning": "Requires real-time scanning of files from external sources at endpoints when they are opened or executed, which covers files on removable media.",
-        "nist_control": "SI-3 c 1"
+        "cci": "CCI-001032",
+        "confidence": 0.82,
+        "reasoning": "Requires nondestructive sanitization of portable storage before it connects to the system, a related protection for removable media.",
+        "nist_control": "MP-6 (3)"
       }
     ],
-    "nist_control": "MP-6 (3)",
+    "nist_control": "SI-3 c 1",
     "mapping_status": "OFFICIAL"
   },
   {
@@ -2588,7 +2594,7 @@
     "cis_title": "Train Workforce Members on Authentication Best Practices",
     "primary_cci": {
       "cci": "CCI-000106",
-      "confidence": 0.85,
+      "confidence": 0.82,
       "reasoning": "Requires basic security literacy training for users, which covers authentication topics such as MFA and password handling.",
       "nist_control": "AT-2 a 1"
     },
@@ -2601,7 +2607,7 @@
     "cis_title": "Train Workforce on Data Handling Best Practices",
     "primary_cci": {
       "cci": "CCI-000106",
-      "confidence": 0.85,
+      "confidence": 0.82,
       "reasoning": "Requires basic security literacy training for users, which covers handling, storing, and destroying sensitive data.",
       "nist_control": "AT-2 a 1"
     },
@@ -2660,7 +2666,7 @@
     "cis_title": "Train Workforce on the Dangers of Connecting to and Transmitting Enterprise Data Over Insecure Networks",
     "primary_cci": {
       "cci": "CCI-000106",
-      "confidence": 0.85,
+      "confidence": 0.82,
       "reasoning": "Requires basic security literacy training for users, which covers the risk of using insecure networks.",
       "nist_control": "AT-2 a 1"
     },
@@ -2744,7 +2750,7 @@
     "cis_title": "Classify Service Providers",
     "primary_cci": {
       "cci": "CCI-005118",
-      "confidence": 0.88,
+      "confidence": 0.85,
       "reasoning": "Requires assessing and reviewing the risks tied to suppliers and the services they provide on a set frequency, which is classifying providers by risk and reviewing that yearly.",
       "nist_control": "SR-6"
     },
@@ -2957,17 +2963,17 @@
     "cis_id": "16.5",
     "cis_title": "Use Up-to-Date and Trusted Third-Party Software Components",
     "primary_cci": {
-      "cci": "CCI-005133",
-      "confidence": 0.86,
-      "reasoning": "Requires procedures that detect and stop counterfeit components from entering the system, which supports using components only from trusted sources.",
-      "nist_control": "SR-11 a"
+      "cci": "CCI-002740",
+      "confidence": 0.88,
+      "reasoning": "Requires cryptographic checks of software components before installation, which confirms a component comes from its trusted source.",
+      "nist_control": "SI-7 (15)"
     },
     "supporting_ccis": [
       {
-        "cci": "CCI-002740",
-        "confidence": 0.85,
-        "reasoning": "Requires cryptographic checks of software components before installation, which confirms a component comes from its trusted source.",
-        "nist_control": "SI-7 (15)"
+        "cci": "CCI-005133",
+        "confidence": 0.86,
+        "reasoning": "Requires procedures that detect and stop counterfeit components from entering the system, which supports using components only from trusted sources.",
+        "nist_control": "SR-11 a"
       },
       {
         "cci": "CCI-005132",
@@ -2976,7 +2982,7 @@
         "nist_control": "SR-11 a"
       }
     ],
-    "nist_control": "SR-11 a",
+    "nist_control": "SI-7 (15)",
     "mapping_status": "OFFICIAL"
   },
   {
