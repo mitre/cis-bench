@@ -113,7 +113,7 @@ transform: "strip_html"
 description:
 target_element: "description"
 source_field: "description"
-transform: "strip_html_keep_code"
+transform: "none"
 
 ident:
 target_element: "ident"
@@ -252,8 +252,12 @@ content: "" # Empty (DISA legacy)
 sources:
 
 - field: "impact"
-optional: true # Only if field exists
 ```
+
+Every tag is written in the order given, empty when the rule has no text for it, as DISA
+writes them. Each part's text is XML-escaped before it is wrapped, so a reader that unescapes
+the description once and parses the tags gets the stored text, placeholders such as `<user>`
+included (the serializer escapes the whole description once more on write).
 
 **Example:**
 ```python
@@ -618,7 +622,7 @@ transform: "strip_html"
 description:
 target_element: "description"
 source_field: "description"
-transform: "strip_html_keep_code"
+transform: "none"
 
 # Just one check element (simplified)
 check:

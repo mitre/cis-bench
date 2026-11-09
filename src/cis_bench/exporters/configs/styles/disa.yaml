@@ -43,8 +43,8 @@ benchmark:
     generate_from_rules: true
     # Every Profile id, from the profile's title (one rule for defined and named profiles)
     id_template: "{profile.title|slug:-}"
-    # A profile description read from the benchmark's page is HTML: same transform as rule text
-    description_transform: "strip_html"
+    # A profile description is stored as Markdown (converted when the page is read): written as it is
+    description_transform: "none"
     # Copies saved without the page's profile definitions: per profile name on the rules,
     # the title, description and the profiles it includes (any other name gets a profile too)
     profile_mappings:
@@ -178,9 +178,14 @@ field_mappings:
   title:
     target_element: "title"
     source_field: "title"
-    transform: "strip_html"
+    transform: "none"
 
   # === DESCRIPTION (Complex - Embedded XML Tags) ===
+  # A STIG rule description carries tags inside its text: VulnDiscussion and the ten tags
+  # after it, in the order DISA writes them, every one present (empty when the rule has no
+  # text for it). Each part's text is the stored Markdown, XML-escaped before it is wrapped,
+  # so a reader that unescapes the description once and parses the tags gets the text as
+  # stored, a placeholder such as <user> included.
   description:
     target_element: "description"
     structure: "embedded_xml_tags"
@@ -188,47 +193,44 @@ field_mappings:
       - tag: "VulnDiscussion"
         sources:
           - field: "description"
-            transform: "strip_html"
+            transform: "none"
             separator: "\n\n"
           - field: "rationale"
-            transform: "strip_html"
-        combine: "join"  # Join both sources into one VulnDiscussion
+            transform: "none"
 
       - tag: "FalsePositives"
-        content: ""  # Empty - legacy VMS
+        content: ""
 
       - tag: "FalseNegatives"
-        content: ""  # Empty - legacy VMS
+        content: ""
 
       - tag: "Documentable"
-        content: "false"  # Static
+        content: "false"
 
       - tag: "Mitigations"
         sources:
           - field: "additional_info"
-            transform: "strip_html"
-        optional: true  # Only if field present
+            transform: "none"
 
       - tag: "SeverityOverrideGuidance"
-        content: ""  # Empty - legacy VMS
+        content: ""
 
       - tag: "PotentialImpacts"
         sources:
           - field: "impact"
-            transform: "strip_html"
-        optional: true
+            transform: "none"
 
       - tag: "ThirdPartyTools"
-        content: ""  # Empty - legacy VMS
+        content: ""
 
       - tag: "MitigationControl"
-        content: ""  # Empty - legacy VMS
+        content: ""
 
       - tag: "Responsibility"
-        content: ""  # Empty - legacy VMS
+        content: ""
 
       - tag: "IAControls"
-        content: ""  # Empty - legacy VMS
+        content: ""
 
   # === CCI IDENTIFIERS (DoD Standard for NIST Mapping) ===
   ident:
@@ -265,7 +267,7 @@ field_mappings:
   fixtext:
     target_element: "fixtext"
     source_field: "remediation"
-    transform: "strip_html_keep_code"
+    transform: "none"
     attributes:
       fixref: "F-{ref_normalized}"
 
@@ -284,7 +286,7 @@ field_mappings:
     children:
       - element: "check-content"
         source_field: "audit"
-        transform: "strip_html_keep_code"
+        transform: "none"
 
   # === CIS CONTROLS AS IDENT ELEMENTS ===
   # DISA STIGs use <ident> elements (like CCIs), not <metadata>
@@ -353,20 +355,6 @@ cci_deduplication:
         result: "written"  # a different enhancement
 
 # Legacy VMS tags (keep for compatibility)
-legacy_vms_tags:
-  include: true
-  tags:
-    - "FalsePositives"
-    - "FalseNegatives"
-    - "Documentable"
-    - "SeverityOverrideGuidance"
-    - "ThirdPartyTools"
-    - "MitigationControl"
-    - "Responsibility"
-    - "IAControls"
-  default_content: ""
-  documentable_value: "false"
-
 # Validation rules
 validation:
   require_cci_for_cis_controls: false  # Warn if missing, don't fail
@@ -438,7 +426,7 @@ group_elements:
   description:
     xccdf_type: "HtmlTextWithSubType"
     source: "title"  # Use rule title as group description
-    transform: "strip_html"
+    transform: "none"
 
 # Post-processing overrides for DISA/STIG format
 # Vulcan and STIG tools need clean XML without namespace pollution
