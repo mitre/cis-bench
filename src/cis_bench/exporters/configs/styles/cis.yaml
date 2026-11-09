@@ -392,12 +392,10 @@ implementation_notes:
     Simple and transparent.
 
   metadata_richness: |
-    CIS-specific metadata is comprehensive:
+    CIS-specific metadata written:
     - CIS Controls v7 and v8 with IG levels
     - MITRE ATT&CK techniques, tactics, mitigations
     - CIS Profiles (Level 1/2, Server/Workstation)
-    - Assessment status (Automated/Manual)
-    - Artifacts (test scripts if present)
 
   markdown_text: |
     Rule text and profile descriptions are the Markdown WorkBench gives, written as stored:
