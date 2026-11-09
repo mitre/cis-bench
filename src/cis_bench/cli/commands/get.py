@@ -2,7 +2,7 @@
 
 import logging
 import sys
-from contextlib import closing
+from contextlib import ExitStack, closing
 from typing import TYPE_CHECKING
 
 import click
@@ -115,13 +115,15 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
         console.print(f'  cis-bench get "{escape(query)}" --format {export_format}')
         sys.exit(1)
 
-    # Step 2: Find the benchmark: by its catalog ID, or by searching the catalog
-    from cis_bench.catalog.database import CatalogDatabase
-
-    with closing(CatalogDatabase(catalog_db_path)) as db:
+    # Step 2: Find the benchmark: by its catalog ID, or by searching the catalog. Opening
+    # the catalog is part of that step (its failure is reported the same way), and the
+    # database stays open through the download and the export, closed on every exit.
+    with ExitStack() as resources:
         try:
+            from cis_bench.catalog.database import CatalogDatabase
             from cis_bench.catalog.search import CatalogSearch
 
+            db = resources.enter_context(closing(CatalogDatabase(catalog_db_path)))
             search = CatalogSearch(db)
 
             if is_benchmark_id(query):

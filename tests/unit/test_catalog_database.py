@@ -172,8 +172,6 @@ class TestDatabaseInitialization:
         for table in expected_tables:
             assert table in table_names, f"Table {table} not created"
 
-        conn.close()
-
     def test_fts5_table_created(self, temp_db):
         """Test FTS5 virtual table is created."""
         import sqlite3
@@ -184,7 +182,6 @@ class TestDatabaseInitialization:
             ).fetchall()
 
         assert len(tables) == 1
-        conn.close()
 
     _EXPECTED_DEFAULT_STATUSES = [
         ("Published", True, 1),
@@ -1650,19 +1647,15 @@ class TestOpeningAnOlderCatalog:
                 }
             )
         db.close()
-        con = sqlite3.connect(path)
-        con.executescript(sql_afterwards)
-        con.close()
+        with closing(sqlite3.connect(path)) as con:
+            con.executescript(sql_afterwards)
 
     @staticmethod
     def _index_rows(path):
         import sqlite3
 
-        con = sqlite3.connect(path)
-        try:
+        with closing(sqlite3.connect(path)) as con:
             return sorted(row[0] for row in con.execute("SELECT benchmark_id FROM benchmarks_fts"))
-        finally:
-            con.close()
 
     @staticmethod
     def _warnings(caplog):
@@ -1707,11 +1700,8 @@ class TestOpeningAnOlderCatalog:
             assert self._found(db, "kubernetes 2.1.0") == ["210"]
         finally:
             db.close()
-        con = sqlite3.connect(path)
-        try:
+        with closing(sqlite3.connect(path)) as con:
             columns = [row[1] for row in con.execute("PRAGMA table_info(benchmarks_fts)")]
-        finally:
-            con.close()
         assert columns == ["benchmark_id", "title", "platform", "community", "version"]
         assert self._index_rows(path) == ["200", "210"]
 
@@ -1782,11 +1772,8 @@ class TestOpeningAnOlderCatalog:
         with pytest.raises(RuntimeError, match="disk full"):
             CatalogDatabase(path)
 
-        con = sqlite3.connect(path)
-        try:
+        with closing(sqlite3.connect(path)) as con:
             columns = [row[1] for row in con.execute("PRAGMA table_info(benchmarks_fts)")]
-        finally:
-            con.close()
         assert columns == ["benchmark_id", "title", "platform", "community", "description"]
         assert self._index_rows(path) == ["200", "210"]
 
@@ -1863,11 +1850,8 @@ class TestOpeningAnOlderCatalog:
         path = tmp_path / "current.db"
         self._catalog(path, "")
 
-        con = sqlite3.connect(path)
-        try:
+        with closing(sqlite3.connect(path)) as con:
             row = con.execute("SELECT * FROM benchmarks_fts WHERE benchmark_id = '210'").fetchone()
-        finally:
-            con.close()
         assert row == (
             "210",
             "CIS Kubernetes Benchmark",
@@ -1886,11 +1870,8 @@ class TestOpeningAnOlderCatalog:
             CatalogDatabase(path).close()
 
         assert self._warnings(caplog) == []
-        con = sqlite3.connect(path)
-        try:
+        with closing(sqlite3.connect(path)) as con:
             assert con.execute("SELECT count(*) FROM sqlite_master").fetchone()[0] == 0
-        finally:
-            con.close()
 
 
 class TestMarkingWithdrawnBenchmarks:
@@ -1950,10 +1931,9 @@ class TestMarkingWithdrawnBenchmarks:
         db = CatalogDatabase(tmp_path / "older.db")
         db.initialize_schema()
         db.close()
-        con = sqlite3.connect(tmp_path / "older.db")
-        con.execute("DELETE FROM benchmark_statuses WHERE name = 'Withdrawn'")
-        con.commit()
-        con.close()
+        with closing(sqlite3.connect(tmp_path / "older.db")) as con:
+            con.execute("DELETE FROM benchmark_statuses WHERE name = 'Withdrawn'")
+            con.commit()
 
         db = CatalogDatabase(tmp_path / "older.db")
         db.initialize_schema()

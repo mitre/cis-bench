@@ -63,6 +63,7 @@ def require_catalog_db(
     """Return an existing catalog database or abort with a user-facing prompt."""
     db = get_catalog_db()
     if not db.db_path.exists():
+        db.close()
         console.print(f"[yellow]{missing_message}[/yellow]")
         raise click.Abort()
     return db

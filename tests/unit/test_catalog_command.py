@@ -506,7 +506,6 @@ class TestCatalogSearchCommand:
         with patch("cis_bench.cli.commands.catalog.get_catalog_db", return_value=missing_db):
             result = runner.invoke(cli, ["catalog", "search", "ubuntu"])
 
-        missing_db.close()
         assert result.exit_code == 1
         assert "Catalog not found. Run 'cis-bench catalog refresh' first." in result.output
         assert "Search failed" not in result.output
@@ -1653,6 +1652,23 @@ class TestGetCatalogDb:
         mock_db_class.assert_called_once_with(data_dir / "catalog.db")
         assert result == mock_db
 
+    def test_require_catalog_db_closes_the_database_it_cannot_use(self, tmp_path, monkeypatch):
+        # The caller never sees the database when there is no catalog file, so nothing
+        # but the helper can close it.
+        import click
+
+        from cis_bench.catalog.database import CatalogDatabase
+        from cis_bench.cli.commands.catalog import require_catalog_db
+
+        missing_db = CatalogDatabase(tmp_path / "missing.db")
+        closed = []
+        monkeypatch.setattr(missing_db, "close", lambda: closed.append(True))
+        with patch("cis_bench.cli.commands.catalog.get_catalog_db", return_value=missing_db):
+            with pytest.raises(click.Abort):
+                require_catalog_db()
+
+        assert closed == [True]
+
     def test_require_catalog_db_returns_existing_db_or_aborts(self, tmp_path):
         """require_catalog_db returns an initialized CatalogDatabase and raises click.Abort when absent."""
         import click
@@ -1664,7 +1680,6 @@ class TestGetCatalogDb:
         with patch("cis_bench.cli.commands.catalog.get_catalog_db", return_value=missing_db):
             with pytest.raises(click.Abort):
                 require_catalog_db()
-        missing_db.close()
 
         ready_db = CatalogDatabase(tmp_path / "ready.db")
         ready_db.initialize_schema()
@@ -1722,7 +1737,6 @@ class TestGetCatalogDb:
         missing_db = CatalogDatabase(tmp_path / "absent.db")
         with patch("cis_bench.cli.commands.catalog.get_catalog_db", return_value=missing_db):
             result = runner.invoke(cli, ["catalog", *subcommand_args])
-        missing_db.close()
 
         assert result.exit_code == 1
         assert expected_message in result.output
