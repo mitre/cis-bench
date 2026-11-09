@@ -145,7 +145,7 @@ Add attributes to XCCDF element:
 fixtext:
 target_element: "fixtext"
 source_field: "remediation"
-transform: "strip_html_keep_code"
+transform: "none"
 attributes:
 fixref: "F-{ref_normalized}" # Variable substitution in attributes
 ```
@@ -182,7 +182,12 @@ separator: "\n\n"
 
 ### Embedded XML Structure
 
-Build nested XML tags within element:
+Tags inside an element's text (a STIG rule description). Every component is one tag, written
+in the order given and always present (empty when the rule has no text for it); its text is
+`content`, or its `sources` joined (`field`, `transform` default `none`, and the `separator`
+that follows a source's text when another's comes after it). Each part's text is XML-escaped
+before it is wrapped, so a reader that unescapes the element once and parses the tags gets
+the stored text, placeholders included:
 
 ```yaml
 description:
@@ -195,11 +200,11 @@ components:
 sources:
 
 - field: "description"
-transform: "strip_html"
+transform: "none"
 separator: "\n\n"
 
 - field: "rationale"
-transform: "strip_html"
+transform: "none"
 combine: "join"
 
 # Component with static content
@@ -213,8 +218,7 @@ content: ""
 sources:
 
 - field: "additional_info"
-transform: "strip_html"
-optional: true
+transform: "none"
 
 # More components...
 
@@ -236,7 +240,7 @@ children:
 
 - element: "check-content"
 source_field: "audit"
-transform: "strip_html_keep_code"
+transform: "none"
 ```
 
 ### Multiple Elements
@@ -316,11 +320,11 @@ components:
 sources: # Multiple sources
 
 - field: "description" # Source field
-transform: "strip_html" # Transform to apply
+transform: "none" # Transform to apply
 separator: "\n\n" # Separator between sources
 
 - field: "rationale"
-transform: "strip_html"
+transform: "none"
 combine: "join" # How to combine sources
 
 # Component with static content
@@ -334,8 +338,7 @@ content: "" # Static content
 sources:
 
 - field: "additional_info"
-transform: "strip_html"
-optional: true # Skip if source is None/empty
+transform: "none"
 
 # Component with attributes
 
@@ -468,7 +471,7 @@ benchmark:
   profiles:
     generate_from_rules: true
     id_template: "{profile.title|slug:-}"   # every Profile id, from its title
-    description_transform: "strip_html"          # for descriptions read from the page
+    description_transform: "none"                # the stored Markdown, written as it is
     profile_mappings:
 
       - match: "Level 1 - Server"            # a profile name as recommendations give it

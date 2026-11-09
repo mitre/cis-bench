@@ -304,9 +304,9 @@ xccdf_rule[field_name] = value
 input: "<p>Disable <code>cramfs</code> filesystem</p>"
 output: "Disable cramfs filesystem"
 
-# Transform: "strip_html_keep_code"
-input: "<p>Run: <code>modprobe -n -v cramfs</code></p>"
-output: "Run: `modprobe -n -v cramfs`"
+# Transform: "none" (the stored text is Markdown; the DISA and CIS styles write it as it is)
+input: "Run:\n\n```\n# modprobe -n -v cramfs\n```"
+output: "Run:\n\n```\n# modprobe -n -v cramfs\n```"
 
 # Transform: "safe_field"
 input: recommendation.get('rationale') # Might be None
@@ -382,7 +382,7 @@ transformed = apply_transform(value, source.get('transform'))
 content_parts.append(transformed)
 
 content = separator.join(content_parts)
-xml_content += f"<{tag}>{content}</{tag}>"
+xml_content += f"<{tag}>{html.escape(content, quote=False)}</{tag}>"
 
 # 5. Create xsdata object
 description = HtmlTextWithSubType(value=xml_content)

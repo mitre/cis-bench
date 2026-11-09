@@ -23,6 +23,7 @@ See ARCHITECTURE_PRINCIPLES.md for complete guidelines.
 Adding PCI-DSS, ISO 27001, HIPAA, etc. MUST require ZERO code changes (YAML only).
 """
 
+import html
 import inspect
 import logging
 import re
@@ -76,7 +77,6 @@ class MappingConfig:
     # Specification of each Rule and Group element and its xsdata type
     rule_elements: dict[str, Any] = field(default_factory=dict)
     group_elements: dict[str, Any] = field(default_factory=dict)
-    legacy_vms_tags: dict[str, Any] | None = None
     validation: dict[str, Any] | None = None
     # How the serialized XML is finished (handlers, namespace prefixes, root declarations)
     post_processing: dict[str, Any] = field(default_factory=dict)
@@ -489,8 +489,9 @@ class MappingEngine:
         misspelled name would drop the element without a word.
 
         Raises:
-            ValueError: A source_field (field_mappings, their children, a cci_lookup) or
-                source (group_elements, benchmark elements) names no field.
+            ValueError: A source_field (field_mappings, their children, a cci_lookup), a
+                component source's field (embedded_xml_tags) or a source (group_elements,
+                benchmark elements) names no field.
         """
         named: list[tuple[str, str, type[BaseModel], bool]] = []
         for name, mapping in self.config.field_mappings.items():
@@ -521,6 +522,19 @@ class MappingEngine:
                             False,
                         )
                     )
+            for i, component in enumerate(mapping.get("components") or []):
+                if not isinstance(component, dict):
+                    continue
+                for j, source in enumerate(component.get("sources") or []):
+                    if isinstance(source, dict) and source.get("field"):
+                        named.append(
+                            (
+                                f"field_mappings.{name}.components[{i}].sources[{j}]",
+                                source["field"],
+                                Recommendation,
+                                False,
+                            )
+                        )
         for name, element in self.config.group_elements.items():
             if isinstance(element, dict) and element.get("source"):
                 named.append((f"group_elements.{name}", element["source"], Recommendation, False))
@@ -618,47 +632,41 @@ class MappingEngine:
         padded = "".join(p.zfill(2) for p in parts)
         return padded
 
-    def create_vuln_discussion(self, rec: Recommendation) -> str:
-        """Create VulnDiscussion XML structure from CIS fields.
+    def create_embedded_xml_tags(
+        self, components: list[dict[str, Any]], rec: Recommendation
+    ) -> str:
+        """The text of an element that carries tags inside it (a STIG rule description:
+        VulnDiscussion and the tags after it), built from the style's components.
 
-        Combines description + rationale with proper embedded XML tags.
+        Each component is one tag, in the order given, always written: its text is the
+        component's ``content``, or its ``sources`` joined (each source names a ``field`` of
+        the recommendation, a ``transform``, default none, and the ``separator`` that follows
+        its text when another source's text comes after it). Each part's text is XML-escaped
+        before it is wrapped, so a reader that unescapes the element's text once and parses
+        the tags gets the text as stored, a placeholder such as <user> included.
         """
         parts = []
-
-        # Add description
-        if rec.description:
-            desc_text = TransformRegistry.apply("strip_html", rec.description)
-            parts.append(desc_text)
-
-        # Add rationale
-        if rec.rationale:
-            rat_text = TransformRegistry.apply("strip_html", rec.rationale)
-            parts.append(rat_text)
-
-        vuln_discussion = "\n\n".join(parts)
-
-        # Build complete description with embedded tags
-        description_parts = [f"<VulnDiscussion>{vuln_discussion}</VulnDiscussion>"]
-
-        # Add other sections
-        if rec.impact:
-            impact_text = TransformRegistry.apply("strip_html", rec.impact)
-            description_parts.append(f"<PotentialImpacts>{impact_text}</PotentialImpacts>")
-
-        if rec.additional_info:
-            mitigations_text = TransformRegistry.apply("strip_html", rec.additional_info)
-            description_parts.append(f"<Mitigations>{mitigations_text}</Mitigations>")
-
-        # Add legacy VMS tags if config says so
-        if self.config.legacy_vms_tags and self.config.legacy_vms_tags.get("include"):
-            for tag in self.config.legacy_vms_tags.get("tags", []):
-                if tag not in ["PotentialImpacts", "Mitigations", "VulnDiscussion"]:
-                    if tag == "Documentable":
-                        description_parts.append(f"<{tag}>false</{tag}>")
-                    else:
-                        description_parts.append(f"<{tag}></{tag}>")
-
-        return "".join(description_parts)
+        for component in components:
+            tag = component["tag"]
+            if "sources" in component:
+                texts: list[tuple[str, str]] = [
+                    (text, source.get("separator", ""))
+                    for source in component["sources"]
+                    if (
+                        text := TransformRegistry.apply(
+                            source.get("transform", "none"), getattr(rec, source["field"])
+                        )
+                    )
+                ]
+                content = "".join(
+                    text + (separator if i < len(texts) - 1 else "")
+                    for i, (text, separator) in enumerate(texts)
+                )
+            else:
+                content = component.get("content", "")
+            # &, < and > escaped (quotes are text inside an element)
+            parts.append(f"<{tag}>{html.escape(content, quote=False)}</{tag}>")
+        return "".join(parts)
 
     def get_ccis_with_deduplication(self, rec: Recommendation) -> tuple[list[str], list[str]]:
         """Get CCIs and extra NIST controls using deduplication.
@@ -1017,8 +1025,13 @@ class MappingEngine:
 
         # Handle special structures
         if structure == "embedded_xml_tags":
-            # Build VulnDiscussion with embedded tags
-            return self.create_vuln_discussion(rec)
+            components = field_mapping.get("components")
+            if not components:
+                raise ValueError(
+                    f"field_mappings.{field_name}: embedded_xml_tags needs components, the "
+                    "tags to write and their sources"
+                )
+            return self.create_embedded_xml_tags(components, rec)
 
         elif field_mapping.get("source_logic") == "cci_lookup_with_deduplication":
             # CCI lookup - returns list of CCIs

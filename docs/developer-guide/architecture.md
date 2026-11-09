@@ -579,7 +579,7 @@ function: "HTMLCleaner.html_to_markdown"
 - `dublin_core` - Reference with DC metadata
 - `metadata_from_config` - Generic nested XML (CIS Controls, hierarchies)
 - `ident_from_list` - Generic ident generation (CCIs, MITRE, PCI-DSS)
-- `embedded_xml_tags` - VulnDiscussion style
+- `embedded_xml_tags` - Tags inside an element's text, from config (a STIG description's VulnDiscussion and the tags after it)
 
 **Adding new structure:**
 1. Define in YAML with `structure: "new_type"`

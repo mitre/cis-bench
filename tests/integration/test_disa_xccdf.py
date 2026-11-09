@@ -143,3 +143,117 @@ def test_disa_benchmark_id_is_cis_prefixed_workbench_id(disa_export_file):
     """DISA-style Benchmark/@id stays CIS_<WorkBench id>: Vulcan shows it as the STIG ID."""
     root = etree.parse(str(disa_export_file)).getroot()
     assert root.get("id") == "CIS_90001"
+
+
+# The embedded tags of a STIG rule description, in the order DISA writes them
+OFFICIAL_EMBEDDED_TAGS = (
+    "VulnDiscussion",
+    "FalsePositives",
+    "FalseNegatives",
+    "Documentable",
+    "Mitigations",
+    "SeverityOverrideGuidance",
+    "PotentialImpacts",
+    "ThirdPartyTools",
+    "MitigationControl",
+    "Responsibility",
+    "IAControls",
+)
+
+
+def _embedded_tags(description) -> list[tuple[str, str]]:
+    """The description read as DISA tools read it: its text (which the XML parser has
+    unescaped once) parsed as the embedded tags, each with its own text."""
+    fragment = etree.fromstring(f"<description>{description.text}</description>")
+    return [(child.tag, child.text or "") for child in fragment]
+
+
+def _text(element, name: str) -> str:
+    """The text of the element's child named name (a check's check-content: pass the check)."""
+    return "".join(element.xpath(f"./*[local-name()='{name}']//text()"))
+
+
+class TestTheStoredMarkdownIsWrittenAsItIs:
+    """The DISA export carries the stored Markdown; a placeholder such as <user> survives
+    in every text field, including inside the description's embedded tags."""
+
+    @pytest.fixture
+    def exported(self, test_benchmark, tmp_path):
+        from cis_bench.models.benchmark import ProfileDefinition
+
+        first, *rest = test_benchmark.recommendations
+        rule = first.model_copy(
+            update={
+                "title": "Ensure <path> is owned by <user>",
+                "description": "Owned by the account named in `<user>`.",
+                "rationale": "Keep _<partition>_ separate & mounted.",
+                "impact": "Users in <group> lose access.",
+                "additional_info": "See <path> for the vendor's notes.",
+                "audit": "Run:\n\n```\n# stat -c %U <path>\n```",
+                "remediation": "Run:\n\n```\n# chage --mindays <N> <user>\n```",
+                "profiles": ["Alpha"],
+            }
+        )
+        benchmark = test_benchmark.model_copy(
+            update={
+                "recommendations": [rule, *rest],
+                "profile_definitions": [
+                    ProfileDefinition(title="Alpha", description="Items for every <user>.")
+                ],
+            }
+        )
+        output_path = tmp_path / "disa.xml"
+        ExporterFactory.create("xccdf", style="disa").export(benchmark, str(output_path))
+        root = etree.parse(str(output_path)).getroot()
+        return root, root.xpath("//*[local-name()='Rule']")[0]
+
+    def test_the_description_holds_every_official_tag_with_each_part_as_stored(self, exported):
+        _, rule = exported
+
+        tags = _embedded_tags(rule.xpath("./*[local-name()='description']")[0])
+
+        assert tags == [
+            (
+                "VulnDiscussion",
+                "Owned by the account named in `<user>`.\n\nKeep _<partition>_ separate & mounted.",
+            ),
+            ("FalsePositives", ""),
+            ("FalseNegatives", ""),
+            ("Documentable", "false"),
+            ("Mitigations", "See <path> for the vendor's notes."),
+            ("SeverityOverrideGuidance", ""),
+            ("PotentialImpacts", "Users in <group> lose access."),
+            ("ThirdPartyTools", ""),
+            ("MitigationControl", ""),
+            ("Responsibility", ""),
+            ("IAControls", ""),
+        ]
+
+    def test_the_other_text_fields_are_written_as_stored(self, exported):
+        root, rule = exported
+
+        assert _text(rule, "title") == "Ensure <path> is owned by <user>"
+        assert _text(rule, "fixtext") == "Run:\n\n```\n# chage --mindays <N> <user>\n```"
+        check = rule.xpath("./*[local-name()='check']")[0]
+        assert _text(check, "check-content") == "Run:\n\n```\n# stat -c %U <path>\n```"
+        assert _text(root.xpath("//*[local-name()='Profile']")[0], "description") == (
+            "Items for every <user>."
+        )
+
+    def test_a_rule_whose_optional_fields_are_empty_writes_their_tags_empty(
+        self, test_benchmark, tmp_path
+    ):
+        first, *rest = test_benchmark.recommendations
+        rule = first.model_copy(update={"impact": None, "additional_info": None})
+        benchmark = test_benchmark.model_copy(update={"recommendations": [rule, *rest]})
+        output_path = tmp_path / "disa.xml"
+
+        ExporterFactory.create("xccdf", style="disa").export(benchmark, str(output_path))
+
+        root = etree.parse(str(output_path)).getroot()
+        description = root.xpath("//*[local-name()='Rule']")[0].xpath(
+            "./*[local-name()='description']"
+        )[0]
+        tags = _embedded_tags(description)
+        assert [tag for tag, _ in tags] == list(OFFICIAL_EMBEDDED_TAGS)
+        assert dict(tags)["Mitigations"] == "" and dict(tags)["PotentialImpacts"] == ""
