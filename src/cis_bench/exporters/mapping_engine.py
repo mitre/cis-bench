@@ -442,14 +442,14 @@ class MappingEngine:
                 )
             lookup = mapping.get("cci_lookup")
             if isinstance(lookup, dict) and lookup.get("source_field"):
-                named.append(
-                    (
-                        f"field_mappings.{name}.cci_lookup",
-                        lookup["source_field"],
-                        Recommendation,
-                        False,
+                # The CCI lookup reads CIS controls, so the field must be declared to hold
+                # them; a list of anything else would read as no controls.
+                field_info = Recommendation.model_fields.get(lookup["source_field"])
+                if field_info is None or field_info.annotation != list[CISControl]:
+                    raise ValueError(
+                        f"field_mappings.{name}.cci_lookup names {lookup['source_field']!r}, "
+                        f"which is not a field of Recommendation holding CIS controls"
                     )
-                )
             for i, child in enumerate(mapping.get("children") or []):
                 if isinstance(child, dict) and child.get("source_field"):
                     named.append(
@@ -642,14 +642,11 @@ class MappingEngine:
             raise ValueError(
                 "ident.cci_lookup needs source_field, the field holding the CIS controls"
             )
-        controls = getattr(rec, source_field)
-        if not all(isinstance(c, CISControl) for c in controls):
-            raise ValueError(
-                f"ident.cci_lookup.source_field {source_field!r} holds no CIS controls"
-            )
         controls_version = cci_lookup_config.get("cis_controls_version")
         cis_control_ids = [
-            c.control for c in controls if controls_version is None or c.version == controls_version
+            c.control
+            for c in getattr(rec, source_field)
+            if controls_version is None or c.version == controls_version
         ]
 
         # Use CCI service for deduplication

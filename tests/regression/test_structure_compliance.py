@@ -85,20 +85,6 @@ class TestControlMappingFidelity:
             written += len(references)
         assert written > 0, "the fixture has NIST controls no CCI covers"
 
-    def test_the_cci_lookup_reads_the_field_the_style_names(
-        self, sample_benchmark, disa_config_path
-    ):
-        # Pointed at a field that holds no CIS controls, the lookup refuses it by name, so
-        # the field read is the style's, not one the code picks.
-        from cis_bench.exporters.mapping_engine import MappingEngine
-
-        rec = next(r for r in sample_benchmark.recommendations if _v8_control_ids(r))
-        engine = MappingEngine(disa_config_path)
-        engine.config.field_mappings["ident"]["cci_lookup"]["source_field"] = "artifacts"
-
-        with pytest.raises(ValueError, match="artifacts"):
-            engine.get_ccis_with_deduplication(rec)
-
     def test_the_benchmark_reference_takes_its_href_from_the_style(
         self, sample_benchmark, disa_config_path
     ):

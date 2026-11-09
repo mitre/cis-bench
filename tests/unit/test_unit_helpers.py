@@ -1998,6 +1998,12 @@ class TestStyleFieldNames:
                 "field_mappings:\n  ident:\n    cci_lookup:\n      source_field: cis_controlz\n",
                 "cis_controlz",
             ),
+            # A real field that does not hold CIS controls (artifacts is a list of
+            # another model, and may be empty) is refused by name too.
+            (
+                "field_mappings:\n  ident:\n    cci_lookup:\n      source_field: artifacts\n",
+                "artifacts",
+            ),
             ("group_elements:\n  title:\n    source: titel\n", "titel"),
             ("benchmark:\n  title:\n    source: titel\n", "titel"),
         ],
