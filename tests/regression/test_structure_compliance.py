@@ -120,6 +120,18 @@ class TestControlMappingFidelity:
         with pytest.raises(ValueError, match="platform"):
             engine.map_rule(sample_benchmark.recommendations[0], {"platform": "ubuntu"})
 
+    def test_a_rule_id_template_reading_an_attribute_of_a_ref_value_is_refused(
+        self, sample_benchmark, disa_config_path
+    ):
+        # The ref's values are plain text; an attribute of one reads as "" ("SV-").
+        from cis_bench.exporters.mapping_engine import MappingEngine
+
+        engine = MappingEngine(disa_config_path)
+        engine.config.rule_id["template"] = "SV-{ref_normalized.foo}"
+
+        with pytest.raises(ValueError, match="ref_normalized.foo"):
+            engine.map_rule(sample_benchmark.recommendations[0], {})
+
     @pytest.mark.parametrize(
         ("style", "dc_elements"),
         [

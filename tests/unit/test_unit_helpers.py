@@ -1989,6 +1989,11 @@ class TestStyleFieldNames:
                 "field_mappings:\n  title:\n    source_field: mitre_mapping.techniques\n",
                 "mitre_mapping.techniques",
             ),
+            # A dotted path through a list reads the list's attribute, which is no value.
+            (
+                "field_mappings:\n  mitre_techniques:\n    source_field: cis_controls.control\n",
+                "cis_controls.control",
+            ),
             ("group_elements:\n  title:\n    source: titel\n", "titel"),
             ("benchmark:\n  title:\n    source: titel\n", "titel"),
         ],

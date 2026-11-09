@@ -30,8 +30,8 @@ import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass, field, fields
 from pathlib import Path
-from types import ModuleType
-from typing import Any, get_args
+from types import ModuleType, UnionType
+from typing import Any, Union, get_args, get_origin
 
 import yaml
 from pydantic import BaseModel
@@ -307,14 +307,16 @@ class ConfigLoader:
 
 
 def _model_in(annotation: Any) -> type[BaseModel] | None:
-    """The Pydantic model a field holds, inside "X | None" or "list[X]"; None for a value
-    that is not a model (a str, a list of str)."""
+    """The Pydantic model a field holds, directly or inside "X | None"; None for a list or a
+    value that is not a model. A dotted path reads attributes one by one (getattr), so it
+    can pass through an optional model but not through a list."""
     if isinstance(annotation, type) and issubclass(annotation, BaseModel):
         return annotation
-    for arg in get_args(annotation):
-        model = _model_in(arg)
-        if model is not None:
-            return model
+    if get_origin(annotation) in (UnionType, Union):
+        for arg in get_args(annotation):
+            model = _model_in(arg)
+            if model is not None:
+                return model
     return None
 
 
@@ -982,7 +984,7 @@ class MappingEngine:
             {
                 name
                 for expression in re.findall(r"\{([^}]+)\}", template)
-                if (name := expression.partition("|")[0].strip().split(".")[0]) not in values
+                if (name := expression.partition("|")[0].strip()) not in values
             }
         )
         if unknown:

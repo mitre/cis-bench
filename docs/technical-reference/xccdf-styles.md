@@ -61,7 +61,7 @@ controls CM-7 and AC-3 (element text shortened):
 ```xml
 <Rule id="SV-030101r1_rule" severity="medium" weight="10.0">
 
-<!-- The recommendation's ref, with the benchmark's version prefix when it has one -->
+<!-- The recommendation's ref -->
 <version>3.1.1</version>
 
 <title>Ensure the example service is disabled</title>
@@ -134,10 +134,11 @@ controls CM-7 and AC-3 (element text shortened):
 |-----------|-------|-----------|
 | Rule/@severity | "medium" | CIS has no severity concept, default to medium (CAT II equivalent) |
 | Rule/@weight | "10.0" | DISA standard weight |
-| Rule/@id | `xccdf_org.cisecurity.benchmarks_rule_{ref_normalized}` | CIS ref in the CIS benchmarks namespace |
-| fixtext/@fixref | `F-{ref}` | Links to fix element |
-| fix/@id | `F-{ref}` | Matches fixref |
-| check/@system | `C-{ref}` | Synthetic check ID |
+| Rule/@id | `SV-{stig_number}r1_rule` | STIG rule id from the ref (3.1.1 gives `SV-030101r1_rule`) |
+| Group/@id | `V-{stig_number}` | STIG group id from the ref |
+| fixtext/@fixref | `F-{ref_normalized}` | Links to fix element |
+| fix/@id | `F-{ref_normalized}` | Matches fixref |
+| check/@system | `C-{ref_normalized}` | Synthetic check ID |
 
 ### CCI + NIST Deduplication Algorithm
 
@@ -335,8 +336,8 @@ Verify the permissions are 644 or more restrictive.
 |--------|------------|------------------|
 | **Description structure** | Embedded XML tags (VulnDiscussion, etc.) | Clean separate elements |
 | **NIST mapping** | Via CCIs (`<ident>`) | Direct references |
-| **CIS Controls** | In metadata only | In metadata |
-| **MITRE** | In metadata | In metadata |
+| **CIS Controls** | `<ident>` per version | `<metadata>` cis_controls and `<ident>` with controlURI |
+| **MITRE** | `<ident>` | `<ident>` |
 | **Rationale** | Embedded in VulnDiscussion | Separate `<rationale>` element |
 | **Impact** | Embedded as PotentialImpacts | `<warning>` element |
 | **Complexity** | Higher (DoD conventions) | Lower (clean structure) |
@@ -406,9 +407,9 @@ covered base control.
 | **Use case** | DoD compliance, STIG viewers | General compliance, analysis |
 | **NIST mapping** | CCIs (DoD standard) | Direct references |
 | **Description** | VulnDiscussion + legacy tags | Clean description + rationale |
-| **CIS Controls** | Metadata only | Metadata (primary) |
-| **MITRE** | Metadata | Metadata |
-| **Profiles** | Metadata | Metadata |
+| **CIS Controls** | `<ident>` | `<metadata>` and `<ident>` |
+| **MITRE** | `<ident>` | `<ident>` |
+| **Profiles** | Benchmark `<Profile>` | Benchmark `<Profile>` |
 | **Validation** | DISA STIG tools | Generic XCCDF tools |
 | **File size** | Smaller (no duplicated NIST) | Slightly larger |
 | **Complexity** | Higher | Lower |
