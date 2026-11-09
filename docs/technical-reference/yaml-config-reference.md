@@ -352,8 +352,9 @@ content: "{nist_control_id}" # Variable substitution
 A benchmark's text fields hold Markdown (see the [data model](data-model.md)), so a style that
 writes the text as it is names `none`: the CIS style does for every rule text field (title,
 description, rationale, warning, fixtext, check-content) and for the profile descriptions.
-`strip_html` and `html_to_markdown` parse the text as HTML, and read a placeholder such as
-`<user>` as a tag; the DISA style still names them for the fields it writes as plain text.
+`strip_html`, `strip_html_keep_code` and `html_to_markdown` parse the text as HTML, and read a
+placeholder such as `<user>` as a tag; the DISA style still names `strip_html` and
+`strip_html_keep_code` for the fields it writes as plain text.
 
 Define available transformations:
 
