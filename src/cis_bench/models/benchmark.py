@@ -6,7 +6,7 @@ All scrapers produce this format, all exporters consume this format.
 
 import json
 from datetime import UTC, date, datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Final, Literal
 
 from pydantic import (
     AfterValidator,
@@ -16,6 +16,29 @@ from pydantic import (
     HttpUrl,
     StringConstraints,
     field_validator,
+    model_validator,
+)
+
+from cis_bench.utils.markdown_text import html_to_markdown, unix_line_breaks
+
+# Scraper strategy versions that saved the page's rendered HTML in recommendation text.
+# WorkbenchV1Strategy (v1_2025_10, the first strategy) copied each field's HTML from the
+# page; WorkbenchV2Strategy (v2_2026_01, its successor) reads the Markdown WorkBench gives.
+# A stored copy names the strategy that saved it in scraper_version, and a copy from one
+# of these versions is converted to Markdown when it loads (Benchmark.text_as_markdown).
+HTML_ERA_SCRAPER_VERSIONS: Final[frozenset[str]] = frozenset({"v1_2025_10"})
+
+# A recommendation's text fields: Markdown in a loaded copy, with \n line breaks.
+RECOMMENDATION_TEXT_FIELDS: Final[tuple[str, ...]] = (
+    "description",
+    "rationale",
+    "impact",
+    "audit",
+    "remediation",
+    "additional_info",
+    "default_value",
+    "artifact_equation",
+    "references",
 )
 
 
@@ -107,30 +130,34 @@ class Recommendation(BaseModel):
         default_factory=list, description="Test artifacts for automated compliance checking"
     )
 
-    # ============ Content Fields (HTML) ============
-    description: str | None = Field(None, description="Detailed description (HTML format)")
+    # ============ Content Fields (Markdown, as WorkBench gives it) ============
+    description: str | None = Field(None, description="Detailed description (Markdown)")
 
-    rationale: str | None = Field(None, description="Rationale/justification (HTML format)")
+    rationale: str | None = Field(None, description="Rationale/justification (Markdown)")
 
-    impact: str | None = Field(None, description="Impact statement (HTML format)")
+    impact: str | None = Field(None, description="Impact statement (Markdown)")
 
-    audit: str | None = Field(None, description="Audit procedure (HTML format with code blocks)")
+    audit: str | None = Field(None, description="Audit procedure (Markdown with code blocks)")
 
     remediation: str | None = Field(
-        None, description="Remediation steps (HTML format with code blocks)"
+        None, description="Remediation steps (Markdown with code blocks)"
     )
 
     additional_info: str | None = Field(
-        None, description="Additional information and notes (HTML format)"
+        None, description="Additional information and notes (Markdown)"
     )
 
-    default_value: str | None = Field(None, description="Default configuration value (HTML format)")
+    default_value: str | None = Field(None, description="Default configuration value (Markdown)")
 
-    artifact_equation: str | None = Field(None, description="Artifact equation logic (HTML format)")
+    artifact_equation: str | None = Field(None, description="Artifact equation logic (Markdown)")
 
-    references: str | None = Field(
-        None, description="External references and citations (HTML format)"
-    )
+    references: str | None = Field(None, description="External references and citations (Markdown)")
+
+    @field_validator(*RECOMMENDATION_TEXT_FIELDS)
+    @classmethod
+    def line_breaks_are_newlines(cls, value: str | None) -> str | None:
+        """Every text field's line breaks are \\n; WorkBench's Markdown comes with \\r\\n."""
+        return None if value is None else unix_line_breaks(value)
 
     @field_validator("profiles")
     @classmethod
@@ -222,8 +249,52 @@ class Benchmark(BaseModel):
 
     scraper_version: str = Field(..., description="Scraper strategy version used")
 
+    text_format: Literal["html", "markdown"] = Field(
+        ...,
+        description="The form of the recommendation text fields as written: 'markdown', the "
+        "form WorkBench gives and every loaded copy holds, or 'html' for a copy the v1 "
+        "scraper saved, which is converted to Markdown when it loads. A stored copy saved "
+        "before this field existed is 'html' when its scraper_version saved HTML and "
+        "'markdown' otherwise",
+    )
+
     total_recommendations: int = Field(..., ge=0)
     recommendations: list[Recommendation] = Field(...)
+
+    @model_validator(mode="before")
+    @classmethod
+    def text_format_of_a_copy_saved_without_one(cls, data: Any) -> Any:
+        """A copy saved before text_format existed names its text's form by its scraper."""
+        if isinstance(data, dict) and "text_format" not in data:
+            html_era = data.get("scraper_version") in HTML_ERA_SCRAPER_VERSIONS
+            return {**data, "text_format": "html" if html_era else "markdown"}
+        return data
+
+    @model_validator(mode="after")
+    def text_as_markdown(self) -> "Benchmark":
+        """A loaded copy holds Markdown: HTML a v1-era copy saved is converted here.
+
+        The converted recommendations are new, validated Recommendation objects: the
+        Markdown goes through the field validators (so a line break the HTML spelled as an
+        entity ends as \\n too), and Recommendation objects the caller passed in keep their
+        text (building twice from them converts each time from that text, once).
+        """
+        if self.text_format == "html":
+            self.recommendations = [
+                Recommendation.model_validate(
+                    {
+                        **recommendation.model_dump(),
+                        **{
+                            name: html_to_markdown(value)
+                            for name in RECOMMENDATION_TEXT_FIELDS
+                            if (value := getattr(recommendation, name))
+                        },
+                    }
+                )
+                for recommendation in self.recommendations
+            ]
+            self.text_format = "markdown"
+        return self
 
     @field_validator("recommendations")
     @classmethod

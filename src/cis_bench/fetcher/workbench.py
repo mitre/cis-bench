@@ -23,6 +23,7 @@ from cis_bench.fetcher.http import ThreadSessions, get_with_retry, workbench_pag
 from cis_bench.fetcher.strategies.base import ExtractedRecommendation, ScraperStrategy
 from cis_bench.fetcher.strategies.detector import StrategyDetector
 from cis_bench.models.benchmark import (
+    HTML_ERA_SCRAPER_VERSIONS,
     Benchmark,
     BenchmarkPage,
     ProfileDefinition,
@@ -483,7 +484,9 @@ class WorkbenchScraper:
             logger.error(f"Failed to fetch {where}{detail}")
         recommendations = fetched.results
 
-        # Create Benchmark (Pydantic validates automatically)
+        # Create Benchmark (Pydantic validates automatically). A strategy that copied the
+        # page's HTML says so, and the model turns that text into Markdown.
+        scraper_version = self._detected_strategy.version if self._detected_strategy else "manual"
         benchmark = Benchmark(
             title=title,
             benchmark_id=benchmark_id,
@@ -492,9 +495,8 @@ class WorkbenchScraper:
             published_date=page.published_date,
             description=page.description,
             profile_definitions=page.profile_definitions,
-            scraper_version=(
-                self._detected_strategy.version if self._detected_strategy else "manual"
-            ),
+            scraper_version=scraper_version,
+            text_format="html" if scraper_version in HTML_ERA_SCRAPER_VERSIONS else "markdown",
             total_recommendations=len(recommendations),
             recommendations=recommendations,
             downloaded_at=datetime.now(UTC),

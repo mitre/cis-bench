@@ -271,7 +271,7 @@
             }
           ],
           "default": null,
-          "description": "Detailed description (HTML format)",
+          "description": "Detailed description (Markdown)",
           "title": "Description"
         },
         "rationale": {
@@ -284,7 +284,7 @@
             }
           ],
           "default": null,
-          "description": "Rationale/justification (HTML format)",
+          "description": "Rationale/justification (Markdown)",
           "title": "Rationale"
         },
         "impact": {
@@ -297,7 +297,7 @@
             }
           ],
           "default": null,
-          "description": "Impact statement (HTML format)",
+          "description": "Impact statement (Markdown)",
           "title": "Impact"
         },
         "audit": {
@@ -310,7 +310,7 @@
             }
           ],
           "default": null,
-          "description": "Audit procedure (HTML format with code blocks)",
+          "description": "Audit procedure (Markdown with code blocks)",
           "title": "Audit"
         },
         "remediation": {
@@ -323,7 +323,7 @@
             }
           ],
           "default": null,
-          "description": "Remediation steps (HTML format with code blocks)",
+          "description": "Remediation steps (Markdown with code blocks)",
           "title": "Remediation"
         },
         "additional_info": {
@@ -336,7 +336,7 @@
             }
           ],
           "default": null,
-          "description": "Additional information and notes (HTML format)",
+          "description": "Additional information and notes (Markdown)",
           "title": "Additional Info"
         },
         "default_value": {
@@ -349,7 +349,7 @@
             }
           ],
           "default": null,
-          "description": "Default configuration value (HTML format)",
+          "description": "Default configuration value (Markdown)",
           "title": "Default Value"
         },
         "artifact_equation": {
@@ -362,7 +362,7 @@
             }
           ],
           "default": null,
-          "description": "Artifact equation logic (HTML format)",
+          "description": "Artifact equation logic (Markdown)",
           "title": "Artifact Equation"
         },
         "references": {
@@ -375,7 +375,7 @@
             }
           ],
           "default": null,
-          "description": "External references and citations (HTML format)",
+          "description": "External references and citations (Markdown)",
           "title": "References"
         }
       },
@@ -460,6 +460,15 @@
       "title": "Scraper Version",
       "type": "string"
     },
+    "text_format": {
+      "description": "The form of the recommendation text fields as written: 'markdown', the form WorkBench gives and every loaded copy holds, or 'html' for a copy the v1 scraper saved, which is converted to Markdown when it loads. A stored copy saved before this field existed is 'html' when its scraper_version saved HTML and 'markdown' otherwise",
+      "enum": [
+        "html",
+        "markdown"
+      ],
+      "title": "Text Format",
+      "type": "string"
+    },
     "total_recommendations": {
       "minimum": 0,
       "title": "Total Recommendations",
@@ -479,6 +488,7 @@
     "url",
     "version",
     "scraper_version",
+    "text_format",
     "total_recommendations",
     "recommendations"
   ],

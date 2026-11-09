@@ -39,7 +39,7 @@ def sample_benchmark():
         url="https://workbench.cisecurity.org/benchmarks/23598",
         version="v4.0.0",
         downloaded_at=datetime(2025, 10, 18, 12, 0, 0),
-        scraper_version="1.0.0",
+        scraper_version="v1_2025_10",
         total_recommendations=2,
         recommendations=[
             Recommendation(
