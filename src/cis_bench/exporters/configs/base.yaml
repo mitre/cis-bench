@@ -84,6 +84,5 @@ post_processing:
   remove_override_attr: true
 
   # Post-processing handlers to run (in order)
-  # Available: dublin_core_injection, metadata_injection
-  handlers:
-    - dublin_core_injection
+  # Available: metadata_injection
+  handlers: []

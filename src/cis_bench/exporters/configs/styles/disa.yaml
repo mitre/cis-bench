@@ -455,5 +455,4 @@ post_processing:
   remove_override_attr: true
 
   # Handlers to run
-  handlers:
-    - dublin_core_injection
+  handlers: []

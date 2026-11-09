@@ -12,7 +12,7 @@ from cis_bench.exceptions import ExportError
 from cis_bench.exporters.base import BaseExporter, ExporterFactory
 from cis_bench.exporters.mapping_engine import MappingEngine
 from cis_bench.models.benchmark import Benchmark, Recommendation
-from cis_bench.utils.xml_utils import DublinCoreInjector, XCCDFPostProcessor, XCCDFSerializer
+from cis_bench.utils.xml_utils import XCCDFPostProcessor, XCCDFSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -174,15 +174,9 @@ class XCCDFExporter(BaseExporter):
 
         # Run handlers from config (in order)
         handlers = post_processing_config.get("handlers", [])
-        dc_ns = namespaces_config.get("dc", "http://purl.org/dc/elements/1.1/")
 
         for handler in handlers:
-            if handler == "dublin_core_injection":
-                logger.debug("Running handler: dublin_core_injection")
-                xml_output = DublinCoreInjector.inject_dc_into_all_references(
-                    xml_output, xccdf_namespace=xccdf_ns, dc_namespace=dc_ns
-                )
-            elif handler == "metadata_injection":
+            if handler == "metadata_injection":
                 logger.debug("Running handler: metadata_injection")
                 xml_output = self._inject_metadata_from_config(xml_output)
             else:

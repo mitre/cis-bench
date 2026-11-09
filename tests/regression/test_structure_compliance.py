@@ -167,6 +167,35 @@ class TestControlMappingFidelity:
         assert [(etree.QName(child).localname, child.text) for child in reference] == dc_elements
         assert not (reference.text or "").strip()
 
+    def test_a_dublin_core_value_is_written_whole(self, sample_benchmark, tmp_path):
+        # Dublin Core content is built as elements, so no separator in a value can cut it.
+        from cis_bench.exporters.xccdf_unified_exporter import XCCDFExporter
+
+        exporter = XCCDFExporter(style="disa")
+        exporter.config.benchmark["reference"]["dc_elements"] = [
+            {"element": "dc:title", "content": "{benchmark.title}"}
+        ]
+        title = "CIS Example Benchmark || Draft: 2"
+        benchmark = sample_benchmark.model_copy(update={"title": title})
+        output = tmp_path / "disa.xml"
+
+        exporter.export(benchmark, str(output))
+
+        reference = etree.parse(str(output)).getroot().find("{*}reference")
+        assert [(etree.QName(c).localname, c.text) for c in reference] == [("title", title)]
+
+    def test_a_style_with_dublin_core_elements_but_no_dc_namespace_is_refused(
+        self, sample_benchmark, disa_config_path
+    ):
+        # The elements need the namespace URI the style declares; there is no built-in one.
+        from cis_bench.exporters.mapping_engine import MappingEngine
+
+        engine = MappingEngine(disa_config_path)
+        del engine.config.benchmark["namespaces"]["dc"]
+
+        with pytest.raises(ValueError, match="dc"):
+            engine.create_reference(sample_benchmark)
+
     @pytest.mark.parametrize("style", ["cis", "disa"])
     def test_profiles_select_every_rule_listing_them(self, sample_benchmark, tmp_path, style):
         tree = _export(sample_benchmark, tmp_path, style)

@@ -270,6 +270,13 @@ The NIST controls no CCI on the rule covers are written as references by a field
 "NIST SP 800-53" and `dc:identifier`). A `dublin_core` field with any other `source_logic`
 stops the export with an error. The CCI lookup runs once per rule for both.
 
+Each `dc_elements` entry becomes a child element of the reference: the engine builds an
+xsdata `AnyElement` in the namespace the style declares for the element's prefix
+(`benchmark.namespaces.dc`), with the filled `content` as its text, and puts it in the
+reference's wildcard content, so xsdata writes it like any other element and a value may
+contain any character. A prefix with no declared namespace stops the export. The same
+applies to the Benchmark's own `reference` (`benchmark.reference.dc_elements`).
+
 ### Custom Namespace Elements
 
 Elements in custom namespace:

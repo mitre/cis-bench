@@ -123,66 +123,6 @@ class TestXCCDFSerializer:
         assert "<root>" in result
 
 
-class TestDublinCoreInjector:
-    """Tests for DublinCoreInjector."""
-
-    def test_inject_dc_into_all_references_with_markers(self):
-        """Should parse DC markers and convert to proper DC elements (lines 227-283)."""
-        from cis_bench.utils.xml_utils import DublinCoreInjector
-
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.1"
-
-        # XML with DC markers in reference text
-        xml_input = f"""<?xml version="1.0"?>
-        <Benchmark xmlns="{xccdf_ns}">
-            <reference>DC:dc:title:NIST SP 800-53||DC:dc:identifier:CM-7</reference>
-        </Benchmark>"""
-
-        result = DublinCoreInjector.inject_dc_into_all_references(xml_input, xccdf_ns)
-
-        # DC elements should be created
-        assert "NIST SP 800-53" in result
-        assert "CM-7" in result
-        # Original marker text should be gone
-        assert "DC:dc:" not in result
-
-    def test_inject_dc_into_all_references_clears_existing_children(self):
-        """Should clear existing children from reference element (line 185)."""
-        from cis_bench.utils.xml_utils import DublinCoreInjector
-
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.1"
-
-        # XML with DC markers AND existing child elements
-        xml_input = f"""<?xml version="1.0"?>
-        <Benchmark xmlns="{xccdf_ns}">
-            <reference>DC:dc:title:New Title<existingChild>old</existingChild></reference>
-        </Benchmark>"""
-
-        result = DublinCoreInjector.inject_dc_into_all_references(xml_input, xccdf_ns)
-
-        # New DC element should be created
-        assert "New Title" in result
-        # Existing child should be removed
-        assert "existingChild" not in result
-        assert "old" not in result
-
-    def test_inject_dc_into_all_references_no_markers(self):
-        """Should not modify references without DC markers."""
-        from cis_bench.utils.xml_utils import DublinCoreInjector
-
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.1"
-
-        xml_input = f"""<?xml version="1.0"?>
-        <Benchmark xmlns="{xccdf_ns}">
-            <reference>https://www.cisecurity.org/controls</reference>
-        </Benchmark>"""
-
-        result = DublinCoreInjector.inject_dc_into_all_references(xml_input, xccdf_ns)
-
-        # Original content preserved
-        assert "https://www.cisecurity.org/controls" in result
-
-
 class TestXCCDFPostProcessor:
     """Tests for XCCDFPostProcessor.process."""
 
