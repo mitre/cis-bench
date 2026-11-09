@@ -35,6 +35,7 @@ from typing import Annotated, Any, Union, get_args, get_origin
 
 import yaml
 from pydantic import BaseModel
+from xsdata.formats.dataclass.models.generics import AnyElement
 
 from cis_bench.exceptions import ExportError
 from cis_bench.models.benchmark import (
@@ -488,13 +489,11 @@ class MappingEngine:
             version: XCCDF version ('1.1.4' or '1.2')
         """
         self.xccdf_models: ModuleType
-        self.dc_models: ModuleType | None
         if version == "1.1.4":
             # Import XCCDF 1.1.4 models
-            from cis_bench.models.xccdf_v1_1 import dc, xccdf_1_1_4
+            from cis_bench.models.xccdf_v1_1 import xccdf_1_1_4
 
             self.xccdf_models = xccdf_1_1_4
-            self.dc_models = dc
             self.xccdf_namespace = "http://checklists.nist.gov/xccdf/1.1"
 
         elif version == "1.2":
@@ -502,7 +501,6 @@ class MappingEngine:
             from cis_bench.models.xccdf import xccdf_1_2
 
             self.xccdf_models = xccdf_1_2
-            self.dc_models = None  # 1.2 doesn't have separate DC module
             self.xccdf_namespace = "http://checklists.nist.gov/xccdf/1.2"
 
         else:
@@ -536,22 +534,6 @@ class MappingEngine:
             for f in fields(rule_class)
             if f.metadata.get("type") == "Element"
         ]
-
-    def get_dc_class(self, class_name: str):
-        """Get Dublin Core class by name.
-
-        Args:
-            class_name: Name of DC class (e.g., 'Publisher', 'Source')
-
-        Returns:
-            Class from DC module (if available)
-        """
-        if self.dc_models:
-            return getattr(self.dc_models, class_name)
-        else:
-            # XCCDF 1.2 doesn't have separate DC module
-            # Need to create elements manually
-            return None
 
     def normalize_ref(self, ref: str) -> str:
         """Normalize CIS ref for IDs (3.1.1 → 3_1_1)."""
@@ -756,21 +738,34 @@ class MappingEngine:
         RearMatterType = self.get_xccdf_class(type_name)
         return RearMatterType(content=[])
 
-    @staticmethod
-    def dublin_core_markers(dc_elements_config: list[dict], values: dict[str, Any]) -> str:
-        """A reference's Dublin Core elements as the markers the dublin_core_injection
-        post-processing handler turns into elements: "DC:dc:title:NIST SP 800-53||DC:dc:
-        identifier:CM-7" (xsdata cannot serialize lxml elements in mixed content). Each
-        element's content template is filled from values."""
-        return "||".join(
-            f"DC:{dc['element']}:{VariableSubstituter.substitute(dc['content'], values)}"
-            for dc in dc_elements_config
-        )
+    def dublin_core_elements(
+        self, dc_elements_config: list[dict], values: dict[str, Any]
+    ) -> list[AnyElement]:
+        """A reference's Dublin Core elements as xsdata content, from the style's dc_elements
+        (element "dc:title", content template): the namespace is the one the style declares
+        for the element's prefix (benchmark.namespaces), and each content template is
+        filled from values. xsdata writes them as child elements of the reference.
 
-    def create_reference(self, benchmark: Benchmark) -> tuple[str, list[str]]:
+        Raises:
+            ValueError: An element's prefix has no namespace in the style.
+        """
+        elements = []
+        for dc in dc_elements_config:
+            prefix, _, local_name = dc["element"].partition(":")
+            namespace = self.config.namespaces.get(prefix)
+            if not namespace:
+                raise ValueError(
+                    f"dc_elements names {dc['element']!r} but benchmark.namespaces declares "
+                    f"no {prefix!r} namespace"
+                )
+            text = str(VariableSubstituter.substitute(dc["content"], values))
+            elements.append(AnyElement(qname=f"{{{namespace}}}{local_name}", text=text))
+        return elements
+
+    def create_reference(self, benchmark: Benchmark) -> tuple[str, list[AnyElement]]:
         """The Benchmark's own reference: its href from the style's
         benchmark.reference.attributes.href (the benchmark's URL when the style names none)
-        and the Dublin Core markers of benchmark.reference.dc_elements (none when the style
+        and the Dublin Core elements of benchmark.reference.dc_elements (none when the style
         declares none)."""
         reference_config = self.config.benchmark.get("reference", {})
         href_template = (reference_config.get("attributes") or {}).get("href")
@@ -781,9 +776,7 @@ class MappingEngine:
             else str(benchmark.url)
         )
         dc_elements_config = reference_config.get("dc_elements", [])
-        if not dc_elements_config:
-            return href, []
-        return href, [self.dublin_core_markers(dc_elements_config, values)]
+        return href, self.dublin_core_elements(dc_elements_config, values)
 
     def create_plain_texts(self, benchmark: Benchmark):
         """Create plain-text elements from config (version-agnostic).
@@ -1165,11 +1158,9 @@ class MappingEngine:
                         rule_fields[target_element] = [
                             FieldType(
                                 href=href,
-                                content=[
-                                    self.dublin_core_markers(
-                                        dc_elements_config, {"nist_control_id": nist_id}
-                                    )
-                                ],
+                                content=self.dublin_core_elements(
+                                    dc_elements_config, {"nist_control_id": nist_id}
+                                ),
                             )
                             for nist_id in nist_controls
                         ]
@@ -1425,8 +1416,7 @@ class MappingEngine:
         benchmark_fields["rear_matter"] = [self.create_rear_matter(benchmark)]
         benchmark_fields["plain_text"] = self.create_plain_texts(benchmark)
 
-        # Reference: its Dublin Core markers are expanded by the dublin_core_injection
-        # handler, the same one that expands every Rule reference
+        # Reference: its Dublin Core elements are xsdata content, as every Rule reference's
         ref_href, ref_content = self.create_reference(benchmark)
         ReferenceType = self.get_xccdf_class("ReferenceType")
         benchmark_fields["reference"] = [ReferenceType(href=ref_href, content=ref_content)]

@@ -427,5 +427,4 @@ post_processing:
 
   # Handlers to run (includes metadata injection for CIS Controls)
   handlers:
-    - dublin_core_injection
     - metadata_injection

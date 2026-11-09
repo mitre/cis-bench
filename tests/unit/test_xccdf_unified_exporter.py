@@ -303,7 +303,7 @@ class TestPostProcessing:
             )
 
         without_injection = XCCDFExporter(style="cis")
-        without_injection.config.post_processing["handlers"] = ["dublin_core_injection"]
+        without_injection.config.post_processing["handlers"] = []
 
         assert controls_metadata(XCCDFExporter(style="cis"))
         assert controls_metadata(without_injection) == []

@@ -106,7 +106,7 @@ class XCCDFSerializer:
             XML string with declaration
 
         Note:
-            Used for post-processed XML (after namespace fixes, DC injection, etc.).
+            Used for post-processed XML (after namespace fixes, metadata injection, etc.).
         """
         xml_bytes: bytes = etree.tostring(
             tree, pretty_print=pretty, xml_declaration=True, encoding="UTF-8"
@@ -114,83 +114,10 @@ class XCCDFSerializer:
         return xml_bytes.decode("utf-8")
 
 
-class DublinCoreInjector:
-    """Inject Dublin Core elements into XCCDF reference elements.
-
-    xsdata limitation: Can't serialize lxml Elements in mixed content.
-    This utility injects DC elements via post-processing.
-    """
-
-    @staticmethod
-    def inject_dc_into_all_references(
-        xml_string: str,
-        xccdf_namespace: str,
-        dc_namespace: str = "http://purl.org/dc/elements/1.1/",
-    ) -> str:
-        """Inject Dublin Core elements into ALL reference elements with DC markers.
-
-        Looks for reference content with DC markers like "DC:dc:title:NIST SP 800-53"
-        and converts them to proper DC XML elements.
-
-        Args:
-            xml_string: XML string
-            xccdf_namespace: XCCDF namespace URI
-            dc_namespace: Dublin Core namespace URI
-
-        Returns:
-            XML with DC elements properly injected
-        """
-        logger.debug("Injecting Dublin Core elements into references")
-        root = etree.fromstring(xml_string.encode("utf-8"))
-
-        # Find ALL reference elements in the document
-        # Try both with namespace and without (in case namespace already fixed)
-        ref_elems = list(root.iter(f"{{{xccdf_namespace}}}reference")) + list(
-            root.iter("reference")
-        )
-
-        logger.debug(f"Found {len(ref_elems)} reference elements to process")
-
-        for ref_elem in ref_elems:
-            # Check if content has DC markers
-            if ref_elem.text and ref_elem.text.startswith("DC:"):
-                # Parse DC markers from content
-                # Format: "DC:dc:title:NIST SP 800-53||DC:dc:identifier:CM-7"
-                content_text = ref_elem.text.strip()
-
-                # Clear existing text content
-                ref_elem.text = None
-                for child in list(ref_elem):
-                    ref_elem.remove(child)
-
-                # Split by "||" to get each DC marker
-                dc_markers = content_text.split("||")
-
-                for marker in dc_markers:
-                    if marker.startswith("DC:"):
-                        # Remove "DC:" prefix and parse: "dc:title:NIST SP 800-53"
-                        marker_content = marker[3:]  # Remove "DC:" prefix
-                        parts = marker_content.split(":", 2)
-
-                        if len(parts) >= 3:
-                            # parts[0] is "dc" prefix
-                            dc_elem_name = parts[1]  # "title" or "identifier"
-                            dc_value = parts[2]  # "NIST SP 800-53" or "CM-7"
-
-                            # Create DC element with proper namespace
-                            dc_elem = etree.SubElement(
-                                ref_elem, f"{{{dc_namespace}}}{dc_elem_name}"
-                            )
-                            dc_elem.text = dc_value
-
-        return XCCDFSerializer.tree_to_string(root)
-
-
 class XCCDFPostProcessor:
     """Complete XCCDF post-processing pipeline.
 
-    Combines namespace fixing, DC injection, and other workarounds
-    for xsdata limitations.
+    Combines namespace fixing and the other output workarounds for xsdata limitations.
 
     All behavior is CONFIG-DRIVEN via post_processing_config parameter.
     No hardcoded style-specific logic.

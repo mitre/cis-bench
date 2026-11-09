@@ -779,6 +779,16 @@ Uninstall or Disable Unnecessary Services
 </metadata>
 ```
 
+### Dublin Core references
+
+A reference's Dublin Core children (`dc_elements` on a `dublin_core` field, or on
+`benchmark.reference`) are built by `MappingEngine.dublin_core_elements` as xsdata
+`AnyElement` instances: qualified name from the prefix's namespace in
+`benchmark.namespaces`, text from the filled `content` template. `ReferenceType.content`
+is a wildcard (`##any`, mixed) in both XCCDF 1.1.4 and 1.2, so xsdata serializes them as
+child elements; the final namespace pass then declares `dc` once at the root. No
+post-processing handler is involved.
+
 ### Post-processing: metadata injection
 
 Elements marked `requires_post_processing: true` are built as lxml elements and
@@ -787,7 +797,7 @@ style enables under `post_processing.handlers`:
 
 ```yaml
 post_processing:
-  handlers: [dublin_core_injection, metadata_injection]
+  handlers: [metadata_injection]
 ```
 
 Where the `<metadata>` lands is not configured. XCCDF fixes the order of a
