@@ -501,18 +501,18 @@ mitre_mapping # MITREMapping - MITRE ATT&CK mappings
 nist_controls # List[str] - NIST control IDs
 ```
 
-### Content Fields (HTML)
+### Content Fields (Markdown)
 
 ```yaml
-description # Detailed description (HTML)
-rationale # Rationale/justification (HTML)
-impact # Impact statement (HTML)
-audit # Audit procedure (HTML)
-remediation # Remediation steps (HTML)
-additional_info # Additional information (HTML)
-default_value # Default config value (HTML)
-artifact_equation # Artifact equation (HTML)
-references # External references (HTML)
+description # Detailed description (Markdown)
+rationale # Rationale/justification (Markdown)
+impact # Impact statement (Markdown)
+audit # Audit procedure (Markdown)
+remediation # Remediation steps (Markdown)
+additional_info # Additional information (Markdown)
+default_value # Default config value (Markdown)
+artifact_equation # Artifact equation (Markdown)
+references # External references (Markdown)
 ```
 
 ### Nested Field Access

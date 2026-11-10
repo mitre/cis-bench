@@ -2182,6 +2182,64 @@ class TestTransformsAreCheckedWhenTheStyleLoads:
         ):
             MappingEngine(style)
 
+    @pytest.mark.parametrize(
+        ("section", "where"),
+        [
+            ({"rule_id": {"template": "{ref_normalized|strip_html}"}}, "rule_id.template"),
+            ({"group_id": {"template": "{ref_normalized|no_such_transform}"}}, "group_id.template"),
+            (
+                {
+                    "benchmark": {
+                        "profiles": {
+                            "generate_from_rules": True,
+                            "id_template": "{profile.title|strip_html}",
+                        }
+                    }
+                },
+                "benchmark.profiles.id_template",
+            ),
+            (
+                {
+                    "field_mappings": {
+                        "mitre_techniques": {
+                            "target_element": "ident",
+                            "structure": "ident_from_list",
+                            "source_field": "mitre_mapping.techniques",
+                            "ident_spec": {
+                                "system_template": "https://attack.mitre.org/techniques",
+                                "value_template": "{item|html_to_markdown}",
+                            },
+                        }
+                    }
+                },
+                "field_mappings.mitre_techniques.ident_spec.value_template",
+            ),
+        ],
+    )
+    def test_a_template_filter_naming_no_transform_is_refused(
+        self, tmp_path, cis_config_path, section, where
+    ):
+        """A filter in a template ({value|transform}) is a transform name too; it is checked
+        where the style is loaded, not when the first rule reaches the template."""
+        style = self._style(tmp_path, cis_config_path, **section)
+
+        with pytest.raises(
+            ValueError, match=f"{where.replace('.', '[.]')}.*Unknown transformation"
+        ):
+            MappingEngine(style)
+
+    def test_a_transform_that_is_not_a_name_is_refused(self, tmp_path, cis_config_path):
+        style = self._style(
+            tmp_path,
+            cis_config_path,
+            field_mappings={
+                "title": {"target_element": "title", "source_field": "title", "transform": ["none"]}
+            },
+        )
+
+        with pytest.raises(ValueError, match="field_mappings.title.*transform must be a name"):
+            MappingEngine(style)
+
     def test_the_shipped_styles_name_registered_transforms_only(
         self, cis_config_path, disa_config_path
     ):

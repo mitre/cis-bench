@@ -1342,8 +1342,8 @@ separator='\n\n'
 )
 
 rec = Recommendation(
-description="<p>Desc</p>",
-rationale="<p>Rationale</p>"
+description="Desc",
+rationale="Rationale"
 )
 
 strategy = CompositeFieldStrategy()

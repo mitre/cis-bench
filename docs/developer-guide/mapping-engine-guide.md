@@ -1238,18 +1238,17 @@ print(config.keys())
 EOF
 ```
 
-### Transformation Not Applied
+### Transform Not Registered
 
-**Symptom:** HTML still in output when it should be stripped
+**Symptom:** the style is refused when it loads, naming the place and the transform:
 
-**Debug:**
-```yaml
-# Add logging to transformation
-title:
-source_field: "title"
-transform: "none"
-debug: true # Enable debug logging for this field
+```text
+ValueError: field_mappings.title: Unknown transformation: strip_html
 ```
+
+**Cause:** the mapping (or a `{value|filter}` in a template) names a transform no function is
+registered under in `mapping_engine.py`. Text fields name `none`: the stored Markdown is written
+as it is, there is no HTML conversion to name.
 
 ### Missing Output
 

@@ -115,16 +115,16 @@ return controls
 | Field | Source | Transformation |
 |-------|--------|----------------|
 | ref | Title heading | Extract number |
-| title | Title heading | Strip HTML, clean |
+| title | Title heading | As written (Markdown) |
 | url | Recommendation URL | Construct from ID |
-| description | Description section | Parse HTML, preserve structure |
-| rationale | Rationale section | Parse HTML |
-| impact | Impact statement | Parse HTML |
-| audit | Audit procedure | Parse code blocks |
-| remediation | Remediation section | Parse code blocks |
-| default_value | Default value section | Parse text |
-| additional_info | Additional info | Parse HTML |
-| references | External references | Extract links |
+| description | Description section | As written (Markdown) |
+| rationale | Rationale section | As written (Markdown) |
+| impact | Impact statement | As written (Markdown) |
+| audit | Audit procedure | As written (Markdown, code blocks included) |
+| remediation | Remediation section | As written (Markdown, code blocks included) |
+| default_value | Default value section | As written (Markdown) |
+| additional_info | Additional info | As written (Markdown) |
+| references | External references | As written (Markdown) |
 | assessment_status | Assessment badge | Extract text (Automated/Manual) |
 | profiles | Profile tags | Parse badges (Level 1/2, Server/Workstation) |
 | cis_controls | CIS Controls v8 section | Parse list structured data |
@@ -327,9 +327,9 @@ fix=FixText(value=remediation_text, fixref=f"F-{ref}")
 Recommendation(
 ref="1.1.1",
 title="Ensure mounting of cramfs filesystems is disabled",
-description="<p>The <code>cramfs</code> filesystem type is...</p>",
-rationale="<p>Removing support for unneeded filesystem types...</p>",
-remediation="<pre>modprobe -n -v cramfs</pre>",
+description="The `cramfs` filesystem type is...",
+rationale="Removing support for unneeded filesystem types...",
+remediation="```\nmodprobe -n -v cramfs\n```",
 nist_controls=["CM-7", "CM-7(1)"],
 cis_controls=[
 {"id": "4.8", "title": "Uninstall or Disable...", "ig": "IG2"}
@@ -692,8 +692,8 @@ attack surface of the system.</p>
 {
 'ref': '1.1.1',
 'title': 'Ensure mounting of cramfs filesystems is disabled',
-'description': '<p>The <code>cramfs</code> filesystem type is...</p>',
-'rationale': '<p>Removing support for unneeded filesystem types...</p>',
+'description': 'The `cramfs` filesystem type is...',
+'rationale': 'Removing support for unneeded filesystem types...',
 'assessment_status': 'Automated',
 'nist_controls': ['CM-7', 'CM-7(1)']
 }
@@ -705,8 +705,8 @@ attack surface of the system.</p>
 Recommendation(
 ref='1.1.1',
 title='Ensure mounting of cramfs filesystems is disabled',
-description='<p>The <code>cramfs</code> filesystem type is...</p>',
-rationale='<p>Removing support for unneeded filesystem types...</p>',
+description='The `cramfs` filesystem type is...',
+rationale='Removing support for unneeded filesystem types...',
 assessment_status='Automated',
 nist_controls=['CM-7', 'CM-7(1)']
 )

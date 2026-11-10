@@ -476,8 +476,9 @@ class MappingEngine:
 
         Raises:
             ValueError: A transform (field_mappings, their children, a component source,
-                group_elements, benchmark elements) or benchmark.profiles.description_transform
-                names no registered transform.
+                group_elements, benchmark elements), benchmark.profiles.description_transform
+                or a filter in a template ({value|transform}, in any key ending in
+                "template") names no registered transform, or is not a name.
         """
         named: list[tuple[str, Any]] = []
         for name, mapping in self.config.field_mappings.items():
@@ -510,10 +511,49 @@ class MappingEngine:
         for where, transform in named:
             if transform is None:
                 continue
+            if not isinstance(transform, str):
+                raise ValueError(f"{where}: transform must be a name, got {transform!r}")
             try:
                 TransformRegistry.get(transform)
             except ValueError as error:
                 raise ValueError(f"{where}: {error}") from error
+        for config_section in fields(MappingConfig):
+            self._refuse_unknown_template_filters(
+                config_section.name, getattr(self.config, config_section.name)
+            )
+
+    @classmethod
+    def _refuse_unknown_template_filters(cls, where: str, value: Any) -> None:
+        """Refuse a template (a string under a key ending in "template") whose filter names no
+        registered transform, or that the template parser refuses; walks nested sections.
+
+        Raises:
+            ValueError: A {value|transform} filter names no registered transform, or the
+                template has a stray or unclosed brace.
+        """
+        if isinstance(value, dict):
+            for key, inner in value.items():
+                inner_where = f"{where}.{key}"
+                if isinstance(key, str) and key.endswith("template") and isinstance(inner, str):
+                    try:
+                        pieces = VariableSubstituter._pieces(inner)
+                    except ValueError as error:
+                        raise ValueError(f"{inner_where}: {error}") from error
+                    for _, expression in pieces:
+                        if expression is None or "|" not in expression:
+                            continue
+                        name = expression.partition("|")[2].partition(":")[0].strip()
+                        if not name:
+                            continue  # refused as a nameless filter when the template is used
+                        try:
+                            TransformRegistry.get(name)
+                        except ValueError as error:
+                            raise ValueError(f"{inner_where}: {error}") from error
+                else:
+                    cls._refuse_unknown_template_filters(inner_where, inner)
+        elif isinstance(value, list):
+            for index, inner in enumerate(value):
+                cls._refuse_unknown_template_filters(f"{where}[{index}]", inner)
 
     def _refuse_invalid_embedded_tags(self) -> None:
         """Refuse a style whose embedded_xml_tags component names a tag that is no XML name.
