@@ -224,12 +224,12 @@ recommendation.description = "The example filesystem is not needed."
 recommendation.default_value = "/etc/example: off"
 recommendation.additional_info = None  # an empty source adds nothing, label included
 
-# Output (xsdata)
-Rule.description = HtmlTextWithSubType(
-    value="The example filesystem is not needed.\n\n"
-    "Default Value:\n\n"
-    "/etc/example: off"
-)
+# Output (the Rule's description element, its text escaped once by the serializer)
+<description>The example filesystem is not needed.
+
+Default Value:
+
+/etc/example: off</description>
 ```
 
 ### 3. Embedded XML Tags (DISA STIG Format)

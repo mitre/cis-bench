@@ -2356,6 +2356,24 @@ class TestTransformsAreCheckedWhenTheStyleLoads:
         with pytest.raises(ValueError, match="field_mappings.folded: composite needs sources"):
             MappingEngine(style)
 
+    def test_a_composite_source_without_a_field_is_refused(self, tmp_path, cis_config_path):
+        style = self._style(
+            tmp_path,
+            cis_config_path,
+            field_mappings={
+                "folded": {
+                    "target_element": "description",
+                    "structure": "composite",
+                    "sources": [{"field": "description"}, {"label": "Default Value:"}],
+                }
+            },
+        )
+
+        with pytest.raises(
+            ValueError, match="field_mappings.folded.sources\\[1\\]: a composite source needs field"
+        ):
+            MappingEngine(style)
+
     def test_a_composite_source_naming_no_transform_is_refused(self, tmp_path, cis_config_path):
         style = self._style(
             tmp_path,
