@@ -132,7 +132,6 @@ extract: "all"
 | `benchmark` | Benchmark-level elements and namespaces (`benchmark.namespaces`) | Yes |
 | `field_mappings` | Rule-level field transformations | Yes |
 | `rule_defaults` | Default attributes for all rules | No |
-| `transformations` | Custom transformation definitions | No |
 | `validation` | Validation rules and constraints | No |
 | `post_processing` | Handlers and namespace clean-up after serialization | No |
 
@@ -634,14 +633,13 @@ less minimal.xml
 
 ```yaml
 # base_style.yaml - Common configuration
-transformations:
-none:
-description: "Pass through unchanged"
-
 benchmark:
 namespaces:
 default: "http://checklists.nist.gov/xccdf/1.2"
 dc: "http://purl.org/dc/elements/1.1/"
+
+rule_defaults:
+severity: "medium"
 ```
 
 ### Child Style Inherits
@@ -654,11 +652,6 @@ extends: base_style.yaml # Inherit all from base
 metadata:
 xccdf_version: "1.1.4" # Override (base has 1.2)
 
-# Add new transformations
-transformations:
-custom_disa_transform:
-function: "MyCustomTransform"
-
 # field_mappings are merged (not replaced)
 field_mappings:
 title:
@@ -668,9 +661,12 @@ source_field: "title" # transform: none, the text as stored
 **Inheritance Rules:**
 Every section is inherited the same way. Mappings merge key by key, and the child's value
 wins where both set one; a list or a single value in the child replaces the parent's.
-So a child adds to or overrides `transformations`, `field_mappings`, `metadata`,
+So a child adds to or overrides `field_mappings`, `metadata`, `rule_defaults`,
 `benchmark` (including `benchmark.namespaces`) and `post_processing`, while a child that
-sets `post_processing.handlers` replaces the parent's list of handlers.
+sets `post_processing.handlers` replaces the parent's list of handlers. The transforms a
+mapping may name are the ones registered in `mapping_engine.py` (`TransformRegistry`),
+not a section of the style; a style that carries a top-level section the loader does not
+read is refused when it loads, with the section's name.
 
 ---
 
@@ -994,14 +990,18 @@ desc:
 target_element: "description"
 ```
 
-### 3. Document Your Transformations
+### 3. Name a Registered Transform
 
 ```yaml
-transformations:
-custom_transform:
-description: "Converts CIS-style lists to DISA bullet points" # Document!
-function: "MyTransformers.convert_lists"
+field_mappings:
+version:
+target_element: "version"
+source_field: "version"
+transform: "strip_version_prefix" # registered in mapping_engine.py
 ```
+
+A transform is Python, registered with `TransformRegistry.register`, and a mapping names it;
+a style that names one that is not registered is refused when it loads.
 
 ### 4. Test Each Field Mapping
 
@@ -1279,7 +1279,7 @@ as it is, there is no HTML conversion to name.
 The MappingEngine provides:
 
 **Flexibility** - Change XCCDF structure without code changes
-**Reusability** - Share transformations across styles
+**Reusability** - Share field mappings, rule defaults and post-processing across styles
 **Maintainability** - Clear separation of data and structure
 **Extensibility** - Add new styles in minutes
 **Testability** - Test configs independent of code

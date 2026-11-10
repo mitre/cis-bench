@@ -3,7 +3,7 @@
 # Version: 1.0.0
 # XCCDF Target: 1.2 (backward compatible with 1.1.4 STIG tools)
 
-# Inherit common configuration (namespaces, transformations, etc.)
+# Inherit common configuration (namespaces, rule defaults, post-processing)
 extends: ../base.yaml
 
 metadata:
@@ -323,10 +323,6 @@ field_mappings:
     ident_spec:
       system_template: "https://attack.mitre.org/mitigations"
       value_template: "{item}"
-
-# Transformation definitions
-# Transformations inherited from base_style.yaml
-# Add DISA-specific transformations here if needed
 
 # CCI Deduplication Configuration
 cci_deduplication:

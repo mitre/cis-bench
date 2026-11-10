@@ -360,44 +360,6 @@ validation:
   require_cis_controls: false
   max_references_per_rule: 100  # Sanity check
 
-# Output formatting preferences
-formatting:
-  indent: 2
-  line_length: 120
-  pretty_print: true
-  xml_declaration: true
-  encoding: "UTF-8"
-
-# Notes for implementers
-implementation_notes:
-  description_handling: |
-    Unlike DISA style, description is clean Markdown without embedded XML tags.
-    Rationale is a separate <rationale> element.
-    Impact becomes a <warning category="general"> element per XCCDF standard.
-
-  nist_mapping: |
-    Add ALL NIST controls cited by CIS as <reference> elements.
-    No CCI lookup, no deduplication.
-    Simple and transparent.
-
-  metadata_richness: |
-    CIS-specific metadata written:
-    - CIS Controls v7 and v8 with IG levels
-    - MITRE ATT&CK techniques, tactics, mitigations
-    - CIS Profiles (Level 1/2, Server/Workstation)
-
-  markdown_text: |
-    Rule text and profile descriptions are the Markdown WorkBench gives, written as stored:
-    - Placeholders such as <user> and <path> survive (an HTML pass would read them as tags)
-    - Code fences, lists and headings stay as written
-
-  target_audience: |
-    This style targets:
-    - Commercial compliance tools
-    - Research and analysis workflows
-    - Non-DoD security teams
-    - Organizations wanting clean, readable XCCDF
-
 # Post-processing for CIS format
 # CIS-CAT and OpenSCAP need rich namespace declarations
 post_processing:

@@ -41,11 +41,6 @@ source_field: "..."
 transform: "..."
 # ... more options
 
-transformations: # Transform definitions
-transform_name:
-description: "..."
-function: "..."
-
 cci_deduplication: # CCI/NIST deduplication config
 enabled: true
 algorithm: {...}
@@ -350,23 +345,22 @@ href: "https://csrc.nist.gov/..."
 content: "{nist_control_id}" # Variable substitution
 ```
 
-## Transformations Section
+## Transforms
+
+A mapping names its transform in `transform` (and a template names one after `|`, as in
+`{title|slug}`). The transforms are the ones registered in `mapping_engine.py`
+(`TransformRegistry.register`): `none`, `strip_version_prefix`, `lines`,
+`dotted_number_path` and `slug`. A style that names a transform that is not registered is
+refused when it loads, with the place that names it. There is no `transformations` section:
+a style that carries one (or any other top-level section the loader does not read) is
+refused when it loads, with the section's name.
 
 A benchmark's text fields hold Markdown (see the [data model](data-model.md)) and every export
 writes the text as it is, so the styles name `none` for every text field: the CIS style for
 each rule text field (title, description, rationale, warning, fixtext, check-content) and the
 profile descriptions, the DISA style for its text fields and the description's embedded tags.
 There is no HTML conversion: a text parsed as HTML would read a placeholder such as `<user>` as
-a tag. The transforms are registered in `mapping_engine.py` (`TransformRegistry.register`);
-this section only documents them, and a style that names a transform that is not registered is
-refused when it loads.
-
-```yaml
-transformations:
-# Pass-through (no transformation)
-none:
-description: "Pass through unchanged"
-```
+a tag.
 
 ## Variables Reference
 
@@ -621,10 +615,6 @@ rationale:
 target_element: "rationale"
 source_field: "rationale"
 transform: "none"
-
-transformations:
-none:
-description: "Pass through unchanged"
 ```
 
 ## Best Practices

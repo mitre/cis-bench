@@ -83,6 +83,48 @@ no conversion at all where the text is already Markdown, then removed them.
 
 ---
 
+## Core Principle: The Store Holds What WorkBench Holds
+
+A benchmark's text fields hold the Markdown WorkBench gives, with every line break as
+`\n`, and nothing else is changed on the way in. Nothing is trimmed from either end,
+nothing is stripped, no entity is decoded, no Markdown is rewritten: the stored text is
+the page's text. This covers the recommendation text fields, the benchmark overview, the
+profile descriptions and the artifact titles.
+
+HTML is converted once, by markdownify, where it enters: a copy the v1 scraper saved
+holds rendered HTML in its text fields and is converted as it loads; the benchmark page
+gives profile descriptions as HTML and they are converted as the page is read; the
+artifact payload gives some titles as HTML and they are converted as the payload is
+parsed. Which form a stored copy holds is recorded on the copy (`text_format`,
+`artifact_title_format`) and read from there, never guessed from the text: in Markdown a
+placeholder such as `<user>` looks like a tag, and an HTML parser run on it drops it.
+
+Presentation changes live at export, by a library. The Markdown export writes the stored
+text as it is, and markdown-it-py decides where a `<` in prose must be written `&lt;` so
+a renderer shows the placeholder, and where a fence a field leaves open must be closed
+before the next field; the CIS XCCDF renders the Markdown to XHTML the same way. No
+exporter trims, filters or rewrites a value it is given.
+
+The check, before any transform of stored text is built: probe the real pages for what
+they carry (the attribute, the padding, the entities), run the change over every cached
+benchmark and read what changes, and for a conversion that runs at load, show that a
+value already converted passes through unchanged. A unit test built from a small sample
+matches the assumption, not the data.
+
+The reason is the record. The benchmark overview was once passed through a tag stripper,
+which deleted a `<path>` placeholder and decoded the page's entities. The first fix
+trimmed the text with `str.strip`, which removed the indentation of an overview opening
+with an indented code block, so a renderer read it as a paragraph. The second trimmed the
+blank lines at either end by CommonMark's rule, which dropped a trailing blank line inside
+an open fence and the final line break. Each trim lost something at an edge, and each cost
+a review round, until a probe of the cached pages showed that the attribute carries no
+padding at all: the answer was no trim. The recommendation fields had the same trim and
+the same answer after a probe of several hundred pages. The artifact titles were first
+converted unconditionally every time a copy loaded, which emptied a title holding a
+placeholder on its second load; the form field on the copy replaced that.
+
+---
+
 ## Red Flags to Avoid
 
 ### Hand-Written Parsing or Conversion
@@ -99,6 +141,21 @@ The contrast is the point, not the recipe: a parser reads HTML as HTML. Text tha
 Markdown-like placeholders (`<user>`) with HTML needs the library chosen for that input
 after the card's prior-art check, not a tag-stripping call; `get_text()` drops such
 placeholders too.
+
+### Trimming or Normalising Stored Text at Ingest
+
+```python
+# Bad - a boundary rule of our own on the text WorkBench gives
+description = attribute_text(component, "text").strip()
+
+# Good - the text as the page writes it, line breaks as \n
+description = unix_line_breaks(attribute_text(component, "text"))
+```
+
+Every trim or normalisation of stored text is a transform, and a transform on this data
+loses something at an edge: indentation, a blank line inside a fence, a final line break,
+a placeholder. The pages are probed first; if they carry nothing to remove, nothing is
+removed.
 
 ### Organization Names in Method Names
 
@@ -223,6 +280,10 @@ Before committing any handler code, verify:
 
 - [ ] No hand-written parsing or conversion met in the change was extended instead of
       flagged for replacement
+
+- [ ] Stored text is written as WorkBench gives it: no trim, strip or rewrite at ingest
+      beyond `\n` line breaks and the one markdownify conversion where HTML enters; a
+      transform of stored text was run over the real cache before it was built
 
 ---
 
