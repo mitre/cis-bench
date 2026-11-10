@@ -2228,6 +2228,52 @@ class TestTransformsAreCheckedWhenTheStyleLoads:
         ):
             MappingEngine(style)
 
+    @pytest.mark.parametrize(
+        ("section", "where"),
+        [
+            (
+                {"benchmark": {"notice": {"content": "Read {benchmark.title|strip_html} first."}}},
+                "benchmark.notice.content",
+            ),
+            (
+                {
+                    "field_mappings": {
+                        "nist_reference": {
+                            "target_element": "reference",
+                            "structure": "dublin_core",
+                            "source_field": "nist_controls",
+                            "multiple": True,
+                            "dc_elements": [
+                                {"element": "publisher", "content": "NIST SP 800-53"},
+                                {
+                                    "element": "identifier",
+                                    "content": "{nist_control_id|no_such_transform}",
+                                },
+                            ],
+                            "href": "https://example.com/{nist_control_id|html_to_markdown}",
+                        }
+                    }
+                },
+                "field_mappings.nist_reference.dc_elements\\[1\\].content",
+            ),
+        ],
+    )
+    def test_a_filter_in_any_substituted_string_is_refused(
+        self, tmp_path, cis_config_path, section, where
+    ):
+        """The engine substitutes strings under many keys (content, href, system, prefix,
+        attributes), not only *template; a filter in any of them is checked at load."""
+        style = self._style(tmp_path, cis_config_path, **section)
+
+        with pytest.raises(ValueError, match=f"{where}.*Unknown transformation"):
+            MappingEngine(style)
+
+    def test_a_filter_without_a_name_is_refused_at_load(self, tmp_path, cis_config_path):
+        style = self._style(tmp_path, cis_config_path, rule_id={"template": "{ref_normalized|}"})
+
+        with pytest.raises(ValueError, match="rule_id.template.*filter without a transform name"):
+            MappingEngine(style)
+
     def test_a_transform_that_is_not_a_name_is_refused(self, tmp_path, cis_config_path):
         style = self._style(
             tmp_path,
