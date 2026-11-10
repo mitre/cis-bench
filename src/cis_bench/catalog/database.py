@@ -38,6 +38,7 @@ from sqlmodel import Session, SQLModel, col, create_engine, select
 from cis_bench.catalog.fts import (
     TEXT_COLUMNS,
     VERSION_COLUMN,
+    build_any_term_query,
     build_fts_query,
     build_phrase_query,
     build_terms_query,
@@ -116,9 +117,15 @@ _RECOMMENDATION_INDEX_LAYOUTS = {
     "recommendations_fts": ["benchmark_id", "ref", *_RECOMMENDATION_TEXT_COLUMNS],
     "recommendation_profiles_fts": ["benchmark_id", "ref", "profile"],
 }
-# highlight() inserts this mark at each phrase the query found in a column; a column whose
-# highlighted text differs from the column itself is one a word was found in.
-_HIT_MARK = "\x02"
+# The recommendation index as the search reads it: its hidden rank and rowid columns too.
+_RECOMMENDATIONS_FTS_READ = table(
+    "recommendations_fts",
+    column("rowid"),
+    column("benchmark_id"),
+    column("ref"),
+    column("title"),
+    column("rank"),
+)
 
 
 def _recommendation_search_statement(
@@ -126,29 +133,12 @@ def _recommendation_search_statement(
 ) -> Select[tuple[object, ...]]:
     """The recommendation search SELECT: the MATCH expressions are bound values.
 
-    Each row carries every text column and its highlight() text, so the caller can tell
-    which columns a word was found in. A profile filter keeps a recommendation with one
-    profile row matching it; ranked best first, then by benchmark and ref.
+    A profile filter keeps a recommendation with one profile row matching it; ranked best
+    first, then by benchmark and ref.
     """
-    index = table(
-        "recommendations_fts",
-        column("benchmark_id"),
-        column("ref"),
-        *(column(name) for name in _RECOMMENDATION_TEXT_COLUMNS),
-        column("rank"),
-    )
+    index = _RECOMMENDATIONS_FTS_READ
     statement = (
-        sa_select(
-            index.c.benchmark_id,
-            index.c.ref,
-            *(index.c[name] for name in _RECOMMENDATION_TEXT_COLUMNS),
-            *(
-                func.highlight(literal_column("recommendations_fts"), number, _HIT_MARK, "").label(
-                    f"{name}_hit"
-                )
-                for number, name in enumerate(_RECOMMENDATION_TEXT_COLUMNS, start=2)
-            ),
-        )
+        sa_select(index.c.rowid, index.c.benchmark_id, index.c.ref, index.c.title)
         .select_from(index)
         .where(literal_column("recommendations_fts").op("MATCH")(match))
         .order_by(index.c.rank, index.c.benchmark_id, index.c.ref)
@@ -1184,15 +1174,28 @@ class CatalogDatabase:
         )
         with Session(self.engine) as session:
             rows = session.execute(statement).all()
+            found = {row.rowid for row in rows}
+            # The fields a word was found in, asked of the index itself one column at a time
+            # (rendering a column, as highlight() does, can lose some of its text).
+            in_field = {
+                name: found.intersection(
+                    session.execute(
+                        sa_select(_RECOMMENDATIONS_FTS_READ.c.rowid).where(
+                            literal_column("recommendations_fts").op("MATCH")(
+                                build_any_term_query(query, name)
+                            )
+                        )
+                    ).scalars()
+                )
+                for name in _RECOMMENDATION_TEXT_COLUMNS
+            }
         return [
             {
                 "benchmark_id": row.benchmark_id,
                 "ref": row.ref,
                 "title": row.title,
                 "matched_fields": [
-                    name
-                    for name in _RECOMMENDATION_TEXT_COLUMNS
-                    if getattr(row, f"{name}_hit") != getattr(row, name)
+                    name for name in _RECOMMENDATION_TEXT_COLUMNS if row.rowid in in_field[name]
                 ],
             }
             for row in rows

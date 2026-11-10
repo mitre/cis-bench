@@ -121,6 +121,19 @@ class TestIndexedWhereSaved:
 
         assert result["matched_fields"] == ["title"]
 
+    def test_a_field_holding_a_nul_is_matched_only_where_a_word_was_found(self, db):
+        untouched = _recommendation(
+            "7.2.1", "Ensure SSH is configured", description="unrelated\x00text"
+        )
+        after_the_nul = _recommendation(
+            "7.2.2", "Ensure auditing is configured", description="first\x00 sshd later"
+        )
+        _save(db, _benchmark("100", untouched, after_the_nul))
+
+        found = {r["ref"]: r["matched_fields"] for r in db.search_recommendations("ssh")}
+
+        assert found == {"7.2.1": ["title"], "7.2.2": ["description"]}
+
     def test_saving_the_same_benchmark_again_replaces_its_rows(self, db):
         _save(db, _benchmark("100", SSH, FIREWALL))
         renamed = FIREWALL.model_copy(update={"title": "Ensure a packet filter is installed"})

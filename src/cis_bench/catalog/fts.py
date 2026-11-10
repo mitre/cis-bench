@@ -93,6 +93,13 @@ def build_terms_query(query: str, columns: Sequence[str]) -> str:
     return " AND ".join(f'{in_columns} : "{term}"*' for term in _terms(query))
 
 
+def build_any_term_query(query: str, column_name: str) -> str:
+    """Raw user search text as a safe FTS5 query that one column of an index matches when
+    it holds any of the terms (each a word prefix, as build_terms_query finds them).
+    Returns an empty string when there is nothing to search for."""
+    return " OR ".join(f'{{{column_name}}} : "{term}"*' for term in _terms(query))
+
+
 def build_phrase_query(text: str, column_name: str) -> str:
     """The words of raw user text as one phrase in one column of an index ("Level 1 -
     Server" finds those words side by side), or an empty string when it has none."""
