@@ -35,6 +35,8 @@ dependencies = [
     "urllib3>=2.0.6",
     # HTML to Markdown, for copies the v1 scraper saved with rendered HTML in their text
     "markdownify>=1.2,<2",
+    # CommonMark parser: tells prose from code in the stored Markdown (the Markdown export)
+    "markdown-it-py>=4,<5",
     # Data modeling
     "pydantic>=2.0.0",
     "sqlmodel>=0.0.16",

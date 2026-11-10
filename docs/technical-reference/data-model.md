@@ -404,8 +404,14 @@ saved without that field, from `scraper_version`), never from the text itself: a
 looks like a tag. In exports the text is:
 
 - Preserved in JSON/YAML export
-- Passed through the HTML stripper for CSV export (Markdown marks are left as they are)
-- Run through the style's transforms for XCCDF export
+- Written as the cell text in CSV export
+- Written as it is in Markdown export, with two document-level adjustments: a placeholder in
+  prose (outside code) is written `&lt;user>` so a renderer with raw HTML on (GitHub, MkDocs)
+  shows it as text instead of reading it as a tag, and a fence a field leaves open is closed
+  at the field's end so it cannot swallow the fields after it; both decided by the CommonMark
+  parser (markdown-it-py), never by matching the text
+
+- Written as the stored Markdown in the CIS and DISA XCCDF exports (see the style configs)
 
 ## Validation Strategy
 

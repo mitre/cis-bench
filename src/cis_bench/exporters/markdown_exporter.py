@@ -8,6 +8,7 @@ from cis_bench.utils.field_transformers import (
     RecommendationFieldTransformer,
     SafeFieldAccessor,
 )
+from cis_bench.utils.markdown_text import closed_fences, prose_angle_brackets_as_text
 
 from .base import BaseExporter, ExporterFactory
 
@@ -18,7 +19,7 @@ class MarkdownExporter(BaseExporter):
     """Export benchmark to Markdown format for documentation."""
 
     def export(self, benchmark: Benchmark, output_path: str) -> str:
-        """Export to Markdown with HTML converted to Markdown.
+        """Export to Markdown: the stored text written as it is, in one document.
 
         Args:
             benchmark: Validated Benchmark (Pydantic model)
@@ -45,16 +46,23 @@ class MarkdownExporter(BaseExporter):
             # Table of Contents
             f.write("## Table of Contents\n\n")
             for rec in benchmark.recommendations:
-                f.write(f"- [{rec.ref} - {rec.title}](#{rec.ref.replace('.', '')})\n")
+                title = prose_angle_brackets_as_text(rec.title)
+                f.write(f"- [{rec.ref} - {title}](#{rec.ref.replace('.', '')})\n")
             f.write("\n---\n\n")
 
             # Each recommendation
             for rec in benchmark.recommendations:
                 anchor = rec.ref.replace(".", "")
-                f.write(f"## {rec.ref} - {rec.title} {{#{anchor}}}\n\n")
+                title = prose_angle_brackets_as_text(rec.title)
+                f.write(f"## {rec.ref} - {title} {{#{anchor}}}\n\n")
 
-                # Use DRY helpers
-                markdown_fields = RecommendationFieldTransformer.markdown_all(rec)
+                # The text fields as stored (Markdown). A fence a field leaves open is closed
+                # so it cannot swallow the fields after it, and a placeholder in prose is
+                # written so a renderer with raw HTML on shows it as text.
+                markdown_fields = {
+                    name: prose_angle_brackets_as_text(closed_fences(text))
+                    for name, text in RecommendationFieldTransformer.stored_text(rec).items()
+                }
 
                 # Metadata table
                 f.write("| Property | Value |\n")
@@ -84,9 +92,10 @@ class MarkdownExporter(BaseExporter):
                 # Parent - using DRY helper
                 parent_link = SafeFieldAccessor.format_parent_link(rec, format="markdown")
                 if parent_link:
-                    f.write(f"**Parent:** {parent_link}\n\n")
+                    # the parent's title may hold a placeholder too
+                    f.write(f"**Parent:** {prose_angle_brackets_as_text(parent_link)}\n\n")
 
-                # Content sections - using DRY helper (already markdown converted)
+                # Content sections, as stored
                 if markdown_fields["description"]:
                     f.write("### Description\n\n")
                     f.write(markdown_fields["description"])
