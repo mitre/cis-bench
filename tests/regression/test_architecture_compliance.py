@@ -120,6 +120,7 @@ class TestConfigDrivenPrinciple:
             "ident_from_list",  # Generic
             "metadata_from_config",  # Generic
             "embedded_xml_tags",  # Generic (tags inside an element's text, from config)
+            "composite",  # Generic (several fields' texts joined, with labels, from config)
             "nested",  # Specialized (simple nesting)
             "dublin_core",  # Standard (W3C)
         }

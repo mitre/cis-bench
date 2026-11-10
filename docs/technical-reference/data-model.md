@@ -543,10 +543,11 @@ self._validate_input(data)
 |------------|---------------|-------|
 | `ref` | `Rule/@id` | Convert "3.1.1" "rule_3_1_1" |
 | `title` | `Rule/title` | Direct mapping |
-| `description` | `Rule/description` | The stored Markdown, written as it is |
+| `description` | `Rule/description` | The stored Markdown, written as it is; in the CIS style the default value and the additional information follow it as labelled sections |
 | `rationale` | `Rule/rationale` | The stored Markdown, written as it is |
 | `audit` | `Rule/check/check-content` | The stored Markdown, inside the check element |
 | `remediation` | `Rule/fixtext` | The stored Markdown, written as it is |
+| `references` | `Rule/ident[@system="URL"]` | CIS style: one ident per non-empty line, as stored |
 | `mitre_mapping` | `Rule/reference` | Parse and map to reference elements |
 
 **JSON Schema Field CSV Column**

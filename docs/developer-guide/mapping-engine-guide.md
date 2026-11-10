@@ -195,23 +195,26 @@ Rule.title = TextType(value="Ensure `cramfs` is disabled")
 
 ### 2. Composite Field Mapping
 
-**Use when:** Combine multiple source fields into one XCCDF element
+**Use when:** Combine multiple source fields into one XCCDF element. Each source's text
+(after its transform, `none` by default) is joined by the separator (a blank line by
+default); a source with a `label` writes the label, the separator and the text; a source
+without text adds nothing, and an element with no text at all is left out. A source naming
+a field or transform that does not exist is refused when the style loads.
 
 ```yaml
 description:
 target_element: "description"
 structure: "composite"
+separator: "\n\n" # Join with double newline
 sources:
 
 - field: "description"
-transform: "none"
 
-- field: "rationale"
-transform: "none"
+- field: "default_value"
+label: "Default Value:"
 
-- field: "impact"
-transform: "none"
-separator: "\n\n" # Join with double newline
+- field: "additional_info"
+label: "Additional Information:"
 ```
 
 **Example:**

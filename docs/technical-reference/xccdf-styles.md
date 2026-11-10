@@ -327,10 +327,12 @@ Verify the permissions are 644 or more restrictive.
 |-----------|-------------------|----------|-------|
 | ref | `<version>` | Direct | CIS reference number |
 | title | `<title>` | Direct | Unchanged |
-| description | `<description>` | Direct | Clean, no embedded tags |
+| description | `<description>` | Direct | The stored Markdown, then a "Default Value:" section and an "Additional Information:" section when those fields have text (CIS folds extra sections into its text elements the same way) |
 | rationale | `<rationale>` | Direct | Separate element |
 | impact | `<warning category="general">` | Direct | XCCDF standard for impacts |
-| additional_info | `<metadata>` additional-info | Custom | If present |
+| default_value | `<description>` | Folded | After the description, under "Default Value:" |
+| additional_info | `<description>` | Folded | After the default value, under "Additional Information:" |
+| references | `<ident system="URL">` | Direct | One ident per non-empty line, as stored, after the CIS Controls idents: the form CIS's own XCCDF uses |
 | remediation | `<fixtext>` | Direct | Same as DISA |
 | audit | `<check><check-content>` | Nested | Same as DISA |
 | profiles | `<metadata>` cis-profile | Custom | Level/workload tags |

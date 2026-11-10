@@ -655,6 +655,9 @@ class TestTheStoredMarkdownIsWrittenAsItIs:
                 "impact": "Users in <group> lose access.",
                 "audit": "Run:\n\n```\n# stat -c %U <path>\n```",
                 "remediation": "Run:\n\n```\n# chage --mindays <N> <user>\n```",
+                "default_value": "<path> is owned by root.",
+                "additional_info": "Check <path> after every <tool> run.",
+                "references": "GRID: <id>\nhttps://example.com/<user>",
                 "profiles": ["Alpha"],
             }
         )
@@ -683,7 +686,15 @@ class TestTheStoredMarkdownIsWrittenAsItIs:
             return "".join(element.xpath(f"./*[local-name()='{name}']//text()"))
 
         assert text(rule, "title") == "Ensure <path> is owned by <user>"
-        assert text(rule, "description") == "Owned by the account named in `<user>`."
+        assert text(rule, "description") == (
+            "Owned by the account named in `<user>`.\n\n"
+            "Default Value:\n\n<path> is owned by root.\n\n"
+            "Additional Information:\n\nCheck <path> after every <tool> run."
+        )
+        assert [i.text for i in rule.xpath("./*[local-name()='ident'][@system='URL']")] == [
+            "GRID: <id>",
+            "https://example.com/<user>",
+        ]
         assert text(rule, "rationale") == "A file owned by <user> is read by <user> alone."
         assert text(rule, "warning") == "Users in <group> lose access."
         assert text(rule, "fixtext") == "Run:\n\n```\n# chage --mindays <N> <user>\n```"

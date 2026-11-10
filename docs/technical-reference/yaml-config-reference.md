@@ -164,20 +164,21 @@ id: "F-{ref_normalized}"
 
 ### Composite Field
 
-Multiple sources joined into one target:
+Multiple sources joined into one target: each source's text after its transform (`none` by
+default), joined by `separator` (a blank line by default); a source with a `label` writes the
+label, the separator and the text; a source without text adds nothing.
 
 ```yaml
 description:
 target_element: "description"
 structure: "composite"
+separator: "\n\n"
 sources:
 
 - field: "description"
-transform: "none"
 
-- field: "rationale"
-transform: "none"
-separator: "\n\n"
+- field: "default_value"
+label: "Default Value:"
 ```
 
 ### Embedded XML Structure
@@ -854,6 +855,7 @@ ValueError: Unknown transformation: unknown_transform
 
 - none
 - strip_version_prefix
+- lines (a text field as its non-empty stripped lines; an `ident_from_list` mapping with `transform: "lines"` writes one ident per line)
 - dotted_number_path (with arguments; see [Filters](#filters))
 - slug (with the separator as argument; see [Profiles](#profiles))
 

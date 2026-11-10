@@ -714,3 +714,95 @@ class TestMetadataInsertionFollowsSchemaOrder:
 
         with pytest.raises(ExportError, match="1.1.4"):
             exporter._inject_metadata_from_config(xml)
+
+
+# ============================================================================
+# Test: the CIS export carries every text field
+# ============================================================================
+
+
+def _cis_rule(tmp_path, **fields):
+    """The one Rule element of a CIS export of a benchmark holding one recommendation."""
+    rec = Recommendation(
+        ref="1.1.1",
+        title="Ensure the example is set",
+        url="https://workbench.cisecurity.org/sections/1/recommendations/1",
+        assessment_status="Automated",
+        **fields,
+    )
+    benchmark = Benchmark(
+        title="Test Benchmark",
+        benchmark_id="12345",
+        url="https://workbench.cisecurity.org/benchmarks/12345",
+        version="v1.0.0",
+        scraper_version="v2_2026_01",
+        total_recommendations=1,
+        recommendations=[rec],
+    )
+    output_file = tmp_path / "cis.xml"
+    XCCDFExporter(style="cis").export(benchmark, str(output_file))
+    root = etree.parse(str(output_file)).getroot()
+    (rule,) = root.xpath("//*[local-name()='Rule']")
+    return rule
+
+
+def _idents(rule):
+    return [(i.get("system"), i.text or "") for i in rule.xpath("./*[local-name()='ident']")]
+
+
+def _description(rule):
+    (element,) = rule.xpath("./*[local-name()='description']")
+    return "".join(element.itertext())
+
+
+class TestTheCisExportCarriesEveryTextField:
+    """CIS's own XCCDF writes every line of a recommendation's references as an ident with
+    system "URL", after the CIS Controls idents, and folds its extra sections into the text
+    elements; the export does the same for references, default value and additional
+    information (our own text throughout)."""
+
+    def test_every_reference_line_is_a_url_ident_in_order(self, tmp_path):
+        rule = _cis_rule(
+            tmp_path,
+            references="GRID: X-000001\nhttps://example.com/a\n\n  CCI-000001  \n",
+            cis_controls=[
+                CISControl(version=8, control="4.1", title="Control", ig1=True, ig2=True, ig3=True)
+            ],
+        )
+
+        idents = _idents(rule)
+        url_idents = [value for system, value in idents if system == "URL"]
+        assert url_idents == ["GRID: X-000001", "https://example.com/a", "CCI-000001"]
+        # after the CIS Controls ident, as CIS orders them
+        assert [system == "URL" for system, _ in idents] == [False, True, True, True]
+
+    def test_a_recommendation_without_references_has_no_url_ident(self, tmp_path):
+        rule = _cis_rule(tmp_path, references=None)
+
+        assert [system for system, _ in _idents(rule) if system == "URL"] == []
+
+    def test_default_value_and_additional_information_follow_the_description(self, tmp_path):
+        rule = _cis_rule(
+            tmp_path,
+            description="Set the example for <user>.",
+            default_value="/etc/example: off",
+            additional_info="Run <tool> first.\n\n```\nexample --check\n```",
+        )
+
+        assert _description(rule) == (
+            "Set the example for <user>.\n\n"
+            "Default Value:\n\n/etc/example: off\n\n"
+            "Additional Information:\n\nRun <tool> first.\n\n```\nexample --check\n```"
+        )
+
+    def test_an_empty_folded_field_adds_no_label(self, tmp_path):
+        rule = _cis_rule(
+            tmp_path, description="Set the example.", default_value="off", additional_info=None
+        )
+
+        assert _description(rule) == "Set the example.\n\nDefault Value:\n\noff"
+
+    def test_a_description_alone_is_written_as_it_is(self, tmp_path):
+        rule = _cis_rule(tmp_path, description="Set the example for <user>.")
+
+        assert _description(rule) == "Set the example for <user>."
