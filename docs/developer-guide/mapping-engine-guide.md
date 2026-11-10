@@ -102,14 +102,14 @@ benchmark:
 id_template: "xccdf_custom_benchmark_{version}_{title_slug}"
 title:
 source: "title"
-transform: "strip_html"
+transform: "none"
 
 # Rule-level field mappings
 field_mappings:
 title:
 target_element: "title"
 source_field: "title"
-transform: "strip_html"
+transform: "none"
 
 description:
 target_element: "description"
@@ -177,20 +177,20 @@ The MappingEngine supports 4 field mapping strategies:
 title:
 target_element: "title" # XCCDF element name
 source_field: "title" # Pydantic model field
-transform: "strip_html" # Transformation to apply
+transform: "none" # Transformation to apply; the text is Markdown, written as it is
 xccdf_type: "TextType" # xsdata type (optional)
 ```
 
 **Example:**
 ```python
 # Input (Pydantic)
-recommendation.title = "<p>Ensure <code>cramfs</code> is disabled</p>"
+recommendation.title = "Ensure `cramfs` is disabled"
 
 # Config applies transform
-transform = "strip_html"
+transform = "none"
 
 # Output (xsdata)
-Rule.title = TextType(value="Ensure cramfs is disabled")
+Rule.title = TextType(value="Ensure `cramfs` is disabled")
 ```
 
 ### 2. Composite Field Mapping
@@ -204,13 +204,13 @@ structure: "composite"
 sources:
 
 - field: "description"
-transform: "strip_html"
+transform: "none"
 
 - field: "rationale"
-transform: "strip_html"
+transform: "none"
 
 - field: "impact"
-transform: "strip_html"
+transform: "none"
 separator: "\n\n" # Join with double newline
 ```
 
@@ -338,55 +338,11 @@ IdentType(value="CCI-000290", system="http://cyber.mil/cci"),
 
 ## Available Transformations
 
-Transformations are defined in `base_style.yaml` and can be used by any field:
-
-### strip_html
-Removes HTML tags and returns plain text that keeps the text's layout: line breaks and
-spacing away from tags stay as written (Windows line breaks become `\n`); inline tags
-leave their text in the sentence; paragraphs, headings, tables and lists are set apart by
-a blank line; list items, table rows and `<br>` are lines of their own; table cells are
-separated by a tab. Anything in angle brackets is read as a tag and removed, so a
-placeholder such as `<user>` in a command does not survive.
-
-```yaml
-title:
-source_field: "title"
-transform: "strip_html"
-```
-
-```python
-Input: "<p>Ensure <code>cramfs</code> is disabled</p>"
-Output: "Ensure cramfs is disabled"
-```
-
-### strip_html_keep_code
-Today the same as `strip_html` (it delegates to it); no shipped style names it for benchmark
-text any more. Slated for removal.
-
-```yaml
-audit:
-source_field: "audit"
-transform: "strip_html_keep_code"
-```
-
-```python
-Input: "<p>Run: <code>modprobe -n -v cramfs</code></p><pre>grep cramfs</pre>"
-Output: "Run: `modprobe -n -v cramfs`\n\n```\ngrep cramfs\n```"
-```
-
-### html_to_markdown
-Converts HTML to Markdown format.
-
-```yaml
-description:
-source_field: "description"
-transform: "html_to_markdown"
-```
-
-```python
-Input: "<p>The <code>cramfs</code> filesystem <strong>must</strong> be disabled.</p>"
-Output: "The `cramfs` filesystem **must** be disabled."
-```
+Transforms are registered in `mapping_engine.py` (`TransformRegistry.register`) and named
+by a mapping's `transform`. A benchmark's text fields hold Markdown (see the
+[data model](../technical-reference/data-model.md)) and every export writes it as it is, so
+the shipped styles name `none` for text; there is no HTML conversion (a text parsed as HTML
+would lose a placeholder such as `<user>`).
 
 ### none
 Pass through unchanged (no transformation).
@@ -548,7 +504,7 @@ field_mappings:
 default_value: # New mapping
 target_element: "default"
 source_field: "default_value"
-transform: "strip_html"
+transform: "none"
 optional: true # Only include if field has value
 xccdf_type: "TextType"
 ```
@@ -609,7 +565,7 @@ id_template: "xccdf_minimal_benchmark_{benchmark_id}"
 
 title:
 source: "title"
-transform: "strip_html"
+transform: "none"
 
 description:
 source: "title"
@@ -623,7 +579,7 @@ field_mappings:
 title:
 target_element: "title"
 source_field: "title"
-transform: "strip_html"
+transform: "none"
 
 description:
 target_element: "description"
@@ -676,8 +632,8 @@ less minimal.xml
 ```yaml
 # base_style.yaml - Common configuration
 transformations:
-strip_html:
-function: "HTMLCleaner.strip_html"
+none:
+description: "Pass through unchanged"
 
 benchmark:
 namespaces:
@@ -703,7 +659,7 @@ function: "MyCustomTransform"
 # field_mappings are merged (not replaced)
 field_mappings:
 title:
-source_field: "title" # Uses strip_html from base
+source_field: "title" # transform: none, the text as stored
 ```
 
 **Inheritance Rules:**
@@ -725,7 +681,7 @@ Map fields only when certain conditions are met:
 impact_statement:
 target_element: "impact"
 source_field: "impact"
-transform: "strip_html"
+transform: "none"
 optional: true # Only include if field has value
 condition:
 field: "impact"
@@ -932,8 +888,8 @@ cis-bench --verbose export 23598 --format xccdf --style disa
 ```
 DEBUG: Loading config: disa_style.yaml
 DEBUG: Processing field: title
-DEBUG: Source value: "<p>Ensure cramfs disabled</p>"
-DEBUG: Applying transform: strip_html
+DEBUG: Source value: "Ensure cramfs disabled"
+DEBUG: Applying transform: none
 DEBUG: Result: "Ensure cramfs disabled"
 DEBUG: Creating TextType object
 ```
@@ -1114,7 +1070,7 @@ id_template: "xccdf_minimal_{benchmark_id}"
 
 title:
 source: "title"
-transform: "strip_html"
+transform: "none"
 
 version:
 source: "version"
@@ -1123,13 +1079,13 @@ field_mappings:
 title:
 target_element: "title"
 source_field: "title"
-transform: "strip_html"
+transform: "none"
 xccdf_type: "TextType"
 
 description:
 target_element: "description"
 source_field: "description"
-transform: "strip_html"
+transform: "none"
 xccdf_type: "HtmlTextWithSubType"
 
 check:
@@ -1190,7 +1146,7 @@ separator: "\n\n"
 impact:
 target_element: "impact"
 source_field: "impact"
-transform: "strip_html"
+transform: "none"
 optional: true
 default: "No impact information available" # Use if field empty
 ```
@@ -1282,18 +1238,17 @@ print(config.keys())
 EOF
 ```
 
-### Transformation Not Applied
+### Transform Not Registered
 
-**Symptom:** HTML still in output when it should be stripped
+**Symptom:** the style is refused when it loads, naming the place and the transform:
 
-**Debug:**
-```yaml
-# Add logging to transformation
-title:
-source_field: "title"
-transform: "strip_html"
-debug: true # Enable debug logging for this field
+```text
+ValueError: field_mappings.title: Unknown transformation: strip_html
 ```
+
+**Cause:** the mapping (or a `{value|filter}` in a template) names a transform no function is
+registered under in `mapping_engine.py`. Text fields name `none`: the stored Markdown is written
+as it is, there is no HTML conversion to name.
 
 ### Missing Output
 

@@ -19,46 +19,6 @@ class XHTMLFormatter:
     XHTML_NS = "http://www.w3.org/1999/xhtml"
 
     @classmethod
-    def wrap_paragraphs(cls, text: str | None) -> list[etree.Element]:
-        """Wrap plain text in XHTML <p> elements.
-
-        Splits text on double newlines to create paragraph breaks.
-        Returns list of <xhtml:p> lxml Element objects ready for serialization.
-
-        Args:
-            text: Plain text content (may contain \n\n for paragraph breaks)
-
-        Returns:
-            List of lxml Element objects (<xhtml:p> elements)
-            Empty list if text is None or empty
-
-        Example:
-            >>> formatter = XHTMLFormatter()
-            >>> text = "First paragraph.\\n\\nSecond paragraph."
-            >>> elements = formatter.wrap_paragraphs(text)
-            >>> len(elements)
-            2
-            >>> etree.tostring(elements[0])
-            b'<p xmlns="http://www.w3.org/1999/xhtml">First paragraph.</p>'
-        """
-        if not text or not text.strip():
-            return []
-
-        # Split on double newlines for paragraph breaks
-        paragraphs = text.split("\n\n")
-
-        elements = []
-        for para in paragraphs:
-            para = para.strip()
-            if para:
-                # Create <xhtml:p> element with namespace
-                p_elem = etree.Element(f"{{{cls.XHTML_NS}}}p")
-                p_elem.text = para
-                elements.append(p_elem)
-
-        return elements
-
-    @classmethod
     def wrap_single_paragraph(cls, text: str | None) -> etree.Element | None:
         """Wrap text in a single XHTML <p> element.
 

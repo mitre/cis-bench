@@ -19,7 +19,7 @@ The **MappingEngine** is a configuration-driven transformation engine that maps 
 ## Purpose
 
 - **Read YAML configurations** that define how to map our Pydantic data models to XCCDF structures
-- **Apply transformations** (strip_html, html_to_markdown, composite field assembly)
+- **Apply transformations** (none for text, strip_version_prefix, composite field assembly)
 - **Generate structures generically** using 3 core handlers (ident, metadata, profiles)
 - **Support multiple export styles** without changing code (just swap YAML config)
 - **Be extensible** for new frameworks via YAML only
@@ -523,10 +523,8 @@ class TransformRegistry:
 
 Built-in transformations:
 
-- none: Pass through unchanged
-- strip_html: Remove all HTML tags
-- strip_html_keep_code: Today the same as strip_html (delegates to it); unused by the shipped styles
-- html_to_markdown: Convert HTML to Markdown
+- none: Pass through unchanged (every text field: the stored text is Markdown)
+- strip_version_prefix: "v4.0.0" becomes "4.0.0"
 
 Extensible: Register custom transforms
 """
@@ -556,21 +554,7 @@ def apply_transform(self, transform_name: str, value: Any) -> Any:
 def apply_chain(self, transforms: List[str], value: Any) -> Any:
 """Apply chain of transformations in order."""
 
-# Built-in transformers
-class HTMLCleaner:
-"""HTML transformation utilities."""
-
-@staticmethod
-def strip_html(html: Optional[str]) -> str:
-"""Remove all HTML tags, return plain text."""
-
-@staticmethod
-def strip_html_keep_code(html: Optional[str]) -> str:
-"""Strip HTML but preserve code blocks and lists."""
-
-@staticmethod
-def html_to_markdown(html: Optional[str]) -> str:
-"""Convert HTML to Markdown format."""
+# No HTML conversion: benchmark text is stored as Markdown and written as it is.
 
 class CompositeTransformer:
 """Build composite fields from multiple sources."""
@@ -1105,11 +1089,7 @@ attributes={
 # ... more mappings
 },
 transformations={
-'strip_html': TransformDef(
-description='Remove all HTML tags',
-function='HTMLCleaner.strip_html'
-),
-# ... more transforms
+'none': TransformDef(description='Pass through unchanged'),
 }
 )
 
@@ -1125,41 +1105,23 @@ xccdf_benchmark = engine.map_benchmark(pydantic_benchmark)
 ### How Transformations are Applied
 
 ```python
-# Example: strip_html transformation
+# Example: strip_version_prefix transformation
 
-# 1. YAML defines transform
-transformations:
-strip_html:
-description: "Remove all HTML tags, return plain text"
-function: "HTMLCleaner.strip_html"
+# 1. Transform registered in registry
+transform_registry.register('strip_version_prefix', strip_version_prefix)
 
-# 2. Transform registered in registry
-transform_registry.register('strip_html', HTMLCleaner.strip_html)
+# 2. Field mapping specifies transform
+benchmark:
+version:
+source: "version"
+transform: "strip_version_prefix"
 
-# 3. Field mapping specifies transform
-field_mappings:
-description:
-source_field: "description"
-transform: "strip_html"
+# 3. During mapping, transform is applied
+value = benchmark.version # "v4.0.0"
+transformed = transform_registry.apply('strip_version_prefix', value)
+# Result: "4.0.0"
 
-# 4. During mapping, transform is applied
-value = recommendation.description # "<p>This is <strong>text</strong></p>"
-transformed = transform_registry.apply('strip_html', value)
-# Result: "This is text"
-```
-
-### Transform Chain Example
-
-```python
-# Apply multiple transforms in sequence
-transform_pipeline.apply_chain(
-['strip_html', 'html_to_markdown'],
-value
-)
-
-# Equivalent to:
-value = strip_html(value)
-value = html_to_markdown(value)
+# Text fields name "none": the stored Markdown is written as it is.
 ```
 
 ## Variable Substitution
@@ -1336,7 +1298,7 @@ field_mappings:
 description:
 target_element: "description"
 source_field: "description"
-transform: "html_to_markdown" # Preserve formatting
+transform: "none" # the stored Markdown, as it is
 
 # Use it
 engine = MappingEngine.from_config('cis_native_style.yaml')
@@ -1353,10 +1315,10 @@ def test_simple_field_mapping():
 mapping = FieldMapping(
 target_element='title',
 source_field='title',
-transform='strip_html'
+transform='none'
 )
 
-rec = Recommendation(title="<p>Test</p>")
+rec = Recommendation(title="Test")
 context = MappingContext(recommendation=rec, ...)
 
 strategy = SimpleFieldStrategy()
@@ -1371,8 +1333,8 @@ structure='composite',
 components=[
 ComponentMapping(
 sources=[
-SourceDef(field='description', transform='strip_html'),
-SourceDef(field='rationale', transform='strip_html')
+SourceDef(field='description', transform='none'),
+SourceDef(field='rationale', transform='none')
 ],
 separator='\n\n'
 )
@@ -1380,8 +1342,8 @@ separator='\n\n'
 )
 
 rec = Recommendation(
-description="<p>Desc</p>",
-rationale="<p>Rationale</p>"
+description="Desc",
+rationale="Rationale"
 )
 
 strategy = CompositeFieldStrategy()
@@ -1511,7 +1473,7 @@ cis_bench/
 │ └── xccdf_exporter.py # Uses MappingEngine
 │
 └── utils/
-├── html_parser.py # HTMLCleaner (used by transforms)
+├── html_parser.py # HTMLCleaner (HTML table and reference parsers)
 └── cci_lookup.py # CCILookupService (used by strategies)
 ```
 
@@ -1520,7 +1482,7 @@ cis_bench/
 The **MappingEngine** is a sophisticated, configuration-driven system that:
 
 1. **Loads YAML configs** defining field mappings and transformations
-2. **Applies transformations** via pluggable registry (strip_html, markdown, etc.)
+2. **Applies transformations** via pluggable registry (none, strip_version_prefix, filters)
 3. **Handles complex structures** (embedded XML, composite fields, nested elements)
 4. **Supports variable substitution** ({ref}, {ref_normalized}, etc.)
 5. **Uses strategy pattern** for different field mapping types

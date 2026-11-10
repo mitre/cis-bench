@@ -120,12 +120,12 @@ controls CM-7 and AC-3 (element text shortened):
 |-----------|--------------|----------|-------|
 | ref | `<version>` | Direct | CIS 3.1.1 STIG ID equivalent |
 | title | `<title>` | Direct | Unchanged |
-| description | `<description>` VulnDiscussion (first part) | Embedded | Strip HTML tags |
-| rationale | `<description>` VulnDiscussion (second part) | Embedded | Strip HTML tags, append to description |
-| impact | `<description>` PotentialImpacts | Embedded | Strip HTML tags |
+| description | `<description>` VulnDiscussion (first part) | Embedded | The stored Markdown, as it is |
+| rationale | `<description>` VulnDiscussion (second part) | Embedded | The stored Markdown, after the description |
+| impact | `<description>` PotentialImpacts | Embedded | The stored Markdown, as it is |
 | additional_info | `<description>` Mitigations | Embedded | If present |
-| remediation | `<fixtext>` | Direct | Strip HTML, preserve code blocks |
-| audit | `<check><check-content>` | Nested | Strip HTML, preserve code blocks |
+| remediation | `<fixtext>` | Direct | The stored Markdown, as it is |
+| audit | `<check><check-content>` | Nested | The stored Markdown, as it is |
 | cis_controls | `<ident>` per CIS Controls version | Direct | `system` names the version, value `8:4.8` |
 | mitre_mapping | `<ident>` per technique, tactic and mitigation | Direct | `system` under attack.mitre.org |
 | profiles | Benchmark `<Profile>` with a `<select>` per Rule | Benchmark | One Profile per profile, e.g. `level-1-server` |

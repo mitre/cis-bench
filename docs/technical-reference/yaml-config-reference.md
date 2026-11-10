@@ -133,7 +133,7 @@ field_mappings:
 title:
 target_element: "title" # XCCDF element name
 source_field: "title" # Source field on Recommendation
-transform: "strip_html" # Transform to apply
+transform: "none" # Transform to apply
 description: "Rule title" # Optional documentation
 ```
 
@@ -173,10 +173,10 @@ structure: "composite"
 sources:
 
 - field: "description"
-transform: "strip_html"
+transform: "none"
 
 - field: "rationale"
-transform: "strip_html"
+transform: "none"
 separator: "\n\n"
 ```
 
@@ -351,43 +351,20 @@ content: "{nist_control_id}" # Variable substitution
 
 ## Transformations Section
 
-A benchmark's text fields hold Markdown (see the [data model](data-model.md)), so a style that
-writes the text as it is names `none`: the CIS style does for every rule text field (title,
-description, rationale, warning, fixtext, check-content) and for the profile descriptions.
-`strip_html`, `strip_html_keep_code` and `html_to_markdown` parse the text as HTML, and read a
-placeholder such as `<user>` as a tag; no shipped style names them for benchmark text any more
-(the DISA style writes its text fields and the description's embedded tags as stored too). They
-stay registered until they are removed.
-
-Define available transformations:
+A benchmark's text fields hold Markdown (see the [data model](data-model.md)) and every export
+writes the text as it is, so the styles name `none` for every text field: the CIS style for
+each rule text field (title, description, rationale, warning, fixtext, check-content) and the
+profile descriptions, the DISA style for its text fields and the description's embedded tags.
+There is no HTML conversion: a text parsed as HTML would read a placeholder such as `<user>` as
+a tag. The transforms are registered in `mapping_engine.py` (`TransformRegistry.register`);
+this section only documents them, and a style that names a transform that is not registered is
+refused when it loads.
 
 ```yaml
 transformations:
 # Pass-through (no transformation)
 none:
 description: "Pass through unchanged"
-
-# Strip all HTML
-strip_html:
-description: "Remove all HTML tags, return plain text"
-function: "HTMLCleaner.strip_html"
-
-# Strip HTML but keep code/lists
-strip_html_keep_code:
-description: "Strip HTML but preserve code blocks and lists"
-function: "HTMLCleaner.strip_html_keep_code"
-preserve_elements:
-
-- "code"
-- "pre"
-- "ul"
-- "ol"
-- "li"
-
-# Convert to Markdown
-html_to_markdown:
-description: "Convert HTML to Markdown"
-function: "HTMLCleaner.html_to_markdown"
 ```
 
 ## Variables Reference
@@ -524,18 +501,18 @@ mitre_mapping # MITREMapping - MITRE ATT&CK mappings
 nist_controls # List[str] - NIST control IDs
 ```
 
-### Content Fields (HTML)
+### Content Fields (Markdown)
 
 ```yaml
-description # Detailed description (HTML)
-rationale # Rationale/justification (HTML)
-impact # Impact statement (HTML)
-audit # Audit procedure (HTML)
-remediation # Remediation steps (HTML)
-additional_info # Additional information (HTML)
-default_value # Default config value (HTML)
-artifact_equation # Artifact equation (HTML)
-references # External references (HTML)
+description # Detailed description (Markdown)
+rationale # Rationale/justification (Markdown)
+impact # Impact statement (Markdown)
+audit # Audit procedure (Markdown)
+remediation # Remediation steps (Markdown)
+additional_info # Additional information (Markdown)
+default_value # Default config value (Markdown)
+artifact_equation # Artifact equation (Markdown)
+references # External references (Markdown)
 ```
 
 ### Nested Field Access
@@ -632,25 +609,21 @@ field_mappings:
 title:
 target_element: "title"
 source_field: "title"
-transform: "strip_html"
+transform: "none"
 
 description:
 target_element: "description"
 source_field: "description"
-transform: "strip_html"
+transform: "none"
 
 rationale:
 target_element: "rationale"
 source_field: "rationale"
-transform: "strip_html"
+transform: "none"
 
 transformations:
 none:
 description: "Pass through unchanged"
-
-strip_html:
-description: "Remove all HTML tags"
-function: "HTMLCleaner.strip_html"
 ```
 
 ## Best Practices
@@ -774,7 +747,7 @@ cis-bench validate output.xml
 title:
 target_element: "title"
 source_field: "title"
-transform: "strip_html"
+transform: "none"
 ```
 
 ### Pattern 2: Field with Static Attributes
@@ -807,10 +780,10 @@ structure: "composite"
 sources:
 
 - field: "description"
-transform: "strip_html"
+transform: "none"
 
 - field: "rationale"
-transform: "strip_html"
+transform: "none"
 separator: "\n\n"
 ```
 
@@ -880,10 +853,6 @@ ValueError: Unknown transformation: unknown_transform
 **Solution**: Use a transform registered in `mapping_engine.py` (`TransformRegistry.register`):
 
 - none
-- strip_html
-- strip_html_keep_code
-- html_to_markdown
-- wrap_xhtml_paragraphs
 - strip_version_prefix
 - dotted_number_path (with arguments; see [Filters](#filters))
 - slug (with the separator as argument; see [Profiles](#profiles))

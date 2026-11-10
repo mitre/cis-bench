@@ -4,75 +4,6 @@ Tests the XHTMLFormatter class which creates XHTML elements for XCCDF exports.
 """
 
 
-class TestXHTMLFormatterWrapParagraphs:
-    """Tests for wrap_paragraphs method."""
-
-    def test_wrap_paragraphs_single(self):
-        """Single paragraph text should create one <p> element."""
-        from cis_bench.utils.xhtml_formatter import XHTMLFormatter
-
-        elements = XHTMLFormatter.wrap_paragraphs("This is a single paragraph.")
-
-        assert len(elements) == 1
-        assert elements[0].text == "This is a single paragraph."
-        assert elements[0].tag == "{http://www.w3.org/1999/xhtml}p"
-
-    def test_wrap_paragraphs_multiple(self):
-        """Text with double newlines should create multiple <p> elements."""
-        from cis_bench.utils.xhtml_formatter import XHTMLFormatter
-
-        text = "First paragraph.\n\nSecond paragraph.\n\nThird paragraph."
-        elements = XHTMLFormatter.wrap_paragraphs(text)
-
-        assert len(elements) == 3
-        assert elements[0].text == "First paragraph."
-        assert elements[1].text == "Second paragraph."
-        assert elements[2].text == "Third paragraph."
-
-    def test_wrap_paragraphs_none(self):
-        """None input should return empty list."""
-        from cis_bench.utils.xhtml_formatter import XHTMLFormatter
-
-        elements = XHTMLFormatter.wrap_paragraphs(None)
-        assert elements == []
-
-    def test_wrap_paragraphs_empty_string(self):
-        """Empty string should return empty list."""
-        from cis_bench.utils.xhtml_formatter import XHTMLFormatter
-
-        elements = XHTMLFormatter.wrap_paragraphs("")
-        assert elements == []
-
-    def test_wrap_paragraphs_whitespace_only(self):
-        """Whitespace-only input should return empty list."""
-        from cis_bench.utils.xhtml_formatter import XHTMLFormatter
-
-        elements = XHTMLFormatter.wrap_paragraphs("   \n\n   ")
-        assert elements == []
-
-    def test_wrap_paragraphs_strips_whitespace(self):
-        """Paragraph text should have whitespace stripped."""
-        from cis_bench.utils.xhtml_formatter import XHTMLFormatter
-
-        text = "  Leading spaces  \n\n  Trailing spaces  "
-        elements = XHTMLFormatter.wrap_paragraphs(text)
-
-        assert len(elements) == 2
-        assert elements[0].text == "Leading spaces"
-        assert elements[1].text == "Trailing spaces"
-
-    def test_wrap_paragraphs_skips_empty_paragraphs(self):
-        """Empty paragraphs (just newlines) should be skipped."""
-        from cis_bench.utils.xhtml_formatter import XHTMLFormatter
-
-        text = "First\n\n\n\nSecond"  # Extra newlines create empty paragraph
-        elements = XHTMLFormatter.wrap_paragraphs(text)
-
-        assert len(elements) == 2
-        assert elements[0].text == "First"
-        assert elements[1].text == "Second"
-
-
 class TestXHTMLFormatterWrapSingleParagraph:
     """Tests for wrap_single_paragraph method."""
 
@@ -212,7 +143,10 @@ class TestXHTMLFormatterElementsToXMLString:
         """Multiple elements should concatenate."""
         from cis_bench.utils.xhtml_formatter import XHTMLFormatter
 
-        elements = XHTMLFormatter.wrap_paragraphs("First\n\nSecond")
+        elements = [
+            XHTMLFormatter.wrap_single_paragraph("First"),
+            XHTMLFormatter.wrap_single_paragraph("Second"),
+        ]
         result = XHTMLFormatter.elements_to_xml_string(elements)
 
         assert "First" in result
@@ -223,15 +157,6 @@ class TestXHTMLFormatterElementsToXMLString:
         from cis_bench.utils.xhtml_formatter import XHTMLFormatter
 
         result = XHTMLFormatter.elements_to_xml_string([])
-        assert result == ""
-
-    def test_elements_to_xml_string_none_list(self):
-        """None should be handled (via empty check)."""
-        from cis_bench.utils.xhtml_formatter import XHTMLFormatter
-
-        # wrap_paragraphs returns [] for None, so test that flow
-        elements = XHTMLFormatter.wrap_paragraphs(None)
-        result = XHTMLFormatter.elements_to_xml_string(elements)
         assert result == ""
 
 

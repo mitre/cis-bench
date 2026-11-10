@@ -76,9 +76,10 @@ reads) is flagged for replacement on that card or on a linked one; it is not ext
 The reason is the record. Hand-written code in this project cut Dublin Core values at a
 marker delimiter and parsed templates with a regex that let an unclosed brace through;
 both were replaced by what the project already had (xsdata's own element type, the
-standard library's format parser). The hand-written HTML conversions still lose
-`<user>`-style placeholders from recommendation text; replacing them with a library is
-the work of the epic that wrote this rule.
+standard library's format parser). The hand-written HTML conversions (a tag stripper and
+a regex HTML-to-Markdown pass) lost `<user>`-style placeholders from recommendation text;
+the epic that wrote this rule replaced them with markdownify where HTML enters and with
+no conversion at all where the text is already Markdown, then removed them.
 
 ---
 

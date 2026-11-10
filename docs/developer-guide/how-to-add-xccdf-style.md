@@ -40,7 +40,7 @@ When you add a new XCCDF style:
 
 - Loading and parsing your YAML config
 - Applying field mappings you define
-- Executing transformations (strip_html, html_to_markdown, etc.)
+- Executing the transforms a mapping names (`none` for text, `strip_version_prefix`, filters)
 - Generating XCCDF models using xsdata
 - XML serialization with proper namespaces
 
@@ -95,12 +95,12 @@ field_mappings:
   title:
     target_element: "title"
     source_field: "title"
-    transform: "strip_html"
+    transform: "none"
 
   description:
     target_element: "description"
     source_field: "description"
-    transform: "html_to_markdown"
+    transform: "none"
 
   # Use generic metadata handler for CIS Controls
   cis_controls_metadata:

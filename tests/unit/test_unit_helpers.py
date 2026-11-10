@@ -1,12 +1,12 @@
 """Unit tests for helper methods and utilities.
 
 Tests the core helper functions that power the mapping engine:
-- TransformRegistry: HTML transformations
+- TransformRegistry: the registered transforms
 - VariableSubstituter: Variable substitution in templates
 - CCILookupService: CCI deduplication logic
 - DRY Helpers: Element construction methods
 - WorkbenchParser: HTML/JSON parsing utilities
-- HTMLCleaner: HTML transformation methods
+- HTMLCleaner: the HTML table and reference parsers
 """
 
 import re
@@ -33,34 +33,6 @@ from cis_bench.utils.parsers import WorkbenchParser
 # ============================================================================
 # FIXTURES - Common test data
 # ============================================================================
-
-
-@pytest.fixture
-def sample_html_simple():
-    """Simple HTML with basic tags."""
-    return "<p>This is <strong>bold</strong> text.</p>"
-
-
-@pytest.fixture
-def sample_html_with_code():
-    """HTML with code blocks that should be preserved."""
-    return """
-    <p>Run the command:</p>
-    <pre><code>kubectl get pods</code></pre>
-    <p>Expected output: <code>Running</code></p>
-    """
-
-
-@pytest.fixture
-def sample_html_nested():
-    """HTML with nested tags."""
-    return "<div><p>Outer <span>inner <strong>bold</strong> text</span></p></div>"
-
-
-@pytest.fixture
-def sample_html_malformed():
-    """Malformed HTML (unclosed tags)."""
-    return "<p>Unclosed paragraph<strong>Bold text"
 
 
 @pytest.fixture
@@ -178,63 +150,7 @@ def config_path(disa_config_path):
 
 
 class TestTransformRegistry:
-    """Unit tests for transformation functions."""
-
-    def test_strip_html_basic(self, sample_html_simple):
-        """Test basic HTML stripping."""
-        result = TransformRegistry.apply("strip_html", sample_html_simple)
-        assert result == "This is bold text."
-        assert "<" not in result
-        assert ">" not in result
-
-    def test_strip_html_with_nested_tags(self, sample_html_nested):
-        """Test HTML stripping with nested tags."""
-        result = TransformRegistry.apply("strip_html", sample_html_nested)
-        assert result == "Outer inner bold text"
-        assert "span" not in result
-        assert "div" not in result
-
-    def test_strip_html_none_input(self):
-        """Test strip_html with None input."""
-        result = TransformRegistry.apply("strip_html", None)
-        assert result == ""
-
-    def test_strip_html_empty_string(self):
-        """Test strip_html with empty string."""
-        result = TransformRegistry.apply("strip_html", "")
-        assert result == ""
-
-    def test_strip_html_malformed(self, sample_html_malformed):
-        """Test strip_html with malformed HTML."""
-        result = TransformRegistry.apply("strip_html", sample_html_malformed)
-        # BeautifulSoup should handle malformed HTML gracefully
-        assert "Unclosed paragraph" in result
-        assert "Bold text" in result
-        assert "<" not in result
-
-    def test_strip_html_keep_code_basic(self, sample_html_simple):
-        """Test strip_html_keep_code on simple HTML."""
-        result = TransformRegistry.apply("strip_html_keep_code", sample_html_simple)
-        # Should strip HTML (currently uses strip_html implementation)
-        assert "bold" in result.lower()
-
-    def test_strip_html_keep_code_with_code_blocks(self, sample_html_with_code):
-        """Test strip_html_keep_code preserves code blocks."""
-        result = TransformRegistry.apply("strip_html_keep_code", sample_html_with_code)
-        # Currently just strips all HTML - future enhancement should preserve <code>/<pre>
-        assert "kubectl get pods" in result
-        assert "Running" in result
-
-    def test_html_to_markdown_basic(self, sample_html_simple):
-        """Test HTML to Markdown conversion."""
-        result = TransformRegistry.apply("html_to_markdown", sample_html_simple)
-        # Should convert <strong> to **bold**
-        assert "**bold**" in result or "bold" in result  # Depends on implementation
-
-    def test_html_to_markdown_none_input(self):
-        """Test html_to_markdown with None input."""
-        result = TransformRegistry.apply("html_to_markdown", None)
-        assert result == ""
+    """Unit tests for the registered transforms."""
 
     def test_none_transform(self):
         """Test 'none' transformation (pass-through)."""
@@ -246,12 +162,6 @@ class TestTransformRegistry:
         """Test that unknown transformation raises ValueError."""
         with pytest.raises(ValueError, match="Unknown transformation"):
             TransformRegistry.apply("nonexistent_transform", "test")
-
-    def test_transform_with_special_characters(self):
-        """Test HTML stripping with special characters."""
-        html = "<p>Test &amp; &lt;special&gt; characters</p>"
-        result = TransformRegistry.apply("strip_html", html)
-        assert "&" in result or "amp" in result  # HTML entities handling
 
     # === strip_version_prefix transform tests ===
 
@@ -431,7 +341,7 @@ class TestProfileGeneration:
         config = {
             "generate_from_rules": True,
             "id_template": "p_{profile.title|slug:_}",
-            "description_transform": "strip_html",
+            "description_transform": "none",
             "profile_mappings": mappings,
         }
         return MappingEngine(cis_config_path).generate_profiles_from_rules(
@@ -494,7 +404,7 @@ class TestProfileGeneration:
 
     def test_defined_profiles_select_their_rules_and_their_ancestors(self, cis_config_path):
         definitions = [
-            ProfileDefinition(title="Level 1 - Alpha", description="<p>First tier.</p>"),
+            ProfileDefinition(title="Level 1 - Alpha", description="First tier."),
             ProfileDefinition(title="Level 2 - Alpha", parent="Level 1 - Alpha"),
             ProfileDefinition(title="Level 3 - Alpha", parent="Level 2 - Alpha"),
         ]
@@ -700,8 +610,8 @@ class TestVariableSubstituter:
             VariableSubstituter.substitute(template, {"value": "8.5"})
 
     def test_arguments_a_transform_does_not_take_are_refused(self):
-        with pytest.raises(ValueError, match="strip_html does not take the arguments"):
-            VariableSubstituter.substitute("{value|strip_html:keep}", {"value": "<p>a</p>"})
+        with pytest.raises(ValueError, match="strip_version_prefix does not take the arguments"):
+            VariableSubstituter.substitute("{value|strip_version_prefix:keep}", {"value": "v1"})
 
     def test_a_filter_is_applied_to_an_empty_value_too(self):
         # The transform decides what an empty value means; it is never skipped silently.
@@ -969,12 +879,12 @@ class TestDRYHelpers:
 
     def test_build_field_value_simple_field(self, engine, sample_recommendation):
         """Test _build_field_value with simple field mapping."""
-        field_mapping = {"source_field": "title", "transform": "strip_html"}
+        field_mapping = {"source_field": "title", "transform": "none"}
         context = {"ref_normalized": "3_1_1"}
 
         value = engine._build_field_value("title", field_mapping, sample_recommendation, context)
 
-        # Should return stripped title
+        # Should return the title as stored
         assert value is not None
         assert isinstance(value, str)
         assert "kubeconfig" in value.lower()
@@ -1194,89 +1104,7 @@ class TestWorkbenchParser:
 
 
 class TestHTMLCleaner:
-    """Unit tests for HTML transformation methods."""
-
-    def test_strip_html_basic(self, sample_html_simple):
-        """Test basic HTML stripping."""
-        result = HTMLCleaner.strip_html(sample_html_simple)
-        assert result == "This is bold text."
-        assert "<" not in result
-
-    def test_strip_html_none(self):
-        """Test strip_html with None."""
-        result = HTMLCleaner.strip_html(None)
-        assert result == ""
-
-    def test_strip_html_empty(self):
-        """Test strip_html with empty string."""
-        result = HTMLCleaner.strip_html("")
-        assert result == ""
-
-    @pytest.mark.parametrize(
-        ("html", "text"),
-        [
-            ("<p>First <b>tier</b>.</p>", "First tier."),
-            ("<p>Run <code>ls</code>, then stop.</p>", "Run ls, then stop."),
-            (
-                "<p>First paragraph</p><p>Second paragraph</p>",
-                "First paragraph\n\nSecond paragraph",
-            ),
-            ("<ul><li>one</li><li>two</li></ul>", "one\ntwo"),
-            ("<p>Intro:</p><ul><li>one</li></ul><p>End.</p>", "Intro:\n\none\n\nEnd."),
-            ("line one<br>line two", "line one\nline two"),
-            # WorkBench text is Markdown-like: its own line breaks and spacing are kept.
-            (
-                "Run the following:\n\n    # stat -Lc '%a  %U' /etc/passwd\n\nThen <b>check</b>.",
-                "Run the following:\n\n    # stat -Lc '%a  %U' /etc/passwd\n\nThen check.",
-            ),
-            ("Files &amp; folders", "Files & folders"),
-            ("<ul>Intro:<li>one</li><li>two</li></ul>", "Intro:\none\ntwo"),
-            ("<ul><li>one<ul><li>one.a</li></ul></li><li>two</li></ul>", "one\none.a\ntwo"),
-            (
-                "<ul>\n  <li>one</li>\n  <li>two</li>\n</ul>\n<p>End.</p>",
-                "one\ntwo\n\nEnd.",
-            ),
-            (
-                "<table><tr><th>Name</th><th>Value</th></tr><tr><td>a</td><td>1</td></tr></table>",
-                "Name\tValue\na\t1",
-            ),
-            # WorkBench saves many fields with Windows line breaks.
-            ("Run:  \r\n\r\n\r\n\r\n    # id\r\nDone.\r", "Run:\n\n    # id\nDone."),
-        ],
-    )
-    def test_strip_html_keeps_inline_text_together_and_blocks_apart(self, html, text):
-        assert HTMLCleaner.strip_html(html) == text
-
-    def test_strip_html_keeps_preformatted_text_as_written(self):
-        html = (
-            "<p>Run:</p><pre><code># grep -E '^\\s*auth'  /etc/pam.d/su\n  next line</code></pre>"
-        )
-
-        assert HTMLCleaner.strip_html(html) == (
-            "Run:\n\n# grep -E '^\\s*auth'  /etc/pam.d/su\n  next line"
-        )
-
-    def test_html_to_markdown_basic(self, sample_html_simple):
-        """Test HTML to Markdown conversion."""
-        result = HTMLCleaner.html_to_markdown(sample_html_simple)
-        # Should preserve text
-        assert "bold" in result.lower()
-        assert "text" in result.lower()
-
-    def test_html_to_markdown_code_blocks(self):
-        """Test Markdown conversion with code blocks."""
-        html = "<p>Command: <code>ls -la</code></p>"
-        result = HTMLCleaner.html_to_markdown(html)
-        # Should convert code to backticks or preserve it
-        assert "ls -la" in result
-
-    def test_html_to_markdown_lists(self):
-        """Test Markdown conversion with lists."""
-        html = "<ul><li>Item 1</li><li>Item 2</li></ul>"
-        result = HTMLCleaner.html_to_markdown(html)
-        # Should preserve list items
-        assert "Item 1" in result
-        assert "Item 2" in result
+    """Unit tests for the HTML table and reference parsers."""
 
     def test_parse_mitre_table(self, sample_mitre_table):
         """Test MITRE table parsing (from HTMLCleaner)."""
@@ -1397,17 +1225,17 @@ class TestIntegrationScenarios:
         assert "SV-" in result or "xccdf" in result.lower() or "cis" in result.lower()
 
     def test_full_transformation_pipeline(self, sample_recommendation):
-        """Test full pipeline: HTML input → Transform → Substitute → Output."""
-        # 1. Extract HTML content
-        html_content = sample_recommendation.description
+        """Test full pipeline: stored text → Transform → Substitute → Output."""
+        # 1. The stored text (Markdown)
+        content = sample_recommendation.description
 
-        # 2. Transform (strip HTML)
-        cleaned = TransformRegistry.apply("strip_html", html_content)
-        assert "<" not in cleaned
+        # 2. Transform (the text is written as it is)
+        text = TransformRegistry.apply("none", content)
+        assert text == content
 
         # 3. Substitute variables
         template = "Ref {ref}: {content}"
-        context = {"ref": sample_recommendation.ref, "content": cleaned}
+        context = {"ref": sample_recommendation.ref, "content": text}
         result = VariableSubstituter.substitute(template, context)
 
         # Should have ref and content
@@ -1888,7 +1716,7 @@ class TestEdgeCases:
 
     def test_transformation_chain_with_none(self):
         """Test transformation pipeline with None values."""
-        result1 = TransformRegistry.apply("strip_html", None)
+        result1 = TransformRegistry.apply("strip_version_prefix", None)
         result2 = TransformRegistry.apply("none", result1)
 
         assert result1 == ""
@@ -1903,12 +1731,6 @@ class TestEdgeCases:
         bad_json = '{"version": "8", "control": '  # Unclosed
         result = WorkbenchParser.parse_cis_controls_json(bad_json)
         assert result == []
-
-    def test_html_with_only_whitespace(self):
-        """Test HTML transformation with only whitespace."""
-        html = "   \n\t   "
-        result = HTMLCleaner.strip_html(html)
-        assert result == "" or result.strip() == ""
 
     def test_nist_control_deduplication_with_duplicates(self):
         """Test NIST deduplication with duplicate inputs."""
@@ -2239,3 +2061,255 @@ class TestEmbeddedTagsAreCheckedWhenTheStyleLoads:
 
         tags = [c["tag"] for c in engine.config.field_mappings["description"]["components"]]
         assert tags[0] == "VulnDiscussion" and len(tags) == 11
+
+
+class TestTransformsAreCheckedWhenTheStyleLoads:
+    """Every transform a style names is checked when the engine loads it, not when the first
+    export reaches the field: a name no transform is registered under is refused, with the
+    place that names it. The HTML conversions the styles once named are among the unknown."""
+
+    @staticmethod
+    def _style(tmp_path, parent, **sections):
+        import yaml
+
+        style = tmp_path / "style.yaml"
+        style.write_text(yaml.safe_dump({"extends": str(parent), **sections}))
+        return style
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "strip_html",
+            "strip_html_keep_code",
+            "html_to_markdown",
+            "wrap_xhtml_paragraphs",
+            "no_such_transform",
+        ],
+    )
+    def test_a_field_mapping_naming_no_transform_is_refused(self, tmp_path, cis_config_path, name):
+        style = self._style(
+            tmp_path,
+            cis_config_path,
+            field_mappings={
+                "title": {"target_element": "title", "source_field": "title", "transform": name}
+            },
+        )
+
+        with pytest.raises(ValueError, match=f"field_mappings.title.*{name}"):
+            MappingEngine(style)
+
+    def test_a_child_naming_no_transform_is_refused(self, tmp_path, cis_config_path):
+        style = self._style(
+            tmp_path,
+            cis_config_path,
+            field_mappings={
+                "check": {
+                    "target_element": "check",
+                    "structure": "nested",
+                    "children": [
+                        {
+                            "element": "check-content",
+                            "source_field": "audit",
+                            "transform": "no_such_transform",
+                        }
+                    ],
+                }
+            },
+        )
+
+        with pytest.raises(
+            ValueError, match="field_mappings.check.children\\[0\\].*no_such_transform"
+        ):
+            MappingEngine(style)
+
+    def test_a_component_source_naming_no_transform_is_refused(self, tmp_path, disa_config_path):
+        style = self._style(
+            tmp_path,
+            disa_config_path,
+            field_mappings={
+                "description": {
+                    "target_element": "description",
+                    "structure": "embedded_xml_tags",
+                    "components": [
+                        {
+                            "tag": "VulnDiscussion",
+                            "sources": [{"field": "description", "transform": "strip_html"}],
+                        }
+                    ],
+                }
+            },
+        )
+
+        with pytest.raises(
+            ValueError,
+            match="field_mappings.description.components\\[0\\].sources\\[0\\].*strip_html",
+        ):
+            MappingEngine(style)
+
+    def test_a_benchmark_element_naming_no_transform_is_refused(self, tmp_path, cis_config_path):
+        style = self._style(
+            tmp_path,
+            cis_config_path,
+            benchmark={"title": {"source": "title", "transform": "strip_html"}},
+        )
+
+        with pytest.raises(ValueError, match="benchmark.title.*strip_html"):
+            MappingEngine(style)
+
+    def test_a_group_element_naming_no_transform_is_refused(self, tmp_path, disa_config_path):
+        style = self._style(
+            tmp_path,
+            disa_config_path,
+            group_elements={"title": {"source": "title", "transform": "no_such_transform"}},
+        )
+
+        with pytest.raises(ValueError, match="group_elements.title.*no_such_transform"):
+            MappingEngine(style)
+
+    def test_a_profile_description_transform_naming_no_transform_is_refused(
+        self, tmp_path, cis_config_path
+    ):
+        style = self._style(
+            tmp_path,
+            cis_config_path,
+            benchmark={
+                "profiles": {"generate_from_rules": True, "description_transform": "strip_html"}
+            },
+        )
+
+        with pytest.raises(
+            ValueError, match="benchmark.profiles.description_transform.*strip_html"
+        ):
+            MappingEngine(style)
+
+    @pytest.mark.parametrize(
+        ("section", "where"),
+        [
+            ({"rule_id": {"template": "{ref_normalized|strip_html}"}}, "rule_id.template"),
+            ({"group_id": {"template": "{ref_normalized|no_such_transform}"}}, "group_id.template"),
+            (
+                {
+                    "benchmark": {
+                        "profiles": {
+                            "generate_from_rules": True,
+                            "id_template": "{profile.title|strip_html}",
+                        }
+                    }
+                },
+                "benchmark.profiles.id_template",
+            ),
+            (
+                {
+                    "field_mappings": {
+                        "mitre_techniques": {
+                            "target_element": "ident",
+                            "structure": "ident_from_list",
+                            "source_field": "mitre_mapping.techniques",
+                            "ident_spec": {
+                                "system_template": "https://attack.mitre.org/techniques",
+                                "value_template": "{item|html_to_markdown}",
+                            },
+                        }
+                    }
+                },
+                "field_mappings.mitre_techniques.ident_spec.value_template",
+            ),
+        ],
+    )
+    def test_a_template_filter_naming_no_transform_is_refused(
+        self, tmp_path, cis_config_path, section, where
+    ):
+        """A filter in a template ({value|transform}) is a transform name too; it is checked
+        where the style is loaded, not when the first rule reaches the template."""
+        style = self._style(tmp_path, cis_config_path, **section)
+
+        with pytest.raises(
+            ValueError, match=f"{where.replace('.', '[.]')}.*Unknown transformation"
+        ):
+            MappingEngine(style)
+
+    @pytest.mark.parametrize(
+        ("section", "where"),
+        [
+            (
+                {"benchmark": {"notice": {"content": "Read {benchmark.title|strip_html} first."}}},
+                "benchmark.notice.content",
+            ),
+            (
+                {
+                    "field_mappings": {
+                        "nist_reference": {
+                            "target_element": "reference",
+                            "structure": "dublin_core",
+                            "source_field": "nist_controls",
+                            "multiple": True,
+                            "dc_elements": [
+                                {"element": "publisher", "content": "NIST SP 800-53"},
+                                {
+                                    "element": "identifier",
+                                    "content": "{nist_control_id|no_such_transform}",
+                                },
+                            ],
+                            "href": "https://example.com/{nist_control_id|html_to_markdown}",
+                        }
+                    }
+                },
+                "field_mappings.nist_reference.dc_elements\\[1\\].content",
+            ),
+        ],
+    )
+    def test_a_filter_in_any_substituted_string_is_refused(
+        self, tmp_path, cis_config_path, section, where
+    ):
+        """The engine substitutes strings under many keys (content, href, system, prefix,
+        attributes), not only *template; a filter in any of them is checked at load."""
+        style = self._style(tmp_path, cis_config_path, **section)
+
+        with pytest.raises(ValueError, match=f"{where}.*Unknown transformation"):
+            MappingEngine(style)
+
+    def test_a_filter_in_a_reference_href_attribute_is_refused(self, tmp_path, cis_config_path):
+        """The reference's href lives under attributes, where the exporter reads it."""
+        style = self._style(
+            tmp_path,
+            cis_config_path,
+            field_mappings={
+                "nist_reference": {
+                    "target_element": "reference",
+                    "structure": "dublin_core",
+                    "source_field": "nist_controls",
+                    "multiple": True,
+                    "dc_elements": [{"element": "dc:identifier", "content": "{nist_control_id}"}],
+                    "attributes": {"href": "https://example.com/{nist_control_id|strip_html}"},
+                }
+            },
+        )
+
+        with pytest.raises(
+            ValueError, match="field_mappings.nist_reference.attributes.href.*strip_html"
+        ):
+            MappingEngine(style)
+
+    def test_a_filter_without_a_name_is_refused_at_load(self, tmp_path, cis_config_path):
+        style = self._style(tmp_path, cis_config_path, rule_id={"template": "{ref_normalized|}"})
+
+        with pytest.raises(ValueError, match="rule_id.template.*filter without a transform name"):
+            MappingEngine(style)
+
+    def test_a_transform_that_is_not_a_name_is_refused(self, tmp_path, cis_config_path):
+        style = self._style(
+            tmp_path,
+            cis_config_path,
+            field_mappings={
+                "title": {"target_element": "title", "source_field": "title", "transform": ["none"]}
+            },
+        )
+
+        with pytest.raises(ValueError, match="field_mappings.title.*transform must be a name"):
+            MappingEngine(style)
+
+    def test_the_shipped_styles_name_registered_transforms_only(
+        self, cis_config_path, disa_config_path
+    ):
+        for path in (cis_config_path, disa_config_path):
+            MappingEngine(path)

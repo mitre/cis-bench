@@ -198,7 +198,7 @@ field_mappings:
 new_field:
 target_element: "custom-element"
 source_field: "my_data"
-transform: "html_to_markdown"
+transform: "none"
 ```
 
 **No Python code changes needed!**
@@ -381,7 +381,7 @@ field_mappings:
 title:
 target_element: "title"
 source_field: "title"
-transform: "strip_html"
+transform: "none"
 
 cis_controls_metadata:
 structure: "metadata_from_config"
@@ -471,7 +471,7 @@ src/cis_bench/
 │ └── xccdf/ # xsdata generated
 ├── utils/ # Utilities
 │ ├── xml_utils.py # XCCDF processing
-│ ├── html_parser.py # HTML cleaning
+│ ├── html_parser.py # HTML table and reference parsers
 │ ├── logging_config.py # Logging setup
 │ ├── parallel.py # Paced thread-pool execution
 │ └── ...
@@ -546,7 +546,7 @@ field_mappings:
 title:
 target_element: "title"
 source_field: "title"
-transform: "strip_html"
+transform: "none"
 
 # Complex nested structure
 cis_controls_metadata:
@@ -561,13 +561,10 @@ multiple: true
 structure: "dublin_core"
 source_field: "nist_controls"
 
-# Transformations
+# Transformations (registered in mapping_engine.py; text is written as stored)
 transformations:
-strip_html:
-function: "HTMLCleaner.strip_html"
-
-html_to_markdown:
-function: "HTMLCleaner.html_to_markdown"
+none:
+description: "Pass through unchanged"
 ```
 
 ### Structure Types

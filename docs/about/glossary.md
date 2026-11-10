@@ -322,7 +322,7 @@ Configuration defining how a Pydantic field maps to an XCCDF element.
 title:
 target_element: "title" # XCCDF element name
 source_field: "title" # Pydantic field name
-transform: "strip_html" # Transformation to apply
+transform: "none" # Transformation to apply
 ```
 
 ### Transformation
@@ -330,12 +330,10 @@ A function that modifies field values during export.
 
 **Available:**
 
-- `strip_html` - Remove all HTML tags
-- `strip_html_keep_code` - Remove HTML but preserve code blocks
-- `html_to_markdown` - Convert HTML to Markdown
-- `none` - Pass through unchanged
+- `none` - Pass through unchanged (every text field: the stored text is Markdown)
+- `strip_version_prefix` - "v4.0.0" becomes "4.0.0"
 
-**Defined in:** `base_style.yaml` transformations section
+**Registered in:** `mapping_engine.py` (`TransformRegistry.register`)
 
 ---
 
@@ -729,7 +727,7 @@ Test of a single function/method in isolation.
 
 **Location:** `tests/unit/`
 
-**Example:** Testing that `strip_html()` removes HTML tags
+**Example:** Testing that `strip_version_prefix()` drops a leading "v"
 
 ### Integration Test
 Test of multiple components working together.
