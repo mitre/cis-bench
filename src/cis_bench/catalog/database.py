@@ -19,6 +19,7 @@ from sqlalchemy import (
     cast,
     column,
     event,
+    exists,
     func,
     literal_column,
     or_,
@@ -37,7 +38,10 @@ from sqlmodel import Session, SQLModel, col, create_engine, select
 from cis_bench.catalog.fts import (
     TEXT_COLUMNS,
     VERSION_COLUMN,
+    build_any_term_query,
     build_fts_query,
+    build_phrase_query,
+    build_terms_query,
     build_version_match_query,
     version_index_text,
 )
@@ -84,6 +88,76 @@ _CREATE_FTS_TABLE = (
 )
 
 
+# The recommendation index: one row per recommendation of every downloaded benchmark,
+# written where a benchmark is saved and removed where it is removed. A query's words are
+# looked up in the text columns; profiles is only a filter.
+_RECOMMENDATION_TEXT_COLUMNS = ("title", "description", "rationale", "audit", "remediation")
+_RECOMMENDATIONS_FTS_TABLE = table(
+    "recommendations_fts",
+    column("benchmark_id"),
+    column("ref"),
+    *(column(name) for name in _RECOMMENDATION_TEXT_COLUMNS),
+)
+_CREATE_RECOMMENDATIONS_FTS_TABLE = (
+    "CREATE VIRTUAL TABLE IF NOT EXISTS recommendations_fts USING fts5("
+    f"benchmark_id UNINDEXED, ref UNINDEXED, {', '.join(_RECOMMENDATION_TEXT_COLUMNS)}, "
+    "tokenize='porter unicode61')"
+)
+# One row per profile of each indexed recommendation, so a profile filter's words are
+# found side by side within one profile's name, never across two.
+_RECOMMENDATION_PROFILES_FTS_TABLE = table(
+    "recommendation_profiles_fts", column("benchmark_id"), column("ref"), column("profile")
+)
+_CREATE_RECOMMENDATION_PROFILES_FTS_TABLE = (
+    "CREATE VIRTUAL TABLE IF NOT EXISTS recommendation_profiles_fts USING fts5("
+    "benchmark_id UNINDEXED, ref UNINDEXED, profile, tokenize='porter unicode61')"
+)
+# The column layout of each recommendation index table; another layout is rebuilt on open.
+_RECOMMENDATION_INDEX_LAYOUTS = {
+    "recommendations_fts": ["benchmark_id", "ref", *_RECOMMENDATION_TEXT_COLUMNS],
+    "recommendation_profiles_fts": ["benchmark_id", "ref", "profile"],
+}
+# The recommendation index as the search reads it: its hidden rank and rowid columns too.
+_RECOMMENDATIONS_FTS_READ = table(
+    "recommendations_fts",
+    column("rowid"),
+    column("benchmark_id"),
+    column("ref"),
+    column("title"),
+    column("rank"),
+)
+
+
+def _recommendation_search_statement(
+    match: str, profile_match: str, benchmark_id: str | None, limit: int | None
+) -> Select[tuple[object, ...]]:
+    """The recommendation search SELECT: the MATCH expressions are bound values.
+
+    A profile filter keeps a recommendation with one profile row matching it; ranked best
+    first, then by benchmark and ref.
+    """
+    index = _RECOMMENDATIONS_FTS_READ
+    statement = (
+        sa_select(index.c.rowid, index.c.benchmark_id, index.c.ref, index.c.title)
+        .select_from(index)
+        .where(literal_column("recommendations_fts").op("MATCH")(match))
+        .order_by(index.c.rank, index.c.benchmark_id, index.c.ref)
+    )
+    if benchmark_id is not None:
+        statement = statement.where(index.c.benchmark_id == benchmark_id)
+    if profile_match:
+        profiles = _RECOMMENDATION_PROFILES_FTS_TABLE
+        statement = statement.where(
+            exists()
+            .where(literal_column("recommendation_profiles_fts").op("MATCH")(profile_match))
+            .where(profiles.c.benchmark_id == index.c.benchmark_id)
+            .where(profiles.c.ref == index.c.ref)
+        )
+    if limit is not None:
+        statement = statement.limit(limit)
+    return statement
+
+
 def _normalize_base_title(title: str | None) -> str:
     """Strip a trailing version suffix (e.g., ' v2.0.1') without truncating product words."""
     if not title:
@@ -101,9 +175,12 @@ class _PendingUpgrades(NamedTuple):
 
     downloaded_columns: tuple[tuple[str, str], ...]
     rebuild_index: bool
+    create_recommendation_index: bool = False
 
     def __bool__(self) -> bool:
-        return bool(self.downloaded_columns) or self.rebuild_index
+        return (
+            bool(self.downloaded_columns) or self.rebuild_index or self.create_recommendation_index
+        )
 
 
 def update_reason(
@@ -250,8 +327,10 @@ class CatalogDatabase:
                 logger.debug("Inserted default benchmark statuses")
 
             session.execute(text(_CREATE_FTS_TABLE))
+            session.execute(text(_CREATE_RECOMMENDATIONS_FTS_TABLE))
+            session.execute(text(_CREATE_RECOMMENDATION_PROFILES_FTS_TABLE))
             session.commit()
-            logger.debug("Created FTS5 virtual table")
+            logger.debug("Created FTS5 virtual tables")
 
         logger.debug("Database schema initialized")
 
@@ -284,6 +363,9 @@ class CatalogDatabase:
                 if pending.rebuild_index:
                     self._rebuild_fts(session)
                     logger.info("Rebuilt the search index in the current layout")
+                if pending.create_recommendation_index:
+                    self._create_recommendation_index(session)
+                    logger.info("Indexed the downloaded benchmarks' recommendations")
                 session.commit()
         except DatabaseError as error:
             logger.warning(
@@ -310,7 +392,74 @@ class CatalogDatabase:
                 if downloaded and name not in downloaded
             ),
             rebuild_index=bool(index) and index != ["benchmark_id", *_FTS_COLUMNS],
+            create_recommendation_index=bool(downloaded)
+            and any(
+                columns(name) != layout for name, layout in _RECOMMENDATION_INDEX_LAYOUTS.items()
+            ),
         )
+
+    def _create_recommendation_index(self, session: Session) -> None:
+        """Create the recommendation index in the current layout, replacing one in another,
+        and fill it from every downloaded benchmark (FTS5 cannot change a table's columns)."""
+        for name in _RECOMMENDATION_INDEX_LAYOUTS:
+            session.execute(text(f"DROP TABLE IF EXISTS {name}"))
+        session.execute(text(_CREATE_RECOMMENDATIONS_FTS_TABLE))
+        session.execute(text(_CREATE_RECOMMENDATION_PROFILES_FTS_TABLE))
+        for benchmark_id, content_json in session.execute(
+            sa_select(col(DownloadedBenchmark.benchmark_id), col(DownloadedBenchmark.content_json))
+        ):
+            self._index_recommendations(session, benchmark_id, content_json)
+
+    @staticmethod
+    def _index_recommendations(
+        session: Session,
+        benchmark_id: str,
+        content_json: str,
+        benchmark: Benchmark | None = None,
+    ) -> None:
+        """Write the recommendation index rows of one saved benchmark, replacing any it had.
+
+        The rows hold the text the copy loads as (Markdown, whatever scraper saved it):
+        ``benchmark`` when the caller has it, else the copy parsed. A copy that does not
+        load has no rows: there is nothing in it to search.
+        """
+        CatalogDatabase._unindex_recommendations(session, benchmark_id)
+        if benchmark is None:
+            try:
+                benchmark = deserialize_benchmark_json(content_json)
+            except ValueError as error:
+                logger.warning(
+                    f"The cached copy of {benchmark_id} cannot be read, so its "
+                    f"recommendations cannot be searched: {str(error).splitlines()[0]}"
+                )
+                return
+        rows = [
+            {
+                "benchmark_id": benchmark_id,
+                "ref": recommendation.ref,
+                "title": recommendation.title,
+                "description": recommendation.description or "",
+                "rationale": recommendation.rationale or "",
+                "audit": recommendation.audit or "",
+                "remediation": recommendation.remediation or "",
+            }
+            for recommendation in benchmark.recommendations
+        ]
+        profile_rows = [
+            {"benchmark_id": benchmark_id, "ref": recommendation.ref, "profile": profile}
+            for recommendation in benchmark.recommendations
+            for profile in recommendation.profiles
+        ]
+        if rows:
+            session.execute(_RECOMMENDATIONS_FTS_TABLE.insert(), rows)
+        if profile_rows:
+            session.execute(_RECOMMENDATION_PROFILES_FTS_TABLE.insert(), profile_rows)
+
+    @staticmethod
+    def _unindex_recommendations(session: Session, benchmark_id: str) -> None:
+        """Remove one benchmark's rows from the recommendation index."""
+        for index_table in (_RECOMMENDATIONS_FTS_TABLE, _RECOMMENDATION_PROFILES_FTS_TABLE):
+            session.execute(index_table.delete().where(index_table.c.benchmark_id == benchmark_id))
 
     def _rebuild_fts(self, session: Session) -> None:
         """Replace the search index with one in the current layout (FTS5 cannot add a column)."""
@@ -882,14 +1031,18 @@ class CatalogDatabase:
         version: str | None = None,
         downloaded_at: datetime | None = None,
         published_date: date | None = None,
+        benchmark: Benchmark | None = None,
     ):
-        """Save downloaded benchmark content.
+        """Save downloaded benchmark content, and index its recommendations for search.
 
         ``version`` and ``published_date`` are the downloaded release's own version string and
         the date WorkBench showed it as published; check-updates compares both against the
         catalog row.
         ``downloaded_at`` is the instant the benchmark records for itself, so the row
         and the benchmark's JSON carry one time; it must carry its zone.
+        ``benchmark`` is the Benchmark ``content_json`` was serialized from, when the caller
+        has it: the recommendation index is written from it instead of parsing the JSON
+        again.
         """
         now = utcnow() if downloaded_at is None else downloaded_at
         with Session(self.engine) as session:
@@ -918,6 +1071,8 @@ class CatalogDatabase:
                 )
                 session.add(downloaded)
 
+            # In the same transaction, so the index never holds another version of the copy.
+            self._index_recommendations(session, benchmark_id, content_json, benchmark)
             session.commit()
             logger.debug(f"Saved downloaded benchmark: {benchmark_id}")
 
@@ -954,6 +1109,7 @@ class CatalogDatabase:
             if downloaded is None:
                 return False
             session.delete(downloaded)
+            self._unindex_recommendations(session, benchmark_id)
             session.commit()
         logger.debug(f"Deleted downloaded benchmark: {benchmark_id}")
         return True
@@ -991,6 +1147,64 @@ class CatalogDatabase:
                 }
                 for benchmark_id, title, version, recommendation_count, downloaded_at in rows
             ]
+
+    def search_recommendations(
+        self,
+        query: str,
+        benchmark_id: str | None = None,
+        profile: str | None = None,
+        limit: int | None = 50,
+    ) -> list[dict]:
+        """The downloaded recommendations whose text holds every word of ``query``.
+
+        ``query`` is user text: punctuation and FTS5 keywords are search words. Each word is
+        found as a word prefix in a recommendation's title, description, rationale, audit
+        or remediation. ``benchmark_id`` keeps one benchmark's recommendations;
+        ``profile`` keeps those of a profile whose name holds its words side by side
+        ("Level 2" keeps "Level 2 - Server" and "Level 2 - Workstation"). Best match first.
+
+        Each result: benchmark_id, ref, title, and matched_fields (the text fields a word
+        was found in).
+        """
+        match = build_terms_query(query, _RECOMMENDATION_TEXT_COLUMNS)
+        if not match:
+            return []
+        statement = _recommendation_search_statement(
+            match, build_phrase_query(profile or "", "profile"), benchmark_id, limit
+        )
+        with Session(self.engine) as session:
+            # One read transaction for the ranked read and the field reads, so they see one
+            # state of the index: the sqlite3 driver opens none for a SELECT by itself, and
+            # a download committing between them could change what the fields say.
+            session.execute(text("BEGIN"))
+            rows = session.execute(statement).all()
+            found = {row.rowid for row in rows}
+            # The fields a word was found in, asked of the index itself one column at a time
+            # (rendering a column, as highlight() does, can lose some of its text).
+            in_field = {
+                name: found.intersection(
+                    session.execute(
+                        sa_select(_RECOMMENDATIONS_FTS_READ.c.rowid).where(
+                            literal_column("recommendations_fts").op("MATCH")(
+                                build_any_term_query(query, name)
+                            )
+                        )
+                    ).scalars()
+                )
+                for name in _RECOMMENDATION_TEXT_COLUMNS
+            }
+            session.rollback()  # ends the read transaction; nothing was written
+        return [
+            {
+                "benchmark_id": row.benchmark_id,
+                "ref": row.ref,
+                "title": row.title,
+                "matched_fields": [
+                    name for name in _RECOMMENDATION_TEXT_COLUMNS if row.rowid in in_field[name]
+                ],
+            }
+            for row in rows
+        ]
 
     def list_downloaded_benchmark_ids(self) -> list[str]:
         """IDs of every benchmark whose content has been downloaded."""

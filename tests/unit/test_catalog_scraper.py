@@ -794,6 +794,9 @@ class TestRefreshDownloadedRevisionDates:
     """check-updates fetches the detail page of each downloaded benchmark, never the whole catalog."""
 
     def _seed(self, db, bid, version="v1.0.0"):
+        from cis_bench.catalog.database import serialize_benchmark_json
+        from cis_bench.models.benchmark import Benchmark, Recommendation
+
         db.insert_benchmark(
             {
                 "benchmark_id": bid,
@@ -803,7 +806,24 @@ class TestRefreshDownloadedRevisionDates:
                 "status": "Published",
             }
         )
-        db.save_downloaded(bid, "{}", "h", 1, version=version)
+        copy = Benchmark(
+            title=f"CIS Benchmark {bid}",
+            benchmark_id=bid,
+            url=f"https://workbench.cisecurity.org/benchmarks/{bid}",
+            version=version,
+            scraper_version="v2_2026_01",
+            total_recommendations=1,
+            recommendations=[
+                Recommendation(
+                    ref="1.1.1",
+                    title="Ensure the example setting is configured",
+                    url=f"https://workbench.cisecurity.org/sections/1/recommendations/{bid}1",
+                    assessment_status="Automated",
+                )
+            ],
+        )
+        content_json, content_hash = serialize_benchmark_json(copy)
+        db.save_downloaded(bid, content_json, content_hash, 1, version=version)
 
     @staticmethod
     def _response(html, status=200):

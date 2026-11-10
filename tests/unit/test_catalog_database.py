@@ -1737,6 +1737,116 @@ class TestOpeningAnOlderCatalog:
 
         assert self._index_rows(path) == ["200", "210", "marker"]
 
+    def test_existing_database_gains_recommendations_fts_on_open(self, tmp_path):
+        """A catalog from before the recommendation index gains it, filled from what is
+        downloaded, and keeps every downloaded copy as it was."""
+        from cis_bench.catalog.database import serialize_benchmark_json
+        from cis_bench.models.benchmark import Benchmark, Recommendation
+
+        path = tmp_path / "older.db"
+        benchmark = Benchmark(
+            title="CIS Kubernetes Benchmark",
+            benchmark_id="210",
+            url="https://workbench.cisecurity.org/benchmarks/210",
+            version="v2.1.0",
+            scraper_version="v2_2026_01",
+            total_recommendations=1,
+            recommendations=[
+                Recommendation(
+                    ref="1.2.3",
+                    title="Ensure the API server audit log is enabled",
+                    url="https://workbench.cisecurity.org/sections/1/recommendations/123",
+                    assessment_status="Automated",
+                )
+            ],
+        )
+        content_json, content_hash = serialize_benchmark_json(benchmark)
+        self._catalog(path, "")
+        with closing(CatalogDatabase(path)) as db:
+            db.save_downloaded("210", content_json, content_hash, 1, version="v2.1.0")
+        self._catalog_tables(path, "DROP TABLE recommendations_fts;")
+
+        for _ in range(2):
+            with closing(CatalogDatabase(path)) as db:
+                found = db.search_recommendations("audit log")
+                kept = db.get_downloaded("210")
+
+        assert [(r["benchmark_id"], r["ref"]) for r in found] == [("210", "1.2.3")]
+        assert (kept["content_json"], kept["content_hash"], kept["version"]) == (
+            content_json,
+            content_hash,
+            "v2.1.0",
+        )
+
+    def test_a_recommendation_index_in_another_layout_is_rebuilt_on_open(self, tmp_path):
+        """An index whose profiles were one column (where a filter's words could span two
+        profile names) is replaced by the current layout and filled again."""
+        from cis_bench.catalog.database import serialize_benchmark_json
+        from cis_bench.models.benchmark import Benchmark, Recommendation
+
+        path = tmp_path / "older.db"
+        benchmark = Benchmark(
+            title="CIS Kubernetes Benchmark",
+            benchmark_id="210",
+            url="https://workbench.cisecurity.org/benchmarks/210",
+            version="v2.1.0",
+            scraper_version="v2_2026_01",
+            total_recommendations=1,
+            recommendations=[
+                Recommendation(
+                    ref="1.2.3",
+                    title="Ensure the API server audit log is enabled",
+                    url="https://workbench.cisecurity.org/sections/1/recommendations/123",
+                    assessment_status="Automated",
+                    profiles=["Level 1 - Master Node", "Level 2 - Worker Node"],
+                )
+            ],
+        )
+        content_json, content_hash = serialize_benchmark_json(benchmark)
+        self._catalog(path, "")
+        with closing(CatalogDatabase(path)) as db:
+            db.save_downloaded("210", content_json, content_hash, 1)
+        self._catalog_tables(
+            path,
+            """
+            DROP TABLE recommendations_fts;
+            DROP TABLE IF EXISTS recommendation_profiles_fts;
+            CREATE VIRTUAL TABLE recommendations_fts USING fts5(
+                benchmark_id UNINDEXED, ref UNINDEXED, title, description, rationale, audit,
+                remediation, profiles, tokenize='porter unicode61');
+            INSERT INTO recommendations_fts VALUES
+                ('210', '1.2.3', 'Ensure the API server audit log is enabled', '', '', '', '',
+                 'Level 1 - Master Node Level 2 - Worker Node');
+            """,
+        )
+
+        with closing(CatalogDatabase(path)) as db:
+            spanning = db.search_recommendations("audit", profile="Node Level 2")
+            within = db.search_recommendations("audit", profile="Level 2 - Worker")
+
+        import sqlite3
+
+        with closing(sqlite3.connect(path)) as con:
+            columns = [row[1] for row in con.execute("PRAGMA table_info(recommendations_fts)")]
+        assert columns == [
+            "benchmark_id",
+            "ref",
+            "title",
+            "description",
+            "rationale",
+            "audit",
+            "remediation",
+        ]
+        assert spanning == []
+        assert [(r["benchmark_id"], r["ref"]) for r in within] == [("210", "1.2.3")]
+
+    @staticmethod
+    def _catalog_tables(path, sql):
+        import sqlite3
+
+        with closing(sqlite3.connect(path)) as con:
+            con.executescript(sql)
+
     def test_a_downloaded_table_without_the_version_column_gets_it(self, tmp_path):
         path = tmp_path / "older.db"
         self._catalog(path, "ALTER TABLE downloaded_benchmarks DROP COLUMN version;")

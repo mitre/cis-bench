@@ -246,6 +246,7 @@ M --> H
 - `owners` - Authors
 - `catalog_benchmarks` - Main table with FKs
 - `downloaded_benchmarks` - Cached content
+- `recommendations_fts` - Search index over the downloaded benchmarks' recommendations
 - `scrape_metadata` - Tracking
 
 **Refresh fetch:** `CatalogScraper.scrape_full_catalog` fetches page 1 on the calling thread, then pages 2..N through `utils/parallel.py` `iter_batches`. Each batch is yielded back to the calling thread, which writes it to SQLite (one writer), updates the progress count and checks the >10% failure threshold before the next batch starts; a login page ends the run after its batch. Requests go through the session's adapter from `fetcher/http.py` (rate limit and retries) and `get_with_retry` (timeout), the same plumbing `WorkbenchScraper` uses.
@@ -638,13 +639,34 @@ benchmark_id UNINDEXED,
 title,
 platform,
 community,
-description,
 version,
 tokenize='porter unicode61'
 );
 ```
 
-Provides word-prefix full-text search. `version` holds the benchmark's version without its leading "v" (`2.1.0`). Every term is looked up in the four text columns as a word prefix; a word is also matched as a whole word of `version` (`vNext`); a term shaped like a version (`v2.1.0`, `2.1`, `v18`) is also matched against `version` from its start, number by number; a plain number is never matched against `version` (`catalog/fts.py`). A catalog whose index predates the `version` column has the index rebuilt when the database is opened (`CatalogDatabase._upgrade_schema`, one write transaction; a database that cannot be written is left as it is with a warning).
+Provides word-prefix full-text search. `version` holds the benchmark's version without its leading "v" (`2.1.0`). Every term is looked up in the three text columns as a word prefix; a word is also matched as a whole word of `version` (`vNext`); a term shaped like a version (`v2.1.0`, `2.1`, `v18`) is also matched against `version` from its start, number by number; a plain number is never matched against `version` (`catalog/fts.py`). A catalog whose index predates the `version` column has the index rebuilt when the database is opened (`CatalogDatabase._upgrade_schema`, one write transaction; a database that cannot be written is left as it is with a warning).
+
+**Recommendation index:**
+```sql
+CREATE VIRTUAL TABLE recommendations_fts USING fts5(
+benchmark_id UNINDEXED,
+ref UNINDEXED,
+title,
+description,
+rationale,
+audit,
+remediation,
+tokenize='porter unicode61'
+);
+CREATE VIRTUAL TABLE recommendation_profiles_fts USING fts5(
+benchmark_id UNINDEXED,
+ref UNINDEXED,
+profile,
+tokenize='porter unicode61'
+);
+```
+
+One row per recommendation of every downloaded benchmark, and one row per profile of each in `recommendation_profiles_fts`. `CatalogDatabase.save_downloaded` writes a benchmark's rows in the same transaction as the cached copy, replacing any it had, and `delete_downloaded` removes them with it, so the index holds exactly the downloaded benchmarks. The rows hold the text the copy loads as: the Markdown, whatever scraper saved it. `search_recommendations(query, benchmark_id=None, profile=None, limit=50)` looks each word of the query up as a word prefix in the five text columns (every word must match; a dotted number such as `22.04` matches its numbers side by side, the last as a word prefix, so `1.2` also finds `1.20` and `1.2.3`); a profile is only a filter, matching a recommendation with a profile whose name holds the given words side by side (each profile is its own row, so the words never span two names). Queries are user text: `catalog/fts.py` quotes every term, so punctuation and FTS5 keywords (`AND`, `NEAR`) are search words. Each result names the benchmark, the recommendation's ref and title, and the text fields a word was found in (asked of the index one column at a time for the rows found). A catalog from before this index, or with it in another column layout, gains it in the current layout when the database is opened, filled from the benchmarks already downloaded (`CatalogDatabase._upgrade_schema`, in its one write transaction).
 
 ---
 
