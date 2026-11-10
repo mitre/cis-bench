@@ -562,7 +562,7 @@ cis-bench cache status --output-format json | jq
 - **Downloaded benchmarks**: the same set `list` shows, with ID, title, version and when each was downloaded. A benchmark the catalog does not list takes its title from the cached copy, as in `list`.
 - **Session**: whether a session is saved, when it was saved and the file it is in. Login saves the session right after confirming it works; later checks (`auth status`, a download) are not recorded, so this is the time of the last login, not of the last check.
 
-Anything missing is shown as `none` with the command that provides it. `json` and `yaml` carry one object with three parts: `catalog` (`present`, `benchmarks`, `last_full_refresh`, `last_update`), `downloaded` (`benchmark_id`, `title`, `version`, `downloaded_at`) and `session` (`present`, `file`, `saved_at`); times are ISO 8601 with their offset, `null` when absent. Tables show times as `list` does.
+Anything missing is shown as `none` with the command that provides it; a `catalog.db` that exists but cannot be read (corrupt, locked) is an error naming the file (exit code 1), never `none`. `json` and `yaml` carry one object with three parts: `catalog` (`present`, `benchmarks`, `last_full_refresh`, `last_update`), `downloaded` (`benchmark_id`, `title`, `version`, `downloaded_at`) and `session` (`present`, `file`, `saved_at`); times are ISO 8601 as recorded, with their offset, and `null` when absent. A refresh time written by an earlier version may carry no offset: it is given as written, never guessed into a zone, and tables mark it `(zone not recorded)`, as `list` does for its times.
 
 ---
 

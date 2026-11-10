@@ -67,6 +67,10 @@ def _catalog_and_downloads(catalog_db_path: Path) -> dict:
 
     An absent catalog.db holds neither and is not created. A downloaded benchmark the
     catalog does not list takes its title from the cached copy, as list shows it.
+
+    Raises:
+        click.ClickException: catalog.db exists but cannot be read (corrupt, locked); it is
+            not reported as absent.
     """
     catalog: dict = {
         "present": False,
@@ -77,6 +81,18 @@ def _catalog_and_downloads(catalog_db_path: Path) -> dict:
     if not catalog_db_path.exists():
         return {"catalog": catalog, "downloaded": []}
 
+    from sqlalchemy.exc import SQLAlchemyError
+
+    try:
+        return _read_catalog_db(catalog_db_path, catalog)
+    except SQLAlchemyError as error:
+        raise click.ClickException(
+            f"{catalog_db_path} cannot be read: {str(error).splitlines()[0]}"
+        ) from error
+
+
+def _read_catalog_db(catalog_db_path: Path, catalog: dict) -> dict:
+    """The catalog's facts and the downloaded benchmarks, read from an existing catalog.db."""
     from cis_bench.catalog.database import CatalogDatabase, deserialize_benchmark_json
 
     with closing(CatalogDatabase(catalog_db_path)) as db:

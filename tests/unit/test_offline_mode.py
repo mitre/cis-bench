@@ -460,6 +460,19 @@ class TestCacheStatus:
             "last_update": None,
         }
 
+    def test_a_catalog_file_that_cannot_be_read_is_an_error_naming_it(
+        self, runner, data_dir, no_network
+    ):
+        catalog_db = data_dir / "catalog.db"
+        catalog_db.write_bytes(b"this is not a SQLite database" * 100)
+
+        result = runner.invoke(cli, ["--offline", "cache", "status"])
+
+        assert result.exit_code == 1, result.output
+        assert result.exception is None or isinstance(result.exception, SystemExit)
+        assert f"{catalog_db} cannot be read" in result.stderr
+        assert "Catalog: none" not in result.output
+
     def test_last_update_is_reported_when_the_catalog_was_updated(self, runner, catalog):
         import json
 
