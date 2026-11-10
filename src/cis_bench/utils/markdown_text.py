@@ -11,6 +11,7 @@ import warnings
 from bs4 import MarkupResemblesLocatorWarning
 from markdown_it import MarkdownIt
 from markdown_it.rules_inline import html_inline as _html_inline_rule
+from markdown_it.rules_inline import image as _image_rule
 from markdown_it.rules_inline.state_inline import StateInline
 from markdown_it.token import Token
 from markdownify import ATX, MarkdownConverter
@@ -57,9 +58,21 @@ def _recording_html_inline(state: StateInline, silent: bool) -> bool:
     return True
 
 
+def _recording_image(state: StateInline, silent: bool) -> bool:
+    """The library's own image rule; the token it pushes remembers where its label starts
+    (after the two characters ``![``), so raw HTML inside the label can be placed."""
+    start = state.pos
+    if not _image_rule(state, silent):
+        return False
+    if not silent:
+        state.tokens[-1].meta["label_offset"] = start + 2
+    return True
+
+
 # CommonMark as GitHub and MkDocs read it: raw HTML on, so a bare <word> in prose is a tag.
 _commonmark = MarkdownIt("commonmark")
 _commonmark.inline.ruler.at("html_inline", _recording_html_inline)
+_commonmark.inline.ruler.at("image", _recording_image)
 
 _CLOSING_HEADING_MARKERS = re.compile(r"[ \t]+#+$")
 _LIST_MARKER = re.compile(r"[-+*]|\d+[.)]")
@@ -70,14 +83,12 @@ def _raw_html_spans(children: list[Token] | None, content: str) -> list[tuple[in
     spans: list[tuple[int, int]] = []
     for child in children or []:
         if child.type == "image":
-            # An image's label is parsed as text of its own; it sits once inside the content.
-            for start, end in _raw_html_spans(child.children, child.content):
-                at = content.find(child.content)
-                if at < 0 or content.find(child.content, at + 1) >= 0:
-                    raise ValueError(
-                        f"the label {child.content!r} is not found once in {content!r}"
-                    )
-                spans.append((at + start, at + end))
+            # An image's label is parsed as text of its own, starting where the rule recorded.
+            at = child.meta["label_offset"]
+            spans.extend(
+                (at + start, at + end)
+                for start, end in _raw_html_spans(child.children, child.content)
+            )
         elif child.type == "html_inline":
             _src, start, end = child.meta["raw_html_span"]
             spans.append((start, end))

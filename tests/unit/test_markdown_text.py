@@ -273,3 +273,14 @@ class TestClosedFencesMidField:
         text = "- item\n\n  ```\n  code <x>\n\nprose after the list"
 
         assert closed_fences(text) == text
+
+
+class TestProseAngleBracketsWithRepeatedLabels:
+    def test_two_images_with_the_same_label_and_the_label_text_in_prose(self):
+        from cis_bench.utils.markdown_text import prose_angle_brackets_as_text
+
+        text = "Set <user> then ![<user>](a.png) and ![<user>](b.png) for `<user>`."
+
+        assert prose_angle_brackets_as_text(text) == (
+            "Set &lt;user> then ![&lt;user>](a.png) and ![&lt;user>](b.png) for `<user>`."
+        )
