@@ -45,12 +45,14 @@ needs WorkBench. Nothing is sent, and the error (on stderr, exit code 1) names t
 and what it needed:
 
 ```text
-Error: cis-bench get needs CIS WorkBench to download benchmark 23598, and offline mode is on (--offline, CIS_BENCH_OFFLINE, or offline = true in config.toml). Nothing was sent to WorkBench.
+Error: cis-bench get needs CIS WorkBench to download benchmark 23598, and offline mode is on (--offline, CIS_BENCH_OFFLINE, or offline = true in config.toml). Nothing was sent to WorkBench. Run 'cis-bench cache status' to see what is available offline.
 ```
+
+[`cis-bench cache status`](#cis-bench-cache-status) shows what is there to work with.
 
 | Command | Offline |
 | --- | --- |
-| `search`, `export`, `info`, `list`, `validate`, `remove`, `config`, `auth logout`, `catalog search`, `catalog list`, `catalog info`, `catalog platforms`, `catalog stats` | Work as usual (they never contact WorkBench) |
+| `search`, `export`, `info`, `list`, `validate`, `remove`, `config`, `cache status`, `auth logout`, `catalog search`, `catalog list`, `catalog info`, `catalog platforms`, `catalog stats` | Work as usual (they never contact WorkBench) |
 | `get` | Exports a downloaded benchmark; fails for one that is not downloaded |
 | `diff` | Compares files and downloaded benchmarks; fails for an ID that is not downloaded |
 | `download` | Reports each downloaded benchmark as already cached; fails each one that is not downloaded and exits 1 |
@@ -529,6 +531,38 @@ cis-bench list --output-format csv > inventory.csv
 Downloaded benchmarks: ID, title, version, recommendations count, CIS Controls v8 count, MITRE mappings count, NIST controls count, and when it was downloaded. Exported files: the folder and the file names.
 
 **Times:** a download is recorded once, in UTC. The table shows it in your zone and names the zone (`2026-11-06 21:05:58 EST`; set `TZ` to choose another); `json`, `yaml` and `csv` carry it in ISO 8601 with its offset (`2026-11-07T02:05:58+00:00`). A time written by an earlier version carries no zone; it is shown as it was written, marked `(zone not recorded)` in tables, and never guessed into a zone. `info`, `catalog stats` and `catalog check-updates` show times the same way.
+
+---
+
+### `cis-bench cache status`
+
+Show what `cis-bench` can work with without CIS WorkBench: the catalog, the downloaded benchmarks and the saved session. Everything is read from this machine; nothing is sent to WorkBench, so it works in [offline mode](#offline-mode).
+
+**Syntax:**
+```bash
+cis-bench cache status [OPTIONS]
+```
+
+**Options:**
+
+- `-o, --output-format` - Format (table|json|yaml) - default: table
+
+**Examples:**
+```bash
+# What is available offline
+cis-bench cache status
+
+# JSON output
+cis-bench cache status --output-format json | jq
+```
+
+**Output:**
+
+- **Catalog**: how many benchmarks it lists, when it was last fully refreshed (`catalog refresh`) and last updated (`catalog update`), each `never` when it has not happened. A catalog that lists no benchmarks is shown as `none`.
+- **Downloaded benchmarks**: the same set `list` shows, with ID, title, version and when each was downloaded. A benchmark the catalog does not list takes its title from the cached copy, as in `list`.
+- **Session**: whether a session is saved, when it was saved and the file it is in. Login saves the session right after confirming it works; later checks (`auth status`, a download) are not recorded, so this is the time of the last login, not of the last check.
+
+Anything missing is shown as `none` with the command that provides it. `json` and `yaml` carry one object with three parts: `catalog` (`present`, `benchmarks`, `last_full_refresh`, `last_update`), `downloaded` (`benchmark_id`, `title`, `version`, `downloaded_at`) and `session` (`present`, `file`, `saved_at`); times are ISO 8601 with their offset, `null` when absent. Tables show times as `list` does.
 
 ---
 
