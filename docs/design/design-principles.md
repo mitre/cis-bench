@@ -86,24 +86,34 @@ no conversion at all where the text is already Markdown, then removed them.
 ## Core Principle: The Store Holds What WorkBench Holds
 
 A benchmark's text fields hold the Markdown WorkBench gives, with every line break as
-`\n`, and nothing else is changed on the way in. Nothing is trimmed from either end,
-nothing is stripped, no entity is decoded, no Markdown is rewritten: the stored text is
-the page's text. This covers the recommendation text fields, the benchmark overview, the
-profile descriptions and the artifact titles.
+`\n`. A field that holds text is stored as that text: nothing is trimmed from either end,
+nothing is stripped, no entity is decoded, no Markdown is rewritten. A field that holds
+only spaces, tabs and line breaks is stored as absent (`None`). This covers the
+recommendation text fields, the benchmark overview (a page without the overview component
+falls back to the text of its headings and paragraphs, the one place the fetcher reads
+rendered HTML), the profile descriptions and the artifact titles.
 
 HTML is converted once, by markdownify, where it enters: a copy the v1 scraper saved
 holds rendered HTML in its text fields and is converted as it loads; the benchmark page
 gives profile descriptions as HTML and they are converted as the page is read; the
 artifact payload gives some titles as HTML and they are converted as the payload is
-parsed. Which form a stored copy holds is recorded on the copy (`text_format`,
-`artifact_title_format`) and read from there, never guessed from the text: in Markdown a
-placeholder such as `<user>` looks like a tag, and an HTML parser run on it drops it.
+parsed. That conversion is the one place entities are decoded (`&lt;user&gt;` becomes the
+placeholder `<user>`) and the blank lines at either end of the HTML are left out, because
+its output is the Markdown WorkBench would have given. Which form a stored copy holds is
+recorded on the copy (`text_format`, `artifact_title_format`) and read from there, never
+guessed from the text: in Markdown a placeholder such as `<user>` looks like a tag, and an
+HTML parser run on it drops it.
 
-Presentation changes live at export, by a library. The Markdown export writes the stored
-text as it is, and markdown-it-py decides where a `<` in prose must be written `&lt;` so
-a renderer shows the placeholder, and where a fence a field leaves open must be closed
-before the next field; the CIS XCCDF renders the Markdown to XHTML the same way. No
-exporter trims, filters or rewrites a value it is given.
+Presentation changes live at export, by a library or by the style. The Markdown export
+writes the stored text as it is, and markdown-it-py decides where a `<` in prose must be
+written `&lt;` so a renderer shows the placeholder, and where a fence a field leaves open
+must be closed before the next field. The XCCDF exports write the stored Markdown as the
+text of their elements; a style may name a transform for a field (the CIS style reads the
+references field as one `ident` per line through `lines`), and every transform is Python
+registered in `TransformRegistry` and named in the YAML, never a rule hidden in an
+exporter. Rendering the Markdown to XHTML for the CIS XCCDF is planned, with
+markdown-it-py; until it lands, the XCCDF text elements carry Markdown. No exporter trims,
+filters or rewrites a value beyond what the style names and the parser decides.
 
 The check, before any transform of stored text is built: probe the real pages for what
 they carry (the attribute, the padding, the entities), run the change over every cached

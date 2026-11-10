@@ -634,12 +634,12 @@ less minimal.xml
 ```yaml
 # base_style.yaml - Common configuration
 benchmark:
-namespaces:
-default: "http://checklists.nist.gov/xccdf/1.2"
-dc: "http://purl.org/dc/elements/1.1/"
+  namespaces:
+    default: "http://checklists.nist.gov/xccdf/1.2"
+    dc: "http://purl.org/dc/elements/1.1/"
 
 rule_defaults:
-severity: "medium"
+  severity: "medium"
 ```
 
 ### Child Style Inherits
@@ -650,12 +650,13 @@ extends: base_style.yaml # Inherit all from base
 
 # Override specific settings
 metadata:
-xccdf_version: "1.1.4" # Override (base has 1.2)
+  xccdf_version: "1.1.4" # Override (base has 1.2)
 
 # field_mappings are merged (not replaced)
 field_mappings:
-title:
-source_field: "title" # transform: none, the text as stored
+  title:
+    target_element: "title"
+    source_field: "title" # transform: none, the text as stored
 ```
 
 **Inheritance Rules:**
@@ -994,10 +995,10 @@ target_element: "description"
 
 ```yaml
 field_mappings:
-version:
-target_element: "version"
-source_field: "version"
-transform: "strip_version_prefix" # registered in mapping_engine.py
+  version:
+    target_element: "version"
+    source_field: "version"
+    transform: "strip_version_prefix" # registered in mapping_engine.py
 ```
 
 A transform is Python, registered with `TransformRegistry.register`, and a mapping names it;
