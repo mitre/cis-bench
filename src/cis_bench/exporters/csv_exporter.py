@@ -36,8 +36,8 @@ class CSVExporter(BaseExporter):
         rows = []
 
         for rec in benchmark.recommendations:
-            # Use DRY helpers to eliminate duplication
-            html_fields = RecommendationFieldTransformer.strip_all_html(rec)
+            # The text fields as stored (Markdown; a placeholder such as <user> is text)
+            text_fields = RecommendationFieldTransformer.stored_text(rec)
 
             # Flatten nested structures
             row = {
@@ -62,14 +62,14 @@ class CSVExporter(BaseExporter):
                 "mitre_mitigations": SafeFieldAccessor.get_mitre_field(rec, "mitigations"),
                 # Parent using DRY helper
                 "parent": SafeFieldAccessor.get_parent_title(rec),
-                # Content (HTML stripped) - using DRY helper
-                "description": html_fields["description"],
-                "rationale": html_fields["rationale"],
-                "impact": html_fields["impact"],
-                "audit": html_fields["audit"],
-                "remediation": html_fields["remediation"],
-                "additional_info": html_fields["additional_info"],
-                "default_value": html_fields["default_value"],
+                # Content, as stored
+                "description": text_fields["description"],
+                "rationale": text_fields["rationale"],
+                "impact": text_fields["impact"],
+                "audit": text_fields["audit"],
+                "remediation": text_fields["remediation"],
+                "additional_info": text_fields["additional_info"],
+                "default_value": text_fields["default_value"],
                 # Artifacts count
                 "artifacts_count": len(rec.artifacts) if rec.artifacts else 0,
             }

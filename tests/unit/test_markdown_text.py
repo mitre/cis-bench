@@ -88,3 +88,99 @@ class TestLinksAndEntities:
         assert (
             html_to_markdown(html) == "See [https://example.invalid/g](https://example.invalid/g)."
         )
+
+
+class TestProseAngleBracketsAsText:
+    """A placeholder in prose is written so a renderer with raw HTML on shows it as text; a
+    placeholder in code and an autolink are left as they are."""
+
+    def test_a_placeholder_in_a_sentence_is_escaped_and_one_in_a_code_span_is_not(self):
+        from cis_bench.utils.markdown_text import prose_angle_brackets_as_text
+
+        text = "Set deny=<n> and run `deny=<n>` here."
+
+        assert prose_angle_brackets_as_text(text) == "Set deny=&lt;n> and run `deny=<n>` here."
+
+    def test_a_fence_is_left_as_it_is(self):
+        from cis_bench.utils.markdown_text import prose_angle_brackets_as_text
+
+        text = "Run:\n\n```\n# chage --mindays <N> <user>\n```\n\nfor each <user>."
+
+        assert prose_angle_brackets_as_text(text) == (
+            "Run:\n\n```\n# chage --mindays <N> <user>\n```\n\nfor each &lt;user>."
+        )
+
+    def test_placeholders_in_list_items_quotes_and_continuation_lines_are_escaped(self):
+        from cis_bench.utils.markdown_text import prose_angle_brackets_as_text
+
+        text = "- item with <PATH TO FILE> inside\n  continued <x> line\n\n> quoted <y> text"
+
+        assert prose_angle_brackets_as_text(text) == (
+            "- item with &lt;PATH TO FILE> inside\n  continued &lt;x> line\n\n> quoted &lt;y> text"
+        )
+
+    def test_a_line_that_is_only_a_placeholder_no_longer_hides_the_lines_after_it(self):
+        from cis_bench.utils.markdown_text import prose_angle_brackets_as_text
+
+        text = "<PATH TO FILE>\nfollowing <z> line"
+
+        assert prose_angle_brackets_as_text(text) == "&lt;PATH TO FILE>\nfollowing &lt;z> line"
+
+    def test_an_autolink_and_a_placeholder_in_link_text_are_handled_by_the_parser(self):
+        from cis_bench.utils.markdown_text import prose_angle_brackets_as_text
+
+        text = "See <https://example.invalid/g> and [deny=<n>](https://example.invalid/d)."
+
+        assert prose_angle_brackets_as_text(text) == (
+            "See <https://example.invalid/g> and [deny=&lt;n>](https://example.invalid/d)."
+        )
+
+    def test_text_without_angle_brackets_is_unchanged(self):
+        from cis_bench.utils.markdown_text import prose_angle_brackets_as_text
+
+        text = "Plain **bold** text\n\n- one\n- two"
+
+        assert prose_angle_brackets_as_text(text) == text
+
+    def test_the_result_renders_every_placeholder_as_text(self):
+        from markdown_it import MarkdownIt
+
+        from cis_bench.utils.markdown_text import prose_angle_brackets_as_text
+
+        text = "Set deny=<n>.\n\n<PATH TO FILE>\nnext <z>\n\n```\n<N>\n```"
+
+        html = MarkdownIt("commonmark").render(prose_angle_brackets_as_text(text))
+
+        assert "deny=&lt;n&gt;" in html and "&lt;PATH TO FILE&gt;" in html
+        assert "next &lt;z&gt;" in html and "<code>&lt;N&gt;\n</code>" in html
+
+
+class TestClosedFences:
+    def test_a_fence_left_open_is_closed_at_the_end(self):
+        from cis_bench.utils.markdown_text import closed_fences
+
+        assert closed_fences("Run:\n\n```\n# stat <path>") == "Run:\n\n```\n# stat <path>\n```"
+
+    def test_a_closed_fence_is_left_as_it_is(self):
+        from cis_bench.utils.markdown_text import closed_fences
+
+        text = "Run:\n\n```\n# stat <path>\n```\n\nthen <user>"
+
+        assert closed_fences(text) == text
+
+    def test_the_closing_marker_repeats_the_opening_one(self):
+        from cis_bench.utils.markdown_text import closed_fences
+
+        assert closed_fences("- item\n\n  ~~~~\n  code") == "- item\n\n  ~~~~\n  code\n  ~~~~"
+
+    def test_the_closed_text_renders_as_one_code_block_followed_by_prose(self):
+        from markdown_it import MarkdownIt
+
+        from cis_bench.utils.markdown_text import closed_fences
+
+        document = closed_fences("```\n# stat <path>") + "\n\n### Next\n\nprose <user>"
+
+        html = MarkdownIt("commonmark").render(document)
+
+        assert "<code># stat &lt;path&gt;\n</code>" in html
+        assert "<h3>Next</h3>" in html

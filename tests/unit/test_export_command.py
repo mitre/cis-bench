@@ -604,3 +604,61 @@ class TestExportLogsNothingAtInfo:
         assert "Export" in result.output
         # The CLI's logging goes to stderr, which the runner folds into output
         assert "INFO:" not in result.output, result.output
+
+
+class TestTheStoredMarkdownIsWrittenAsItIs:
+    """The CSV and Markdown exports carry the stored text; a placeholder such as <user> survives."""
+
+    @pytest.fixture
+    def benchmark_json(self, sample_benchmark, tmp_path):
+        first, second = sample_benchmark.recommendations
+        rule = first.model_copy(
+            update={
+                "title": "Ensure <path> is owned by <user>",
+                "description": "Owned by the account named in `<user>`.",
+                "rationale": "A file owned by <user> is read by <user> alone.",
+                "remediation": "Run:\n\n```\n# chage --mindays <N> <user>\n```",
+            }
+        )
+        benchmark = sample_benchmark.model_copy(
+            update={"recommendations": [rule, second], "scraper_version": "v2_2026_01"}
+        )
+        path = tmp_path / "benchmark.json"
+        path.write_text(benchmark.model_dump_json(indent=2))
+        return path
+
+    def test_the_csv_export_carries_the_stored_text(self, runner, benchmark_json, working_dir):
+        import csv
+
+        result = runner.invoke(cli, ["export", str(benchmark_json), "--format", "csv"])
+
+        assert result.exit_code == 0, result.output
+        with open("benchmark.csv", newline="", encoding="utf-8") as f:
+            row = next(csv.DictReader(f))
+        assert row["title"] == "Ensure <path> is owned by <user>"
+        assert row["description"] == "Owned by the account named in `<user>`."
+        assert row["remediation"] == "Run:\n\n```\n# chage --mindays <N> <user>\n```"
+
+    def test_the_markdown_export_carries_the_stored_text(self, runner, benchmark_json, working_dir):
+        result = runner.invoke(cli, ["export", str(benchmark_json), "--format", "markdown"])
+
+        assert result.exit_code == 0, result.output
+        text = Path("benchmark.md").read_text(encoding="utf-8")
+        assert "```\n# chage --mindays <N> <user>\n```" in text
+        assert "Owned by the account named in `<user>`." in text
+
+    def test_a_placeholder_in_prose_renders_as_text(self, runner, benchmark_json, working_dir):
+        """A CommonMark renderer with raw HTML on (GitHub, MkDocs) would read <user> in a
+        sentence as a tag and show nothing; the export escapes it so the words survive, while
+        a placeholder in code is left as it is."""
+        from markdown_it import MarkdownIt
+
+        result = runner.invoke(cli, ["export", str(benchmark_json), "--format", "markdown"])
+
+        assert result.exit_code == 0, result.output
+        text = Path("benchmark.md").read_text(encoding="utf-8")
+        html = MarkdownIt("commonmark").render(text)
+        assert "A file owned by &lt;user&gt; is read by &lt;user&gt; alone." in html
+        assert "Ensure &lt;path&gt; is owned by &lt;user&gt;" in html
+        assert "# chage --mindays &lt;N&gt; &lt;user&gt;" in html
+        assert "<user>" not in html and "<path>" not in html

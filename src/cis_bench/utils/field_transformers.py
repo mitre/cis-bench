@@ -1,101 +1,29 @@
-"""Field transformation utilities for Recommendation export.
+"""Field helpers for Recommendation export.
 
-DRY helpers for applying transformations to recommendation content fields.
-Eliminates 15+ instances of duplicated HTML transformation code across exporters.
+The text fields are read as stored (Markdown, see cis_bench.models.benchmark); the list,
+MITRE, parent and CIS Controls helpers below format the structured fields for exporters.
 """
 
 import logging
 
-from cis_bench.models.benchmark import CISControl, Recommendation
-from cis_bench.utils.html_parser import HTMLCleaner
+from cis_bench.models.benchmark import RECOMMENDATION_TEXT_FIELDS, CISControl, Recommendation
 
 logger = logging.getLogger(__name__)
 
 
 class RecommendationFieldTransformer:
-    """Apply transformations to recommendation fields.
+    """The text fields of a recommendation, for exporters that write every one."""
 
-    Provides bulk transformation of HTML content fields to avoid
-    repetitive code in exporters.
-    """
-
-    # All content fields that may contain HTML
-    CONTENT_FIELDS = [
-        "description",
-        "rationale",
-        "impact",
-        "audit",
-        "remediation",
-        "additional_info",
-        "default_value",
-        "artifact_equation",
-        "references",
-    ]
+    # The text fields, in the model's order (Markdown as stored)
+    CONTENT_FIELDS = list(RECOMMENDATION_TEXT_FIELDS)
 
     @classmethod
-    def strip_all_html(cls, rec: Recommendation) -> dict[str, str]:
-        """Strip HTML from all content fields.
+    def stored_text(cls, rec: Recommendation) -> dict[str, str]:
+        """Every text field as stored: the Markdown WorkBench gives, "" for a field with none.
 
-        Args:
-            rec: Recommendation to process
-
-        Returns:
-            Dict mapping field names to plain text values (empty string if None)
-
-        Example:
-            >>> fields = RecommendationFieldTransformer.strip_all_html(rec)
-            >>> print(fields['description'])  # Plain text, no HTML
+        Nothing is parsed or converted here: a placeholder such as <user> is part of the text.
         """
-        logger.debug(f"Stripping HTML from all content fields for recommendation: {rec.ref}")
-        result = {}
-        for field in cls.CONTENT_FIELDS:
-            value = getattr(rec, field, None)
-            result[field] = HTMLCleaner.strip_html(value) if value else ""
-        return result
-
-    @classmethod
-    def markdown_all(cls, rec: Recommendation) -> dict[str, str]:
-        """Convert HTML to markdown in all content fields.
-
-        Args:
-            rec: Recommendation to process
-
-        Returns:
-            Dict mapping field names to markdown text
-
-        Example:
-            >>> fields = RecommendationFieldTransformer.markdown_all(rec)
-            >>> print(fields['description'])  # Markdown formatted
-        """
-        logger.debug(f"Converting HTML to markdown for all content fields: {rec.ref}")
-        result = {}
-        for field in cls.CONTENT_FIELDS:
-            value = getattr(rec, field, None)
-            result[field] = HTMLCleaner.html_to_markdown(value) if value else ""
-        return result
-
-    @classmethod
-    def transform_field(cls, rec: Recommendation, field: str, transform: str) -> str:
-        """Apply named transformation to a single field.
-
-        Args:
-            rec: Recommendation
-            field: Field name to transform
-            transform: Transformation name ('strip_html', 'html_to_markdown', 'none')
-
-        Returns:
-            Transformed value or empty string
-
-        Example:
-            >>> text = RecommendationFieldTransformer.transform_field(rec, 'description', 'strip_html')
-        """
-        from cis_bench.exporters.mapping_engine import TransformRegistry
-
-        value = getattr(rec, field, None)
-        if not value:
-            return ""
-
-        return str(TransformRegistry.apply(transform, value))
+        return {field: getattr(rec, field) or "" for field in cls.CONTENT_FIELDS}
 
 
 class SafeFieldAccessor:
