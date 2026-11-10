@@ -217,7 +217,9 @@ class BenchmarkPage(BaseModel):
 
     title: str
     published_date: date | None = None
-    description: str | None = None
+    description: str | None = Field(
+        None, description="The benchmark's overview, as the Markdown its page gives"
+    )
     profile_definitions: ProfileDefinitions = Field(default_factory=list)
 
 
@@ -234,7 +236,7 @@ class Benchmark(BaseModel):
         description="The date WorkBench shows this release as published, read from its page",
     )
     description: str | None = Field(
-        None, description="The benchmark's overview, as plain text, read from its page"
+        None, description="The benchmark's overview, as the Markdown its page gives"
     )
     profile_definitions: ProfileDefinitions = Field(
         default_factory=list,
