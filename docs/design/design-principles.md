@@ -86,12 +86,15 @@ no conversion at all where the text is already Markdown, then removed them.
 ## Core Principle: The Store Holds What WorkBench Holds
 
 A benchmark's text fields hold the Markdown WorkBench gives, with every line break as
-`\n`. A field that holds text is stored as that text: nothing is trimmed from either end,
-nothing is stripped, no entity is decoded, no Markdown is rewritten. A field that holds
-only spaces, tabs and line breaks is stored as absent (`None`). This covers the
-recommendation text fields, the benchmark overview (a page without the overview component
-falls back to the text of its headings and paragraphs, the one place the fetcher reads
-rendered HTML), the profile descriptions and the artifact titles.
+`\n`: nothing is trimmed from either end, nothing is stripped, no entity is decoded, no
+Markdown is rewritten. The fetcher stores a recommendation text field or the overview
+whose attribute holds only spaces, tabs and line breaks as absent (`None`), and a blank
+profile description loads as absent; an artifact title is the string the payload gives.
+A stored copy loads what it holds: the validators change line breaks to `\n` and convert
+the HTML a copy's form fields record, nothing else. This covers the recommendation text
+fields, the benchmark overview (a page without the overview component falls back to the
+text of its headings and paragraphs, the one place the fetcher reads rendered HTML), the
+profile descriptions and the artifact titles.
 
 HTML is converted once, by markdownify, where it enters: a copy the v1 scraper saved
 holds rendered HTML in its text fields and is converted as it loads; the benchmark page
