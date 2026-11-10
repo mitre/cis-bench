@@ -9,6 +9,7 @@ Tests the core helper functions that power the mapping engine:
 - HTMLCleaner: the HTML table and reference parsers
 """
 
+import json
 import re
 from pathlib import Path
 
@@ -1053,6 +1054,24 @@ class TestWorkbenchParser:
         assert result[0].ig1 is False
         assert result[0].ig2 is False
         assert result[0].ig3 is False
+
+    def test_parse_artifacts_json_builds_a_title_the_payload_gives_as_html_as_markdown(self):
+        """The artifact payload gives some titles as HTML; the artifact holds Markdown."""
+        payload = json.dumps(
+            [
+                {
+                    "id": 1,
+                    "view_level": "1.1.1.1.1",
+                    "title": "<p>Ensure the agent is <em>active</em></p>",
+                    "status": "accepted",
+                    "artifact_type": {"type": "command"},
+                }
+            ]
+        )
+
+        result = WorkbenchParser.parse_artifacts_json(payload)
+
+        assert [artifact.title for artifact in result] == ["Ensure the agent is *active*"]
 
     def test_extract_assessment_status_automated(self):
         """Test extracting 'Automated' status."""

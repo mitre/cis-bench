@@ -1,7 +1,7 @@
 {
   "$defs": {
     "Artifact": {
-      "description": "Test artifact for automated compliance checking.",
+      "description": "Test artifact for automated compliance checking.\n\nWorkBench's artifact payload gives some titles as HTML (``<p>...</p>``); the title is\nconverted to Markdown as the artifact is built, whether from the payload or from a\nstored copy, so every artifact holds Markdown.",
       "properties": {
         "id": {
           "title": "Id",
@@ -13,6 +13,7 @@
           "type": "string"
         },
         "title": {
+          "description": "Artifact title (Markdown)",
           "title": "Title",
           "type": "string"
         },

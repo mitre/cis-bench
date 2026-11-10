@@ -1211,3 +1211,45 @@ class TestLoadedTextIsMarkdown:
         reloaded = Benchmark.model_validate_json(loaded.model_dump_json(exclude_defaults=True))
 
         assert reloaded.model_dump() == loaded.model_dump()
+
+
+class TestAnArtifactTitleIsMarkdown:
+    """An artifact's title is Markdown however it arrives.
+
+    WorkBench's artifact payload gives some titles as HTML (``<p>...</p>``); a copy stored
+    before the conversion holds such a title as the payload gave it. The title is converted
+    as the Artifact is built, so the payload and every stored copy read the same.
+    """
+
+    def _artifact(self, title):
+        return Artifact(
+            id=1, view_level="1.1.1.1.1", title=title, status="accepted", artifact_type={}
+        )
+
+    def test_a_title_the_payload_gives_as_html_is_built_as_markdown(self):
+        artifact = self._artifact("<p>Ensure the agent is <em>active</em></p>")
+
+        assert artifact.title == "Ensure the agent is *active*"
+
+    def test_a_plain_title_is_kept(self):
+        title = "Ensure systemd 'sshd.service' unit 'ActiveState' property equals 'active'"
+
+        assert self._artifact(title).title == title
+
+    def test_a_stored_copy_with_an_html_artifact_title_loads_with_the_markdown_one(
+        self, minimal_benchmark_data
+    ):
+        data = _copy(minimal_benchmark_data, "v2_2026_01")
+        data["recommendations"][0]["artifacts"] = [
+            {
+                "id": 7,
+                "view_level": "5.4.1.2.1",
+                "title": "<p>Ensure the agent is <em>active</em></p>",
+                "status": "accepted",
+                "artifact_type": {},
+            }
+        ]
+
+        loaded = Benchmark(**data).recommendations[0].artifacts[0]
+
+        assert loaded.title == "Ensure the agent is *active*"

@@ -154,7 +154,8 @@ class WorkbenchParser:
             artifacts_json: JSON string from wb-recommendation-artifacts element
 
         Returns:
-            List of Artifact objects
+            List of Artifact objects; a title the payload gives as HTML is Markdown
+            (Artifact converts it as it is built)
         """
         try:
             artifacts_data = json.loads(artifacts_json)

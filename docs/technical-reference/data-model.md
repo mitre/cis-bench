@@ -383,7 +383,7 @@ f.write(xml_output)
 | `mitre_mapping` | object/null | | MITRE ATT&CK techniques, tactics, mitigations (lists of IDs) | No |
 | `nist_controls` | array of string | | NIST SP 800-53 control IDs | No |
 | `parent` | object/null | | Parent recommendation (url, title) | No |
-| `artifacts` | array of object | | Test artifacts | No |
+| `artifacts` | array of object | | Test artifacts: `id`, `view_level`, `title` (Markdown: the payload gives some titles as HTML, converted as the artifact is built, from the payload or from a stored copy), `status`, `artifact_type` | No |
 | `description` | string/null | | Detailed description | Yes |
 | `rationale` | string/null | | Justification | Yes |
 | `impact` | string/null | | Impact statement | Yes |

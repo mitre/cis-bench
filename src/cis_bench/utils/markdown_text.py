@@ -1,8 +1,9 @@
 """The Markdown form of benchmark text.
 
 WorkBench gives a recommendation's text as Markdown. A copy the v1 scraper saved holds the
-page's rendered HTML instead; this module turns that HTML into the Markdown WorkBench
-itself writes, so a loaded copy reads the same whichever scraper saved it.
+page's rendered HTML instead, and the artifact payload gives some titles as HTML; this
+module turns that HTML into the Markdown WorkBench itself writes, so a loaded copy reads the
+same whichever scraper saved it.
 """
 
 import re
@@ -30,7 +31,7 @@ _converter = MarkdownConverter(
 
 
 def html_to_markdown(html: str) -> str:
-    """The Markdown for HTML a v1-era copy holds.
+    """The Markdown for HTML a v1-era copy or an artifact title holds.
 
     Words, entities (``&lt;user&gt;`` is the placeholder ``<user>``), paragraphs, code
     blocks, lists, tables, emphasis and links are kept; leading and trailing blank lines

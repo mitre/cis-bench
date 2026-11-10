@@ -68,13 +68,24 @@ class MITREMapping(BaseModel):
 
 
 class Artifact(BaseModel):
-    """Test artifact for automated compliance checking."""
+    """Test artifact for automated compliance checking.
+
+    WorkBench's artifact payload gives some titles as HTML (``<p>...</p>``); the title is
+    converted to Markdown as the artifact is built, whether from the payload or from a
+    stored copy, so every artifact holds Markdown.
+    """
 
     id: int
     view_level: str = Field(..., description="Artifact reference (e.g., '1.1.1.1.1')")
-    title: str
+    title: str = Field(..., description="Artifact title (Markdown)")
     status: str
     artifact_type: dict[str, Any] = Field(..., description="Artifact type metadata")
+
+    @field_validator("title")
+    @classmethod
+    def title_as_markdown(cls, title: str) -> str:
+        """The title as Markdown; the payload gives some titles as HTML."""
+        return html_to_markdown(title)
 
 
 class ParentReference(BaseModel):
