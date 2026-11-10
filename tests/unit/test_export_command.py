@@ -662,3 +662,32 @@ class TestTheStoredMarkdownIsWrittenAsItIs:
         assert "Ensure &lt;path&gt; is owned by &lt;user&gt;" in html
         assert "# chage --mindays &lt;N&gt; &lt;user&gt;" in html
         assert "<user>" not in html and "<path>" not in html
+
+    def test_a_placeholder_in_a_parent_title_renders_as_text(
+        self, runner, sample_benchmark, tmp_path, working_dir
+    ):
+        from markdown_it import MarkdownIt
+
+        from cis_bench.models.benchmark import ParentReference
+
+        first, second = sample_benchmark.recommendations
+        child = second.model_copy(
+            update={
+                "parent": ParentReference(
+                    url="https://workbench.cisecurity.org/sections/23598/recommendations/374956",
+                    title="Ensure <path> is owned by <user>",
+                )
+            }
+        )
+        path = tmp_path / "benchmark.json"
+        path.write_text(
+            sample_benchmark.model_copy(
+                update={"recommendations": [first, child], "scraper_version": "v2_2026_01"}
+            ).model_dump_json(indent=2)
+        )
+
+        result = runner.invoke(cli, ["export", str(path), "--format", "markdown"])
+
+        assert result.exit_code == 0, result.output
+        html = MarkdownIt("commonmark").render(Path("benchmark.md").read_text(encoding="utf-8"))
+        assert "Ensure &lt;path&gt; is owned by &lt;user&gt;</a>" in html

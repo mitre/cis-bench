@@ -19,7 +19,7 @@ class CSVExporter(BaseExporter):
     """Export benchmark to CSV format (flattened, text-only)."""
 
     def export(self, benchmark: Benchmark, output_path: str) -> str:
-        """Export to CSV with flattened structure and HTML stripped.
+        """Export to CSV with a flattened structure; text fields are written as stored.
 
         Args:
             benchmark: Validated Benchmark (Pydantic model)

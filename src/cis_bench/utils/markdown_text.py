@@ -5,13 +5,14 @@ page's rendered HTML instead; this module turns that HTML into the Markdown Work
 itself writes, so a loaded copy reads the same whichever scraper saved it.
 """
 
+import re
 import warnings
-from typing import Any
 
 from bs4 import MarkupResemblesLocatorWarning
 from markdown_it import MarkdownIt
 from markdown_it.rules_inline import html_inline as _html_inline_rule
 from markdown_it.rules_inline.state_inline import StateInline
+from markdown_it.token import Token
 from markdownify import ATX, MarkdownConverter
 
 # The shapes the stored WorkBench Markdown uses (counted over the cached copies):
@@ -47,18 +48,56 @@ def unix_line_breaks(text: str) -> str:
 
 
 def _recording_html_inline(state: StateInline, silent: bool) -> bool:
-    """The library's own raw-HTML rule, recording where in the inline text each token sits."""
+    """The library's own raw-HTML rule; the token it pushes remembers its text and place."""
     start = state.pos
     if not _html_inline_rule(state, silent):
         return False
-    if not silent:  # a silent run only measures (e.g. a link label); the real run records
-        state.env.setdefault("html_inline_spans", []).append((start, state.pos))
+    if not silent:  # a silent run only measures (e.g. a link label) and pushes no token
+        state.tokens[-1].meta["raw_html_span"] = (state.src, start, state.pos)
     return True
 
 
 # CommonMark as GitHub and MkDocs read it: raw HTML on, so a bare <word> in prose is a tag.
 _commonmark = MarkdownIt("commonmark")
 _commonmark.inline.ruler.at("html_inline", _recording_html_inline)
+
+_CLOSING_HEADING_MARKERS = re.compile(r"[ \t]+#+$")
+_LIST_MARKER = re.compile(r"[-+*]|\d+[.)]")
+
+
+def _raw_html_spans(children: list[Token] | None, content: str) -> list[tuple[int, int]]:
+    """Where in an inline token's text the parser found raw HTML, as (start, end)."""
+    spans: list[tuple[int, int]] = []
+    for child in children or []:
+        if child.type == "image":
+            # An image's label is parsed as text of its own; it sits once inside the content.
+            for start, end in _raw_html_spans(child.children, child.content):
+                at = content.find(child.content)
+                if at < 0 or content.find(child.content, at + 1) >= 0:
+                    raise ValueError(
+                        f"the label {child.content!r} is not found once in {content!r}"
+                    )
+                spans.append((at + start, at + end))
+        elif child.type == "html_inline":
+            _src, start, end = child.meta["raw_html_span"]
+            spans.append((start, end))
+    return spans
+
+
+def _source_column(source_line: str, content_line: str, column: int) -> int:
+    """The column in the source line of a column in the parser's text of that line.
+
+    The parser's line is the source line without its leading indentation and list or quote
+    markers (a tab it consumed in part is replaced by spaces) and, on a heading, without
+    closing # markers; whitespace at either end is left out of the comparison, as no '<'
+    sits in it.
+    """
+    source, content = source_line.rstrip(), content_line.strip()
+    for candidate in (source, _CLOSING_HEADING_MARKERS.sub("", source)):
+        if candidate.endswith(content):
+            leading = len(content_line) - len(content_line.lstrip())
+            return len(candidate) - len(content) + (column - leading)
+    raise ValueError(f"the parser's text {content!r} is not the end of the source line {source!r}")
 
 
 def prose_angle_brackets_as_text(markdown: str) -> str:
@@ -69,48 +108,39 @@ def prose_angle_brackets_as_text(markdown: str) -> str:
     <user>, which a renderer with raw HTML on (GitHub, MkDocs) would otherwise show as
     nothing. The parser decides what is HTML: a placeholder inside a code span or a fence is
     left as it is (there the entity would show literally), and an autolink such as
-    <https://example.invalid/> is a link, not HTML. A line that is a tag on its own starts an
-    HTML block, which swallows the lines after it; its first ``<`` is escaped, and the pass
-    repeats until the renderer sees no raw HTML.
+    <https://example.invalid/> or a link label is a link, not HTML. A line that is a tag on
+    its own starts an HTML block, which swallows the lines after it; its first ``<`` is
+    escaped, and the pass repeats until the renderer sees no raw HTML.
     """
     lines = markdown.split("\n")
     # Each pass escapes at least one '<' or ends, so the passes are bounded by their number.
     for _ in range(markdown.count("<") + 1):
-        edits: list[tuple[int, int]] = []  # (line, column) of each '<' to write as &lt;
+        edits: set[tuple[int, int]] = set()  # (line, column) of each '<' to write as &lt;
         for token in _commonmark.parse("\n".join(lines)):
-            if token.type == "html_block" and token.map is not None:
+            if token.map is None:
+                continue
+            if token.type == "html_block":
                 first = token.map[0]
-                edits.append((first, lines[first].index("<")))
-            elif token.type == "inline" and token.map is not None:
-                # Tokenize this token's text once more, with its own state, so the spans the
-                # rule records are this token's alone.
-                env: dict[str, Any] = {}
-                _commonmark.inline.tokenize(StateInline(token.content, _commonmark, env, []))
-                spans: list[tuple[int, int]] = env.get("html_inline_spans", [])
+                edits.add((first, lines[first].index("<")))
+            elif token.type == "inline":
+                spans = _raw_html_spans(token.children, token.content)
                 if not spans:
                     continue
-                # The inline text's lines are the source lines without their leading
-                # indentation and list or quote markers: each is a suffix of its source line.
                 content_lines = token.content.split("\n")
-                starts: list[int] = []
+                line_starts: list[int] = []
                 offset = 0
-                for i, content_line in enumerate(content_lines):
-                    # Trailing whitespace is left out of the comparison: the parser trims it,
-                    # and no '<' sits in it.
-                    source_line = lines[token.map[0] + i].rstrip()
-                    if not source_line.endswith(content_line.rstrip()):
-                        raise ValueError(
-                            f"line {token.map[0] + i + 1}: the parser's text {content_line!r} "
-                            f"is not the end of the source line {source_line!r}"
-                        )
-                    starts.append(offset)
+                for content_line in content_lines:
+                    line_starts.append(offset)
                     offset += len(content_line) + 1
                 for span_start, _span_end in spans:
-                    i = max(k for k, line_start in enumerate(starts) if line_start <= span_start)
-                    column = span_start - starts[i]
-                    source_line = lines[token.map[0] + i].rstrip()
-                    content_line = content_lines[i].rstrip()
-                    edits.append((token.map[0] + i, column + len(source_line) - len(content_line)))
+                    i = max(
+                        k for k, line_start in enumerate(line_starts) if line_start <= span_start
+                    )
+                    line_no = token.map[0] + i
+                    column = _source_column(
+                        lines[line_no], content_lines[i], span_start - line_starts[i]
+                    )
+                    edits.add((line_no, column))
         if not edits:
             return "\n".join(lines)
         for line_no, column in sorted(edits, reverse=True):
@@ -127,18 +157,28 @@ def closed_fences(markdown: str) -> str:
 
     A stored field sometimes opens a code fence and never closes it; on its own it reads as
     code to the end, but written into a larger document it would turn the next fields inside
-    out. The parser decides whether the text ends inside a fence; the closing marker repeats
-    the opening one (its characters and indentation) on a new line. Text whose fences are
-    closed is returned as it is.
+    out. The parser decides: a closed fence's lines are its opening marker, its content and
+    its closing marker, an open one's end with its content; only a fence that runs to the
+    end of the text is closed here (a list or quote ends one before that by itself). The
+    closing marker repeats the opening one, after the same quote markers and indentation (a
+    list marker on the opening line becomes the item's indent). Text whose fences are closed
+    is returned as it is.
     """
     lines = markdown.split("\n")
+    last_line = len(lines) - (1 if lines[-1] == "" else 0)
     for token in _commonmark.parse(markdown):
         if token.type != "fence" or token.map is None:
             continue
-        first, last = token.map[0], token.map[1] - 1
-        if last > first and lines[last].strip().startswith(token.markup):
-            continue  # closed by its own marker
-        opening = lines[first]
-        indent = opening[: len(opening) - len(opening.lstrip())]
-        return markdown + "\n" + indent + token.markup
+        # The parser ends each content line with a newline, except the last line of a text
+        # that has none.
+        content = token.content
+        content_lines = content.count("\n") + (1 if content and not content.endswith("\n") else 0)
+        if content_lines == token.map[1] - token.map[0] - 2:
+            continue  # opening marker, content, closing marker
+        if token.map[1] < last_line:
+            continue  # ended by the list or quote around it, with text after it
+        opening = lines[token.map[0]]
+        prefix = opening[: opening.index(token.markup)]
+        prefix = _LIST_MARKER.sub(lambda m: " " * len(m.group()), prefix)
+        return markdown + "\n" + prefix + token.markup
     return markdown

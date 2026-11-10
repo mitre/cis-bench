@@ -19,7 +19,7 @@ class MarkdownExporter(BaseExporter):
     """Export benchmark to Markdown format for documentation."""
 
     def export(self, benchmark: Benchmark, output_path: str) -> str:
-        """Export to Markdown with HTML converted to Markdown.
+        """Export to Markdown: the stored text written as it is, in one document.
 
         Args:
             benchmark: Validated Benchmark (Pydantic model)
@@ -92,7 +92,8 @@ class MarkdownExporter(BaseExporter):
                 # Parent - using DRY helper
                 parent_link = SafeFieldAccessor.format_parent_link(rec, format="markdown")
                 if parent_link:
-                    f.write(f"**Parent:** {parent_link}\n\n")
+                    # the parent's title may hold a placeholder too
+                    f.write(f"**Parent:** {prose_angle_brackets_as_text(parent_link)}\n\n")
 
                 # Content sections, as stored
                 if markdown_fields["description"]:
