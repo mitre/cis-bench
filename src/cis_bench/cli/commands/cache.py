@@ -81,11 +81,11 @@ def _catalog_and_downloads(catalog_db_path: Path) -> dict:
     if not catalog_db_path.exists():
         return {"catalog": catalog, "downloaded": []}
 
-    from sqlalchemy.exc import SQLAlchemyError
+    from sqlalchemy.exc import DatabaseError
 
     try:
         return _read_catalog_db(catalog_db_path, catalog)
-    except SQLAlchemyError as error:
+    except DatabaseError as error:
         raise click.ClickException(
             f"{catalog_db_path} cannot be read: {str(error).splitlines()[0]}"
         ) from error
