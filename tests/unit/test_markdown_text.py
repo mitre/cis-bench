@@ -4,7 +4,11 @@ import warnings
 
 import pytest
 
-from cis_bench.utils.markdown_text import html_to_markdown, unix_line_breaks
+from cis_bench.utils.markdown_text import (
+    html_to_markdown,
+    unix_line_breaks,
+    without_blank_boundary_lines,
+)
 
 
 class TestHtmlToMarkdown:
@@ -79,6 +83,24 @@ class TestUnixLineBreaks:
     )
     def test_every_line_break_is_a_newline(self, text, expected):
         assert unix_line_breaks(text) == expected
+
+
+class TestWithoutBlankBoundaryLines:
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            ("\n\nRun it.\n\n", "Run it."),
+            ("  \n\t\nRun it.\n \n", "Run it."),
+            ("Run it.", "Run it."),
+            ("Run it.  ", "Run it.  "),
+            ("\n    echo <path>\n    done\n\nRun it.\n", "    echo <path>\n    done\n\nRun it."),
+            ("\n  Run it.", "  Run it."),
+            ("", ""),
+            ("\n \n", ""),
+        ],
+    )
+    def test_only_the_blank_lines_around_the_text_go(self, text, expected):
+        assert without_blank_boundary_lines(text) == expected
 
 
 class TestLinksAndEntities:

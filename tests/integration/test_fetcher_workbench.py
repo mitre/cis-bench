@@ -1072,6 +1072,19 @@ class TestTheBenchmarkDescription:
 
         assert parse_benchmark_page(html).description == OVERVIEW_MARKDOWN
 
+    def test_indentation_at_the_start_of_the_overview_is_kept(self):
+        """An overview that opens with an indented code block keeps the block's indentation,
+        including on its first line; only the blank lines around the overview are dropped."""
+        from cis_bench.fetcher.workbench import parse_benchmark_page
+
+        html = OVERVIEW_COMPONENT_HTML.replace(
+            'text="Run', 'text="\n    echo &lt;path&gt;&#13;\n    done\n\nRun'
+        )
+
+        assert parse_benchmark_page(html).description == (
+            "    echo <path>\n    done\n\n" + OVERVIEW_MARKDOWN
+        )
+
     def test_the_component_wins_over_an_overview_heading(self):
         from cis_bench.fetcher.workbench import parse_benchmark_page
 

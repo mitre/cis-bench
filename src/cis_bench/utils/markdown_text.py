@@ -48,6 +48,21 @@ def unix_line_breaks(text: str) -> str:
     return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
+def without_blank_boundary_lines(text: str) -> str:
+    """The text without the blank lines before its first and after its last line of content.
+
+    The content lines are as written, their indentation included: a Markdown field that
+    opens with an indented code block keeps the indentation of its first line, which
+    ``str.strip`` would take away. A line of spaces or tabs alone is blank.
+    """
+    lines = text.split("\n")
+    while lines and not lines[0].strip():
+        del lines[0]
+    while lines and not lines[-1].strip():
+        del lines[-1]
+    return "\n".join(lines)
+
+
 def _recording_html_inline(state: StateInline, silent: bool) -> bool:
     """The library's own raw-HTML rule; the token it pushes remembers its text and place."""
     start = state.pos

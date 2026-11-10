@@ -31,7 +31,11 @@ from cis_bench.models.benchmark import (
     Recommendation,
 )
 from cis_bench.utils.html_parser import attribute_text
-from cis_bench.utils.markdown_text import html_to_markdown, unix_line_breaks
+from cis_bench.utils.markdown_text import (
+    html_to_markdown,
+    unix_line_breaks,
+    without_blank_boundary_lines,
+)
 from cis_bench.utils.parallel import parallel_execute_batched
 from cis_bench.utils.vue_payload import decode_vue_payload
 from cis_bench.utils.workbench_urls import navtree_url, recommendation_url
@@ -161,7 +165,9 @@ def _description(soup: BeautifulSoup) -> str | None:
     """
     component = soup.find("wb-recommendation-data", attrs={"attribute": "overview"})
     if isinstance(component, Tag):
-        text = unix_line_breaks(attribute_text(component, "text") or "").strip()
+        text = without_blank_boundary_lines(
+            unix_line_breaks(attribute_text(component, "text") or "")
+        )
         return text or None
 
     heading = soup.find(
