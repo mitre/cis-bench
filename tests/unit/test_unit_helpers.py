@@ -2268,6 +2268,28 @@ class TestTransformsAreCheckedWhenTheStyleLoads:
         with pytest.raises(ValueError, match=f"{where}.*Unknown transformation"):
             MappingEngine(style)
 
+    def test_a_filter_in_a_reference_href_attribute_is_refused(self, tmp_path, cis_config_path):
+        """The reference's href lives under attributes, where the exporter reads it."""
+        style = self._style(
+            tmp_path,
+            cis_config_path,
+            field_mappings={
+                "nist_reference": {
+                    "target_element": "reference",
+                    "structure": "dublin_core",
+                    "source_field": "nist_controls",
+                    "multiple": True,
+                    "dc_elements": [{"element": "dc:identifier", "content": "{nist_control_id}"}],
+                    "attributes": {"href": "https://example.com/{nist_control_id|strip_html}"},
+                }
+            },
+        )
+
+        with pytest.raises(
+            ValueError, match="field_mappings.nist_reference.attributes.href.*strip_html"
+        ):
+            MappingEngine(style)
+
     def test_a_filter_without_a_name_is_refused_at_load(self, tmp_path, cis_config_path):
         style = self._style(tmp_path, cis_config_path, rule_id={"template": "{ref_normalized|}"})
 
