@@ -1063,22 +1063,34 @@ class TestTheBenchmarkDescription:
         assert page.description == OVERVIEW_MARKDOWN
         assert page.published_date.isoformat() == "2025-08-28"
 
-    def test_blank_lines_around_the_overview_are_not_part_of_it(self):
+    def test_blank_lines_around_the_overview_are_kept_as_the_page_gives_them(self):
+        """Nothing is trimmed: the page's own text is the overview (WorkBench writes the
+        attribute without surrounding whitespace; were it to add some, it stays)."""
         from cis_bench.fetcher.workbench import parse_benchmark_page
 
         html = OVERVIEW_COMPONENT_HTML.replace('text="Run', 'text="&#13;\n\nRun').replace(
             'flags."', 'flags.\n&#13;\n"'
         )
 
-        assert parse_benchmark_page(html).description == OVERVIEW_MARKDOWN
+        assert parse_benchmark_page(html).description == "\n\n" + OVERVIEW_MARKDOWN + "\n\n"
+
+    def test_an_overview_of_only_spaces_tabs_and_line_breaks_is_none(self):
+        from cis_bench.fetcher.workbench import parse_benchmark_page
+
+        html = (
+            '<wb-recommendation-data attribute="overview" text=" \t&#13;\n\n">'
+            "</wb-recommendation-data>"
+        )
+
+        assert parse_benchmark_page(html).description is None
 
     def test_indentation_at_the_start_of_the_overview_is_kept(self):
         """An overview that opens with an indented code block keeps the block's indentation,
-        including on its first line; only the blank lines around the overview are dropped."""
+        including on its first line."""
         from cis_bench.fetcher.workbench import parse_benchmark_page
 
         html = OVERVIEW_COMPONENT_HTML.replace(
-            'text="Run', 'text="\n    echo &lt;path&gt;&#13;\n    done\n\nRun'
+            'text="Run', 'text="    echo &lt;path&gt;&#13;\n    done\n\nRun'
         )
 
         assert parse_benchmark_page(html).description == (
@@ -1102,7 +1114,7 @@ class TestTheBenchmarkDescription:
         )
 
         assert parse_benchmark_page(html).description == (
-            OVERVIEW_MARKDOWN + "\n\n~~~\necho <path>\n \t"
+            OVERVIEW_MARKDOWN + "\n\n~~~\necho <path>\n \t\n"
         )
 
     def test_the_component_wins_over_an_overview_heading(self):

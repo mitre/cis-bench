@@ -4,11 +4,7 @@ import warnings
 
 import pytest
 
-from cis_bench.utils.markdown_text import (
-    html_to_markdown,
-    unix_line_breaks,
-    without_blank_boundary_lines,
-)
+from cis_bench.utils.markdown_text import html_to_markdown, unix_line_breaks
 
 
 class TestHtmlToMarkdown:
@@ -83,32 +79,6 @@ class TestUnixLineBreaks:
     )
     def test_every_line_break_is_a_newline(self, text, expected):
         assert unix_line_breaks(text) == expected
-
-
-class TestWithoutBlankBoundaryLines:
-    @pytest.mark.parametrize(
-        ("text", "expected"),
-        [
-            ("\n\nRun it.\n\n", "Run it."),
-            ("  \n\t\nRun it.\n \n", "Run it."),
-            ("Run it.", "Run it."),
-            ("Run it.  ", "Run it.  "),
-            ("\n    echo <path>\n    done\n\nRun it.\n", "    echo <path>\n    done\n\nRun it."),
-            ("\n  Run it.", "  Run it."),
-            ("", ""),
-            ("\n \n", ""),
-            # A line of other whitespace is not blank in Markdown (spaces and tabs are)
-            (" \n    echo <path>", " \n    echo <path>"),
-            (" ", " "),
-            # A trailing blank line inside a fence left open is the fence's content
-            ("~~~\nkeep\n \t\n", "~~~\nkeep\n \t"),
-            ("<pre>\nkeep\n\n", "<pre>\nkeep\n"),
-            ("```\nkeep\n```\n\n", "```\nkeep\n```"),
-            ("para\n\n[a]: http://x\n\n", "para\n\n[a]: http://x"),
-        ],
-    )
-    def test_only_the_blank_lines_around_the_text_go(self, text, expected):
-        assert without_blank_boundary_lines(text) == expected
 
 
 class TestLinksAndEntities:

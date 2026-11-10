@@ -31,11 +31,7 @@ from cis_bench.models.benchmark import (
     Recommendation,
 )
 from cis_bench.utils.html_parser import attribute_text
-from cis_bench.utils.markdown_text import (
-    html_to_markdown,
-    unix_line_breaks,
-    without_blank_boundary_lines,
-)
+from cis_bench.utils.markdown_text import html_to_markdown, unix_line_breaks
 from cis_bench.utils.parallel import parallel_execute_batched
 from cis_bench.utils.vue_payload import decode_vue_payload
 from cis_bench.utils.workbench_urls import navtree_url, recommendation_url
@@ -158,17 +154,17 @@ def _description(soup: BeautifulSoup) -> str | None:
     """The page's overview as the Markdown the page gives.
 
     WorkBench renders it as <wb-recommendation-data attribute="overview" text="...">, whose
-    text is Markdown like a recommendation's text fields; it is kept as written (a
-    placeholder such as <path> stays), with every line break as \\n. A page written with
-    an "Overview" heading instead gives the text of its first paragraphs up to the next
-    heading.
+    text is Markdown like a recommendation's text fields. It is kept exactly as written,
+    every line break as \\n: nothing is trimmed, so a placeholder such as <path>, the
+    indentation of a first line and the blank lines inside a fence left open all stay (the
+    page writes the attribute without whitespace around the text). Text of only spaces, tabs
+    and line breaks is no overview. A page written with an "Overview" heading instead gives
+    the text of its first paragraphs up to the next heading.
     """
     component = soup.find("wb-recommendation-data", attrs={"attribute": "overview"})
     if isinstance(component, Tag):
-        text = without_blank_boundary_lines(
-            unix_line_breaks(attribute_text(component, "text") or "")
-        )
-        return text or None
+        text = unix_line_breaks(attribute_text(component, "text") or "")
+        return text if text.strip(" \t\n") else None
 
     heading = soup.find(
         lambda tag: isinstance(tag, Tag)
