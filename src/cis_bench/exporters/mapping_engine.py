@@ -136,6 +136,15 @@ def strip_version_prefix(version: str | None) -> str:
 TransformRegistry.register("strip_version_prefix", strip_version_prefix)
 
 
+def lines(text: str) -> list[str]:
+    """The non-empty lines of a text, each stripped: a text field read as a list (a
+    references field as one ident per line)."""
+    return [line.strip() for line in text.splitlines() if line.strip()]
+
+
+TransformRegistry.register("lines", lines)
+
+
 _DOTTED_NUMBER = re.compile(r"[0-9]+(?:\.[0-9]+)*")
 
 
@@ -499,6 +508,9 @@ class MappingEngine:
                                 source.get("transform"),
                             )
                         )
+            for j, source in enumerate(mapping.get("sources") or []):
+                if isinstance(source, dict):
+                    named.append((f"field_mappings.{name}.sources[{j}]", source.get("transform")))
         for section in ("group_elements", "benchmark"):
             for name, element in getattr(self.config, section).items():
                 if isinstance(element, dict):
@@ -630,6 +642,17 @@ class MappingEngine:
                             f"{where}: a component source needs field, the field it reads"
                         )
                     named.append((where, source["field"], Recommendation, False))
+            if mapping.get("structure") == "composite" and not (
+                isinstance(mapping.get("sources"), list) and mapping["sources"]
+            ):
+                raise ValueError(
+                    f"field_mappings.{name}: composite needs sources, the fields to join"
+                )
+            for j, source in enumerate(mapping.get("sources") or []):
+                where = f"field_mappings.{name}.sources[{j}]"
+                if not isinstance(source, dict) or not source.get("field"):
+                    raise ValueError(f"{where}: a composite source needs field, the field it reads")
+                named.append((where, source["field"], Recommendation, False))
         for name, element in self.config.group_elements.items():
             if isinstance(element, dict) and element.get("source"):
                 named.append((f"group_elements.{name}", element["source"], Recommendation, False))
@@ -1140,6 +1163,9 @@ class MappingEngine:
             # For now, return None - handle in specialized method
             return None
 
+        elif structure == "composite":
+            return self._composite_text(field_name, field_mapping, rec)
+
         # Simple field mapping
         source_field = field_mapping.get("source_field")
         if source_field:
@@ -1153,6 +1179,42 @@ class MappingEngine:
             return transformed_value
 
         return None
+
+    @staticmethod
+    def _composite_text(field_name: str, field_mapping: dict, rec: Recommendation) -> str | None:
+        """The text of a composite mapping: its sources' texts, each after its transform, joined
+        by the separator (a blank line unless the mapping says otherwise); a source with a
+        label writes the label, the separator and the text; a source without text adds
+        nothing, and None is returned when no source has text.
+
+        Config structure:
+            structure: "composite"
+            separator: "\n\n"
+            sources:
+              - field: "description"
+              - field: "default_value"
+                label: "Default Value:"
+                transform: "none"
+
+        Raises:
+            ValueError: The mapping has no sources.
+        """
+        sources = field_mapping.get("sources")
+        if not sources:
+            raise ValueError(
+                f"field_mappings.{field_name}: composite needs sources, the fields to join"
+            )
+        separator = field_mapping.get("separator", "\n\n")
+        parts = []
+        for source in sources:
+            text = TransformRegistry.apply(
+                source.get("transform", "none"), getattr(rec, source["field"])
+            )
+            if not text:
+                continue
+            label = source.get("label")
+            parts.append(f"{label}{separator}{text}" if label else text)
+        return separator.join(parts) or None
 
     def ref_values(self, ref: str) -> dict[str, str]:
         """The values made from a recommendation ref that templates use: {ref} ("3.1.1"),
@@ -1614,6 +1676,7 @@ class MappingEngine:
 
         Config structure:
             source_field: "cis_controls"  # or "mitre_mapping.techniques", etc.
+            transform: "lines"  # optional: a text field read as one item per line
             ident_spec:
                 system_template: "https://org.com/framework/v{item.version}"
                 value_template: "{item.id}"  # or just "{item}" for strings
@@ -1651,8 +1714,12 @@ class MappingEngine:
             logger.warning("ident_from_list missing source_field or ident_spec")
             return []
 
-        # Get source data (supports nested paths like "mitre_mapping.techniques")
-        source_data = self._get_nested_field(recommendation, source_field)
+        # Get source data (supports nested paths like "mitre_mapping.techniques"); a
+        # transform turns a text field into the list to read (lines: one ident per line)
+        source_data = TransformRegistry.apply(
+            field_mapping.get("transform", "none"),
+            self._get_nested_field(recommendation, source_field),
+        )
         if not source_data:
             return []
 

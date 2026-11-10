@@ -195,38 +195,41 @@ Rule.title = TextType(value="Ensure `cramfs` is disabled")
 
 ### 2. Composite Field Mapping
 
-**Use when:** Combine multiple source fields into one XCCDF element
+**Use when:** Combine multiple source fields into one XCCDF element. Each source's text
+(after its transform, `none` by default) is joined by the separator (a blank line by
+default); a source with a `label` writes the label, the separator and the text; a source
+without text adds nothing, and an element with no text at all is left out. A source naming
+a field or transform that does not exist is refused when the style loads.
 
 ```yaml
-description:
-target_element: "description"
-structure: "composite"
-sources:
+field_mappings:
+  description:
+    target_element: "description"
+    structure: "composite"
+    separator: "\n\n" # Join with double newline
+    sources:
 
-- field: "description"
-transform: "none"
+      - field: "description"
+      - field: "default_value"
+        label: "Default Value:"
 
-- field: "rationale"
-transform: "none"
-
-- field: "impact"
-transform: "none"
-separator: "\n\n" # Join with double newline
+      - field: "additional_info"
+        label: "Additional Information:"
 ```
 
 **Example:**
 ```python
 # Input (Pydantic)
-recommendation.description = "The cramfs filesystem..."
-recommendation.rationale = "Removing support reduces..."
-recommendation.impact = "Minimal impact expected..."
+recommendation.description = "The example filesystem is not needed."
+recommendation.default_value = "/etc/example: off"
+recommendation.additional_info = None  # an empty source adds nothing, label included
 
-# Output (xsdata)
-Rule.description = HtmlTextWithSubType(
-value="The cramfs filesystem...\n\n"
-"Removing support reduces...\n\n"
-"Minimal impact expected..."
-)
+# Output (the Rule's description element, its text escaped once by the serializer)
+<description>The example filesystem is not needed.
+
+Default Value:
+
+/etc/example: off</description>
 ```
 
 ### 3. Embedded XML Tags (DISA STIG Format)

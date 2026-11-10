@@ -168,6 +168,9 @@ rule_elements:
   cis_controls_ident:
     xccdf_type: "IdentType"
 
+  references_ident:
+    xccdf_type: "IdentType"
+
   mitre_techniques:
     xccdf_type: "IdentType"
 
@@ -195,11 +198,20 @@ field_mappings:
   # === CLEAN SEPARATED CONTENT ===
   # The stored text is Markdown (WorkBench's own form; a placeholder such as <user> is bare
   # angle brackets), written as it is: an HTML parser would read the placeholders as tags.
+  # CIS's own XCCDF has no element for the default value and the additional information;
+  # it folds extra sections into its text elements, so they follow the description here,
+  # each under a label line (owner decision 2026-11-10), the stored Markdown as it is.
   description:
     target_element: "description"
-    source_field: "description"
-    transform: "none"
-    description: "Description, the stored Markdown"
+    structure: "composite"
+    separator: "\n\n"
+    sources:
+      - field: "description"
+      - field: "default_value"
+        label: "Default Value:"
+      - field: "additional_info"
+        label: "Additional Information:"
+    description: "Description, then the default value and the additional information"
 
   rationale:
     target_element: "rationale"
@@ -298,6 +310,17 @@ field_mappings:
         - name: "controlURI"
           template: "http://cisecurity.org/20-cc/v{item.version}.0/control/{item.control|dotted_number_path:subcontrol}"
           namespace_prefix: "cc{item.version}"
+
+  # Every line of the references field as an ident with system "URL", after the CIS
+  # Controls idents: the form CIS's own XCCDF uses (a line that is not a URL is one too).
+  references_ident:
+    target_element: "ident"
+    structure: "ident_from_list"
+    source_field: "references"
+    transform: "lines"
+    ident_spec:
+      system_template: "URL"
+      value_template: "{item}"
 
   # === MITRE ATT&CK AS IDENT ELEMENTS (Not metadata - cleaner) ===
 

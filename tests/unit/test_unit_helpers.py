@@ -152,6 +152,18 @@ def config_path(disa_config_path):
 class TestTransformRegistry:
     """Unit tests for the registered transforms."""
 
+    @pytest.mark.parametrize(
+        ("text", "lines"),
+        [
+            ("a\nb", ["a", "b"]),
+            ("  a  \n\n\t\nb\n", ["a", "b"]),
+            ("single", ["single"]),
+            ("\n \n", []),
+        ],
+    )
+    def test_lines_are_the_non_empty_stripped_lines(self, text, lines):
+        assert TransformRegistry.apply("lines", text) == lines
+
     def test_none_transform(self):
         """Test 'none' transformation (pass-through)."""
         test_value = "unchanged text"
@@ -2306,6 +2318,78 @@ class TestTransformsAreCheckedWhenTheStyleLoads:
         )
 
         with pytest.raises(ValueError, match="field_mappings.title.*transform must be a name"):
+            MappingEngine(style)
+
+    def test_a_composite_source_naming_no_field_is_refused(self, tmp_path, cis_config_path):
+        style = self._style(
+            tmp_path,
+            cis_config_path,
+            field_mappings={
+                "description": {
+                    "target_element": "description",
+                    "structure": "composite",
+                    "sources": [{"field": "description"}, {"field": "defualt_value"}],
+                }
+            },
+        )
+
+        with pytest.raises(
+            ValueError, match="field_mappings.description.sources\\[1\\].*defualt_value"
+        ):
+            MappingEngine(style)
+
+    @pytest.mark.parametrize("mapping", [{}, {"sources": []}, {"sources": "description"}])
+    def test_a_composite_without_sources_is_refused(self, tmp_path, cis_config_path, mapping):
+        style = self._style(
+            tmp_path,
+            cis_config_path,
+            # a name the parent style does not have, so nothing is inherited into it
+            field_mappings={
+                "folded": {
+                    "target_element": "description",
+                    "structure": "composite",
+                    **mapping,
+                }
+            },
+        )
+
+        with pytest.raises(ValueError, match="field_mappings.folded: composite needs sources"):
+            MappingEngine(style)
+
+    def test_a_composite_source_without_a_field_is_refused(self, tmp_path, cis_config_path):
+        style = self._style(
+            tmp_path,
+            cis_config_path,
+            field_mappings={
+                "folded": {
+                    "target_element": "description",
+                    "structure": "composite",
+                    "sources": [{"field": "description"}, {"label": "Default Value:"}],
+                }
+            },
+        )
+
+        with pytest.raises(
+            ValueError, match="field_mappings.folded.sources\\[1\\]: a composite source needs field"
+        ):
+            MappingEngine(style)
+
+    def test_a_composite_source_naming_no_transform_is_refused(self, tmp_path, cis_config_path):
+        style = self._style(
+            tmp_path,
+            cis_config_path,
+            field_mappings={
+                "description": {
+                    "target_element": "description",
+                    "structure": "composite",
+                    "sources": [{"field": "description", "transform": "strip_html"}],
+                }
+            },
+        )
+
+        with pytest.raises(
+            ValueError, match="field_mappings.description.sources\\[0\\].*strip_html"
+        ):
             MappingEngine(style)
 
     def test_the_shipped_styles_name_registered_transforms_only(
