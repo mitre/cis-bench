@@ -169,16 +169,16 @@ default), joined by `separator` (a blank line by default); a source with a `labe
 label, the separator and the text; a source without text adds nothing.
 
 ```yaml
-description:
-target_element: "description"
-structure: "composite"
-separator: "\n\n"
-sources:
+field_mappings:
+  description:
+    target_element: "description"
+    structure: "composite"
+    separator: "\n\n"
+    sources:
 
-- field: "description"
-
-- field: "default_value"
-label: "Default Value:"
+      - field: "description"
+      - field: "default_value"
+        label: "Default Value:"
 ```
 
 ### Embedded XML Structure

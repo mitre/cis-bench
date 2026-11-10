@@ -202,33 +202,33 @@ without text adds nothing, and an element with no text at all is left out. A sou
 a field or transform that does not exist is refused when the style loads.
 
 ```yaml
-description:
-target_element: "description"
-structure: "composite"
-separator: "\n\n" # Join with double newline
-sources:
+field_mappings:
+  description:
+    target_element: "description"
+    structure: "composite"
+    separator: "\n\n" # Join with double newline
+    sources:
 
-- field: "description"
+      - field: "description"
+      - field: "default_value"
+        label: "Default Value:"
 
-- field: "default_value"
-label: "Default Value:"
-
-- field: "additional_info"
-label: "Additional Information:"
+      - field: "additional_info"
+        label: "Additional Information:"
 ```
 
 **Example:**
 ```python
 # Input (Pydantic)
-recommendation.description = "The cramfs filesystem..."
-recommendation.rationale = "Removing support reduces..."
-recommendation.impact = "Minimal impact expected..."
+recommendation.description = "The example filesystem is not needed."
+recommendation.default_value = "/etc/example: off"
+recommendation.additional_info = None  # an empty source adds nothing, label included
 
 # Output (xsdata)
 Rule.description = HtmlTextWithSubType(
-value="The cramfs filesystem...\n\n"
-"Removing support reduces...\n\n"
-"Minimal impact expected..."
+    value="The example filesystem is not needed.\n\n"
+    "Default Value:\n\n"
+    "/etc/example: off"
 )
 ```
 

@@ -2338,6 +2338,24 @@ class TestTransformsAreCheckedWhenTheStyleLoads:
         ):
             MappingEngine(style)
 
+    @pytest.mark.parametrize("mapping", [{}, {"sources": []}, {"sources": "description"}])
+    def test_a_composite_without_sources_is_refused(self, tmp_path, cis_config_path, mapping):
+        style = self._style(
+            tmp_path,
+            cis_config_path,
+            # a name the parent style does not have, so nothing is inherited into it
+            field_mappings={
+                "folded": {
+                    "target_element": "description",
+                    "structure": "composite",
+                    **mapping,
+                }
+            },
+        )
+
+        with pytest.raises(ValueError, match="field_mappings.folded: composite needs sources"):
+            MappingEngine(style)
+
     def test_a_composite_source_naming_no_transform_is_refused(self, tmp_path, cis_config_path):
         style = self._style(
             tmp_path,

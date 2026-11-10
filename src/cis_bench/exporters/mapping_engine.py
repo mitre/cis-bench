@@ -642,6 +642,12 @@ class MappingEngine:
                             f"{where}: a component source needs field, the field it reads"
                         )
                     named.append((where, source["field"], Recommendation, False))
+            if mapping.get("structure") == "composite" and not (
+                isinstance(mapping.get("sources"), list) and mapping["sources"]
+            ):
+                raise ValueError(
+                    f"field_mappings.{name}: composite needs sources, the fields to join"
+                )
             for j, source in enumerate(mapping.get("sources") or []):
                 where = f"field_mappings.{name}.sources[{j}]"
                 if not isinstance(source, dict) or not source.get("field"):
