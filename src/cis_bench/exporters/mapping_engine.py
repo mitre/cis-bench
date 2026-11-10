@@ -50,8 +50,6 @@ from cis_bench.models.benchmark import (
 # Import XCCDF types for element creation (XCCDF 1.2 - for type hints only)
 # Note: Engine dynamically loads version-specific types based on config
 from cis_bench.utils.cci_lookup import get_cci_service
-from cis_bench.utils.html_parser import HTMLCleaner
-from cis_bench.utils.xhtml_formatter import XHTMLFormatter
 from cis_bench.utils.xml_utils import ncname_slug
 
 # Set up logger
@@ -115,9 +113,6 @@ class TransformRegistry:
 
 # Register built-in transformations
 TransformRegistry.register("none", lambda x: x)
-TransformRegistry.register("strip_html", HTMLCleaner.strip_html)
-TransformRegistry.register("html_to_markdown", HTMLCleaner.html_to_markdown)
-TransformRegistry.register("wrap_xhtml_paragraphs", XHTMLFormatter.wrap_paragraphs)
 
 
 def strip_version_prefix(version: str | None) -> str:
@@ -139,17 +134,6 @@ def strip_version_prefix(version: str | None) -> str:
 
 
 TransformRegistry.register("strip_version_prefix", strip_version_prefix)
-
-
-def strip_html_keep_code(html: str | None) -> str:
-    """Strip HTML but preserve code blocks."""
-    if not html:
-        return ""
-    # For now, use strip_html (enhance later to preserve <code>, <pre>)
-    return HTMLCleaner.strip_html(html)
-
-
-TransformRegistry.register("strip_html_keep_code", strip_html_keep_code)
 
 
 _DOTTED_NUMBER = re.compile(r"[0-9]+(?:\.[0-9]+)*")
@@ -469,6 +453,7 @@ class MappingEngine:
         """
         self.config = ConfigLoader.load(config_path)
         self._refuse_unknown_field_names()
+        self._refuse_unknown_transforms()
         self._refuse_invalid_embedded_tags()
         self.cci_service = get_cci_service()
 
@@ -482,6 +467,53 @@ class MappingEngine:
     # Structures whose source_field is read as a dotted path (_get_nested_field); every
     # other reader takes one field name.
     _DOTTED_PATH_STRUCTURES = frozenset({"ident_from_list", "metadata_from_config"})
+
+    def _refuse_unknown_transforms(self) -> None:
+        """Refuse a style that names a transform no function is registered under.
+
+        A transform is looked up when a value reaches it, so a misspelled or withdrawn name
+        would fail the first export that has a value for the field, not the style's load.
+
+        Raises:
+            ValueError: A transform (field_mappings, their children, a component source,
+                group_elements, benchmark elements) or benchmark.profiles.description_transform
+                names no registered transform.
+        """
+        named: list[tuple[str, Any]] = []
+        for name, mapping in self.config.field_mappings.items():
+            if not isinstance(mapping, dict):
+                continue
+            named.append((f"field_mappings.{name}", mapping.get("transform")))
+            for i, child in enumerate(mapping.get("children") or []):
+                if isinstance(child, dict):
+                    named.append((f"field_mappings.{name}.children[{i}]", child.get("transform")))
+            for i, component in enumerate(mapping.get("components") or []):
+                if not isinstance(component, dict):
+                    continue
+                for j, source in enumerate(component.get("sources") or []):
+                    if isinstance(source, dict):
+                        named.append(
+                            (
+                                f"field_mappings.{name}.components[{i}].sources[{j}]",
+                                source.get("transform"),
+                            )
+                        )
+        for section in ("group_elements", "benchmark"):
+            for name, element in getattr(self.config, section).items():
+                if isinstance(element, dict):
+                    named.append((f"{section}.{name}", element.get("transform")))
+        profiles = self.config.benchmark.get("profiles")
+        if isinstance(profiles, dict):
+            named.append(
+                ("benchmark.profiles.description_transform", profiles.get("description_transform"))
+            )
+        for where, transform in named:
+            if transform is None:
+                continue
+            try:
+                TransformRegistry.get(transform)
+            except ValueError as error:
+                raise ValueError(f"{where}: {error}") from error
 
     def _refuse_invalid_embedded_tags(self) -> None:
         """Refuse a style whose embedded_xml_tags component names a tag that is no XML name.
@@ -1686,7 +1718,7 @@ class MappingEngine:
         Config structure:
             generate_from_rules: true
             id_template: "{profile.title|slug:-}"   # every Profile id
-            description_transform: "strip_html"          # for the page's descriptions
+            description_transform: "none"                # for the page's descriptions
             profile_mappings:
               - match: "Level 2 - Server"                 # a profile name on the rules
                 title: "Level 2 - Server"

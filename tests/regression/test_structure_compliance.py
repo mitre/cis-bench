@@ -113,14 +113,21 @@ class TestControlMappingFidelity:
     def test_a_rule_id_template_that_gives_no_id_is_refused(
         self, sample_benchmark, disa_config_path
     ):
-        # A filter can turn a ref value into something that is not text: XHTML elements here.
-        from cis_bench.exporters.mapping_engine import MappingEngine
+        # A filter can turn a ref value into something that is not text: a registered
+        # transform that gives XML elements stands in for one here.
+        from lxml import etree
 
-        engine = MappingEngine(disa_config_path)
-        engine.config.rule_id["template"] = "{ref_normalized|wrap_xhtml_paragraphs}"
+        from cis_bench.exporters.mapping_engine import MappingEngine, TransformRegistry
 
-        with pytest.raises(ValueError, match="gives no id"):
-            engine.map_rule(sample_benchmark.recommendations[0], {})
+        TransformRegistry.register("as_elements", lambda value: [etree.Element("p")])
+        try:
+            engine = MappingEngine(disa_config_path)
+            engine.config.rule_id["template"] = "{ref_normalized|as_elements}"
+
+            with pytest.raises(ValueError, match="gives no id"):
+                engine.map_rule(sample_benchmark.recommendations[0], {})
+        finally:
+            del TransformRegistry._transforms["as_elements"]
 
     def test_a_rule_id_template_naming_a_value_the_ref_does_not_give_is_refused(
         self, sample_benchmark, disa_config_path

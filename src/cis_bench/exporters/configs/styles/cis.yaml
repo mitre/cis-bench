@@ -325,35 +325,6 @@ field_mappings:
       system_template: "https://attack.mitre.org/mitigations"
       value_template: "{item}"
 
-# Transformation definitions
-transformations:
-  none:
-    description: "Pass through unchanged"
-
-  strip_html:
-    description: "Remove all HTML tags, return plain text"
-    function: "HTMLCleaner.strip_html"
-
-  html_to_markdown:
-    description: "Convert HTML to Markdown for better readability"
-    function: "HTMLCleaner.html_to_markdown"
-    preserve_structure: true
-    options:
-      heading_style: "ATX"  # Use # for headers
-      code_language: "bash"  # Default for code blocks
-      bullets: "-"  # Use - for lists
-      emphasis_mark: "*"  # Use * for emphasis
-      strong_mark: "**"  # Use ** for strong
-
-  wrap_xhtml_paragraphs:
-    description: "Wrap text content in XHTML <p> elements per CIS official format"
-    function: "XHTMLFormatter.wrap_paragraphs"
-    namespace: "http://www.w3.org/1999/xhtml"
-    options:
-      split_on: "\n\n"  # Paragraph breaks
-      preserve_code_blocks: true
-      preserve_lists: true
-
 # CCI Deduplication - DISABLED for CIS native style
 cci_deduplication:
   enabled: false

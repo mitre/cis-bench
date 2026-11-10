@@ -246,7 +246,7 @@ field_mappings:
 title:
 target_element: "title"
 source_field: "title"
-transform: "strip_html"
+transform: "none"
 xccdf_type: "TextType"
 
 # Composite field mapping
@@ -295,10 +295,6 @@ xccdf_rule[field_name] = value
 
 **Step 3: Apply Transformations**
 ```python
-# Transform: "strip_html"
-input: "<p>Disable <code>cramfs</code> filesystem</p>"
-output: "Disable cramfs filesystem"
-
 # Transform: "none" (the stored text is Markdown; the DISA and CIS styles write it as it is)
 input: "Run:\n\n```\n# modprobe -n -v cramfs\n```"
 output: "Run:\n\n```\n# modprobe -n -v cramfs\n```"
@@ -720,7 +716,7 @@ nist_controls=['CM-7', 'CM-7(1)']
 
 ```python
 # MappingEngine applies transformations
-title_value = "Ensure mounting of cramfs filesystems is disabled" # strip_html
+title_value = "Ensure mounting of cramfs filesystems is disabled" # none: the stored title
 
 description_html = """<VulnDiscussion>The cramfs filesystem type is a compressed read-only Linux filesystem...
 

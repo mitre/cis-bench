@@ -18,28 +18,12 @@ benchmark:
     cc7: "http://cisecurity.org/20-cc/v7.0"
     cc8: "http://cisecurity.org/20-cc/v8.0"
 
-# Common transformations available to all styles
+# Common transformations available to all styles. Benchmark text is stored as Markdown and
+# written as it is, so the styles name "none" for every text field; the registered
+# transforms are in mapping_engine.py (TransformRegistry).
 transformations:
   none:
     description: "Pass through unchanged"
-
-  strip_html:
-    description: "Remove all HTML tags, return plain text"
-    function: "HTMLCleaner.strip_html"
-
-  strip_html_keep_code:
-    description: "Strip HTML but preserve code blocks and lists"
-    function: "HTMLCleaner.strip_html_keep_code"
-    preserve_elements:
-      - "code"
-      - "pre"
-      - "ul"
-      - "ol"
-      - "li"
-
-  html_to_markdown:
-    description: "Convert HTML to Markdown"
-    function: "HTMLCleaner.html_to_markdown"
 
 # Common rule defaults (can be overridden by child configs)
 rule_defaults:

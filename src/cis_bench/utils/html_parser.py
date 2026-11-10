@@ -1,49 +1,13 @@
-"""HTML parsing and cleaning utilities for CIS benchmark data."""
+"""Parsers for the HTML tables and references WorkBench pages carry, and attribute access.
+
+Benchmark text itself is Markdown and is stored and written as it is; nothing here converts
+or strips it."""
 
 import logging
 import re
-import warnings
 from typing import Any
 
-from bs4 import BeautifulSoup, MarkupResemblesLocatorWarning, Tag
-
-# strip_html: block elements are set apart by a blank line; line elements end a line
-_BLOCK_TAGS = [
-    "p",
-    "div",
-    "pre",
-    "ul",
-    "ol",
-    "dl",
-    "table",
-    "blockquote",
-    "section",
-    "article",
-    "header",
-    "footer",
-    "h1",
-    "h2",
-    "h3",
-    "h4",
-    "h5",
-    "h6",
-    "hr",
-]
-_LIST_TAGS = ["ul", "ol", "dl"]
-_LINE_TAGS = ["li", "tr", "dt", "dd"]
-_CELL_TAGS = ["td", "th"]
-# Where a tag breaks the text, strip_html leaves a mark (private-use characters, removed from
-# the input first). Each run of marks with the whitespace around them becomes one line
-# break, or a blank line when a block starts or ends in it, so the source's indentation
-# between tags adds nothing while the text's own line breaks away from tags are kept.
-_LINE_MARK = ""
-_BLOCK_MARK = ""
-_NO_MARKS = {ord(_LINE_MARK): None, ord(_BLOCK_MARK): None}
-_MARK_RUN_RE = re.compile(
-    rf"[ \t\n]*[{_LINE_MARK}{_BLOCK_MARK}](?:[ \t\n]*[{_LINE_MARK}{_BLOCK_MARK}])*[ \t]*\n?"
-)
-_TRAILING_SPACE_RE = re.compile(r"[ \t]+$", re.MULTILINE)
-_BLANK_LINES_RE = re.compile(r"\n{3,}")
+from bs4 import BeautifulSoup, Tag
 
 logger = logging.getLogger(__name__)
 
@@ -63,95 +27,8 @@ def attribute_text(tag: Tag, name: str) -> str | None:
 
 
 class HTMLCleaner:
-    """Utilities for cleaning and parsing HTML content from CIS benchmarks."""
-
-    @staticmethod
-    def strip_html(html: str | None) -> str:
-        """The text of HTML or HTML-bearing text as plain text a reader can follow.
-
-        WorkBench's fields are Markdown-like text whose own line breaks and spacing carry
-        its structure (commands, lists, paragraphs), so line breaks and spacing away from
-        tags are kept as written (Windows line breaks become \\n). Tags change the text
-        where they stand: inline markup (b, code, a, ...) leaves its text in the sentence
-        with no added space; paragraphs, headings, tables and lists other than a list
-        inside a list item are set apart by a blank line; list items, table rows and <br>
-        are lines of their own; table cells are separated by a tab. Whitespace between
-        tags adds nothing. Trailing spaces are dropped and three or more line breaks
-        become one blank line.
-
-        The text is parsed as HTML, so anything in angle brackets is read as a tag and
-        removed with it: a placeholder such as <user> in a command does not survive.
-
-        Args:
-            html: HTML content or None
-
-        Returns:
-            Plain text, entities decoded; "" for no content
-        """
-        if not html:
-            return ""
-
-        logger.debug(f"Stripping HTML tags from content (length: {len(html)})")
-        html = html.replace("\r\n", "\n").replace("\r", "\n").translate(_NO_MARKS)
-        # Text with no tags still goes through the parser so its entities are decoded; a
-        # field that is only a URL or a path makes bs4 warn that the input looks like a
-        # locator, and here it is content, so that one warning is not wanted.
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", MarkupResemblesLocatorWarning)
-            soup = BeautifulSoup(html, "html.parser")
-
-        for tag in soup.find_all(_BLOCK_TAGS):
-            nested_list = tag.name in _LIST_TAGS and tag.find_parent(_LINE_TAGS) is not None
-            mark = _LINE_MARK if nested_list else _BLOCK_MARK
-            tag.insert_before(mark)
-            tag.insert_after(mark)
-        for tag in soup.find_all(_LINE_TAGS):
-            tag.insert_before(_LINE_MARK)
-            tag.insert_after(_LINE_MARK)
-        for cell in soup.find_all(_CELL_TAGS):
-            if cell.find_previous_sibling(_CELL_TAGS) is not None:
-                cell.insert_before("\t")
-        for br in soup.find_all("br"):
-            br.replace_with("\n")
-
-        text = _MARK_RUN_RE.sub(
-            lambda run: "\n\n" if _BLOCK_MARK in run.group() else "\n", soup.get_text()
-        )
-        text = _TRAILING_SPACE_RE.sub("", text)
-        result = _BLANK_LINES_RE.sub("\n\n", text).strip("\n").rstrip()
-        logger.debug(f"Stripped result length: {len(result)}")
-        return result
-
-    @staticmethod
-    def html_to_markdown(html: str | None) -> str:
-        """Convert HTML to Markdown format.
-
-        Args:
-            html: HTML content
-
-        Returns:
-            Markdown formatted text
-        """
-        if not html:
-            return ""
-
-        # Simple HTML → Markdown conversion
-        # For production, consider using html2text library
-        text = html
-        text = re.sub(r"<p>(.*?)</p>", r"\1\n\n", text)
-        text = re.sub(r"<code>(.*?)</code>", r"`\1`", text)
-        text = re.sub(r"<pre>(.*?)</pre>", r"```\n\1\n```", text, flags=re.DOTALL)
-        text = re.sub(r"<li>(.*?)</li>", r"- \1", text)
-        text = re.sub(r"<ul>(.*?)</ul>", r"\1", text, flags=re.DOTALL)
-        text = re.sub(r"<strong>(.*?)</strong>", r"**\1**", text)
-        text = re.sub(r"<em>(.*?)</em>", r"*\1*", text)
-
-        # Remove remaining tags. A field that is only a URL makes bs4 warn that the input
-        # looks like a locator; here it is content, so that one warning is not wanted.
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", MarkupResemblesLocatorWarning)
-            soup = BeautifulSoup(text, "html.parser")
-        return soup.get_text(separator="\n", strip=True)
+    """Parsers for the HTML tables (MITRE ATT&CK, CIS Controls) and references on WorkBench
+    pages."""
 
     @staticmethod
     def parse_mitre_table(html: str | None) -> dict[str, list[str]] | None:

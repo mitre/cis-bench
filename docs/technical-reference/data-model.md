@@ -340,7 +340,7 @@ for rec in data['recommendations']:
 rule = Rule(
 id=f"rule_{rec['ref'].replace('.', '_')}",
 title=rec['title'],
-description=strip_html(rec['description']),
+description=rec['description'], # Markdown, written as stored
 # ... map other fields per XCCDF spec
 )
 xccdf_benchmark.rule.append(rule)
