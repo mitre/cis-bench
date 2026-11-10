@@ -157,6 +157,7 @@ All test data via fixtures in `tests/conftest.py`. NO hardcoded paths.
 - No version-specific imports (xccdf_1_2, xccdf_v1_1) in exporters
 - If design doc exists, follow it exactly; update design first if wrong
 - For parsing, conversion or format work, an established, tested library comes before code of our own: the rule and its check are in `docs/design/design-principles.md`
+- Benchmark text is stored as WorkBench gives it (Markdown, `\n` line breaks; the fetcher stores a blank-only recommendation field or overview as absent): no trim, strip or rewrite at ingest, HTML converted once by markdownify where it enters with the form recorded on the copy, presentation changes only at export by a library or a transform the style names, and any transform of stored text checked over the real cache first: the rule and its record are in `docs/design/design-principles.md`
 
 ### Red Flags (Stop and Reconsider)
 - Hard-coded type names in Python code

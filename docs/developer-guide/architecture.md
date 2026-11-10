@@ -560,11 +560,6 @@ target_element: "reference"
 multiple: true
 structure: "dublin_core"
 source_field: "nist_controls"
-
-# Transformations (registered in mapping_engine.py; text is written as stored)
-transformations:
-none:
-description: "Pass through unchanged"
 ```
 
 ### Structure Types

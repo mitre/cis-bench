@@ -32,7 +32,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 from types import ModuleType, UnionType
-from typing import Annotated, Any, Union, get_args, get_origin
+from typing import Annotated, Any, Final, Union, get_args, get_origin
 
 import yaml
 from lxml import etree
@@ -70,7 +70,6 @@ class MappingConfig:
     rule_id: dict[str, str] = field(default_factory=dict)
     group_id: dict[str, str] = field(default_factory=dict)  # Group ID template configuration
     field_mappings: dict[str, Any] = field(default_factory=dict)
-    transformations: dict[str, Any] = field(default_factory=dict)
     cci_deduplication: dict[str, Any] = field(default_factory=dict)
     # Specification of each Rule and Group element and its xsdata type
     rule_elements: dict[str, Any] = field(default_factory=dict)
@@ -202,6 +201,32 @@ TransformRegistry.register("slug", slug)
 class ConfigLoader:
     """Loads and validates mapping configuration from YAML with inheritance support."""
 
+    # Where a setting a style might put in an unread section is actually read.
+    _UNREAD_SECTION_HINTS: Final[dict[str, str]] = {
+        "namespaces": "declare namespaces in benchmark.namespaces",
+        "transformations": "a mapping names a transform registered in TransformRegistry; "
+        "a style declares none",
+    }
+
+    @staticmethod
+    def _refuse_unread_sections(config_path: Path, config_data: dict[str, Any]) -> None:
+        """A top-level section the loader does not read is refused, by name.
+
+        The loader fills one MappingConfig field per section; a section with no field would
+        be ignored silently, and the style would promise a setting nothing applies.
+        """
+        sections = {section.name for section in fields(MappingConfig)} | {"extends"}
+        for name in config_data:
+            if name in sections:
+                continue
+            hint = ConfigLoader._UNREAD_SECTION_HINTS.get(name)
+            raise ValueError(
+                f"{config_path.name}: {name} is not a section the loader reads"
+                + (f" ({hint})" if hint else "")
+                + "; the sections are: "
+                + ", ".join(sorted(sections - {"extends"}))
+            )
+
     @staticmethod
     def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
         """Deep merge two dictionaries, with override taking precedence.
@@ -263,11 +288,7 @@ class ConfigLoader:
             # Load the current file
             with open(config_path) as f:
                 config_data = yaml.safe_load(f) or {}
-            if "namespaces" in config_data:
-                raise ValueError(
-                    f"{config_path.name}: declare namespaces in benchmark.namespaces "
-                    "(a top-level namespaces section is not read)"
-                )
+            ConfigLoader._refuse_unread_sections(config_path, config_data)
 
             # Check for inheritance
             if "extends" in config_data:

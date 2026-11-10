@@ -263,12 +263,15 @@ flowchart LR
     style BUILDER fill:#fff9c4,stroke:#f57f17,stroke-width:2px
 ```
 
-**Available Transformers:**
+**Available Transforms** (registered in `TransformRegistry`; a style names one in a
+mapping's `transform` or after `|` in a template):
 
-- **StripHTML** - Remove HTML tags
-- **Markdown** - Convert HTML to Markdown
-- **Composite** - Combine multiple fields
-- **Custom** - User-defined transformations
+- **none** - The value as stored (every text field: the stored text is Markdown)
+- **strip_version_prefix** - "v4.0.0" becomes "4.0.0"
+- **lines** - A text as its list of lines
+- **dotted_number_path** - "1.2.3" as a path of numbers
+- **slug** - A title as an identifier
+- **composite** - A structure, not a transform: several fields joined into one text
 
 **Field Mapping Strategies:**
 
@@ -357,7 +360,6 @@ Structure matches YAML file:
 - rule_defaults: Default rule attributes
 - rule_id: ID generation template
 - field_mappings: Core field mapping definitions
-- transformations: Transform function definitions
 - validation: Validation rules
 """
 
@@ -370,7 +372,6 @@ rule_defaults: Dict[str, Any]
 rule_id_template: str
 
 field_mappings: Dict[str, FieldMapping]
-transformations: Dict[str, TransformDef]
 
 cci_lookup: Optional[CCILookupConfig] = None
 validation: Optional[ValidationConfig] = None
@@ -1088,9 +1089,6 @@ attributes={
 ),
 # ... more mappings
 },
-transformations={
-'none': TransformDef(description='Pass through unchanged'),
-}
 )
 
 # 3. Create engine with config

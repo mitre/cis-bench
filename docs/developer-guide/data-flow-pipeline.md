@@ -836,7 +836,7 @@ Namespace prefix 'ns0' not declared
 **Base Configuration (`base_style.yaml`):**
 
 - Common namespaces
-- Shared transformations
+- Common rule defaults
 - Reusable field mappings
 - Both styles extend this
 

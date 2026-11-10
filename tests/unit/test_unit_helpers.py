@@ -576,6 +576,26 @@ class TestStyleInheritance:
         with pytest.raises(ValueError, match="benchmark.namespaces"):
             ConfigLoader.load(style)
 
+    @pytest.mark.parametrize(
+        "section",
+        ["transformations", "cci_defaults", "formatting", "implementation_notes", "notes"],
+    )
+    def test_a_top_level_section_the_loader_does_not_read_is_refused(self, tmp_path, section):
+        # A section the loader does not read would be ignored silently, and the style would
+        # promise a setting nothing applies.
+        style = tmp_path / "style.yaml"
+        style.write_text(f"metadata:\n  style_name: s\n{section}:\n  key: value\n")
+
+        with pytest.raises(ValueError, match=section):
+            ConfigLoader.load(style)
+
+    def test_a_parent_style_carrying_an_unread_section_is_refused_through_its_child(self, tmp_path):
+        parent = tmp_path / "parent.yaml"
+        parent.write_text("metadata:\n  style_name: p\nformatting:\n  indent: 2\n")
+
+        with pytest.raises(ValueError, match="formatting"):
+            self._child(tmp_path, parent)
+
     def test_a_child_inherits_and_overrides_post_processing(self, tmp_path, cis_config_path):
         parent = ConfigLoader.load(cis_config_path)
 
