@@ -438,7 +438,7 @@
         }
       ],
       "default": null,
-      "description": "The benchmark's overview, as plain text, read from its page",
+      "description": "The benchmark's overview, as the Markdown its page gives",
       "title": "Description"
     },
     "profile_definitions": {

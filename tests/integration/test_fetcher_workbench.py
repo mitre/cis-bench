@@ -947,7 +947,7 @@ class TestTheReleasePublishDate:
         assert benchmark.title == "CIS Amazon Elastic Kubernetes Service (EKS) Benchmark v1.8.0"
         assert transport.urls.count(url) == 1
         assert '"published_date":"2025-08-28"' in benchmark.model_dump_json()
-        assert benchmark.description.startswith("This document provides prescriptive guidance")
+        assert benchmark.description == OVERVIEW_MARKDOWN
 
     @patch("cis_bench.fetcher.workbench.StrategyDetector.detect_strategy")
     def test_a_page_without_a_publish_date_records_none(
@@ -1031,40 +1031,53 @@ def test_a_draft_label_with_a_date_and_an_empty_page():
     )
 
 
-# The overview as WorkBench renders it: a web component whose text attribute holds it
+# The overview as WorkBench renders it: a web component whose text attribute holds the
+# page's Markdown (our own text in its form: emphasis, a placeholder, a link, Windows line
+# breaks, an entity the attribute carries).
 OVERVIEW_COMPONENT_HTML = """
 <wb-recommendation-data attribute="intended_audience" text="Administrators."></wb-recommendation-data>
 <wb-recommendation-data
         attribute="overview"
         :can-see-warning="false"
-        text="This document provides prescriptive guidance for establishing a secure
-configuration posture for AlmaLinux OS 8 Linux systems.
-
-The guidance &lt;strong&gt;assumes&lt;/strong&gt; root &amp;amp; bash."></wb-recommendation-data>
+        text="Run **cis-bench** with &lt;path&gt; set to the benchmark folder.&#13;
+&#13;
+See [the guide](https://example.com/guide) for `--output-dir` &amp;amp; the other flags."></wb-recommendation-data>
 """
+
+# The same overview as the page gives it: Markdown, with every line break as \n
+OVERVIEW_MARKDOWN = (
+    "Run **cis-bench** with <path> set to the benchmark folder.\n"
+    "\n"
+    "See [the guide](https://example.com/guide) for `--output-dir` &amp; the other flags."
+)
 
 
 class TestTheBenchmarkDescription:
-    """The description is the benchmark page's overview, as plain text."""
+    """The description is the benchmark page's overview, as the Markdown the page gives."""
 
-    def test_the_overview_component_is_the_description(self):
+    def test_the_overview_component_is_the_description_as_its_markdown(self):
         from cis_bench.fetcher.workbench import parse_benchmark_page
 
         page = parse_benchmark_page(PUBLISHED_STATUS_HTML + OVERVIEW_COMPONENT_HTML)
 
-        assert page.description == (
-            "This document provides prescriptive guidance for establishing a secure\n"
-            "configuration posture for AlmaLinux OS 8 Linux systems.\n\n"
-            "The guidance assumes root & bash."
-        )
+        assert page.description == OVERVIEW_MARKDOWN
         assert page.published_date.isoformat() == "2025-08-28"
+
+    def test_blank_lines_around_the_overview_are_not_part_of_it(self):
+        from cis_bench.fetcher.workbench import parse_benchmark_page
+
+        html = OVERVIEW_COMPONENT_HTML.replace('text="Run', 'text="&#13;\n\nRun').replace(
+            'flags."', 'flags.\n&#13;\n"'
+        )
+
+        assert parse_benchmark_page(html).description == OVERVIEW_MARKDOWN
 
     def test_the_component_wins_over_an_overview_heading(self):
         from cis_bench.fetcher.workbench import parse_benchmark_page
 
         html = OVERVIEW_COMPONENT_HTML + "<h2>Overview</h2><p>Heading text.</p>"
 
-        assert parse_benchmark_page(html).description.startswith("This document provides")
+        assert parse_benchmark_page(html).description == OVERVIEW_MARKDOWN
 
     def test_parse_benchmark_detail_basic(self):
         """Test basic benchmark detail page parsing."""
