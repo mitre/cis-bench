@@ -1,7 +1,7 @@
 {
   "$defs": {
     "Artifact": {
-      "description": "Test artifact for automated compliance checking.",
+      "description": "Test artifact for automated compliance checking.\n\nWorkBench's artifact payload gives some titles as HTML (``<p>...</p>``); the parser\nconverts them to Markdown as the payload is read, and a copy saved before that is\nconverted once as it loads (Benchmark.artifact_title_format says which form a copy\nholds), so every artifact holds Markdown.",
       "properties": {
         "id": {
           "title": "Id",
@@ -13,6 +13,7 @@
           "type": "string"
         },
         "title": {
+          "description": "Artifact title (Markdown)",
           "title": "Title",
           "type": "string"
         },
@@ -469,6 +470,15 @@
       "title": "Text Format",
       "type": "string"
     },
+    "artifact_title_format": {
+      "description": "The form of the artifact titles as written: 'markdown', the form every loaded copy holds, since the parser converts the HTML the artifact payload gives some titles in, or 'html' for a copy saved before that, which is converted to Markdown when it loads. A stored copy saved without this field is 'html'",
+      "enum": [
+        "html",
+        "markdown"
+      ],
+      "title": "Artifact Title Format",
+      "type": "string"
+    },
     "total_recommendations": {
       "minimum": 0,
       "title": "Total Recommendations",
@@ -489,6 +499,7 @@
     "version",
     "scraper_version",
     "text_format",
+    "artifact_title_format",
     "total_recommendations",
     "recommendations"
   ],

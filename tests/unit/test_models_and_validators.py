@@ -1211,3 +1211,83 @@ class TestLoadedTextIsMarkdown:
         reloaded = Benchmark.model_validate_json(loaded.model_dump_json(exclude_defaults=True))
 
         assert reloaded.model_dump() == loaded.model_dump()
+
+
+class TestArtifactTitlesAreMarkdown:
+    """A loaded copy's artifact titles are Markdown, converted once.
+
+    WorkBench's artifact payload gives some titles as HTML (``<p>...</p>``); the parser
+    converts them as the payload is read, and a copy saved before that holds them as the
+    payload gave them. artifact_title_format says which form a copy holds: a copy saved
+    without it is html and is converted once as it loads. The form is never read from the
+    text itself: a placeholder such as <user> looks like a tag.
+    """
+
+    def _copy_with_an_artifact(self, minimal_benchmark_data, title, **fields):
+        data = _copy(minimal_benchmark_data, "v2_2026_01")
+        data["recommendations"][0]["artifacts"] = [
+            {
+                "id": 7,
+                "view_level": "5.4.1.2.1",
+                "title": title,
+                "status": "accepted",
+                "artifact_type": {},
+            }
+        ]
+        return {**data, **fields}
+
+    def test_a_copy_saved_without_the_marker_loads_with_the_title_as_markdown(
+        self, minimal_benchmark_data
+    ):
+        data = self._copy_with_an_artifact(
+            minimal_benchmark_data, "<p>Ensure the agent is <em>active</em></p>"
+        )
+
+        loaded = Benchmark(**data)
+
+        assert loaded.recommendations[0].artifacts[0].title == "Ensure the agent is *active*"
+        assert loaded.artifact_title_format == "markdown"
+
+    def test_a_copy_marked_markdown_keeps_a_title_with_a_placeholder(self, minimal_benchmark_data):
+        title = "Ensure <user> owns the file"
+        data = self._copy_with_an_artifact(
+            minimal_benchmark_data, title, artifact_title_format="markdown"
+        )
+
+        assert Benchmark(**data).recommendations[0].artifacts[0].title == title
+
+    def test_a_loaded_copy_dumped_and_loaded_again_keeps_the_placeholder_its_html_title_held(
+        self, minimal_benchmark_data
+    ):
+        data = self._copy_with_an_artifact(
+            minimal_benchmark_data, "<p>Ensure &lt;user&gt; owns the file</p>"
+        )
+        loaded = Benchmark(**data)
+
+        reloaded = Benchmark.model_validate_json(loaded.model_dump_json(exclude_defaults=True))
+
+        assert reloaded.recommendations[0].artifacts[0].title == "Ensure <user> owns the file"
+        assert reloaded.model_dump() == loaded.model_dump()
+
+    def test_a_v1_copy_converts_its_text_fields_and_its_artifact_titles_once(
+        self, minimal_benchmark_data
+    ):
+        data = _copy(
+            minimal_benchmark_data, "v1_2025_10", remediation="<p>Run <code>&lt;cmd&gt;</code></p>"
+        )
+        data["recommendations"][0]["artifacts"] = [
+            {
+                "id": 7,
+                "view_level": "5.4.1.2.1",
+                "title": "<p>Ensure &lt;user&gt; owns the file</p>",
+                "status": "accepted",
+                "artifact_type": {},
+            }
+        ]
+
+        recommendation = Benchmark(**data).recommendations[0]
+
+        assert (recommendation.remediation, recommendation.artifacts[0].title) == (
+            "Run `<cmd>`",
+            "Ensure <user> owns the file",
+        )

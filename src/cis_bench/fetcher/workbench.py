@@ -509,6 +509,7 @@ class WorkbenchScraper:
             profile_definitions=page.profile_definitions,
             scraper_version=scraper_version,
             text_format="html" if scraper_version in HTML_ERA_SCRAPER_VERSIONS else "markdown",
+            artifact_title_format="markdown",
             total_recommendations=len(recommendations),
             recommendations=recommendations,
             downloaded_at=datetime.now(UTC),

@@ -8,6 +8,7 @@ from pydantic import HttpUrl
 
 from cis_bench.models.benchmark import Artifact, CISControl, MITREMapping, ParentReference
 from cis_bench.utils.html_parser import attribute_text
+from cis_bench.utils.markdown_text import html_to_markdown
 
 # The label of the link to a recommendation's parent section, e.g. "PARENT : Initial Setup".
 _PARENT_LABEL = re.compile(r"PARENT\s*:", re.IGNORECASE)
@@ -154,7 +155,8 @@ class WorkbenchParser:
             artifacts_json: JSON string from wb-recommendation-artifacts element
 
         Returns:
-            List of Artifact objects
+            List of Artifact objects. The payload gives some titles as HTML; every title
+            is converted to Markdown here, where it enters
         """
         try:
             artifacts_data = json.loads(artifacts_json)
@@ -164,7 +166,7 @@ class WorkbenchParser:
                 artifact = Artifact(
                     id=a["id"],
                     view_level=a.get("view_level", ""),
-                    title=a.get("title", ""),
+                    title=html_to_markdown(a.get("title", "")),
                     status=a.get("status", "unknown"),
                     artifact_type=a.get("artifact_type", {}),
                 )

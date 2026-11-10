@@ -68,11 +68,17 @@ class MITREMapping(BaseModel):
 
 
 class Artifact(BaseModel):
-    """Test artifact for automated compliance checking."""
+    """Test artifact for automated compliance checking.
+
+    WorkBench's artifact payload gives some titles as HTML (``<p>...</p>``); the parser
+    converts them to Markdown as the payload is read, and a copy saved before that is
+    converted once as it loads (Benchmark.artifact_title_format says which form a copy
+    holds), so every artifact holds Markdown.
+    """
 
     id: int
     view_level: str = Field(..., description="Artifact reference (e.g., '1.1.1.1.1')")
-    title: str
+    title: str = Field(..., description="Artifact title (Markdown)")
     status: str
     artifact_type: dict[str, Any] = Field(..., description="Artifact type metadata")
 
@@ -223,6 +229,27 @@ class BenchmarkPage(BaseModel):
     profile_definitions: ProfileDefinitions = Field(default_factory=list)
 
 
+def _as_markdown(
+    recommendation: Recommendation, text_is_html: bool, titles_are_html: bool
+) -> Recommendation:
+    """The recommendation with its HTML text fields and artifact titles as Markdown."""
+    data = recommendation.model_dump()
+    if text_is_html:
+        data.update(
+            {
+                name: html_to_markdown(value)
+                for name in RECOMMENDATION_TEXT_FIELDS
+                if (value := getattr(recommendation, name))
+            }
+        )
+    if titles_are_html:
+        data["artifacts"] = [
+            {**artifact, "title": html_to_markdown(artifact["title"])}
+            for artifact in data["artifacts"]
+        ]
+    return Recommendation.model_validate(data)
+
+
 class Benchmark(BaseModel):
     """A complete CIS benchmark with metadata and recommendations."""
 
@@ -260,42 +287,58 @@ class Benchmark(BaseModel):
         "'markdown' otherwise",
     )
 
+    artifact_title_format: Literal["html", "markdown"] = Field(
+        ...,
+        description="The form of the artifact titles as written: 'markdown', the form every "
+        "loaded copy holds, since the parser converts the HTML the artifact payload gives "
+        "some titles in, or 'html' for a copy saved before that, which is converted to "
+        "Markdown when it loads. A stored copy saved without this field is 'html'",
+    )
+
     total_recommendations: int = Field(..., ge=0)
     recommendations: list[Recommendation] = Field(...)
 
     @model_validator(mode="before")
     @classmethod
-    def text_format_of_a_copy_saved_without_one(cls, data: Any) -> Any:
-        """A copy saved before text_format existed names its text's form by its scraper."""
-        if isinstance(data, dict) and "text_format" not in data:
+    def forms_of_a_copy_saved_without_them(cls, data: Any) -> Any:
+        """A copy saved before the form fields existed names its forms by what saved it.
+
+        text_format follows the scraper (the v1 scraper saved HTML); artifact titles were
+        saved as the payload gave them, HTML for some, until the parser converted them.
+        """
+        if not isinstance(data, dict):
+            return data
+        forms: dict[str, str] = {}
+        if "text_format" not in data:
             html_era = data.get("scraper_version") in HTML_ERA_SCRAPER_VERSIONS
-            return {**data, "text_format": "html" if html_era else "markdown"}
-        return data
+            forms["text_format"] = "html" if html_era else "markdown"
+        if "artifact_title_format" not in data:
+            forms["artifact_title_format"] = "html"
+        return {**data, **forms} if forms else data
 
     @model_validator(mode="after")
     def text_as_markdown(self) -> "Benchmark":
-        """A loaded copy holds Markdown: HTML a v1-era copy saved is converted here.
+        """A loaded copy holds Markdown: HTML a stored copy holds is converted here, once.
 
-        The converted recommendations are new, validated Recommendation objects: the
-        Markdown goes through the field validators (so a line break the HTML spelled as an
-        entity ends as \\n too), and Recommendation objects the caller passed in keep their
-        text (building twice from them converts each time from that text, once).
+        text_format names the form of the recommendation text fields (HTML in a v1-era
+        copy) and artifact_title_format the form of the artifact titles (HTML in a copy
+        saved before the parser converted them). The converted recommendations are new,
+        validated Recommendation objects: the Markdown goes through the field validators
+        (so a line break the HTML spelled as an entity ends as \\n too), and Recommendation
+        objects the caller passed in keep their text (building twice from them converts
+        each time from that text, once). Afterwards both fields say markdown, so a dumped
+        and reloaded copy is not converted again: in Markdown a placeholder such as <user>
+        looks like a tag to an HTML parser, which would drop it.
         """
-        if self.text_format == "html":
+        text_is_html = self.text_format == "html"
+        titles_are_html = self.artifact_title_format == "html"
+        if text_is_html or titles_are_html:
             self.recommendations = [
-                Recommendation.model_validate(
-                    {
-                        **recommendation.model_dump(),
-                        **{
-                            name: html_to_markdown(value)
-                            for name in RECOMMENDATION_TEXT_FIELDS
-                            if (value := getattr(recommendation, name))
-                        },
-                    }
-                )
+                _as_markdown(recommendation, text_is_html, titles_are_html)
                 for recommendation in self.recommendations
             ]
             self.text_format = "markdown"
+            self.artifact_title_format = "markdown"
         return self
 
     @field_validator("recommendations")
