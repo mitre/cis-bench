@@ -109,6 +109,18 @@ class TestIndexedWhereSaved:
             "matched_fields": ["audit", "remediation"],
         }
 
+    def test_a_field_is_matched_only_where_a_word_was_found_whatever_its_characters(self, db):
+        control = _recommendation(
+            "7.1.1",
+            "Ensure SSH is configured",
+            description="unrelated\x02text \x03 more",
+        )
+        _save(db, _benchmark("100", control))
+
+        (result,) = db.search_recommendations("ssh")
+
+        assert result["matched_fields"] == ["title"]
+
     def test_saving_the_same_benchmark_again_replaces_its_rows(self, db):
         _save(db, _benchmark("100", SSH, FIREWALL))
         renamed = FIREWALL.model_copy(update={"title": "Ensure a packet filter is installed"})
@@ -206,6 +218,21 @@ class TestFilters:
         assert _refs(db.search_recommendations("run", profile="Level 1 - Server")) == [
             ("100", "1.1.1")
         ]
+
+    def test_a_profile_phrase_never_spans_two_profile_names(self, db):
+        both = _recommendation(
+            "6.1.1",
+            "Ensure the audit service is running",
+            profiles=("Level 1 - Server", "Level 2 - Workstation"),
+            audit="Run: systemctl is-active auditd",
+        )
+        _save(db, _benchmark("100", both))
+
+        assert db.search_recommendations("run", profile="Server Level 2") == []
+        assert _refs(db.search_recommendations("run", profile="Level 2 - Workstation")) == [
+            ("100", "6.1.1")
+        ]
+        assert _refs(db.search_recommendations("run", profile="Level 1")) == [("100", "6.1.1")]
 
     def test_a_profile_with_no_words_does_not_filter(self, db):
         _save(db, _benchmark("100", SSH, SELINUX))

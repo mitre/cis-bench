@@ -19,6 +19,7 @@ from sqlalchemy import (
     cast,
     column,
     event,
+    exists,
     func,
     literal_column,
     or_,
@@ -95,31 +96,76 @@ _RECOMMENDATIONS_FTS_TABLE = table(
     column("benchmark_id"),
     column("ref"),
     *(column(name) for name in _RECOMMENDATION_TEXT_COLUMNS),
-    column("profiles"),
 )
 _CREATE_RECOMMENDATIONS_FTS_TABLE = (
     "CREATE VIRTUAL TABLE IF NOT EXISTS recommendations_fts USING fts5("
     f"benchmark_id UNINDEXED, ref UNINDEXED, {', '.join(_RECOMMENDATION_TEXT_COLUMNS)}, "
-    "profiles, tokenize='porter unicode61')"
+    "tokenize='porter unicode61')"
 )
-# highlight() marks each matched phrase in a column with this character; a column whose
-# highlighted text holds it matched the query.
+# One row per profile of each indexed recommendation, so a profile filter's words are
+# found side by side within one profile's name, never across two.
+_RECOMMENDATION_PROFILES_FTS_TABLE = table(
+    "recommendation_profiles_fts", column("benchmark_id"), column("ref"), column("profile")
+)
+_CREATE_RECOMMENDATION_PROFILES_FTS_TABLE = (
+    "CREATE VIRTUAL TABLE IF NOT EXISTS recommendation_profiles_fts USING fts5("
+    "benchmark_id UNINDEXED, ref UNINDEXED, profile, tokenize='porter unicode61')"
+)
+# The column layout of each recommendation index table; another layout is rebuilt on open.
+_RECOMMENDATION_INDEX_LAYOUTS = {
+    "recommendations_fts": ["benchmark_id", "ref", *_RECOMMENDATION_TEXT_COLUMNS],
+    "recommendation_profiles_fts": ["benchmark_id", "ref", "profile"],
+}
+# highlight() inserts this mark at each phrase the query found in a column; a column whose
+# highlighted text differs from the column itself is one a word was found in.
 _HIT_MARK = "\x02"
-_SEARCH_RECOMMENDATIONS = text(
+
+
+def _recommendation_search_statement(
+    match: str, profile_match: str, benchmark_id: str | None, limit: int | None
+) -> Select[tuple[object, ...]]:
+    """The recommendation search SELECT: the MATCH expressions are bound values.
+
+    Each row carries every text column and its highlight() text, so the caller can tell
+    which columns a word was found in. A profile filter keeps a recommendation with one
+    profile row matching it; ranked best first, then by benchmark and ref.
     """
-    SELECT benchmark_id, ref, title,
-        highlight(recommendations_fts, 2, :mark, '') AS title_hit,
-        highlight(recommendations_fts, 3, :mark, '') AS description_hit,
-        highlight(recommendations_fts, 4, :mark, '') AS rationale_hit,
-        highlight(recommendations_fts, 5, :mark, '') AS audit_hit,
-        highlight(recommendations_fts, 6, :mark, '') AS remediation_hit
-    FROM recommendations_fts
-    WHERE recommendations_fts MATCH :match
-        AND (:benchmark_id IS NULL OR benchmark_id = :benchmark_id)
-    ORDER BY rank, benchmark_id, ref
-    LIMIT :limit
-    """
-)
+    index = table(
+        "recommendations_fts",
+        column("benchmark_id"),
+        column("ref"),
+        *(column(name) for name in _RECOMMENDATION_TEXT_COLUMNS),
+        column("rank"),
+    )
+    statement = (
+        sa_select(
+            index.c.benchmark_id,
+            index.c.ref,
+            *(index.c[name] for name in _RECOMMENDATION_TEXT_COLUMNS),
+            *(
+                func.highlight(literal_column("recommendations_fts"), number, _HIT_MARK, "").label(
+                    f"{name}_hit"
+                )
+                for number, name in enumerate(_RECOMMENDATION_TEXT_COLUMNS, start=2)
+            ),
+        )
+        .select_from(index)
+        .where(literal_column("recommendations_fts").op("MATCH")(match))
+        .order_by(index.c.rank, index.c.benchmark_id, index.c.ref)
+    )
+    if benchmark_id is not None:
+        statement = statement.where(index.c.benchmark_id == benchmark_id)
+    if profile_match:
+        profiles = _RECOMMENDATION_PROFILES_FTS_TABLE
+        statement = statement.where(
+            exists()
+            .where(literal_column("recommendation_profiles_fts").op("MATCH")(profile_match))
+            .where(profiles.c.benchmark_id == index.c.benchmark_id)
+            .where(profiles.c.ref == index.c.ref)
+        )
+    if limit is not None:
+        statement = statement.limit(limit)
+    return statement
 
 
 def _normalize_base_title(title: str | None) -> str:
@@ -292,6 +338,7 @@ class CatalogDatabase:
 
             session.execute(text(_CREATE_FTS_TABLE))
             session.execute(text(_CREATE_RECOMMENDATIONS_FTS_TABLE))
+            session.execute(text(_CREATE_RECOMMENDATION_PROFILES_FTS_TABLE))
             session.commit()
             logger.debug("Created FTS5 virtual tables")
 
@@ -355,12 +402,19 @@ class CatalogDatabase:
                 if downloaded and name not in downloaded
             ),
             rebuild_index=bool(index) and index != ["benchmark_id", *_FTS_COLUMNS],
-            create_recommendation_index=bool(downloaded) and not columns("recommendations_fts"),
+            create_recommendation_index=bool(downloaded)
+            and any(
+                columns(name) != layout for name, layout in _RECOMMENDATION_INDEX_LAYOUTS.items()
+            ),
         )
 
     def _create_recommendation_index(self, session: Session) -> None:
-        """Create the recommendation index and fill it from every downloaded benchmark."""
+        """Create the recommendation index in the current layout, replacing one in another,
+        and fill it from every downloaded benchmark (FTS5 cannot change a table's columns)."""
+        for name in _RECOMMENDATION_INDEX_LAYOUTS:
+            session.execute(text(f"DROP TABLE IF EXISTS {name}"))
         session.execute(text(_CREATE_RECOMMENDATIONS_FTS_TABLE))
+        session.execute(text(_CREATE_RECOMMENDATION_PROFILES_FTS_TABLE))
         for benchmark_id, content_json in session.execute(
             sa_select(col(DownloadedBenchmark.benchmark_id), col(DownloadedBenchmark.content_json))
         ):
@@ -379,11 +433,7 @@ class CatalogDatabase:
         ``benchmark`` when the caller has it, else the copy parsed. A copy that does not
         load has no rows: there is nothing in it to search.
         """
-        session.execute(
-            _RECOMMENDATIONS_FTS_TABLE.delete().where(
-                _RECOMMENDATIONS_FTS_TABLE.c.benchmark_id == benchmark_id
-            )
-        )
+        CatalogDatabase._unindex_recommendations(session, benchmark_id)
         if benchmark is None:
             try:
                 benchmark = deserialize_benchmark_json(content_json)
@@ -402,12 +452,24 @@ class CatalogDatabase:
                 "rationale": recommendation.rationale or "",
                 "audit": recommendation.audit or "",
                 "remediation": recommendation.remediation or "",
-                "profiles": "\n".join(recommendation.profiles),
             }
             for recommendation in benchmark.recommendations
         ]
+        profile_rows = [
+            {"benchmark_id": benchmark_id, "ref": recommendation.ref, "profile": profile}
+            for recommendation in benchmark.recommendations
+            for profile in recommendation.profiles
+        ]
         if rows:
             session.execute(_RECOMMENDATIONS_FTS_TABLE.insert(), rows)
+        if profile_rows:
+            session.execute(_RECOMMENDATION_PROFILES_FTS_TABLE.insert(), profile_rows)
+
+    @staticmethod
+    def _unindex_recommendations(session: Session, benchmark_id: str) -> None:
+        """Remove one benchmark's rows from the recommendation index."""
+        for index_table in (_RECOMMENDATIONS_FTS_TABLE, _RECOMMENDATION_PROFILES_FTS_TABLE):
+            session.execute(index_table.delete().where(index_table.c.benchmark_id == benchmark_id))
 
     def _rebuild_fts(self, session: Session) -> None:
         """Replace the search index with one in the current layout (FTS5 cannot add a column)."""
@@ -1057,11 +1119,7 @@ class CatalogDatabase:
             if downloaded is None:
                 return False
             session.delete(downloaded)
-            session.execute(
-                _RECOMMENDATIONS_FTS_TABLE.delete().where(
-                    _RECOMMENDATIONS_FTS_TABLE.c.benchmark_id == benchmark_id
-                )
-            )
+            self._unindex_recommendations(session, benchmark_id)
             session.commit()
         logger.debug(f"Deleted downloaded benchmark: {benchmark_id}")
         return True
@@ -1121,19 +1179,11 @@ class CatalogDatabase:
         match = build_terms_query(query, _RECOMMENDATION_TEXT_COLUMNS)
         if not match:
             return []
-        profile_match = build_phrase_query(profile or "", "profiles")
-        if profile_match:
-            match = f"({match}) AND {profile_match}"
+        statement = _recommendation_search_statement(
+            match, build_phrase_query(profile or "", "profile"), benchmark_id, limit
+        )
         with Session(self.engine) as session:
-            rows = session.execute(
-                _SEARCH_RECOMMENDATIONS,
-                {
-                    "match": match,
-                    "mark": _HIT_MARK,
-                    "benchmark_id": benchmark_id,
-                    "limit": -1 if limit is None else limit,
-                },
-            ).all()
+            rows = session.execute(statement).all()
         return [
             {
                 "benchmark_id": row.benchmark_id,
@@ -1142,7 +1192,7 @@ class CatalogDatabase:
                 "matched_fields": [
                     name
                     for name in _RECOMMENDATION_TEXT_COLUMNS
-                    if _HIT_MARK in getattr(row, f"{name}_hit")
+                    if getattr(row, f"{name}_hit") != getattr(row, name)
                 ],
             }
             for row in rows
