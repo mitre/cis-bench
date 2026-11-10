@@ -157,6 +157,11 @@ flowchart LR
 "enum": ["html", "markdown"],
 "description": "The form of the recommendation text fields as written; a copy saved before this field existed is 'html' when its scraper_version is v1_2025_10"
 },
+"artifact_title_format": {
+"type": "string",
+"enum": ["html", "markdown"],
+"description": "The form of the artifact titles as written; a copy saved before this field existed is 'html'"
+},
 "total_recommendations": {
 "type": "integer",
 "minimum": 0,
@@ -367,6 +372,7 @@ f.write(xml_output)
 | `downloaded_at` | string (ISO 8601) | | When it was downloaded, in UTC with its offset (`Z`); files from earlier versions carry no offset |
 | `scraper_version` | string | | Strategy version used |
 | `text_format` | `"html"` or `"markdown"` | | The form of the recommendation text fields as written. Every loaded copy holds `markdown`; a copy saved without this field is `html` when its `scraper_version` is `v1_2025_10` (the strategy that saved rendered HTML) and `markdown` otherwise |
+| `artifact_title_format` | `"html"` or `"markdown"` | | The form of the artifact titles as written. Every loaded copy holds `markdown`; a copy saved without this field holds the titles as the artifact payload gave them, HTML for some, and is `html` |
 | `total_recommendations` | integer | | Count of recommendations |
 | `recommendations` | array | | Array of recommendation objects |
 
@@ -383,7 +389,7 @@ f.write(xml_output)
 | `mitre_mapping` | object/null | | MITRE ATT&CK techniques, tactics, mitigations (lists of IDs) | No |
 | `nist_controls` | array of string | | NIST SP 800-53 control IDs | No |
 | `parent` | object/null | | Parent recommendation (url, title) | No |
-| `artifacts` | array of object | | Test artifacts: `id`, `view_level`, `title` (Markdown: the payload gives some titles as HTML, converted as the artifact is built, from the payload or from a stored copy), `status`, `artifact_type` | No |
+| `artifacts` | array of object | | Test artifacts: `id`, `view_level`, `title` (Markdown: the payload gives some titles as HTML, converted as the payload is read; a copy saved before that is converted once as it loads, by `artifact_title_format`), `status`, `artifact_type` | No |
 | `description` | string/null | | Detailed description | Yes |
 | `rationale` | string/null | | Justification | Yes |
 | `impact` | string/null | | Impact statement | Yes |
@@ -401,7 +407,9 @@ the copy loads (`cis_bench.utils.markdown_text`, on markdownify), keeping the wo
 paragraphs, code blocks, lists, tables, links and placeholders such as `<user>`. The stored
 copy is left as it was. Which form a copy holds is read from `text_format` (or, for a copy
 saved without that field, from `scraper_version`), never from the text itself: a placeholder
-looks like a tag. In exports the text is:
+looks like a tag. Artifact titles follow the same rule with `artifact_title_format`: the
+payload gives some titles as HTML and the parser converts them as it reads the payload; a
+copy saved before that is converted once as it loads. In exports the text is:
 
 - Preserved in JSON/YAML export
 - Written as the cell text in CSV export

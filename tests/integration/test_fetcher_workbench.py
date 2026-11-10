@@ -1410,6 +1410,7 @@ class TestWorkbenchScraperFullDownload:
         assert benchmark.title == "CIS Amazon Elastic Kubernetes Service (EKS) Benchmark v1.8.0"
         assert benchmark.version == "v1.8.0"
         assert benchmark.scraper_version == "v1_test"
+        assert benchmark.artifact_title_format == "markdown"
         assert len(benchmark.recommendations) == 3
         assert benchmark.total_recommendations == 3
         assert benchmark.downloaded_at.tzinfo is not None
