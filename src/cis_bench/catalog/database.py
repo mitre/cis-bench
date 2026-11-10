@@ -38,6 +38,8 @@ from cis_bench.catalog.fts import (
     TEXT_COLUMNS,
     VERSION_COLUMN,
     build_fts_query,
+    build_phrase_query,
+    build_terms_query,
     build_version_match_query,
     version_index_text,
 )
@@ -84,6 +86,42 @@ _CREATE_FTS_TABLE = (
 )
 
 
+# The recommendation index: one row per recommendation of every downloaded benchmark,
+# written where a benchmark is saved and removed where it is removed. A query's words are
+# looked up in the text columns; profiles is only a filter.
+_RECOMMENDATION_TEXT_COLUMNS = ("title", "description", "rationale", "audit", "remediation")
+_RECOMMENDATIONS_FTS_TABLE = table(
+    "recommendations_fts",
+    column("benchmark_id"),
+    column("ref"),
+    *(column(name) for name in _RECOMMENDATION_TEXT_COLUMNS),
+    column("profiles"),
+)
+_CREATE_RECOMMENDATIONS_FTS_TABLE = (
+    "CREATE VIRTUAL TABLE IF NOT EXISTS recommendations_fts USING fts5("
+    f"benchmark_id UNINDEXED, ref UNINDEXED, {', '.join(_RECOMMENDATION_TEXT_COLUMNS)}, "
+    "profiles, tokenize='porter unicode61')"
+)
+# highlight() marks each matched phrase in a column with this character; a column whose
+# highlighted text holds it matched the query.
+_HIT_MARK = "\x02"
+_SEARCH_RECOMMENDATIONS = text(
+    """
+    SELECT benchmark_id, ref, title,
+        highlight(recommendations_fts, 2, :mark, '') AS title_hit,
+        highlight(recommendations_fts, 3, :mark, '') AS description_hit,
+        highlight(recommendations_fts, 4, :mark, '') AS rationale_hit,
+        highlight(recommendations_fts, 5, :mark, '') AS audit_hit,
+        highlight(recommendations_fts, 6, :mark, '') AS remediation_hit
+    FROM recommendations_fts
+    WHERE recommendations_fts MATCH :match
+        AND (:benchmark_id IS NULL OR benchmark_id = :benchmark_id)
+    ORDER BY rank, benchmark_id, ref
+    LIMIT :limit
+    """
+)
+
+
 def _normalize_base_title(title: str | None) -> str:
     """Strip a trailing version suffix (e.g., ' v2.0.1') without truncating product words."""
     if not title:
@@ -101,9 +139,12 @@ class _PendingUpgrades(NamedTuple):
 
     downloaded_columns: tuple[tuple[str, str], ...]
     rebuild_index: bool
+    create_recommendation_index: bool = False
 
     def __bool__(self) -> bool:
-        return bool(self.downloaded_columns) or self.rebuild_index
+        return (
+            bool(self.downloaded_columns) or self.rebuild_index or self.create_recommendation_index
+        )
 
 
 def update_reason(
@@ -250,8 +291,9 @@ class CatalogDatabase:
                 logger.debug("Inserted default benchmark statuses")
 
             session.execute(text(_CREATE_FTS_TABLE))
+            session.execute(text(_CREATE_RECOMMENDATIONS_FTS_TABLE))
             session.commit()
-            logger.debug("Created FTS5 virtual table")
+            logger.debug("Created FTS5 virtual tables")
 
         logger.debug("Database schema initialized")
 
@@ -284,6 +326,9 @@ class CatalogDatabase:
                 if pending.rebuild_index:
                     self._rebuild_fts(session)
                     logger.info("Rebuilt the search index in the current layout")
+                if pending.create_recommendation_index:
+                    self._create_recommendation_index(session)
+                    logger.info("Indexed the downloaded benchmarks' recommendations")
                 session.commit()
         except DatabaseError as error:
             logger.warning(
@@ -310,7 +355,59 @@ class CatalogDatabase:
                 if downloaded and name not in downloaded
             ),
             rebuild_index=bool(index) and index != ["benchmark_id", *_FTS_COLUMNS],
+            create_recommendation_index=bool(downloaded) and not columns("recommendations_fts"),
         )
+
+    def _create_recommendation_index(self, session: Session) -> None:
+        """Create the recommendation index and fill it from every downloaded benchmark."""
+        session.execute(text(_CREATE_RECOMMENDATIONS_FTS_TABLE))
+        for benchmark_id, content_json in session.execute(
+            sa_select(col(DownloadedBenchmark.benchmark_id), col(DownloadedBenchmark.content_json))
+        ):
+            self._index_recommendations(session, benchmark_id, content_json)
+
+    @staticmethod
+    def _index_recommendations(
+        session: Session,
+        benchmark_id: str,
+        content_json: str,
+        benchmark: Benchmark | None = None,
+    ) -> None:
+        """Write the recommendation index rows of one saved benchmark, replacing any it had.
+
+        The rows hold the text the copy loads as (Markdown, whatever scraper saved it):
+        ``benchmark`` when the caller has it, else the copy parsed. A copy that does not
+        load has no rows: there is nothing in it to search.
+        """
+        session.execute(
+            _RECOMMENDATIONS_FTS_TABLE.delete().where(
+                _RECOMMENDATIONS_FTS_TABLE.c.benchmark_id == benchmark_id
+            )
+        )
+        if benchmark is None:
+            try:
+                benchmark = deserialize_benchmark_json(content_json)
+            except ValueError as error:
+                logger.warning(
+                    f"The cached copy of {benchmark_id} cannot be read, so its "
+                    f"recommendations cannot be searched: {str(error).splitlines()[0]}"
+                )
+                return
+        rows = [
+            {
+                "benchmark_id": benchmark_id,
+                "ref": recommendation.ref,
+                "title": recommendation.title,
+                "description": recommendation.description or "",
+                "rationale": recommendation.rationale or "",
+                "audit": recommendation.audit or "",
+                "remediation": recommendation.remediation or "",
+                "profiles": "\n".join(recommendation.profiles),
+            }
+            for recommendation in benchmark.recommendations
+        ]
+        if rows:
+            session.execute(_RECOMMENDATIONS_FTS_TABLE.insert(), rows)
 
     def _rebuild_fts(self, session: Session) -> None:
         """Replace the search index with one in the current layout (FTS5 cannot add a column)."""
@@ -882,14 +979,18 @@ class CatalogDatabase:
         version: str | None = None,
         downloaded_at: datetime | None = None,
         published_date: date | None = None,
+        benchmark: Benchmark | None = None,
     ):
-        """Save downloaded benchmark content.
+        """Save downloaded benchmark content, and index its recommendations for search.
 
         ``version`` and ``published_date`` are the downloaded release's own version string and
         the date WorkBench showed it as published; check-updates compares both against the
         catalog row.
         ``downloaded_at`` is the instant the benchmark records for itself, so the row
         and the benchmark's JSON carry one time; it must carry its zone.
+        ``benchmark`` is the Benchmark ``content_json`` was serialized from, when the caller
+        has it: the recommendation index is written from it instead of parsing the JSON
+        again.
         """
         now = utcnow() if downloaded_at is None else downloaded_at
         with Session(self.engine) as session:
@@ -918,6 +1019,8 @@ class CatalogDatabase:
                 )
                 session.add(downloaded)
 
+            # In the same transaction, so the index never holds another version of the copy.
+            self._index_recommendations(session, benchmark_id, content_json, benchmark)
             session.commit()
             logger.debug(f"Saved downloaded benchmark: {benchmark_id}")
 
@@ -954,6 +1057,11 @@ class CatalogDatabase:
             if downloaded is None:
                 return False
             session.delete(downloaded)
+            session.execute(
+                _RECOMMENDATIONS_FTS_TABLE.delete().where(
+                    _RECOMMENDATIONS_FTS_TABLE.c.benchmark_id == benchmark_id
+                )
+            )
             session.commit()
         logger.debug(f"Deleted downloaded benchmark: {benchmark_id}")
         return True
@@ -991,6 +1099,54 @@ class CatalogDatabase:
                 }
                 for benchmark_id, title, version, recommendation_count, downloaded_at in rows
             ]
+
+    def search_recommendations(
+        self,
+        query: str,
+        benchmark_id: str | None = None,
+        profile: str | None = None,
+        limit: int | None = 50,
+    ) -> list[dict]:
+        """The downloaded recommendations whose text holds every word of ``query``.
+
+        ``query`` is user text: punctuation and FTS5 keywords are search words. Each word is
+        found as a word prefix in a recommendation's title, description, rationale, audit
+        or remediation. ``benchmark_id`` keeps one benchmark's recommendations;
+        ``profile`` keeps those of a profile whose name holds its words side by side
+        ("Level 2" keeps "Level 2 - Server" and "Level 2 - Workstation"). Best match first.
+
+        Each result: benchmark_id, ref, title, and matched_fields (the text fields a word
+        was found in).
+        """
+        match = build_terms_query(query, _RECOMMENDATION_TEXT_COLUMNS)
+        if not match:
+            return []
+        profile_match = build_phrase_query(profile or "", "profiles")
+        if profile_match:
+            match = f"({match}) AND {profile_match}"
+        with Session(self.engine) as session:
+            rows = session.execute(
+                _SEARCH_RECOMMENDATIONS,
+                {
+                    "match": match,
+                    "mark": _HIT_MARK,
+                    "benchmark_id": benchmark_id,
+                    "limit": -1 if limit is None else limit,
+                },
+            ).all()
+        return [
+            {
+                "benchmark_id": row.benchmark_id,
+                "ref": row.ref,
+                "title": row.title,
+                "matched_fields": [
+                    name
+                    for name in _RECOMMENDATION_TEXT_COLUMNS
+                    if _HIT_MARK in getattr(row, f"{name}_hit")
+                ],
+            }
+            for row in rows
+        ]
 
     def list_downloaded_benchmark_ids(self) -> list[str]:
         """IDs of every benchmark whose content has been downloaded."""

@@ -11,6 +11,7 @@ a version: it means a number in a title.
 
 import re
 import unicodedata
+from collections.abc import Sequence
 
 TEXT_COLUMNS = ("title", "platform", "community")
 VERSION_COLUMN = "version"
@@ -77,6 +78,26 @@ def build_fts_query(query: str) -> str:
     kind of term is looked up. Returns an empty string when there is nothing to search for.
     """
     return " AND ".join(_term_query(term) for term in _terms(query))
+
+
+def build_terms_query(query: str, columns: Sequence[str]) -> str:
+    """Raw user search text as a safe FTS5 query over the given columns of an index.
+
+    The terms are found as build_fts_query finds them, each quoted with a trailing prefix
+    wildcard and looked up only in ``columns``; every term must match. A dotted number
+    ("22.04") is one quoted term, so its numbers match side by side, the last as a word
+    prefix ("1.2" also finds 1.20 and 1.2.3), never apart.
+    Returns an empty string when there is nothing to search for.
+    """
+    in_columns = "{" + " ".join(columns) + "}"
+    return " AND ".join(f'{in_columns} : "{term}"*' for term in _terms(query))
+
+
+def build_phrase_query(text: str, column_name: str) -> str:
+    """The words of raw user text as one phrase in one column of an index ("Level 1 -
+    Server" finds those words side by side), or an empty string when it has none."""
+    words = _WORD_TOKEN_RE.findall(unicodedata.normalize("NFC", text or ""))
+    return f'{{{column_name}}} : "{" ".join(words)}"' if words else ""
 
 
 def build_version_match_query(query: str) -> str:

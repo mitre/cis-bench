@@ -1737,6 +1737,54 @@ class TestOpeningAnOlderCatalog:
 
         assert self._index_rows(path) == ["200", "210", "marker"]
 
+    def test_existing_database_gains_recommendations_fts_on_open(self, tmp_path):
+        """A catalog from before the recommendation index gains it, filled from what is
+        downloaded, and keeps every downloaded copy as it was."""
+        from cis_bench.catalog.database import serialize_benchmark_json
+        from cis_bench.models.benchmark import Benchmark, Recommendation
+
+        path = tmp_path / "older.db"
+        benchmark = Benchmark(
+            title="CIS Kubernetes Benchmark",
+            benchmark_id="210",
+            url="https://workbench.cisecurity.org/benchmarks/210",
+            version="v2.1.0",
+            scraper_version="v2_2026_01",
+            total_recommendations=1,
+            recommendations=[
+                Recommendation(
+                    ref="1.2.3",
+                    title="Ensure the API server audit log is enabled",
+                    url="https://workbench.cisecurity.org/sections/1/recommendations/123",
+                    assessment_status="Automated",
+                )
+            ],
+        )
+        content_json, content_hash = serialize_benchmark_json(benchmark)
+        self._catalog(path, "")
+        with closing(CatalogDatabase(path)) as db:
+            db.save_downloaded("210", content_json, content_hash, 1, version="v2.1.0")
+        self._catalog_tables(path, "DROP TABLE recommendations_fts;")
+
+        for _ in range(2):
+            with closing(CatalogDatabase(path)) as db:
+                found = db.search_recommendations("audit log")
+                kept = db.get_downloaded("210")
+
+        assert [(r["benchmark_id"], r["ref"]) for r in found] == [("210", "1.2.3")]
+        assert (kept["content_json"], kept["content_hash"], kept["version"]) == (
+            content_json,
+            content_hash,
+            "v2.1.0",
+        )
+
+    @staticmethod
+    def _catalog_tables(path, sql):
+        import sqlite3
+
+        with closing(sqlite3.connect(path)) as con:
+            con.executescript(sql)
+
     def test_a_downloaded_table_without_the_version_column_gets_it(self, tmp_path):
         path = tmp_path / "older.db"
         self._catalog(path, "ALTER TABLE downloaded_benchmarks DROP COLUMN version;")

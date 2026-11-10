@@ -72,6 +72,7 @@ class CatalogDownloader:
             recommendation_count=len(benchmark.recommendations),
             downloaded_at=benchmark.downloaded_at,
             published_date=benchmark.published_date,
+            benchmark=benchmark,
         )
         self.db.record_page(
             benchmark_id,
