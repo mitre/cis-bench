@@ -1085,6 +1085,26 @@ class TestTheBenchmarkDescription:
             "    echo <path>\n    done\n\n" + OVERVIEW_MARKDOWN
         )
 
+    def test_a_first_line_of_other_whitespace_is_text_not_a_blank_line(self):
+        """Only spaces and tabs make a blank line in Markdown; a no-break space is text."""
+        from cis_bench.fetcher.workbench import parse_benchmark_page
+
+        html = OVERVIEW_COMPONENT_HTML.replace('text="Run', 'text="&nbsp;\nRun')
+
+        assert parse_benchmark_page(html).description == " \n" + OVERVIEW_MARKDOWN
+
+    def test_a_blank_line_inside_a_fence_left_open_at_the_end_is_kept(self):
+        """A fence the overview never closes runs to its end, blank lines included."""
+        from cis_bench.fetcher.workbench import parse_benchmark_page
+
+        html = OVERVIEW_COMPONENT_HTML.replace(
+            'flags."', 'flags.\n\n~~~\necho &lt;path&gt;\n \t\n"'
+        )
+
+        assert parse_benchmark_page(html).description == (
+            OVERVIEW_MARKDOWN + "\n\n~~~\necho <path>\n \t"
+        )
+
     def test_the_component_wins_over_an_overview_heading(self):
         from cis_bench.fetcher.workbench import parse_benchmark_page
 

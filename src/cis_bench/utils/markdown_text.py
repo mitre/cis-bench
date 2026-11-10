@@ -48,19 +48,25 @@ def unix_line_breaks(text: str) -> str:
     return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
-def without_blank_boundary_lines(text: str) -> str:
-    """The text without the blank lines before its first and after its last line of content.
+def without_blank_boundary_lines(markdown: str) -> str:
+    """The Markdown without the blank lines before its first and after its last block.
 
-    The content lines are as written, their indentation included: a Markdown field that
-    opens with an indented code block keeps the indentation of its first line, which
-    ``str.strip`` would take away. A line of spaces or tabs alone is blank.
+    The lines kept are as written, their indentation included: a text that opens with an
+    indented code block keeps the indentation of its first line, which ``str.strip`` would
+    take away. A blank line is one of spaces and tabs alone, as in Markdown (a line of
+    other whitespace is text). The parser decides where the last block ends: a fence or
+    HTML block left open runs to the end of the text, so the blank lines inside it are its
+    content and stay.
     """
-    lines = text.split("\n")
-    while lines and not lines[0].strip():
-        del lines[0]
-    while lines and not lines[-1].strip():
-        del lines[-1]
-    return "\n".join(lines)
+    lines = markdown.split("\n")
+    content = [index for index, line in enumerate(lines) if line.strip(" \t")]
+    if not content:
+        return ""
+    end = content[-1] + 1
+    for token in _commonmark.parse(markdown):
+        if token.map is not None:
+            end = max(end, token.map[1])
+    return "\n".join(lines[content[0] : end])
 
 
 def _recording_html_inline(state: StateInline, silent: bool) -> bool:

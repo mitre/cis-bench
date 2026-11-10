@@ -97,6 +97,14 @@ class TestWithoutBlankBoundaryLines:
             ("\n  Run it.", "  Run it."),
             ("", ""),
             ("\n \n", ""),
+            # A line of other whitespace is not blank in Markdown (spaces and tabs are)
+            (" \n    echo <path>", " \n    echo <path>"),
+            (" ", " "),
+            # A trailing blank line inside a fence left open is the fence's content
+            ("~~~\nkeep\n \t\n", "~~~\nkeep\n \t"),
+            ("<pre>\nkeep\n\n", "<pre>\nkeep\n"),
+            ("```\nkeep\n```\n\n", "```\nkeep\n```"),
+            ("para\n\n[a]: http://x\n\n", "para\n\n[a]: http://x"),
         ],
     )
     def test_only_the_blank_lines_around_the_text_go(self, text, expected):
