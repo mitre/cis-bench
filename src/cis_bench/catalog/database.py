@@ -1173,6 +1173,10 @@ class CatalogDatabase:
             match, build_phrase_query(profile or "", "profile"), benchmark_id, limit
         )
         with Session(self.engine) as session:
+            # One read transaction for the ranked read and the field reads, so they see one
+            # state of the index: the sqlite3 driver opens none for a SELECT by itself, and
+            # a download committing between them could change what the fields say.
+            session.execute(text("BEGIN"))
             rows = session.execute(statement).all()
             found = {row.rowid for row in rows}
             # The fields a word was found in, asked of the index itself one column at a time
@@ -1189,6 +1193,7 @@ class CatalogDatabase:
                 )
                 for name in _RECOMMENDATION_TEXT_COLUMNS
             }
+            session.rollback()  # ends the read transaction; nothing was written
         return [
             {
                 "benchmark_id": row.benchmark_id,

@@ -5,6 +5,7 @@ exactly the downloaded benchmarks. A query is user text: punctuation and FTS5 ke
 search words, never query syntax.
 """
 
+import contextlib
 from contextlib import closing
 
 import pytest
@@ -133,6 +134,44 @@ class TestIndexedWhereSaved:
         found = {r["ref"]: r["matched_fields"] for r in db.search_recommendations("ssh")}
 
         assert found == {"7.2.1": ["title"], "7.2.2": ["description"]}
+
+    def test_a_write_from_another_connection_during_a_search_does_not_change_its_result(
+        self, db, monkeypatch
+    ):
+        import sqlite3
+
+        from cis_bench.catalog import database
+
+        _save(db, _benchmark("100", SSH))
+        attempts = []
+        build = database.build_any_term_query
+
+        def write_between_the_reads(query, column_name):
+            # Another process changes the found recommendation after the ranked read and
+            # before the field reads: it must not commit into the middle of the search.
+            if not attempts:
+                with contextlib.closing(sqlite3.connect(db.db_path, timeout=0)) as other:
+                    try:
+                        other.execute(
+                            "UPDATE recommendations_fts SET title = 'Ensure nothing' "
+                            "WHERE benchmark_id = '100'"
+                        )
+                        other.commit()
+                        attempts.append("committed")
+                    except sqlite3.OperationalError as error:
+                        attempts.append(str(error))
+            return build(query, column_name)
+
+        monkeypatch.setattr(database, "build_any_term_query", write_between_the_reads)
+
+        (result,) = db.search_recommendations("maxauthtries")
+
+        assert attempts
+        assert (result["ref"], result["title"], result["matched_fields"]) == (
+            "1.1.1",
+            "Ensure SSH MaxAuthTries is configured",
+            ["title", "description", "audit", "remediation"],
+        )
 
     def test_saving_the_same_benchmark_again_replaces_its_rows(self, db):
         _save(db, _benchmark("100", SSH, FIREWALL))
