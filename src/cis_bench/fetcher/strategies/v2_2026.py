@@ -28,6 +28,7 @@ from bs4 import BeautifulSoup
 from cis_bench.fetcher.strategies.base import ExtractedRecommendation, ScraperStrategy
 from cis_bench.models.benchmark import Artifact, CISControl, MITREMapping
 from cis_bench.utils.html_parser import attribute_text
+from cis_bench.utils.markdown_text import unix_line_breaks
 from cis_bench.utils.parsers import WorkbenchParser
 from cis_bench.utils.vue_payload import decode_vue_payload
 
@@ -78,7 +79,7 @@ class WorkbenchV2Strategy(ScraperStrategy):
         soup = BeautifulSoup(html, "html.parser")
 
         text = {
-            field: self._data_text(soup, attr_value)
+            field: self._markdown_text(soup, attr_value)
             for field, attr_value in self._DATA_ATTRIBUTES.items()
         }
         profiles_text = self._data_text(soup, "profiles")
@@ -104,9 +105,23 @@ class WorkbenchV2Strategy(ScraperStrategy):
         )
 
     def _data_text(self, soup: BeautifulSoup, attribute: str) -> str | None:
-        """The text of the ``wb-recommendation-data`` element for one attribute, cleaned."""
+        """The text of the ``wb-recommendation-data`` element for one attribute, stripped: a
+        label such as the assessment status or the profile names."""
         el = soup.find("wb-recommendation-data", attrs={"attribute": attribute})
         return self._clean_text(attribute_text(el, "text") if el else None)
+
+    def _markdown_text(self, soup: BeautifulSoup, attribute: str) -> str | None:
+        """A text field's Markdown, exactly as the page writes it, every line break as ``\\n``.
+
+        Nothing is trimmed: the page writes the attribute without whitespace around the text,
+        so a first line's indentation, a blank line inside a fence left open and the final
+        line break all stay. An attribute of only spaces, tabs and line breaks is no text.
+        """
+        el = soup.find("wb-recommendation-data", attrs={"attribute": attribute})
+        if el is None:
+            return None
+        text = unix_line_breaks(attribute_text(el, "text") or "")
+        return text if text.strip(" \t\n") else None
 
     @staticmethod
     def _clean_text(value: str | None) -> str | None:

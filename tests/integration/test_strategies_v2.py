@@ -241,6 +241,53 @@ class TestV2ExtractRecommendation:
         assert data["profiles"] == []
 
 
+def _page(**attributes):
+    """A recommendation page holding the given wb-recommendation-data attributes (our own text,
+    in WorkBench's form: attribute text with entities and &#13; line breaks)."""
+    components = "".join(
+        f'<wb-recommendation-data attribute="{attribute}" text="{text}"></wb-recommendation-data>'
+        for attribute, text in attributes.items()
+    )
+    return f"<html><body>{components}</body></html>"
+
+
+class TestV2TextFieldsAreStoredAsWritten:
+    """WorkBench writes each text attribute without whitespace around the text (checked on
+    386 live pages), so a field is kept exactly as written, every line break as \n; nothing
+    is trimmed, and a field of only spaces, tabs and line breaks is None."""
+
+    def test_the_indentation_of_a_first_line_is_kept(self):
+        data = WorkbenchV2Strategy().extract_recommendation(
+            _page(description="    echo &lt;path&gt;&#13;\n    done")
+        )
+
+        assert data["description"] == "    echo <path>\n    done"
+
+    def test_a_field_ending_inside_an_open_fence_keeps_its_blank_line_and_line_break(self):
+        data = WorkbenchV2Strategy().extract_recommendation(
+            _page(audit_procedure="Run:&#13;\n&#13;\n~~~&#13;\necho &lt;path&gt;&#13;\n \t&#13;\n")
+        )
+
+        assert data["audit"] == "Run:\n\n~~~\necho <path>\n \t\n"
+
+    def test_a_line_of_other_whitespace_is_text(self):
+        data = WorkbenchV2Strategy().extract_recommendation(
+            _page(rationale_statement="&nbsp;\nThe reason.")
+        )
+
+        assert data["rationale"] == "\u00a0\nThe reason."
+
+    def test_a_field_of_only_spaces_tabs_and_line_breaks_is_none(self):
+        data = WorkbenchV2Strategy().extract_recommendation(_page(notes=" \t&#13;\n\n"))
+
+        assert data["additional_info"] is None
+
+    def test_an_empty_attribute_is_none(self):
+        data = WorkbenchV2Strategy().extract_recommendation(_page(default_value=""))
+
+        assert data["default_value"] is None
+
+
 # ============ CIS Controls Normalization ============
 
 
