@@ -25,7 +25,8 @@ def require_online(settings: Settings, needs: str) -> None:
         raise OfflineError(
             f"{_command_name(click.get_current_context())} needs CIS WorkBench to {needs}, "
             "and offline mode is on (--offline, CIS_BENCH_OFFLINE, or offline = true in "
-            "config.toml). Nothing was sent to WorkBench."
+            "config.toml). Nothing was sent to WorkBench. Run 'cis-bench cache status' to "
+            "see what is available offline."
         )
 
 

@@ -261,6 +261,7 @@ class TestLazyStartup:
         assert top.exit_code == 0, top.output
         for name in [
             "auth",
+            "cache",
             "catalog",
             "download",
             "export",
@@ -286,6 +287,8 @@ class TestLazyStartup:
         ]:
             res = cli_runner.invoke(cli, ["catalog", sub, "--help"])
             assert res.exit_code == 0, f"catalog {sub}: {res.output}"
+        res = cli_runner.invoke(cli, ["cache", "status", "--help"])
+        assert res.exit_code == 0, f"cache status: {res.output}"
 
     def test_remove_works_offline_without_loading_the_scraper_or_auth_stack(self, tmp_path):
         scraper_stack = [
@@ -316,6 +319,29 @@ class TestLazyStartup:
         assert result["exit"] == 0
         assert result["loaded"] == []
         assert result["left"] is False
+
+    def test_cache_status_does_not_load_the_scraper_or_auth_stack(self, tmp_path):
+        scraper_stack = [
+            "browser_cookie3",
+            "requests",
+            "cis_bench.fetcher.auth",
+            "cis_bench.fetcher.workbench",
+            "cis_bench.catalog.scraper",
+            "cis_bench.catalog.downloader",
+        ]
+        result = self._run(
+            "import json, sys\n"
+            "from click.testing import CliRunner\n"
+            "from cis_bench.catalog.database import CatalogDatabase\n"
+            "from cis_bench.config import load_settings\n"
+            "CatalogDatabase(load_settings().catalog_db_path).initialize_schema()\n"
+            "from cis_bench.cli.app import cli\n"
+            "res = CliRunner().invoke(cli, ['cache', 'status'])\n"
+            f"print(json.dumps({{'exit': res.exit_code, 'loaded': [m for m in {scraper_stack!r} if m in sys.modules]}}))",
+            env={"CIS_BENCH_HOME": str(tmp_path / "data"), "TMPDIR": str(tmp_path)},
+        )
+        assert result["exit"] == 0
+        assert result["loaded"] == []
 
     def test_database_only_catalog_command_does_not_load_scraper_stack(self, tmp_path):
         scraper_stack = [
@@ -514,6 +540,7 @@ class TestEveryCommandLineTheCliPrintsCanBeRun:
         "args",
         [
             ["auth", "status"],
+            ["cache", "status"],
             ["catalog", "stats"],
             ["catalog", "check-updates"],
             ["search", "ubuntu"],
