@@ -1,0 +1,615 @@
+{
+  "title": "CIS Synthetic Windows Server Benchmark",
+  "benchmark_id": "90005",
+  "url": "https://workbench.cisecurity.org/benchmarks/90005",
+  "version": "v1.0.0",
+  "published_date": "2026-02-20",
+  "description": "Settings for Synthetic Windows Server, domain controllers and member servers.",
+  "profile_definitions": [
+    {
+      "title": "Level 1 - Domain Controller",
+      "description": "Settings a domain controller can take with little effect on the services it runs.",
+      "parent": null
+    },
+    {
+      "title": "Level 1 - Member Server",
+      "description": "Settings a member server can take with little effect on the services it runs.",
+      "parent": null
+    },
+    {
+      "title": "Level 2 - Domain Controller",
+      "description": "Stricter settings for domain controllers; includes Level 1 - Domain Controller.",
+      "parent": "Level 1 - Domain Controller"
+    },
+    {
+      "title": "Level 2 - Member Server",
+      "description": "Stricter settings for member servers; includes Level 1 - Member Server.",
+      "parent": "Level 1 - Member Server"
+    },
+    {
+      "title": "Next Generation Security - Domain Controller",
+      "description": "Settings that need recent hardware security features on a domain controller.",
+      "parent": null
+    },
+    {
+      "title": "Next Generation Security - Member Server",
+      "description": "Settings that need recent hardware security features on a member server.",
+      "parent": null
+    }
+  ],
+  "downloaded_at": "2026-11-10T15:00:00Z",
+  "scraper_version": "v2_2026_01",
+  "text_format": "markdown",
+  "artifact_title_format": "markdown",
+  "total_recommendations": 11,
+  "recommendations": [
+    {
+      "ref": "1.1.1",
+      "title": "Ensure 'Password history length' is at least '24 passwords'",
+      "url": "https://workbench.cisecurity.org/sections/9000501/recommendations/90005001",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Level 1 - Domain Controller",
+        "Level 1 - Member Server"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "5.2",
+          "title": "Give every account its own password",
+          "ig1": true,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": null,
+      "nist_controls": [],
+      "parent": null,
+      "artifacts": [
+        {
+          "id": 9050001,
+          "view_level": "1.1.1.1",
+          "title": "Check 1 for 1.1.1",
+          "status": "accepted",
+          "artifact_type": {
+            "id": 64,
+            "human_name": "Synthetic Server: Policy Value",
+            "human_id": "synthetic.server.policy_value",
+            "created_by_id": 1,
+            "updated_by_id": 7,
+            "created_at": "2020-01-06T10:00:00.000000Z",
+            "updated_at": "2021-03-02T09:30:00.000000Z"
+          }
+        }
+      ],
+      "description": "How many of an account's earlier passwords it may not use again.",
+      "rationale": "Without a history, a forced change ends with the old password back in place.",
+      "impact": "People need a fresh password at each change, and some will write it down.",
+      "audit": "Open the Synthetic Policy Editor and read the value at:\n\n```\nMachine Policy\\Security\\Passwords\\History length\n```",
+      "remediation": "Set this policy path to `24`:\n\n```\nMachine Policy\\Security\\Passwords\\History length\n```",
+      "additional_info": null,
+      "default_value": "24 on domain members; 0 on servers outside a domain.",
+      "artifact_equation": "AND(1)",
+      "references": "1. Synthetic Server security baseline, *Policy reference*"
+    },
+    {
+      "ref": "1.1.2",
+      "title": "Ensure 'Shortest allowed password' is at least '14 characters'",
+      "url": "https://workbench.cisecurity.org/sections/9000502/recommendations/90005002",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Level 1 - Domain Controller",
+        "Level 1 - Member Server"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "5.2",
+          "title": "Give every account its own password",
+          "ig1": true,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": null,
+      "nist_controls": [],
+      "parent": null,
+      "artifacts": [
+        {
+          "id": 9050101,
+          "view_level": "1.1.2.1",
+          "title": "Check 1 for 1.1.2",
+          "status": "accepted",
+          "artifact_type": {
+            "id": 64,
+            "human_name": "Synthetic Server: Policy Value",
+            "human_id": "synthetic.server.policy_value",
+            "created_by_id": 1,
+            "updated_by_id": 7,
+            "created_at": "2020-01-06T10:00:00.000000Z",
+            "updated_at": "2021-03-02T09:30:00.000000Z"
+          }
+        }
+      ],
+      "description": "The fewest characters a new password may have.",
+      "rationale": "Every extra character multiplies the work of guessing.",
+      "impact": "Shorter passwords already set keep working until they are next changed.",
+      "audit": "Open the Synthetic Policy Editor and read the value at:\n\n```\nMachine Policy\\Security\\Passwords\\Shortest allowed\n```",
+      "remediation": "Set this policy path to `14`:\n\n```\nMachine Policy\\Security\\Passwords\\Shortest allowed\n```",
+      "additional_info": null,
+      "default_value": "7 on domain members; 0 on servers outside a domain.",
+      "artifact_equation": "AND(1)",
+      "references": "1. Synthetic Server security baseline, *Policy reference*"
+    },
+    {
+      "ref": "1.2.1",
+      "title": "Ensure 'Failed sign-ins before lock' is between '1 and 5'",
+      "url": "https://workbench.cisecurity.org/sections/9000503/recommendations/90005003",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Level 1 - Domain Controller",
+        "Level 1 - Member Server"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "4.10",
+          "title": "Lock accounts after repeated failures",
+          "ig1": false,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": null,
+      "nist_controls": [],
+      "parent": null,
+      "artifacts": [
+        {
+          "id": 9050201,
+          "view_level": "1.2.1.1",
+          "title": "Check 1 for 1.2.1",
+          "status": "accepted",
+          "artifact_type": {
+            "id": 64,
+            "human_name": "Synthetic Server: Policy Value",
+            "human_id": "synthetic.server.policy_value",
+            "created_by_id": 1,
+            "updated_by_id": 7,
+            "created_at": "2020-01-06T10:00:00.000000Z",
+            "updated_at": "2021-03-02T09:30:00.000000Z"
+          }
+        },
+        {
+          "id": 9050202,
+          "view_level": "1.2.1.2",
+          "title": "Check 2 for 1.2.1",
+          "status": "accepted",
+          "artifact_type": {
+            "id": 64,
+            "human_name": "Synthetic Server: Policy Value",
+            "human_id": "synthetic.server.policy_value",
+            "created_by_id": 1,
+            "updated_by_id": 7,
+            "created_at": "2020-01-06T10:00:00.000000Z",
+            "updated_at": "2021-03-02T09:30:00.000000Z"
+          }
+        }
+      ],
+      "description": "How many wrong passwords in a row lock the account. `0` turns locking off.",
+      "rationale": "Locking stops someone trying password after password at the sign-in prompt.",
+      "impact": "Someone who knows account names can lock them deliberately; pair this with a short lock duration.",
+      "audit": "Open the Synthetic Policy Editor and read the value at:\n\n```\nMachine Policy\\Security\\Lockout\\Failed sign-ins before lock\n```",
+      "remediation": "Set this policy path to `5`:\n\n```\nMachine Policy\\Security\\Lockout\\Failed sign-ins before lock\n```",
+      "additional_info": null,
+      "default_value": "0 (never locks).",
+      "artifact_equation": "AND(1,2)",
+      "references": "1. Synthetic Server security baseline, *Policy reference*"
+    },
+    {
+      "ref": "2.3.1.1",
+      "title": "Ensure 'Visitor account' is set to 'Off' (member servers only)",
+      "url": "https://workbench.cisecurity.org/sections/9000504/recommendations/90005004",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Level 1 - Member Server"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "5.3",
+          "title": "Turn off accounts nobody uses",
+          "ig1": true,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": null,
+      "nist_controls": [],
+      "parent": null,
+      "artifacts": [
+        {
+          "id": 9050301,
+          "view_level": "2.3.1.1.1",
+          "title": "Check 1 for 2.3.1.1",
+          "status": "accepted",
+          "artifact_type": {
+            "id": 65,
+            "human_name": "Synthetic Server: Registry Value",
+            "human_id": "synthetic.server.registry_value",
+            "created_by_id": 1,
+            "updated_by_id": 7,
+            "created_at": "2020-01-06T10:00:00.000000Z",
+            "updated_at": "2021-03-02T09:30:00.000000Z"
+          }
+        }
+      ],
+      "description": "Whether the built-in Visitor account can sign in.",
+      "rationale": "The Visitor account often has no password at all.",
+      "impact": "None: servers do not use it.",
+      "audit": "The value must be `0`. Read it from the registry:\n\n```\nHKLM\\SOFTWARE\\Policies\\Synthetic\\Accounts\\Visitor:Enabled\n```",
+      "remediation": "Set this policy path to `Off`:\n\n```\nMachine Policy\\Security\\Accounts\\Visitor account\n```",
+      "additional_info": null,
+      "default_value": "Off.",
+      "artifact_equation": "AND(1)",
+      "references": "1. Synthetic Server security baseline, *Policy reference*"
+    },
+    {
+      "ref": "9.1.1",
+      "title": "Ensure 'Packet filter (domain networks)' is set to 'On'",
+      "url": "https://workbench.cisecurity.org/sections/9000505/recommendations/90005005",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Level 1 - Domain Controller",
+        "Level 1 - Member Server"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "4.5",
+          "title": "Filter traffic at each end-user device",
+          "ig1": true,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": null,
+      "nist_controls": [],
+      "parent": null,
+      "artifacts": [
+        {
+          "id": 9050401,
+          "view_level": "9.1.1.1",
+          "title": "Check 1 for 9.1.1",
+          "status": "accepted",
+          "artifact_type": {
+            "id": 65,
+            "human_name": "Synthetic Server: Registry Value",
+            "human_id": "synthetic.server.registry_value",
+            "created_by_id": 1,
+            "updated_by_id": 7,
+            "created_at": "2020-01-06T10:00:00.000000Z",
+            "updated_at": "2021-03-02T09:30:00.000000Z"
+          }
+        }
+      ],
+      "description": "Whether the built-in packet filter runs while the server is on a domain network.",
+      "rationale": "With the filter off, every listening service takes connections from anywhere.",
+      "impact": "An application that waits for connections needs a filter rule before anyone can reach it.",
+      "audit": "The value must be `1`. Read it from the registry:\n\n```\nHKLM\\SOFTWARE\\Policies\\Synthetic\\PacketFilter\\Domain:Enabled\n```",
+      "remediation": "Set this policy path to `On`:\n\n```\nMachine Policy\\Security\\Packet Filter\\Domain networks\\State\n```",
+      "additional_info": null,
+      "default_value": "On.",
+      "artifact_equation": "AND(1)",
+      "references": "1. Synthetic Server security baseline, *Policy reference*"
+    },
+    {
+      "ref": "17.1.1",
+      "title": "Ensure 'Record credential checks' is set to 'Passes and failures'",
+      "url": "https://workbench.cisecurity.org/sections/9000506/recommendations/90005006",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Level 1 - Domain Controller",
+        "Level 1 - Member Server"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "8.5",
+          "title": "Log enough detail to investigate",
+          "ig1": false,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": null,
+      "nist_controls": [],
+      "parent": null,
+      "artifacts": [
+        {
+          "id": 9050501,
+          "view_level": "17.1.1.1",
+          "title": "Check 1 for 17.1.1",
+          "status": "accepted",
+          "artifact_type": {
+            "id": 66,
+            "human_name": "Synthetic Server: Event Recording",
+            "human_id": "synthetic.server.event_recording",
+            "created_by_id": 1,
+            "updated_by_id": 7,
+            "created_at": "2020-01-06T10:00:00.000000Z",
+            "updated_at": "2021-03-02T09:30:00.000000Z"
+          }
+        }
+      ],
+      "description": "Writes an event each time a name and password are checked, locally or against the domain.",
+      "rationale": "A run of failed checks is the earliest sign of someone guessing passwords.",
+      "impact": "The security log fills faster; give it more room.",
+      "audit": "```\n> synthpol events show \"Credential checks\"\n```",
+      "remediation": "Set this policy path to `Passes and failures`:\n\n```\nMachine Policy\\Security\\Event Recording\\Sign-in\\Credential checks\n```",
+      "additional_info": null,
+      "default_value": "Passes only.",
+      "artifact_equation": "AND(1)",
+      "references": "1. Synthetic Server security baseline, *Policy reference*"
+    },
+    {
+      "ref": "18.6.1",
+      "title": "Ensure 'Legacy TLS 1.0 listener' is set to 'Off'",
+      "url": "https://workbench.cisecurity.org/sections/9000507/recommendations/90005007",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Next Generation Security - Domain Controller",
+        "Next Generation Security - Member Server"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "3.10",
+          "title": "Encrypt sensitive data on the wire",
+          "ig1": false,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": null,
+      "nist_controls": [],
+      "parent": null,
+      "artifacts": [
+        {
+          "id": 9050601,
+          "view_level": "18.6.1.1",
+          "title": "Check 1 for 18.6.1",
+          "status": "accepted",
+          "artifact_type": {
+            "id": 65,
+            "human_name": "Synthetic Server: Registry Value",
+            "human_id": "synthetic.server.registry_value",
+            "created_by_id": 1,
+            "updated_by_id": 7,
+            "created_at": "2020-01-06T10:00:00.000000Z",
+            "updated_at": "2021-03-02T09:30:00.000000Z"
+          }
+        },
+        {
+          "id": 9050602,
+          "view_level": "18.6.1.2",
+          "title": "Check 2 for 18.6.1",
+          "status": "accepted",
+          "artifact_type": {
+            "id": 65,
+            "human_name": "Synthetic Server: Registry Value",
+            "human_id": "synthetic.server.registry_value",
+            "created_by_id": 1,
+            "updated_by_id": 7,
+            "created_at": "2020-01-06T10:00:00.000000Z",
+            "updated_at": "2021-03-02T09:30:00.000000Z"
+          }
+        }
+      ],
+      "description": "Whether the server still answers TLS 1.0 connections.",
+      "rationale": "TLS 1.0 has known weaknesses and newer versions replace it.",
+      "impact": "Clients that speak only TLS 1.0 are turned away.",
+      "audit": "The value must be `0`. Read it from the registry:\n\n```\nHKLM\\SYSTEM\\Synthetic\\Crypto\\Protocols\\TLS 1.0\\Listener:Enabled\n```",
+      "remediation": "```\n> synthreg set \"HKLM\\SYSTEM\\Synthetic\\Crypto\\Protocols\\TLS 1.0\\Listener\" Enabled 0\n```",
+      "additional_info": null,
+      "default_value": "On.",
+      "artifact_equation": "OR(1,2)",
+      "references": "1. Synthetic Server security baseline, *Policy reference*"
+    },
+    {
+      "ref": "18.10.42.3.3.3",
+      "title": "Ensure 'Remote session drive mapping' is set to 'Blocked'",
+      "url": "https://workbench.cisecurity.org/sections/9000508/recommendations/90005008",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Level 2 - Domain Controller",
+        "Level 2 - Member Server"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "3.3",
+          "title": "Grant data access by need",
+          "ig1": true,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": null,
+      "nist_controls": [],
+      "parent": null,
+      "artifacts": [
+        {
+          "id": 9050701,
+          "view_level": "18.10.42.3.3.3.1",
+          "title": "Check 1 for 18.10.42.3.3.3",
+          "status": "accepted",
+          "artifact_type": {
+            "id": 65,
+            "human_name": "Synthetic Server: Registry Value",
+            "human_id": "synthetic.server.registry_value",
+            "created_by_id": 1,
+            "updated_by_id": 7,
+            "created_at": "2020-01-06T10:00:00.000000Z",
+            "updated_at": "2021-03-02T09:30:00.000000Z"
+          }
+        }
+      ],
+      "description": "Whether a remote session can attach the client's local drives.",
+      "rationale": "An attached drive moves files between the client and the server around any transfer controls.",
+      "impact": "People move files through an approved share instead.",
+      "audit": "The value must be `1`. Read it from the registry:\n\n```\nHKLM\\SOFTWARE\\Policies\\Synthetic\\RemoteSessions:BlockDriveMapping\n```",
+      "remediation": "Set this policy path to `Blocked`:\n\n```\nMachine Policy\\Security\\Remote Sessions\\Devices\\Drive mapping\n```",
+      "additional_info": null,
+      "default_value": "Allowed.",
+      "artifact_equation": "AND(1)",
+      "references": "1. Synthetic Server security baseline, *Policy reference*"
+    },
+    {
+      "ref": "18.10.42.3.9.1",
+      "title": "Ensure 'Remote session RPC encryption' is set to 'Required'",
+      "url": "https://workbench.cisecurity.org/sections/9000509/recommendations/90005009",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Level 1 - Domain Controller",
+        "Level 1 - Member Server"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "3.10",
+          "title": "Encrypt sensitive data on the wire",
+          "ig1": false,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": null,
+      "nist_controls": [],
+      "parent": null,
+      "artifacts": [
+        {
+          "id": 9050801,
+          "view_level": "18.10.42.3.9.1.1",
+          "title": "Check 1 for 18.10.42.3.9.1",
+          "status": "accepted",
+          "artifact_type": {
+            "id": 65,
+            "human_name": "Synthetic Server: Registry Value",
+            "human_id": "synthetic.server.registry_value",
+            "created_by_id": 1,
+            "updated_by_id": 7,
+            "created_at": "2020-01-06T10:00:00.000000Z",
+            "updated_at": "2021-03-02T09:30:00.000000Z"
+          }
+        }
+      ],
+      "description": "Whether the remote session host takes only signed and encrypted RPC calls.",
+      "rationale": "Calls without both can be read on the way or sent again by someone else.",
+      "impact": "None.",
+      "audit": "The value must be `1`. Read it from the registry:\n\n```\nHKLM\\SOFTWARE\\Policies\\Synthetic\\RemoteSessions:RequireEncryptedRpc\n```",
+      "remediation": "Set this policy path to `Required`:\n\n```\nMachine Policy\\Security\\Remote Sessions\\Security\\RPC encryption\n```",
+      "additional_info": null,
+      "default_value": "Optional.",
+      "artifact_equation": "AND(1)",
+      "references": "1. Synthetic Server security baseline, *Policy reference*"
+    },
+    {
+      "ref": "19.1.1",
+      "title": "Ensure 'Lock screen after idle' is set to 'On, with password'",
+      "url": "https://workbench.cisecurity.org/sections/9000510/recommendations/90005010",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Level 1 - Domain Controller",
+        "Level 1 - Member Server"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "4.3",
+          "title": "Lock sessions left idle",
+          "ig1": true,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": null,
+      "nist_controls": [],
+      "parent": null,
+      "artifacts": [
+        {
+          "id": 9050901,
+          "view_level": "19.1.1.1",
+          "title": "Check 1 for 19.1.1",
+          "status": "accepted",
+          "artifact_type": {
+            "id": 65,
+            "human_name": "Synthetic Server: Registry Value",
+            "human_id": "synthetic.server.registry_value",
+            "created_by_id": 1,
+            "updated_by_id": 7,
+            "created_at": "2020-01-06T10:00:00.000000Z",
+            "updated_at": "2021-03-02T09:30:00.000000Z"
+          }
+        }
+      ],
+      "description": "Whether an idle session locks and asks for the password to come back.",
+      "rationale": "A console left signed in is open to whoever walks past.",
+      "impact": "None.",
+      "audit": "The value must be `1`. Read it from the registry:\n\n```\nHKU\\[USER SID]\\Software\\Policies\\Synthetic\\Desktop:LockWithPassword\n```",
+      "remediation": "Set this policy path to `On, with password`:\n\n```\nUser Policy\\Desktop\\Lock screen after idle\n```",
+      "additional_info": null,
+      "default_value": "Off.",
+      "artifact_equation": "AND(1)",
+      "references": "1. Synthetic Server security baseline, *Policy reference*"
+    },
+    {
+      "ref": "2.2.1",
+      "title": "Ensure 'Network sign-in rights' lists only 'Administrators, Signed-in Users'",
+      "url": "https://workbench.cisecurity.org/sections/9000511/recommendations/90005011",
+      "assessment_status": "Manual",
+      "profiles": [
+        "Level 1 - Domain Controller",
+        "Level 1 - Member Server"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "6.8",
+          "title": "Give access by role",
+          "ig1": false,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": null,
+      "nist_controls": [],
+      "parent": null,
+      "artifacts": [
+        {
+          "id": 9051001,
+          "view_level": "2.2.1.1",
+          "title": "Check 1 for 2.2.1",
+          "status": "accepted",
+          "artifact_type": {
+            "id": 64,
+            "human_name": "Synthetic Server: Policy Value",
+            "human_id": "synthetic.server.policy_value",
+            "created_by_id": 1,
+            "updated_by_id": 7,
+            "created_at": "2020-01-06T10:00:00.000000Z",
+            "updated_at": "2021-03-02T09:30:00.000000Z"
+          }
+        }
+      ],
+      "description": "Which accounts may reach the server over the network.",
+      "rationale": "Taking out broad groups such as Anyone narrows who can reach shares and services.",
+      "impact": "Services that connect as other accounts need those accounts added; check before applying.",
+      "audit": "Open the Synthetic Policy Editor and read the value at:\n\n```\nMachine Policy\\Security\\Rights\\Network sign-in\n```\n\nCompare the list with the accounts the server's services use.",
+      "remediation": "Set this policy path to `Administrators, Signed-in Users`:\n\n```\nMachine Policy\\Security\\Rights\\Network sign-in\n```",
+      "additional_info": null,
+      "default_value": "Administrators, Backup Operators, Anyone, Users.",
+      "artifact_equation": "AND(1)",
+      "references": "1. Synthetic Server security baseline, *Policy reference*"
+    }
+  ]
+}

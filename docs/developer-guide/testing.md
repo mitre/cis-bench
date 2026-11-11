@@ -166,6 +166,67 @@ return {
 }
 ```
 
+### Synthetic Benchmarks
+
+The repository holds no CIS content. Tests and documentation examples that need whole
+benchmarks use the synthetic ones in `tests/fixtures/benchmarks/`: every tool, path, setting
+and sentence in them is invented, and each follows the shape of a kind of real copy, so
+commands take the paths real downloads take.
+
+| ID | File | Shape |
+| --- | --- | --- |
+| 90001 | `synthetic_complete.json` | A copy the first scraper saved: HTML text, full CIS Controls, MITRE and NIST mappings |
+| 90002 | `synthetic_linux_current.json` | A current Linux benchmark: Markdown, profile definitions, Server/Workstation Level 1/2, refs five deep, code blocks, `<placeholder>`s, backslashes |
+| 90003 | `synthetic_linux_previous.json` | The previous version of 90002, stored the way earlier versions stored copies (no form fields, `\r\n` line breaks, an HTML artifact title), with no MITRE or NIST; against 90002 it has a recommendation added, removed, renumbered, modified and reformatted |
+| 90004 | `synthetic_cloud_foundations.json` | A cloud account's foundations: Level 1/Level 2 only, about half Manual, console steps and CLI commands, links, no NIST, no artifacts |
+| 90005 | `synthetic_windows_server.json` | A Windows-style server: Domain Controller/Member Server and Next Generation profiles, refs six deep, registry paths, impact and default value on every recommendation, no parents, MITRE or NIST |
+
+Text for a new synthetic benchmark is written fresh, never adapted from a real one: compare
+it with real downloads before committing it, and reword any title or run of words that
+matches.
+
+`scripts/synthetic_home.py` builds a data folder holding all of them as catalog rows and
+downloaded copies, each stored as its file holds it. No session is saved and nothing is sent
+to CIS WorkBench. Point `CIS_BENCH_HOME` at the folder to run any command against it:
+
+```bash
+uv run python scripts/synthetic_home.py synthetic-home
+```
+
+```text
+90001  CIS Synthetic Enterprise Platform Benchmark v1.0.0 v1.0.0
+90002  CIS Synthetic Linux Server Benchmark v2.0.0
+90003  CIS Synthetic Linux Server Benchmark v1.0.0
+90004  CIS Synthetic Cloud Foundations Benchmark v3.0.0
+90005  CIS Synthetic Windows Server Benchmark v1.0.0
+
+Use it with: CIS_BENCH_HOME=synthetic-home cis-bench list
+```
+
+```bash
+CIS_BENCH_HOME=synthetic-home cis-bench diff 90003 90002 --format summary
+```
+
+```text
+Benchmark: CIS Synthetic Linux Server Benchmark
+Version:   v1.0.0 → v2.0.0
+
+  ✚ 1 added  ✖ 1 removed  ⟳ 9 modified  ≈ 1 reformatted  ↷ 1 renumbered
+
+Total: 13 recommendations (0 unchanged)
+```
+
+The folder must be new or empty; the script never writes into one that holds anything:
+
+```text
+$ uv run python scripts/synthetic_home.py synthetic-home
+synthetic-home is not an empty folder; give a new or empty one.
+```
+
+`tests/e2e/test_synthetic_data.py` builds the folder once and runs the commands over it:
+`list`, `cache status`, `search`, every export format and both XCCDF styles for every
+benchmark (each XCCDF export through `validate`), and `diff` of the two Linux versions.
+
 ---
 
 ## Best Practices
