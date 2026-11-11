@@ -76,8 +76,8 @@
         "CM-7"
       ],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/9000201",
-        "title": "1.1.1 Filesystem Drivers"
+        "url": "https://workbench.cisecurity.org/sections/7000201/recommendations/70002001",
+        "title": "Disable filesystem drivers the host does not use"
       },
       "artifacts": [
         {
@@ -156,8 +156,8 @@
         "CM-14"
       ],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/9000202",
-        "title": "1.2 Software Sources"
+        "url": "https://workbench.cisecurity.org/sections/7000202/recommendations/70002002",
+        "title": "Verify package signatures before installing"
       },
       "artifacts": [
         {
@@ -210,8 +210,8 @@
         "AU-8"
       ],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/9000203",
-        "title": "2.1 Clock"
+        "url": "https://workbench.cisecurity.org/sections/7000203/recommendations/70002003",
+        "title": "Keep the system clock synchronized"
       },
       "artifacts": [
         {
@@ -290,8 +290,8 @@
         "CM-6"
       ],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/9000204",
-        "title": "3.1 Network Stack"
+        "url": "https://workbench.cisecurity.org/sections/7000204/recommendations/70002004",
+        "title": "Turn off packet routing on hosts that are not routers"
       },
       "artifacts": [
         {
@@ -369,8 +369,8 @@
         "SC-7"
       ],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/9000205",
-        "title": "3.2.1 synthwall"
+        "url": "https://workbench.cisecurity.org/sections/7000205/recommendations/70002005",
+        "title": "Install a host packet filter"
       },
       "artifacts": [
         {
@@ -422,8 +422,8 @@
         "SC-7(5)"
       ],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/9000206",
-        "title": "3.2.1 synthwall"
+        "url": "https://workbench.cisecurity.org/sections/7000206/recommendations/70002006",
+        "title": "Set the packet filter's incoming policy to discard"
       },
       "artifacts": [],
       "description": "The incoming policy is what `synthwall` does with a packet after every rule has passed on it.",
@@ -472,8 +472,8 @@
         "MP-2"
       ],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/9000207",
-        "title": "4.1 SSH Server"
+        "url": "https://workbench.cisecurity.org/sections/7000207/recommendations/70002007",
+        "title": "Restrict access to the SSH server configuration"
       },
       "artifacts": [
         {
@@ -536,8 +536,8 @@
         "AC-7"
       ],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/9000208",
-        "title": "4.1 SSH Server"
+        "url": "https://workbench.cisecurity.org/sections/7000208/recommendations/70002008",
+        "title": "Limit SSH authentication attempts"
       },
       "artifacts": [
         {
@@ -588,8 +588,8 @@
       "mitre_mapping": null,
       "nist_controls": [],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/9000209",
-        "title": "4.1 SSH Server"
+        "url": "https://workbench.cisecurity.org/sections/7000209/recommendations/70002009",
+        "title": "Configure an SSH sign-in notice"
       },
       "artifacts": [
         {
@@ -676,8 +676,8 @@
         "AU-12"
       ],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/9000210",
-        "title": "5.1.1.1 Event Recording"
+        "url": "https://workbench.cisecurity.org/sections/7000210/recommendations/70002010",
+        "title": "Install the event recorder"
       },
       "artifacts": [
         {
@@ -756,8 +756,8 @@
         "AU-11"
       ],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/9000211",
-        "title": "5.1.1.1 Event Recording"
+        "url": "https://workbench.cisecurity.org/sections/7000211/recommendations/70002011",
+        "title": "Keep event logs when they fill up"
       },
       "artifacts": [
         {
@@ -821,8 +821,8 @@
         "IA-5(1)"
       ],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/9000212",
-        "title": "6.1 Local Accounts"
+        "url": "https://workbench.cisecurity.org/sections/7000212/recommendations/70002012",
+        "title": "Make sure every local account has a password"
       },
       "artifacts": [
         {

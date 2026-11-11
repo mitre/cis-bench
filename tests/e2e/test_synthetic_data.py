@@ -10,6 +10,7 @@ downloads take.
 
 import json
 import os
+import re
 import subprocess
 import sys
 from contextlib import closing
@@ -237,6 +238,19 @@ class TestTheFolder:
         assert "Traceback" not in built.stderr
         assert not (empty / "catalog.db").exists()
 
+    def test_build_itself_refuses_a_folder_that_holds_anything(self, tmp_path):
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("synthetic_home", SCRIPT)
+        script = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(script)
+        folder = _populated(tmp_path / "home")
+
+        with pytest.raises(script.NotAnEmptyFolder):
+            script.build(folder)
+
+        assert _untouched(folder)
+
     def test_the_script_refuses_a_file(self, tmp_path):
         target = tmp_path / "home"
         target.write_text("keep me")
@@ -264,14 +278,26 @@ class TestTheFixtures:
         assert refs == sorted(refs, key=lambda ref: [int(n) for n in ref.split(".")])
 
     @pytest.mark.parametrize("benchmark_id", sorted(SYNTHETIC))
-    def test_each_recommendation_numbers_its_section_and_artifacts_from_its_ref(self, benchmark_id):
-        # As real copies do: 6.1.2's artifacts are 6.1.2.1, 6.1.2.2; its section is 6.1 or 6.
+    def test_each_recommendation_numbers_its_artifacts_from_its_ref(self, benchmark_id):
+        # As real copies do: 6.1.2's artifacts are 6.1.2.1, 6.1.2.2.
         for r in _benchmark(benchmark_id).recommendations:
             for artifact in r.artifacts:
                 assert artifact.view_level.startswith(f"{r.ref}."), (r.ref, artifact.view_level)
-            if r.parent is not None:
-                section = r.parent.title.split()[0]
-                assert r.ref.startswith(f"{section}."), (r.ref, r.parent.title)
+
+    @pytest.mark.parametrize("benchmark_id", sorted(SYNTHETIC))
+    def test_a_parent_is_the_recommendation_this_one_was_derived_from(self, benchmark_id):
+        # As real copies hold it: a link to another recommendation, with that recommendation's
+        # title (WorkBench's "PARENT : <title>"), never a section heading.
+        parents = [r for r in _benchmark(benchmark_id).recommendations if r.parent is not None]
+        for r in parents:
+            assert re.fullmatch(
+                r"https://workbench\.cisecurity\.org/sections/\d+/recommendations/\d+",
+                str(r.parent.url),
+            ), (r.ref, r.parent.url)
+            assert str(r.parent.url) != str(r.url), r.ref
+            assert not re.match(r"\d+(\.\d+)* ", r.parent.title), (r.ref, r.parent.title)
+        # Each recommendation was derived from its own parent.
+        assert len({str(r.parent.url) for r in parents}) == len(parents)
 
 
 class TestCommandsOnTheSyntheticData:

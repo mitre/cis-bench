@@ -37,8 +37,8 @@
       "mitre_mapping": null,
       "nist_controls": [],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/9000301",
-        "title": "1.1.1 Filesystem Drivers"
+        "url": "https://workbench.cisecurity.org/sections/7000201/recommendations/70002001",
+        "title": "Disable filesystem drivers the host does not use"
       },
       "artifacts": [
         {
@@ -104,8 +104,8 @@
       "mitre_mapping": null,
       "nist_controls": [],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/9000302",
-        "title": "1.2 Software Sources"
+        "url": "https://workbench.cisecurity.org/sections/7000202/recommendations/70002002",
+        "title": "Verify package signatures before installing"
       },
       "artifacts": [
         {
@@ -156,8 +156,8 @@
       "mitre_mapping": null,
       "nist_controls": [],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/9000303",
-        "title": "2.2 Clock"
+        "url": "https://workbench.cisecurity.org/sections/7000203/recommendations/70002003",
+        "title": "Keep the system clock synchronized"
       },
       "artifacts": [
         {
@@ -223,8 +223,8 @@
       "mitre_mapping": null,
       "nist_controls": [],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/9000304",
-        "title": "3.1 Network Stack"
+        "url": "https://workbench.cisecurity.org/sections/7000204/recommendations/70002004",
+        "title": "Turn off packet routing on hosts that are not routers"
       },
       "artifacts": [
         {
@@ -290,8 +290,8 @@
       "mitre_mapping": null,
       "nist_controls": [],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/9000305",
-        "title": "3.2.1 synthwall"
+        "url": "https://workbench.cisecurity.org/sections/7000205/recommendations/70002005",
+        "title": "Install a host packet filter"
       },
       "artifacts": [
         {
@@ -341,8 +341,8 @@
       "mitre_mapping": null,
       "nist_controls": [],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/9000306",
-        "title": "3.2.1 synthwall"
+        "url": "https://workbench.cisecurity.org/sections/7000206/recommendations/70002006",
+        "title": "Set the packet filter's incoming policy to discard"
       },
       "artifacts": [],
       "description": "The incoming policy is what `synthwall` does with a packet after every rule has passed on it.",
@@ -377,8 +377,8 @@
       "mitre_mapping": null,
       "nist_controls": [],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/9000307",
-        "title": "4.1 SSH Server"
+        "url": "https://workbench.cisecurity.org/sections/7000207/recommendations/70002007",
+        "title": "Restrict access to the SSH server configuration"
       },
       "artifacts": [
         {
@@ -429,8 +429,8 @@
       "mitre_mapping": null,
       "nist_controls": [],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/9000308",
-        "title": "4.1 SSH Server"
+        "url": "https://workbench.cisecurity.org/sections/7000208/recommendations/70002008",
+        "title": "Limit SSH authentication attempts"
       },
       "artifacts": [
         {
@@ -481,8 +481,8 @@
       "mitre_mapping": null,
       "nist_controls": [],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/9000309",
-        "title": "4.1 SSH Server"
+        "url": "https://workbench.cisecurity.org/sections/7000209/recommendations/70002009",
+        "title": "Configure an SSH sign-in notice"
       },
       "artifacts": [
         {
@@ -548,8 +548,8 @@
       "mitre_mapping": null,
       "nist_controls": [],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/9000313",
-        "title": "4.1 SSH Server"
+        "url": "https://workbench.cisecurity.org/sections/7000313/recommendations/70003013",
+        "title": "Disable SSH display forwarding"
       },
       "artifacts": [
         {
@@ -608,8 +608,8 @@
       "mitre_mapping": null,
       "nist_controls": [],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/9000310",
-        "title": "5.1.1.1 Event Recording"
+        "url": "https://workbench.cisecurity.org/sections/7000210/recommendations/70002010",
+        "title": "Install the event recorder"
       },
       "artifacts": [
         {
@@ -675,8 +675,8 @@
       "mitre_mapping": null,
       "nist_controls": [],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/9000311",
-        "title": "5.1.1.1 Event Recording"
+        "url": "https://workbench.cisecurity.org/sections/7000211/recommendations/70002011",
+        "title": "Keep event logs when they fill up"
       },
       "artifacts": [
         {

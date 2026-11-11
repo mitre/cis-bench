@@ -52,8 +52,8 @@
         "CM-7"
       ],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/90001",
-        "title": "1.1 Configure Filesystem Module Controls"
+        "url": "https://workbench.cisecurity.org/sections/7000101/recommendations/70001001",
+        "title": "Disable legacy filesystem modules"
       },
       "artifacts": [
         {
@@ -122,8 +122,8 @@
         "AC-3"
       ],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/90002",
-        "title": "1.1 Configure Filesystem Module Controls"
+        "url": "https://workbench.cisecurity.org/sections/7000102/recommendations/70001002",
+        "title": "Mount temporary directories with restrictive options"
       },
       "artifacts": [
         {
@@ -192,8 +192,8 @@
         "SI-7"
       ],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/90003",
-        "title": "1.2 Configure Software Package Integrity"
+        "url": "https://workbench.cisecurity.org/sections/7000103/recommendations/70001003",
+        "title": "Verify package signatures globally"
       },
       "artifacts": [
         {
@@ -318,8 +318,8 @@
         "SC-8"
       ],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/90005",
-        "title": "2.1 Configure Time Synchronization"
+        "url": "https://workbench.cisecurity.org/sections/7000105/recommendations/70001005",
+        "title": "Run an authenticated time synchronization daemon"
       },
       "artifacts": [
         {
@@ -388,8 +388,8 @@
         "CM-6"
       ],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/90006",
-        "title": "2.1 Configure Time Synchronization"
+        "url": "https://workbench.cisecurity.org/sections/7000106/recommendations/70001006",
+        "title": "Run the time daemon as an unprivileged account"
       },
       "artifacts": [],
       "description": "<p>Synthetic control guidance for section <code>2.1.2</code>: ensure time synchronization daemon runs under a dedicated unprivileged account.</p><p>Daemon process UID must evaluate to <code>uid &gt; 0 &amp;&amp; uid != 0</code>.</p>",
@@ -556,8 +556,8 @@
         "SC-7"
       ],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/90009",
-        "title": "3.1 Configure Host Network Parameters"
+        "url": "https://workbench.cisecurity.org/sections/7000109/recommendations/70001009",
+        "title": "Disable packet forwarding on hosts that do not route"
       },
       "artifacts": [
         {

@@ -204,8 +204,8 @@
       },
       "nist_controls": [],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/9000405",
-        "title": "2.1 Buckets"
+        "url": "https://workbench.cisecurity.org/sections/7000405/recommendations/70004005",
+        "title": "Require TLS for storage requests"
       },
       "artifacts": [],
       "description": "A bucket rule can turn away every request that did not arrive over TLS.",
@@ -239,8 +239,8 @@
       "mitre_mapping": null,
       "nist_controls": [],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/9000406",
-        "title": "2.1 Buckets"
+        "url": "https://workbench.cisecurity.org/sections/7000406/recommendations/70004006",
+        "title": "Turn on object versioning"
       },
       "artifacts": [],
       "description": "With history on, a bucket keeps each object's earlier versions.",
@@ -284,8 +284,8 @@
       },
       "nist_controls": [],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/9000407",
-        "title": "3 Activity Records"
+        "url": "https://workbench.cisecurity.org/sections/7000407/recommendations/70004007",
+        "title": "Record API activity"
       },
       "artifacts": [],
       "description": "The activity record lists every call made to the account's API.",
@@ -319,8 +319,8 @@
       "mitre_mapping": null,
       "nist_controls": [],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/9000408",
-        "title": "3 Activity Records"
+        "url": "https://workbench.cisecurity.org/sections/7000408/recommendations/70004008",
+        "title": "Validate activity log files"
       },
       "artifacts": [],
       "description": "Each hour the recorder can write a signed summary of the files it wrote.",
@@ -364,8 +364,8 @@
       },
       "nist_controls": [],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/9000409",
-        "title": "4 Firewall Groups"
+        "url": "https://workbench.cisecurity.org/sections/7000409/recommendations/70004009",
+        "title": "Restrict remote administration ports"
       },
       "artifacts": [],
       "description": "A group rule that opens port 22 to `0.0.0.0/0` or `::/0` invites SSH sign-in attempts from anywhere.",
@@ -399,8 +399,8 @@
       "mitre_mapping": null,
       "nist_controls": [],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/9000410",
-        "title": "4 Firewall Groups"
+        "url": "https://workbench.cisecurity.org/sections/7000410/recommendations/70004010",
+        "title": "Restrict the default firewall group"
       },
       "artifacts": [],
       "description": "Resources created without a group are put in their network's default group.",
@@ -444,8 +444,8 @@
       },
       "nist_controls": [],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/9000411",
-        "title": "5 Encryption"
+        "url": "https://workbench.cisecurity.org/sections/7000411/recommendations/70004011",
+        "title": "Require modern TLS on listeners"
       },
       "artifacts": [],
       "description": "Each listener has a profile that lists the TLS versions it will speak.",
