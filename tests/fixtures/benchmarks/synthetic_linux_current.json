@@ -845,7 +845,7 @@
       "rationale": "Knowing the account's name is then enough to use it.",
       "impact": null,
       "audit": "```\n$ synthctl accounts list --password-state empty\n```\n\nThe list is empty.",
-      "remediation": "Lock each listed account until its owner sets a password: `synthctl accounts lock <username>`.\n\nAsk the owners of `[service]` accounts that applications created before locking them.",
+      "remediation": "Lock each listed account with `synthctl accounts lock <username>` until its owner sets a password.\n\nAsk the owners of `[service]` accounts that applications created before locking them.",
       "additional_info": null,
       "default_value": null,
       "artifact_equation": "AND(1)",

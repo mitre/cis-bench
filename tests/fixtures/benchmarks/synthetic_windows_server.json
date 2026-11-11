@@ -564,7 +564,7 @@
     },
     {
       "ref": "19.1.1",
-      "title": "Ensure 'Lock screen after idle' is set to 'On, with password'",
+      "title": "Ensure 'Lock screen after idle' is set to 'On, sign-in required'",
       "url": "https://workbench.cisecurity.org/sections/9000510/recommendations/90005010",
       "assessment_status": "Automated",
       "profiles": [
@@ -605,7 +605,7 @@
       "rationale": "A console left signed in is open to whoever walks past.",
       "impact": "None.",
       "audit": "The value must be `1`. Read it from the registry:\n\n```\nHKU\\[USER SID]\\Software\\Policies\\Synthetic\\Desktop:LockWithPassword\n```",
-      "remediation": "Set this policy path to `On, with password`:\n\n```\nUser Policy\\Desktop\\Lock screen after idle\n```",
+      "remediation": "Set this policy path to `On, sign-in required`:\n\n```\nUser Policy\\Desktop\\Lock screen after idle\n```",
       "additional_info": null,
       "default_value": "Off.",
       "artifact_equation": "AND(1)",
