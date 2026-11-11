@@ -186,13 +186,16 @@ it with real downloads before committing it, and reword any title or run of word
 matches.
 
 The synthetic benchmarks are prose about passwords, keys and tokens, which a secret scanner
-can read as credentials (`sets a password: <command>` was reported as a password).
-`.gitguardian.yaml` leaves `tests/fixtures/benchmarks/` out of GitGuardian's secret scanning
-by `ggshield`. GitGuardian's documentation describes only the filepath exclusions set in its
-dashboard for its GitHub check, so the folder also needs that exclusion there, linked to this
-repository (a workspace setting, outside the repository). Nothing else is left out,
-so a real secret committed anywhere else is still reported. Writing `password` with no `:` or
-`=` straight after it keeps a sentence from looking like a credential in the first place.
+can read as credentials (`sets a password: <command>` was reported as a password); the
+documentation's example commands and outputs are the same kind of text.
+`.gitguardian.yaml` leaves `tests/fixtures/` and `docs/` out of secret scanning by
+`ggshield`, GitGuardian's command-line scanner, and adds no exclusion anywhere else; other
+paths stay under the scanner's own settings and limits. GitGuardian's documentation describes
+only the filepath exclusions set in its dashboard for its GitHub check, so the same two
+folders need excluding there too, linked to this repository (a workspace setting, outside
+the repository; a leading `/`, as in `/tests/fixtures/`, anchors a dashboard pattern at the
+repository root). Rewording a sentence so that `password` is not followed by an assignment such as
+`:` or `=` keeps it from being reported the way the one above was.
 
 `scripts/synthetic_home.py` builds a data folder holding all of them as catalog rows and
 downloaded copies, each stored as its file holds it. No session is saved and nothing is sent
