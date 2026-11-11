@@ -31,24 +31,57 @@ LISTING = {
     "90005": {"platform": "synthetic-windows-server", "platform_type": "os", "is_latest": True},
 }
 COMMUNITY = "Synthetic Benchmarks"
+# When the listing these rows stand for was read, recorded as a catalog refresh records it,
+# so the folder looks like one where `catalog refresh` has run.
+LISTED_AT = "2026-11-10T15:00:00+00:00"
 
 
-def build(folder: Path) -> list[tuple[str, str, str]]:
-    """Fill ``folder`` with the synthetic benchmarks; the (ID, title, version) of each."""
+class NotAnEmptyFolder(Exception):
+    """The data folder already holds something; nothing was written."""
+
+
+def data_folder(given: str) -> Path | None:
+    """The data folder cis-bench uses when CIS_BENCH_HOME is ``given``, as the CLI reads it
+    (surrounding spaces dropped, ~ the home folder); None when ``given`` is blank, which
+    cis-bench reads as unset."""
+    from cis_bench.config import HOME_VARIABLE, xdg_folders
+
+    if not given.strip():
+        return None
+    return xdg_folders({HOME_VARIABLE: given}, home=Path.home(), windows=os.name == "nt").data
+
+
+def prepare(data: Path) -> None:
+    """Create the data folder ``data``, which must be new or empty.
+
+    Raises:
+        NotAnEmptyFolder: ``data`` is a file, a link, or a folder that holds anything.
+    """
+    if data.is_symlink() or (data.exists() and (not data.is_dir() or any(data.iterdir()))):
+        raise NotAnEmptyFolder(f"{data} is not an empty folder; give a new or empty one.")
+    data.mkdir(parents=True, exist_ok=True)
+
+
+def build(data: Path) -> list[tuple[str, str, str]]:
+    """Fill the new or empty data folder ``data`` with the synthetic benchmarks; the (ID,
+    title, version) of each.
+
+    Raises:
+        NotAnEmptyFolder: ``data`` is not new or empty; nothing was written.
+    """
     from cis_bench.catalog.database import (
         CatalogDatabase,
         deserialize_benchmark_json,
         serialize_benchmark_json,
     )
-    from cis_bench.config import CATALOG_DB_FILE_NAME, HOME_VARIABLE, xdg_folders
+    from cis_bench.config import CATALOG_DB_FILE_NAME
     from cis_bench.models.benchmark import BenchmarkPage
 
-    # The data folder cis-bench uses when CIS_BENCH_HOME names this folder.
-    data = xdg_folders({HOME_VARIABLE: str(folder)}, home=Path.home(), windows=os.name == "nt").data
-
+    prepare(data)
     built = []
     with closing(CatalogDatabase(data / CATALOG_DB_FILE_NAME)) as db:
         db.initialize_schema()
+        db.set_metadata("last_full_scrape", LISTED_AT)
         for path in sorted(FIXTURES.glob("synthetic_*.json")):
             stored = path.read_text(encoding="utf-8")
             benchmark = deserialize_benchmark_json(stored)
@@ -95,17 +128,23 @@ def build(folder: Path) -> list[tuple[str, str, str]]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("folder", type=Path, help="a new or empty folder")
-    folder = parser.parse_args(argv).folder
+    parser.add_argument("folder", help="a new or empty folder")
+    given = parser.parse_args(argv).folder
 
-    if folder.exists() and (not folder.is_dir() or any(folder.iterdir())):
-        print(f"{folder} is not an empty folder; give a new or empty one.", file=sys.stderr)
+    # The folder checked is the folder written to: the one CIS_BENCH_HOME=<given> names.
+    data = data_folder(given)
+    if data is None:
+        print("Give a folder: a blank CIS_BENCH_HOME is not set.", file=sys.stderr)
         return 1
-    folder.mkdir(parents=True, exist_ok=True)
+    try:
+        built = build(data)
+    except NotAnEmptyFolder as refusal:
+        print(refusal, file=sys.stderr)
+        return 1
 
-    for benchmark_id, title, version in sorted(build(folder)):
+    for benchmark_id, title, version in sorted(built):
         print(f"{benchmark_id}  {title} {version}")
-    print(f"\nUse it with: CIS_BENCH_HOME={folder} cis-bench list")
+    print(f"\nUse it with: CIS_BENCH_HOME={data} cis-bench list")
     return 0
 
 

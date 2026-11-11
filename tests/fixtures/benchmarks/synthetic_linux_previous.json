@@ -37,7 +37,7 @@
       "mitre_mapping": null,
       "nist_controls": [],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/9000201",
+        "url": "https://workbench.cisecurity.org/sections/9000301",
         "title": "1.1.1 Filesystem Drivers"
       },
       "artifacts": [
@@ -104,7 +104,7 @@
       "mitre_mapping": null,
       "nist_controls": [],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/9000202",
+        "url": "https://workbench.cisecurity.org/sections/9000302",
         "title": "1.2 Software Sources"
       },
       "artifacts": [
@@ -132,7 +132,7 @@
       "additional_info": null,
       "default_value": "`true`",
       "artifact_equation": "AND(1)",
-      "references": "1. NIST SP 800-53 Rev. 5: SI-7 - [https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final)\n2. NIST SP 800-53 Rev. 5: CM-14 - [https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final)"
+      "references": "1. NIST SP 800-53 Rev. 5: SI-7 - [https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final)\r\n2. NIST SP 800-53 Rev. 5: CM-14 - [https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final)"
     },
     {
       "ref": "2.2.1",
@@ -156,14 +156,14 @@
       "mitre_mapping": null,
       "nist_controls": [],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/9000203",
-        "title": "2.1 Clock"
+        "url": "https://workbench.cisecurity.org/sections/9000303",
+        "title": "2.2 Clock"
       },
       "artifacts": [
         {
           "id": 9020201,
-          "view_level": "2.1.1.1",
-          "title": "Check 1 for 2.1.1",
+          "view_level": "2.2.1.1",
+          "title": "Check 1 for 2.2.1",
           "status": "accepted",
           "artifact_type": {
             "id": 71,
@@ -177,8 +177,8 @@
         },
         {
           "id": 9020202,
-          "view_level": "2.1.1.2",
-          "title": "Check 2 for 2.1.1",
+          "view_level": "2.2.1.2",
+          "title": "Check 2 for 2.2.1",
           "status": "accepted",
           "artifact_type": {
             "id": 71,
@@ -223,7 +223,7 @@
       "mitre_mapping": null,
       "nist_controls": [],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/9000204",
+        "url": "https://workbench.cisecurity.org/sections/9000304",
         "title": "3.1 Network Stack"
       },
       "artifacts": [
@@ -266,7 +266,7 @@
       "additional_info": "Hosts running containers, virtual machines or VPN gateways are the usual exceptions.",
       "default_value": "`off`",
       "artifact_equation": "AND(1,2)",
-      "references": "1. NIST SP 800-53 Rev. 5: SC-7 - [https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final)\n2. NIST SP 800-53 Rev. 5: CM-6 - [https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final)"
+      "references": "1. NIST SP 800-53 Rev. 5: SC-7 - [https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final)\r\n2. NIST SP 800-53 Rev. 5: CM-6 - [https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final)"
     },
     {
       "ref": "3.2.1.1",
@@ -290,7 +290,7 @@
       "mitre_mapping": null,
       "nist_controls": [],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/9000205",
+        "url": "https://workbench.cisecurity.org/sections/9000305",
         "title": "3.2.1 synthwall"
       },
       "artifacts": [
@@ -341,7 +341,7 @@
       "mitre_mapping": null,
       "nist_controls": [],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/9000206",
+        "url": "https://workbench.cisecurity.org/sections/9000306",
         "title": "3.2.1 synthwall"
       },
       "artifacts": [],
@@ -377,7 +377,7 @@
       "mitre_mapping": null,
       "nist_controls": [],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/9000207",
+        "url": "https://workbench.cisecurity.org/sections/9000307",
         "title": "4.1 SSH Server"
       },
       "artifacts": [
@@ -405,7 +405,7 @@
       "additional_info": null,
       "default_value": "`600 root:root`",
       "artifact_equation": "AND(1)",
-      "references": "1. NIST SP 800-53 Rev. 5: AC-3 - [https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final)\n2. NIST SP 800-53 Rev. 5: MP-2 - [https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final)"
+      "references": "1. NIST SP 800-53 Rev. 5: AC-3 - [https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final)\r\n2. NIST SP 800-53 Rev. 5: MP-2 - [https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final)"
     },
     {
       "ref": "4.1.2",
@@ -429,7 +429,7 @@
       "mitre_mapping": null,
       "nist_controls": [],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/9000208",
+        "url": "https://workbench.cisecurity.org/sections/9000308",
         "title": "4.1 SSH Server"
       },
       "artifacts": [
@@ -481,7 +481,7 @@
       "mitre_mapping": null,
       "nist_controls": [],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/9000209",
+        "url": "https://workbench.cisecurity.org/sections/9000309",
         "title": "4.1 SSH Server"
       },
       "artifacts": [
@@ -608,7 +608,7 @@
       "mitre_mapping": null,
       "nist_controls": [],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/9000210",
+        "url": "https://workbench.cisecurity.org/sections/9000310",
         "title": "5.1.1.1 Event Recording"
       },
       "artifacts": [
@@ -651,7 +651,7 @@
       "additional_info": null,
       "default_value": null,
       "artifact_equation": "AND(1,2)",
-      "references": "1. NIST SP 800-53 Rev. 5: AU-2 - [https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final)\n2. NIST SP 800-53 Rev. 5: AU-12 - [https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final)"
+      "references": "1. NIST SP 800-53 Rev. 5: AU-2 - [https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final)\r\n2. NIST SP 800-53 Rev. 5: AU-12 - [https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final)"
     },
     {
       "ref": "5.1.1.1.2",
@@ -675,7 +675,7 @@
       "mitre_mapping": null,
       "nist_controls": [],
       "parent": {
-        "url": "https://workbench.cisecurity.org/sections/9000211",
+        "url": "https://workbench.cisecurity.org/sections/9000311",
         "title": "5.1.1.1 Event Recording"
       },
       "artifacts": [
@@ -703,7 +703,7 @@
       "additional_info": "`warn-at` and `stop-at` decide what happens as the disk fills up.",
       "default_value": "`when-full = rotate`",
       "artifact_equation": "AND(1)",
-      "references": "1. NIST SP 800-53 Rev. 5: AU-4 - [https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final)\n2. NIST SP 800-53 Rev. 5: AU-11 - [https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final)"
+      "references": "1. NIST SP 800-53 Rev. 5: AU-4 - [https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final)\r\n2. NIST SP 800-53 Rev. 5: AU-11 - [https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final)"
     }
   ]
 }

@@ -225,7 +225,11 @@ synthetic-home is not an empty folder; give a new or empty one.
 
 `tests/e2e/test_synthetic_data.py` builds the folder once and runs the commands over it:
 `list`, `cache status`, `search`, every export format and both XCCDF styles for every
-benchmark (each XCCDF export through `validate`), and `diff` of the two Linux versions.
+benchmark (each export read back in its own format and compared with the benchmark's
+recommendations, each XCCDF export through `validate`), and `diff` of the two Linux
+versions. It also checks the script's refusals (a folder that holds anything, however
+`CIS_BENCH_HOME` would spell it; a file; a blank name) and that each synthetic
+recommendation numbers its section and artifacts from its own ref.
 
 ---
 
