@@ -1,0 +1,9 @@
+# GitGuardian (ggshield) configuration: https://docs.gitguardian.com/ggshield-docs/configuration
+# Required, or ggshield reads the file as the deprecated v1 format.
+version: 2
+
+secret:
+  ignored_paths:
+    # Synthetic benchmarks: invented prose about passwords, keys and tokens that a secret
+    # scanner reads as credentials. They hold no real secret.
+    - 'tests/fixtures/benchmarks/**/*'
