@@ -1,0 +1,855 @@
+{
+  "title": "CIS Synthetic Linux Server Benchmark",
+  "benchmark_id": "90002",
+  "url": "https://workbench.cisecurity.org/benchmarks/90002",
+  "version": "v2.0.0",
+  "published_date": "2026-06-01",
+  "description": "Settings for the Synthetic Linux server distribution, release 9.",
+  "profile_definitions": [
+    {
+      "title": "Level 1 - Server",
+      "description": "Settings a server can take with little effect on what it runs.",
+      "parent": null
+    },
+    {
+      "title": "Level 2 - Server",
+      "description": "Stricter settings for servers where security outweighs convenience; includes Level 1 - Server.",
+      "parent": "Level 1 - Server"
+    },
+    {
+      "title": "Level 1 - Workstation",
+      "description": "Settings a desktop or laptop can take with little effect on its user.",
+      "parent": null
+    },
+    {
+      "title": "Level 2 - Workstation",
+      "description": "Stricter settings for workstations handling sensitive work; includes Level 1 - Workstation.",
+      "parent": "Level 1 - Workstation"
+    }
+  ],
+  "downloaded_at": "2026-11-10T15:00:00Z",
+  "scraper_version": "v2_2026_01",
+  "text_format": "markdown",
+  "artifact_title_format": "markdown",
+  "total_recommendations": 12,
+  "recommendations": [
+    {
+      "ref": "1.1.1.1",
+      "title": "Keep the oldfs filesystem driver from loading",
+      "url": "https://workbench.cisecurity.org/sections/9000201/recommendations/90002001",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Level 1 - Server",
+        "Level 1 - Workstation"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "4.8",
+          "title": "Turn off what an asset does not use",
+          "ig1": false,
+          "ig2": true,
+          "ig3": true
+        },
+        {
+          "version": 7,
+          "control": "9.2",
+          "title": "Expose only the services a host needs",
+          "ig1": false,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": {
+        "techniques": [
+          "T1005",
+          "T1068"
+        ],
+        "tactics": [
+          "TA0004"
+        ],
+        "mitigations": [
+          "M1050"
+        ]
+      },
+      "nist_controls": [
+        "CM-7"
+      ],
+      "parent": {
+        "url": "https://workbench.cisecurity.org/sections/7000201/recommendations/70002001",
+        "title": "Disable filesystem drivers the host does not use"
+      },
+      "artifacts": [
+        {
+          "id": 9020001,
+          "view_level": "1.1.1.1.1",
+          "title": "Check 1 for 1.1.1.1",
+          "status": "accepted",
+          "artifact_type": {
+            "id": 73,
+            "human_name": "Synthetic Linux: Configuration Value",
+            "human_id": "synthetic.linux.config_value_v1",
+            "created_by_id": 1,
+            "updated_by_id": 7,
+            "created_at": "2020-01-06T10:00:00.000000Z",
+            "updated_at": "2021-03-02T09:30:00.000000Z"
+          }
+        },
+        {
+          "id": 9020002,
+          "view_level": "1.1.1.1.2",
+          "title": "Check 2 for 1.1.1.1",
+          "status": "accepted",
+          "artifact_type": {
+            "id": 73,
+            "human_name": "Synthetic Linux: Configuration Value",
+            "human_id": "synthetic.linux.config_value_v1",
+            "created_by_id": 1,
+            "updated_by_id": 7,
+            "created_at": "2020-01-06T10:00:00.000000Z",
+            "updated_at": "2021-03-02T09:30:00.000000Z"
+          }
+        }
+      ],
+      "description": "`oldfs` reads a disk format that Synthetic Linux stopped writing three releases ago.",
+      "rationale": "Driver code for a format nobody uses can still be reached by plugging in a crafted disk. A driver that cannot load cannot be attacked that way.",
+      "impact": "Disks in the old format stop mounting on this host. Copy their data off first.",
+      "audit": "Ask the module manager for the driver's state:\n\n```\n$ synthctl module status oldfs\noldfs: blocked, not loaded\n$ synthctl module list --loaded | grep -c '^oldfs\\b'\n0\n```\n\nAny state other than `blocked` means the driver can still load.",
+      "remediation": "Block the driver and take it out of the running kernel:\n\n```\n$ synthctl module block oldfs\n$ synthctl module unload oldfs\n```",
+      "additional_info": null,
+      "default_value": "Loadable.",
+      "artifact_equation": "AND(1,2)",
+      "references": "1. NIST SP 800-53 Rev. 5: CM-7 - [https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final)"
+    },
+    {
+      "ref": "1.2.1",
+      "title": "Require signed packages from every software source",
+      "url": "https://workbench.cisecurity.org/sections/9000202/recommendations/90002002",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Level 1 - Server",
+        "Level 1 - Workstation"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "7.3",
+          "title": "Patch operating systems on a schedule",
+          "ig1": true,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": {
+        "techniques": [
+          "T1195"
+        ],
+        "tactics": [
+          "TA0001"
+        ],
+        "mitigations": [
+          "M1051"
+        ]
+      },
+      "nist_controls": [
+        "SI-7",
+        "CM-14"
+      ],
+      "parent": {
+        "url": "https://workbench.cisecurity.org/sections/7000202/recommendations/70002002",
+        "title": "Verify package signatures before installing"
+      },
+      "artifacts": [
+        {
+          "id": 9020101,
+          "view_level": "1.2.1.1",
+          "title": "Check 1 for 1.2.1",
+          "status": "accepted",
+          "artifact_type": {
+            "id": 73,
+            "human_name": "Synthetic Linux: Configuration Value",
+            "human_id": "synthetic.linux.config_value_v1",
+            "created_by_id": 1,
+            "updated_by_id": 7,
+            "created_at": "2020-01-06T10:00:00.000000Z",
+            "updated_at": "2021-03-02T09:30:00.000000Z"
+          }
+        }
+      ],
+      "description": "`synthpkg` checks each package against the keys it trusts, unless a source's own file turns the check off.",
+      "rationale": "Without the check, whoever answers at a source's address decides what gets installed.",
+      "impact": null,
+      "audit": "Read the global value, then look for sources that override it:\n\n```\n$ synthpkg config get verify-signatures\ntrue\n$ grep -rlE 'verify-signatures[[:space:]]*=[[:space:]]*false' /etc/synth/sources.d/\n```\n\nThe second command lists no files.",
+      "remediation": "Run `synthpkg config set verify-signatures true` and delete the `verify-signatures = false` line from each file the audit listed.",
+      "additional_info": null,
+      "default_value": "`true`",
+      "artifact_equation": "AND(1)",
+      "references": "1. NIST SP 800-53 Rev. 5: SI-7 - [https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final)\n2. NIST SP 800-53 Rev. 5: CM-14 - [https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final)"
+    },
+    {
+      "ref": "2.1.1",
+      "title": "Run exactly one clock synchronization service",
+      "url": "https://workbench.cisecurity.org/sections/9000203/recommendations/90002003",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Level 1 - Server",
+        "Level 1 - Workstation"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "8.4",
+          "title": "Keep every clock on one source",
+          "ig1": false,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": null,
+      "nist_controls": [
+        "AU-8"
+      ],
+      "parent": {
+        "url": "https://workbench.cisecurity.org/sections/7000203/recommendations/70002003",
+        "title": "Keep the system clock synchronized"
+      },
+      "artifacts": [
+        {
+          "id": 9020201,
+          "view_level": "2.1.1.1",
+          "title": "Check 1 for 2.1.1",
+          "status": "accepted",
+          "artifact_type": {
+            "id": 71,
+            "human_name": "Synthetic Linux: Package State",
+            "human_id": "synthetic.linux.package_v1",
+            "created_by_id": 1,
+            "updated_by_id": 7,
+            "created_at": "2020-01-06T10:00:00.000000Z",
+            "updated_at": "2021-03-02T09:30:00.000000Z"
+          }
+        },
+        {
+          "id": 9020202,
+          "view_level": "2.1.1.2",
+          "title": "Check 2 for 2.1.1",
+          "status": "accepted",
+          "artifact_type": {
+            "id": 71,
+            "human_name": "Synthetic Linux: Package State",
+            "human_id": "synthetic.linux.package_v1",
+            "created_by_id": 1,
+            "updated_by_id": 7,
+            "created_at": "2020-01-06T10:00:00.000000Z",
+            "updated_at": "2021-03-02T09:30:00.000000Z"
+          }
+        }
+      ],
+      "description": "Synthetic Linux ships two clock services, `synthclock` and `tickd`. Either keeps the system clock near a reference server.",
+      "rationale": "Events from several hosts can be lined up only if their clocks agree, and sign-in tickets are refused when clocks drift apart.",
+      "impact": null,
+      "audit": "```\n$ synthctl service state synthclock tickd\nsynthclock: enabled, running\ntickd: disabled, stopped\n```\n\nOne service is enabled and running; the other is neither.",
+      "remediation": "Pick one:\n\n- **synthclock:** `synthctl service enable --now synthclock` and `synthctl service disable --now tickd`\n- **tickd:** the same two commands with the names swapped",
+      "additional_info": "Only one time service should run: two services fight over the clock.",
+      "default_value": "`synthclock` is enabled.",
+      "artifact_equation": "OR(1,2)",
+      "references": "1. NIST SP 800-53 Rev. 5: AU-8 - [https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final)"
+    },
+    {
+      "ref": "3.1.1",
+      "title": "Stop the host from routing packets between interfaces",
+      "url": "https://workbench.cisecurity.org/sections/9000204/recommendations/90002004",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Level 1 - Server",
+        "Level 1 - Workstation"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "4.4",
+          "title": "Filter traffic at each server",
+          "ig1": false,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": {
+        "techniques": [
+          "T1599"
+        ],
+        "tactics": [
+          "TA0005"
+        ],
+        "mitigations": [
+          "M1037"
+        ]
+      },
+      "nist_controls": [
+        "SC-7",
+        "CM-6"
+      ],
+      "parent": {
+        "url": "https://workbench.cisecurity.org/sections/7000204/recommendations/70002004",
+        "title": "Turn off packet routing on hosts that are not routers"
+      },
+      "artifacts": [
+        {
+          "id": 9020301,
+          "view_level": "3.1.1.1",
+          "title": "Check 1 for 3.1.1",
+          "status": "accepted",
+          "artifact_type": {
+            "id": 73,
+            "human_name": "Synthetic Linux: Configuration Value",
+            "human_id": "synthetic.linux.config_value_v1",
+            "created_by_id": 1,
+            "updated_by_id": 7,
+            "created_at": "2020-01-06T10:00:00.000000Z",
+            "updated_at": "2021-03-02T09:30:00.000000Z"
+          }
+        },
+        {
+          "id": 9020302,
+          "view_level": "3.1.1.2",
+          "title": "Check 2 for 3.1.1",
+          "status": "accepted",
+          "artifact_type": {
+            "id": 73,
+            "human_name": "Synthetic Linux: Configuration Value",
+            "human_id": "synthetic.linux.config_value_v1",
+            "created_by_id": 1,
+            "updated_by_id": 7,
+            "created_at": "2020-01-06T10:00:00.000000Z",
+            "updated_at": "2021-03-02T09:30:00.000000Z"
+          }
+        }
+      ],
+      "description": "With `routing.ipv4` or `routing.ipv6` on, the kernel hands packets that arrive on one interface to another.",
+      "rationale": "A host that is not meant to be a router should not act as one: routing carries traffic past the boundary a firewall was put there to hold.",
+      "impact": "Hosts that carry traffic for containers or virtual machines need routing. Leave those out.",
+      "audit": "```\n$ synthctl net get routing.ipv4 routing.ipv6\nrouting.ipv4 = off\nrouting.ipv6 = off\n```",
+      "remediation": "```\n$ synthctl net set --persist routing.ipv4=off routing.ipv6=off\n```",
+      "additional_info": "Hosts running containers, virtual machines or VPN gateways are the usual exceptions.",
+      "default_value": "`off`",
+      "artifact_equation": "AND(1,2)",
+      "references": "1. NIST SP 800-53 Rev. 5: SC-7 - [https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final)\n2. NIST SP 800-53 Rev. 5: CM-6 - [https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final)"
+    },
+    {
+      "ref": "3.2.1.1",
+      "title": "Install the synthwall packet filter",
+      "url": "https://workbench.cisecurity.org/sections/9000205/recommendations/90002005",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Level 1 - Server",
+        "Level 1 - Workstation"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "4.5",
+          "title": "Filter traffic at each end-user device",
+          "ig1": true,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": {
+        "techniques": [
+          "T1046"
+        ],
+        "tactics": [
+          "TA0007"
+        ],
+        "mitigations": [
+          "M1031"
+        ]
+      },
+      "nist_controls": [
+        "SC-7"
+      ],
+      "parent": {
+        "url": "https://workbench.cisecurity.org/sections/7000205/recommendations/70002005",
+        "title": "Install a host packet filter"
+      },
+      "artifacts": [
+        {
+          "id": 9020401,
+          "view_level": "3.2.1.1.1",
+          "title": "Check 1 for 3.2.1.1",
+          "status": "accepted",
+          "artifact_type": {
+            "id": 71,
+            "human_name": "Synthetic Linux: Package State",
+            "human_id": "synthetic.linux.package_v1",
+            "created_by_id": 1,
+            "updated_by_id": 7,
+            "created_at": "2020-01-06T10:00:00.000000Z",
+            "updated_at": "2021-03-02T09:30:00.000000Z"
+          }
+        }
+      ],
+      "description": "`synthwall` decides in the kernel which packets reach which services.",
+      "rationale": "With no filter, every listening service answers every network the host is on.",
+      "impact": null,
+      "audit": "```\n$ synthpkg query synthwall\nsynthwall <version> installed\n```",
+      "remediation": "```\n$ synthpkg add synthwall\n```",
+      "additional_info": null,
+      "default_value": null,
+      "artifact_equation": "AND(1)",
+      "references": "1. NIST SP 800-53 Rev. 5: SC-7 - [https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final)"
+    },
+    {
+      "ref": "3.2.1.2",
+      "title": "Make synthwall discard incoming packets no rule allows",
+      "url": "https://workbench.cisecurity.org/sections/9000206/recommendations/90002006",
+      "assessment_status": "Manual",
+      "profiles": [
+        "Level 2 - Server"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "4.5",
+          "title": "Filter traffic at each end-user device",
+          "ig1": true,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": null,
+      "nist_controls": [
+        "SC-7(5)"
+      ],
+      "parent": {
+        "url": "https://workbench.cisecurity.org/sections/7000206/recommendations/70002006",
+        "title": "Set the packet filter's incoming policy to discard"
+      },
+      "artifacts": [],
+      "description": "The incoming policy is what `synthwall` does with a packet after every rule has passed on it.",
+      "rationale": "With `discard`, the rules are a list of what is allowed, and a new service stays unreachable until someone adds one.",
+      "impact": "**Note:** change the policy at the console. A wrong rule order can drop the SSH session you are using.",
+      "audit": "Read the policy and the rules above it:\n\n```\n$ synthwall show incoming\npolicy: discard\nrule 1: allow loopback\nrule 2: allow replies\n```\n\nAsk the host's owner whether each `[allow]` rule is still needed.",
+      "remediation": "Allow loopback and replies first, then change the policy:\n\n```\n$ synthwall rule add incoming allow loopback\n$ synthwall rule add incoming allow replies\n$ synthwall policy incoming discard\n```",
+      "additional_info": null,
+      "default_value": null,
+      "artifact_equation": null,
+      "references": null
+    },
+    {
+      "ref": "4.1.1",
+      "title": "Limit who can change the SSH server configuration file",
+      "url": "https://workbench.cisecurity.org/sections/9000207/recommendations/90002007",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Level 1 - Server",
+        "Level 1 - Workstation"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "3.3",
+          "title": "Grant data access by need",
+          "ig1": true,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": {
+        "techniques": [
+          "T1098",
+          "T1543"
+        ],
+        "tactics": [
+          "TA0003"
+        ],
+        "mitigations": [
+          "M1022"
+        ]
+      },
+      "nist_controls": [
+        "AC-3",
+        "MP-2"
+      ],
+      "parent": {
+        "url": "https://workbench.cisecurity.org/sections/7000207/recommendations/70002007",
+        "title": "Restrict access to the SSH server configuration"
+      },
+      "artifacts": [
+        {
+          "id": 9020601,
+          "view_level": "4.1.1.1",
+          "title": "Check 1 for 4.1.1",
+          "status": "accepted",
+          "artifact_type": {
+            "id": 72,
+            "human_name": "Synthetic Linux: File Permissions",
+            "human_id": "synthetic.linux.file_mode_v1",
+            "created_by_id": 1,
+            "updated_by_id": 7,
+            "created_at": "2020-01-06T10:00:00.000000Z",
+            "updated_at": "2021-03-02T09:30:00.000000Z"
+          }
+        }
+      ],
+      "description": "`/etc/synth/ssh/server.conf`, and every file it pulls in, sets who may sign in over SSH.",
+      "rationale": "Whoever can edit the file can give themselves a way in.",
+      "impact": null,
+      "audit": "```\n$ synthctl file mode /etc/synth/ssh/server.conf /etc/synth/ssh/server.d/*\n/etc/synth/ssh/server.conf: 600 root:root\n```\n\nEvery file shows `600` or less and `root:root`.",
+      "remediation": "```\n$ synthctl file set-mode 600 --owner root:root /etc/synth/ssh/server.conf\n```",
+      "additional_info": null,
+      "default_value": "`600 root:root`",
+      "artifact_equation": "AND(1)",
+      "references": "1. NIST SP 800-53 Rev. 5: AC-3 - [https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final)\n2. NIST SP 800-53 Rev. 5: MP-2 - [https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final)"
+    },
+    {
+      "ref": "4.1.2",
+      "title": "Allow no more than four sign-in attempts per SSH connection",
+      "url": "https://workbench.cisecurity.org/sections/9000208/recommendations/90002008",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Level 1 - Server",
+        "Level 1 - Workstation"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "8.5",
+          "title": "Log enough detail to investigate",
+          "ig1": false,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": {
+        "techniques": [
+          "T1110"
+        ],
+        "tactics": [
+          "TA0006"
+        ],
+        "mitigations": [
+          "M1036"
+        ]
+      },
+      "nist_controls": [
+        "AC-7"
+      ],
+      "parent": {
+        "url": "https://workbench.cisecurity.org/sections/7000208/recommendations/70002008",
+        "title": "Limit SSH authentication attempts"
+      },
+      "artifacts": [
+        {
+          "id": 9020701,
+          "view_level": "4.1.2.1",
+          "title": "Check 1 for 4.1.2",
+          "status": "accepted",
+          "artifact_type": {
+            "id": 73,
+            "human_name": "Synthetic Linux: Configuration Value",
+            "human_id": "synthetic.linux.config_value_v1",
+            "created_by_id": 1,
+            "updated_by_id": 7,
+            "created_at": "2020-01-06T10:00:00.000000Z",
+            "updated_at": "2021-03-02T09:30:00.000000Z"
+          }
+        }
+      ],
+      "description": "`auth-attempts` caps the passwords one connection may try. The server logs a connection once half of them have failed.",
+      "rationale": "A small cap makes guessing over one connection slow and puts failures in the log early.",
+      "impact": null,
+      "audit": "Ask the server for the value it uses for a given user:\n\n```\n$ synthctl ssh effective-config --as <user> --from <address> | grep -E '^auth-attempts[[:space:]]+[0-9]+\\b'\nauth-attempts 4\n```\n\nThe number is 4 or lower.",
+      "remediation": "Put `auth-attempts 4` near the top of `/etc/synth/ssh/server.conf`, before any per-user section, and run `synthctl service reload ssh-server`.",
+      "additional_info": null,
+      "default_value": "`auth-attempts 6`",
+      "artifact_equation": "AND(1)",
+      "references": "1. NIST SP 800-53 Rev. 5: AC-7 - [https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final)"
+    },
+    {
+      "ref": "4.1.3",
+      "title": "Show a warning notice before SSH sign-in",
+      "url": "https://workbench.cisecurity.org/sections/9000209/recommendations/90002009",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Level 1 - Server",
+        "Level 1 - Workstation"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "0.0",
+          "title": "Not mapped to a control",
+          "ig1": false,
+          "ig2": false,
+          "ig3": false
+        }
+      ],
+      "mitre_mapping": null,
+      "nist_controls": [],
+      "parent": {
+        "url": "https://workbench.cisecurity.org/sections/7000209/recommendations/70002009",
+        "title": "Configure an SSH sign-in notice"
+      },
+      "artifacts": [
+        {
+          "id": 9020801,
+          "view_level": "4.1.3.1",
+          "title": "Check 1 for 4.1.3",
+          "status": "accepted",
+          "artifact_type": {
+            "id": 73,
+            "human_name": "Synthetic Linux: Configuration Value",
+            "human_id": "synthetic.linux.config_value_v1",
+            "created_by_id": 1,
+            "updated_by_id": 7,
+            "created_at": "2020-01-06T10:00:00.000000Z",
+            "updated_at": "2021-03-02T09:30:00.000000Z"
+          }
+        },
+        {
+          "id": 9020802,
+          "view_level": "4.1.3.2",
+          "title": "Notice file is *not* empty",
+          "status": "accepted",
+          "artifact_type": {
+            "id": 72,
+            "human_name": "Synthetic Linux: File Permissions",
+            "human_id": "synthetic.linux.file_mode_v1",
+            "created_by_id": 1,
+            "updated_by_id": 7,
+            "created_at": "2020-01-06T10:00:00.000000Z",
+            "updated_at": "2021-03-02T09:30:00.000000Z"
+          }
+        }
+      ],
+      "description": "`notice-file` names the text the server sends before asking for credentials.",
+      "rationale": "Some legal processes need users to have been told that the system is monitored.",
+      "impact": null,
+      "audit": "```\n$ synthctl ssh effective-config | grep -E '^notice-file[[:space:]]+/'\nnotice-file /etc/synth/notice\n```\n\nThe notice must not name the release: leave out the `\\R` and `\\K` substitutions.",
+      "remediation": "Set `notice-file /etc/synth/notice` in `/etc/synth/ssh/server.conf` and write the site's wording into that file.",
+      "additional_info": "The wording is for the site's legal staff to choose.",
+      "default_value": null,
+      "artifact_equation": "AND(1,2)",
+      "references": "1. Synthetic Linux administration guide, *Hardening* chapter"
+    },
+    {
+      "ref": "5.1.1.1.1",
+      "title": "Install the synthaudit event recorder",
+      "url": "https://workbench.cisecurity.org/sections/9000210/recommendations/90002010",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Level 2 - Server",
+        "Level 2 - Workstation"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "8.2",
+          "title": "Collect event logs",
+          "ig1": true,
+          "ig2": true,
+          "ig3": true
+        },
+        {
+          "version": 7,
+          "control": "6.2",
+          "title": "Turn event logging on",
+          "ig1": true,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": {
+        "techniques": [
+          "T1562.006"
+        ],
+        "tactics": [
+          "TA0005"
+        ],
+        "mitigations": [
+          "M1047"
+        ]
+      },
+      "nist_controls": [
+        "AU-2",
+        "AU-12"
+      ],
+      "parent": {
+        "url": "https://workbench.cisecurity.org/sections/7000210/recommendations/70002010",
+        "title": "Install the event recorder"
+      },
+      "artifacts": [
+        {
+          "id": 9020901,
+          "view_level": "5.1.1.1.1.1",
+          "title": "Check 1 for 5.1.1.1.1",
+          "status": "accepted",
+          "artifact_type": {
+            "id": 71,
+            "human_name": "Synthetic Linux: Package State",
+            "human_id": "synthetic.linux.package_v1",
+            "created_by_id": 1,
+            "updated_by_id": 7,
+            "created_at": "2020-01-06T10:00:00.000000Z",
+            "updated_at": "2021-03-02T09:30:00.000000Z"
+          }
+        },
+        {
+          "id": 9020902,
+          "view_level": "5.1.1.1.1.2",
+          "title": "Check 2 for 5.1.1.1.1",
+          "status": "accepted",
+          "artifact_type": {
+            "id": 71,
+            "human_name": "Synthetic Linux: Package State",
+            "human_id": "synthetic.linux.package_v1",
+            "created_by_id": 1,
+            "updated_by_id": 7,
+            "created_at": "2020-01-06T10:00:00.000000Z",
+            "updated_at": "2021-03-02T09:30:00.000000Z"
+          }
+        }
+      ],
+      "description": "`synthaudit` copies the kernel's event records to disk.",
+      "rationale": "Without it, the records of who changed what disappear once the kernel's buffer wraps.",
+      "impact": null,
+      "audit": "```\n$ synthpkg query synthaudit synthaudit-rules\nsynthaudit <version> installed\nsynthaudit-rules <version> installed\n```",
+      "remediation": "```\n$ synthpkg add synthaudit synthaudit-rules\n```",
+      "additional_info": null,
+      "default_value": null,
+      "artifact_equation": "AND(1,2)",
+      "references": "1. NIST SP 800-53 Rev. 5: AU-2 - [https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final)\n2. NIST SP 800-53 Rev. 5: AU-12 - [https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final)"
+    },
+    {
+      "ref": "5.1.1.1.2",
+      "title": "Keep full synthaudit logs instead of rotating them away",
+      "url": "https://workbench.cisecurity.org/sections/9000211/recommendations/90002011",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Level 2 - Server",
+        "Level 2 - Workstation"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "8.3",
+          "title": "Leave room for event logs",
+          "ig1": true,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": {
+        "techniques": [
+          "T1070"
+        ],
+        "tactics": [
+          "TA0005"
+        ],
+        "mitigations": [
+          "M1029"
+        ]
+      },
+      "nist_controls": [
+        "AU-4",
+        "AU-11"
+      ],
+      "parent": {
+        "url": "https://workbench.cisecurity.org/sections/7000211/recommendations/70002011",
+        "title": "Keep event logs when they fill up"
+      },
+      "artifacts": [
+        {
+          "id": 9021001,
+          "view_level": "5.1.1.1.2.1",
+          "title": "Check 1 for 5.1.1.1.2",
+          "status": "accepted",
+          "artifact_type": {
+            "id": 73,
+            "human_name": "Synthetic Linux: Configuration Value",
+            "human_id": "synthetic.linux.config_value_v1",
+            "created_by_id": 1,
+            "updated_by_id": 7,
+            "created_at": "2020-01-06T10:00:00.000000Z",
+            "updated_at": "2021-03-02T09:30:00.000000Z"
+          }
+        }
+      ],
+      "description": "`when-full` tells `synthaudit` what to do once a log reaches its size limit.",
+      "rationale": "Rotating a full log away throws out the records an investigation will ask for.",
+      "impact": "The logs keep growing until the disk is full, so send them to a collector and watch the space.",
+      "audit": "```\n$ synthctl audit config get when-full\nwhen-full = keep\n```",
+      "remediation": "Run `synthctl audit config set when-full keep`.",
+      "additional_info": "`warn-at` and `stop-at` decide what happens as the disk fills up.",
+      "default_value": "`when-full = rotate`",
+      "artifact_equation": "AND(1)",
+      "references": "1. NIST SP 800-53 Rev. 5: AU-4 - [https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final)\n2. NIST SP 800-53 Rev. 5: AU-11 - [https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final)"
+    },
+    {
+      "ref": "6.1.1",
+      "title": "Lock local accounts that have no password set",
+      "url": "https://workbench.cisecurity.org/sections/9000212/recommendations/90002012",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Level 1 - Server",
+        "Level 1 - Workstation"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "5.2",
+          "title": "Give every account its own password",
+          "ig1": true,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": {
+        "techniques": [
+          "T1078.003"
+        ],
+        "tactics": [
+          "TA0001",
+          "TA0004"
+        ],
+        "mitigations": [
+          "M1027"
+        ]
+      },
+      "nist_controls": [
+        "IA-5(1)"
+      ],
+      "parent": {
+        "url": "https://workbench.cisecurity.org/sections/7000212/recommendations/70002012",
+        "title": "Make sure every local account has a password"
+      },
+      "artifacts": [
+        {
+          "id": 9021101,
+          "view_level": "6.1.1.1",
+          "title": "Check 1 for 6.1.1",
+          "status": "accepted",
+          "artifact_type": {
+            "id": 73,
+            "human_name": "Synthetic Linux: Configuration Value",
+            "human_id": "synthetic.linux.config_value_v1",
+            "created_by_id": 1,
+            "updated_by_id": 7,
+            "created_at": "2020-01-06T10:00:00.000000Z",
+            "updated_at": "2021-03-02T09:30:00.000000Z"
+          }
+        }
+      ],
+      "description": "When an account's stored password is blank, signing in asks for nothing.",
+      "rationale": "Knowing the account's name is then enough to use it.",
+      "impact": null,
+      "audit": "```\n$ synthctl accounts list --password-state empty\n```\n\nThe list is empty.",
+      "remediation": "Lock each listed account with `synthctl accounts lock <username>` until its owner sets a password.\n\nAsk the owners of `[service]` accounts that applications created before locking them.",
+      "additional_info": null,
+      "default_value": null,
+      "artifact_equation": "AND(1)",
+      "references": "1. NIST SP 800-53 Rev. 5: IA-5(1) - [https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final)"
+    }
+  ]
+}
