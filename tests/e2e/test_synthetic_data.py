@@ -325,6 +325,17 @@ class TestCommandsOnTheSyntheticData:
         if "xccdf" in export_args:
             run("validate", str(written))
 
+    def test_find_searches_the_recommendations_of_every_synthetic_benchmark(self, run):
+        def hits(*args):
+            found = _json(run("find", *args, "--output-format", "json"))
+            return [(hit["benchmark_id"], hit["ref"]) for hit in found]
+
+        assert {benchmark_id for benchmark_id, _ in hits("ssh")} == {"90002", "90003", "90004"}
+        # A copy stored the older way is searched as the text it loads as.
+        assert hits("auth-attempts", "--benchmark", "90003") == [("90003", "4.1.2")]
+        assert hits("drive mapping", "--profile", "Level 2") == [("90005", "18.10.42.3.3.3")]
+        assert hits("0.0.0.0/0") == [("90004", "4.1")]
+
     def test_diff_of_the_two_linux_versions_reports_each_kind_of_change(self, run):
         changes = _json(run("diff", "90003", "90002", "--format", "json"))["changes"]
 
