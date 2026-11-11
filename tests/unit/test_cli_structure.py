@@ -265,6 +265,7 @@ class TestLazyStartup:
             "catalog",
             "download",
             "export",
+            "find",
             "get",
             "info",
             "list",
@@ -337,6 +338,29 @@ class TestLazyStartup:
             "CatalogDatabase(load_settings().catalog_db_path).initialize_schema()\n"
             "from cis_bench.cli.app import cli\n"
             "res = CliRunner().invoke(cli, ['cache', 'status'])\n"
+            f"print(json.dumps({{'exit': res.exit_code, 'loaded': [m for m in {scraper_stack!r} if m in sys.modules]}}))",
+            env={"CIS_BENCH_HOME": str(tmp_path / "data"), "TMPDIR": str(tmp_path)},
+        )
+        assert result["exit"] == 0
+        assert result["loaded"] == []
+
+    def test_find_does_not_load_the_scraper_or_auth_stack(self, tmp_path):
+        scraper_stack = [
+            "browser_cookie3",
+            "requests",
+            "cis_bench.fetcher.auth",
+            "cis_bench.fetcher.workbench",
+            "cis_bench.catalog.scraper",
+            "cis_bench.catalog.downloader",
+        ]
+        result = self._run(
+            "import json, sys\n"
+            "from click.testing import CliRunner\n"
+            "from cis_bench.catalog.database import CatalogDatabase\n"
+            "from cis_bench.config import load_settings\n"
+            "CatalogDatabase(load_settings().catalog_db_path).initialize_schema()\n"
+            "from cis_bench.cli.app import cli\n"
+            "res = CliRunner().invoke(cli, ['find', 'ssh'])\n"
             f"print(json.dumps({{'exit': res.exit_code, 'loaded': [m for m in {scraper_stack!r} if m in sys.modules]}}))",
             env={"CIS_BENCH_HOME": str(tmp_path / "data"), "TMPDIR": str(tmp_path)},
         )
@@ -541,6 +565,7 @@ class TestEveryCommandLineTheCliPrintsCanBeRun:
         [
             ["auth", "status"],
             ["cache", "status"],
+            ["find", "ssh"],
             ["catalog", "stats"],
             ["catalog", "check-updates"],
             ["search", "ubuntu"],

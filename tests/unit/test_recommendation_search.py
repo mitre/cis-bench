@@ -296,3 +296,234 @@ class TestFilters:
 
         assert len(db.search_recommendations("run", limit=2)) == 2
         assert len(db.search_recommendations("run")) == 3
+
+
+# --------------------------------------------------------------------------------------------
+# cis-bench find: the index from the command line
+# --------------------------------------------------------------------------------------------
+
+_ROW_RE = r"^\S\s*(\d+)\s*\S\s*([\d.]+)\s*\S"
+
+
+@pytest.fixture
+def downloaded(data_dir):
+    """Downloaded benchmarks in this test's catalog.db: ``downloaded(benchmark, ...)``."""
+
+    def save(*benchmarks):
+        with closing(CatalogDatabase(data_dir / "catalog.db")) as database:
+            database.initialize_schema()
+            for benchmark in benchmarks:
+                _save(database, benchmark)
+
+    return save
+
+
+@pytest.fixture
+def no_network(monkeypatch):
+    """Any HTTP request fails the test: find reads only this machine."""
+    import requests
+
+    def refuse(*args, **kwargs):
+        raise AssertionError("an HTTP request was sent")
+
+    monkeypatch.setattr(requests.Session, "send", refuse)
+
+
+def _find(*args):
+    from click.testing import CliRunner
+
+    from cis_bench.cli.app import cli
+
+    return CliRunner().invoke(cli, ["find", *args])
+
+
+def _found_json(*args):
+    import json
+
+    result = _find(*args, "--output-format", "json")
+    assert result.exit_code == 0, result.output
+    return json.loads(result.stdout)
+
+
+def _table_rows(output):
+    """The (benchmark, ref) of each table row's first line."""
+    import re
+
+    return [match.groups() for match in re.finditer(_ROW_RE, output, re.MULTILINE)]
+
+
+class TestFind:
+    def test_find_lists_matching_recommendations_with_benchmark_and_ref(self, downloaded):
+        downloaded(
+            _benchmark("100", SSH, SELINUX), _benchmark("200", SSH), _benchmark("300", FIREWALL)
+        )
+
+        result = _find("ssh")
+
+        assert result.exit_code == 0, result.output
+        assert _table_rows(result.output) == [("100", "1.1.1"), ("200", "1.1.1")]
+        assert "Ensure SSH" in result.output
+        assert "Showing 2 of 2 results" in result.output
+
+    def test_json_carries_the_same_hits_with_their_titles_and_matched_fields(self, downloaded):
+        downloaded(_benchmark("100", SSH, SELINUX), _benchmark("300", FIREWALL))
+
+        assert _found_json("libselinux") == [
+            {
+                "benchmark_id": "100",
+                "ref": "2.1.1",
+                "title": "Ensure SELinux is installed",
+                "matched_fields": ["audit", "remediation"],
+            }
+        ]
+
+    def test_the_table_names_the_fields_a_word_was_found_in(self, downloaded):
+        downloaded(_benchmark("100", SELINUX))
+
+        result = _find("libselinux")
+
+        assert result.exit_code == 0, result.output
+        assert "audit, remediation" in result.output
+
+    def test_benchmark_narrows_the_results(self, downloaded):
+        downloaded(_benchmark("100", SSH), _benchmark("200", SSH))
+
+        assert [r["benchmark_id"] for r in _found_json("ssh", "--benchmark", "200")] == ["200"]
+
+    def test_profile_narrows_the_results(self, downloaded):
+        downloaded(_benchmark("100", SSH, SELINUX))
+
+        assert [r["ref"] for r in _found_json("run", "--profile", "Level 2")] == ["2.1.1"]
+
+    def test_limit_caps_the_results_and_says_more_were_found(self, downloaded):
+        downloaded(_benchmark("100", SSH, SELINUX, FIREWALL))
+
+        result = _find("run", "--limit", "2")
+
+        assert result.exit_code == 0, result.output
+        assert len(_table_rows(result.output)) == 2
+        assert "Showing 2 of 3 results; use --limit to see more" in result.output
+        assert len(_found_json("run", "--limit", "2")) == 2
+
+    def test_the_search_limit_setting_is_the_default_limit(self, downloaded, monkeypatch):
+        downloaded(_benchmark("100", SSH, SELINUX, FIREWALL))
+        monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "1")
+
+        assert len(_found_json("run")) == 1
+
+    def test_no_hits_says_so_and_exits_zero(self, downloaded):
+        downloaded(_benchmark("100", SSH))
+
+        result = _find("kerberos")
+
+        assert result.exit_code == 0, result.output
+        assert "No downloaded recommendation matches kerberos" in result.output
+        assert "--benchmark" not in result.output
+        assert _found_json("kerberos") == []
+
+    def test_no_hits_under_a_filter_suggests_removing_it(self, downloaded):
+        downloaded(_benchmark("100", SSH))
+
+        result = _find("ssh", "--profile", "Level 2")
+
+        assert result.exit_code == 0, result.output
+        assert "No downloaded recommendation matches ssh" in result.output
+        assert "without --benchmark or --profile" in result.output
+
+    def test_a_query_with_no_words_finds_nothing(self, downloaded):
+        downloaded(_benchmark("100", SSH))
+
+        result = _find("...")
+
+        assert result.exit_code == 0, result.output
+        assert "No downloaded recommendation matches ..." in result.output
+
+    def test_nothing_downloaded_points_at_download_and_creates_no_catalog(self, data_dir):
+        result = _find("ssh")
+        structured = _find("ssh", "--output-format", "json")
+
+        assert result.exit_code == 0, result.output
+        assert "No benchmarks are downloaded" in result.output
+        assert "cis-bench download <ID>" in result.output
+        assert structured.exit_code == 0, structured.output
+        assert structured.stdout.strip() == "[]"
+        assert "cis-bench download <ID>" in structured.stderr
+        assert not (data_dir / "catalog.db").exists()
+
+    def test_a_catalog_with_no_downloads_points_at_download(self, downloaded):
+        downloaded()
+
+        result = _find("ssh")
+
+        assert result.exit_code == 0, result.output
+        assert "No benchmarks are downloaded" in result.output
+
+    def test_a_benchmark_that_is_not_downloaded_is_named(self, downloaded):
+        downloaded(_benchmark("100", SSH))
+
+        result = _find("ssh", "--benchmark", "999")
+
+        assert result.exit_code == 0, result.output
+        assert "Benchmark 999 is not downloaded" in result.output
+        assert "cis-bench download 999" in result.output
+
+    @pytest.mark.parametrize(
+        ("query", "expected"),
+        [
+            ("[sshd_config]", ["1.1.1"]),
+            ("[/opt]", []),
+            ("22.04", ["1.1.1"]),
+            ("red-hat", ["2.1.1"]),
+            ("AND", ["2.1.1"]),
+            ("NEAR(", []),
+            ('"unbalanced', []),
+        ],
+        ids=["brackets", "a closing markup tag", "dots", "hyphens", "a keyword", "NEAR", "quote"],
+    )
+    def test_punctuation_and_keywords_are_search_words_in_the_table_and_in_json(
+        self, downloaded, query, expected
+    ):
+        downloaded(_benchmark("100", SSH, SELINUX, FIREWALL))
+
+        result = _find(query)
+
+        assert result.exit_code == 0, result.output
+        assert [ref for _, ref in _table_rows(result.output)] == expected
+        if not expected:
+            assert f"No downloaded recommendation matches {query}" in result.output
+        assert [r["ref"] for r in _found_json(query)] == expected
+
+    def test_text_from_the_benchmark_is_printed_as_written(self, downloaded):
+        marked = _recommendation(
+            "8.1.1",
+            "Ensure [bold]sshd[/bold] runs as [sshd]",
+            audit="Run: ps -o user= -C sshd",
+        )
+        downloaded(_benchmark("100", marked))
+
+        result = _find("sshd")
+
+        assert result.exit_code == 0, result.output
+        assert "[bold]sshd[/bold]" in result.output
+
+    def test_find_works_offline_without_contacting_workbench(self, downloaded, no_network):
+        from click.testing import CliRunner
+
+        from cis_bench.cli.app import cli
+
+        downloaded(_benchmark("100", SSH))
+
+        result = CliRunner().invoke(cli, ["--offline", "find", "ssh"])
+
+        assert result.exit_code == 0, result.output
+        assert _table_rows(result.output) == [("100", "1.1.1")]
+
+    def test_a_catalog_that_cannot_be_read_is_an_error_not_a_traceback(self, data_dir):
+        (data_dir / "catalog.db").write_bytes(b"this is not a database" * 100)
+
+        result = _find("ssh")
+
+        assert result.exit_code == 1
+        assert "cannot be read" in result.output
+        assert "Traceback" not in result.output
+        assert result.exception is None or isinstance(result.exception, SystemExit)
