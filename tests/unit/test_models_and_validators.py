@@ -1291,3 +1291,25 @@ class TestArtifactTitlesAreMarkdown:
             "Run `<cmd>`",
             "Ensure <user> owns the file",
         )
+
+
+class TestRecommendationCountMismatchCountsTheItems:
+    @pytest.mark.parametrize(("kept", "noun"), [(1, "item"), (2, "items")])
+    def test_the_message_agrees_with_the_number(self, sample_recommendation_complete, kept, noun):
+        from datetime import UTC, datetime
+
+        from pydantic import ValidationError
+
+        from cis_bench.models.benchmark import Benchmark
+
+        with pytest.raises(ValidationError, match=rf"recommendations list has {kept} {noun}(?!s)"):
+            Benchmark(
+                title="Synthetic",
+                benchmark_id="90001",
+                url="https://workbench.cisecurity.org/benchmarks/90001",
+                version="v1.0.0",
+                downloaded_at=datetime(2026, 11, 1, tzinfo=UTC),
+                scraper_version="v1_2025_10",
+                total_recommendations=5,
+                recommendations=[sample_recommendation_complete] * kept,
+            )

@@ -30,6 +30,7 @@ import string
 import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass, field, fields
+from gettext import ngettext
 from pathlib import Path
 from types import ModuleType, UnionType
 from typing import Annotated, Any, Final, Union, get_args, get_origin
@@ -163,9 +164,13 @@ def dotted_number_path(value: Any, *labels: str) -> str:
     text = "" if value is None else str(value).strip()
     parts = text.split(".") if _DOTTED_NUMBER.fullmatch(text) else []
     if not parts or len(parts) > len(labels) + 1:
+        levels = len(labels) + 1
         raise ValueError(
-            f"{value!r} is not a dotted number of at most {len(labels) + 1} levels "
-            "(such as 13 or 8.5)"
+            ngettext(
+                "{value} is not a dotted number of at most {levels} level (such as 13 or 8.5)",
+                "{value} is not a dotted number of at most {levels} levels (such as 13 or 8.5)",
+                levels,
+            ).format(value=repr(value), levels=levels)
         )
     sublevels = zip(labels[: len(parts) - 1], parts[1:], strict=True)
     return parts[0] + "".join(f"/{label}/{part}" for label, part in sublevels)

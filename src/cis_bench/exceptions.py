@@ -1,5 +1,7 @@
 """Custom exceptions for CIS Benchmark CLI."""
 
+from gettext import ngettext
+
 
 class CISBenchError(Exception):
     """Base exception for CIS Benchmark CLI."""
@@ -56,7 +58,13 @@ class FetchError(ScraperError):
     """
 
     def __init__(self, url: str, attempts: int, message: str) -> None:
-        super().__init__(f"{url}: {message} after {attempts} attempts")
+        super().__init__(
+            ngettext(
+                "{url}: {message} after {attempts} attempt",
+                "{url}: {message} after {attempts} attempts",
+                attempts,
+            ).format(url=url, message=message, attempts=attempts)
+        )
         self.url = url
         self.attempts = attempts
 

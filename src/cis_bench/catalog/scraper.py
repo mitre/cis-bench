@@ -4,9 +4,19 @@ Scrapes benchmark listing pages and populates the catalog database.
 """
 
 import logging
+from gettext import ngettext
 
 import requests
-from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeRemainingColumn
+from rich.progress import (
+    BarColumn,
+    Progress,
+    ProgressColumn,
+    SpinnerColumn,
+    Task,
+    TextColumn,
+    TimeRemainingColumn,
+)
+from rich.text import Text
 from sqlalchemy.exc import IntegrityError, OperationalError
 
 from cis_bench.catalog.database import CatalogDatabase
@@ -19,6 +29,38 @@ from cis_bench.utils.parallel import iter_batches
 from cis_bench.utils.workbench_urls import catalog_listing_url, resolve_benchmark_reference
 
 logger = logging.getLogger(__name__)
+
+
+class PagesColumn(ProgressColumn):
+    """The pages scraped so far out of the total, such as "(1/1 page)" or "(2/9 pages)"."""
+
+    def render(self, task: Task) -> Text:
+        total = int(task.total or 0)
+        return Text(
+            ngettext("({completed}/{total} page)", "({completed}/{total} pages)", total).format(
+                completed=int(task.completed), total=total
+            )
+        )
+
+
+def progress_description(found: int) -> str:
+    """The scrape's progress line, such as "Scraping catalog | 1 benchmark found"."""
+    return ngettext(
+        "Scraping catalog | {count} benchmark found",
+        "Scraping catalog | {count} benchmarks found",
+        found,
+    ).format(count=found)
+
+
+def _all_failed_validation(count: int, page_num: int) -> ValueError:
+    """The error for a page none of whose benchmarks passed validation."""
+    return ValueError(
+        ngettext(
+            "The {count} benchmark on page {page} failed validation",
+            "All {count} benchmarks on page {page} failed validation",
+            count,
+        ).format(count=count, page=page_num)
+    )
 
 
 def _listed_ids(benchmarks: list[dict]) -> set[str]:
@@ -123,12 +165,10 @@ class CatalogScraper:
             TextColumn("[progress.description]{task.description}"),
             BarColumn(),
             TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-            TextColumn("({task.completed}/{task.total} pages)"),
+            PagesColumn(),
             TimeRemainingColumn(),
         ) as progress:
-            task = progress.add_task(
-                f"Scraping catalog | {total_benchmarks} benchmarks found", total=total_pages
-            )
+            task = progress.add_task(progress_description(total_benchmarks), total=total_pages)
             progress.update(task, advance=1)  # First page done
 
             # Scrape remaining pages in batches; each batch is saved here, on the calling
@@ -170,9 +210,7 @@ class CatalogScraper:
                         continue
                     total_benchmarks += inserted_count
                     logger.debug(f"Page {page_num}: {inserted_count} benchmarks")
-                progress.update(
-                    task, description=f"Scraping catalog | {total_benchmarks} benchmarks found"
-                )
+                progress.update(task, description=progress_description(total_benchmarks))
 
                 # Stop if >10% of pages have failed, including page 1
                 pages_processed += batch.total
@@ -183,8 +221,13 @@ class CatalogScraper:
                     )
                     progress.stop()
                     raise Exception(
-                        f"Scraping aborted: {len(failed_pages)} pages failed. "
-                        f"This may indicate authentication issues or WorkBench problems."
+                        ngettext(
+                            "Scraping aborted: {count} page failed. This may indicate "
+                            "authentication issues or WorkBench problems.",
+                            "Scraping aborted: {count} pages failed. This may indicate "
+                            "authentication issues or WorkBench problems.",
+                            len(failed_pages),
+                        ).format(count=len(failed_pages))
                     )
 
         # Only a complete refresh can say a benchmark is gone: every page counted and
@@ -275,7 +318,7 @@ class CatalogScraper:
                 unchanged_count += 1
 
         if benchmarks and (new_count + updated_count + unchanged_count) == 0:
-            raise ValueError(f"All {len(benchmarks)} benchmarks on page 1 failed validation")
+            raise _all_failed_validation(len(benchmarks), 1)
 
         if new_count > 0 or updated_count > 0:
             self.db.mark_latest_versions()
@@ -338,9 +381,7 @@ class CatalogScraper:
             1 for bench in benchmarks if self._try_insert_benchmark(bench, page_num)
         )
         if inserted_count == 0:
-            raise ValueError(
-                f"All {len(benchmarks)} benchmarks on page {page_num} failed validation"
-            )
+            raise _all_failed_validation(len(benchmarks), page_num)
         return inserted_count
 
     def refresh_downloaded_pages(self) -> int:
