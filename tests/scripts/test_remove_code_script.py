@@ -4,16 +4,21 @@ These tests are for project development utilities, not the cis-bench package.
 Run with: pytest tests/scripts (the plain test run leaves this folder out)
 """
 
-import sys
+import importlib.util
 from pathlib import Path
 
+import libcst as cst
 import pytest
 
-# Add scripts to path for import
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "scripts"))
+SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "remove_code.py"
 
-import libcst as cst  # noqa: E402
-from remove_code import CodeLister, CodeRemover, remove_code  # noqa: E402
+_spec = importlib.util.spec_from_file_location("remove_code", SCRIPT)
+assert _spec is not None and _spec.loader is not None
+_script = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_script)
+CodeLister = _script.CodeLister
+CodeRemover = _script.CodeRemover
+remove_code = _script.remove_code
 
 
 class TestCodeLister:

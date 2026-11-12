@@ -75,6 +75,7 @@ pipx install cis-bench
 **Cause:** Not logged into CIS WorkBench in browser.
 
 **Solution:**
+
 1. Open browser
 2. Go to https://workbench.cisecurity.org
 3. Log in

@@ -252,6 +252,7 @@ cis-bench export benchmark.json --format pdf
 See: [How to Add XCCDF Style](how-to-add-xccdf-style.md)
 
 **Summary:**
+
 1. Create `{style}_style.yaml` in configs/
 2. Define field mappings
 3. No code changes needed!

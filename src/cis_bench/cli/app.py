@@ -28,6 +28,7 @@ LAZY_SUBCOMMANDS = {
     "diff": "cis_bench.cli.commands.diff.diff_cmd",
     "download": "cis_bench.cli.commands.download.download",
     "export": "cis_bench.cli.commands.export.export_cmd",
+    "find": "cis_bench.cli.commands.find.find_cmd",
     "get": "cis_bench.cli.commands.get.get_cmd",
     "info": "cis_bench.cli.commands.info.info",
     "list": "cis_bench.cli.commands.list_cmd.list_benchmarks",

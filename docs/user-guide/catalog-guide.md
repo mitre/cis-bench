@@ -159,6 +159,51 @@ cis-bench search "aws" --output-format yaml
 
 ---
 
+## Searching Inside Downloaded Benchmarks
+
+`search` finds benchmarks in the catalog by title, platform and community. `find` searches the recommendations of the benchmarks you have downloaded: their titles, descriptions, rationales, audits and remediations. Each benchmark is indexed when it is downloaded, so `find` needs no refresh and works offline. A benchmark that is only in the catalog is not searched until you download it.
+
+Every word of the query must be found as the start of a word, and punctuation is part of the search, not syntax. The output below comes from a data folder holding the synthetic benchmarks the tests use (IDs 90001 to 90005).
+
+One benchmark's recommendations:
+
+```console
+$ cis-bench find ssh --benchmark 90003
+                                    Recommendations matching ssh
+┏━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Benchmark ┃ Ref   ┃ Title                                ┃ Found in                              ┃
+┡━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ 90003     │ 4.1.1 │ Limit who can change the SSH server  │ title, description, audit,            │
+│           │       │ configuration file                   │ remediation                           │
+│ 90003     │ 4.1.4 │ Turn off graphical session           │ title, audit, remediation             │
+│           │       │ forwarding over SSH                  │                                       │
+│ 90003     │ 4.1.2 │ Allow no more than four sign-in      │ title, audit, remediation             │
+│           │       │ attempts per SSH connection          │                                       │
+│ 90003     │ 4.1.3 │ Show a warning notice before SSH     │ title, audit, remediation             │
+│           │       │ sign-in                              │                                       │
+└───────────┴───────┴──────────────────────────────────────┴───────────────────────────────────────┘
+
+Showing 4 of 4 results
+```
+
+An address with dots and a slash, run in offline mode:
+
+```console
+$ cis-bench --offline find 0.0.0.0/0
+                            Recommendations matching 0.0.0.0/0
+┏━━━━━━━━━━━┳━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Benchmark ┃ Ref ┃ Title                                     ┃ Found in                 ┃
+┡━━━━━━━━━━━╇━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ 90004     │ 4.1 │ Close SSH (port 22) to the whole internet │ description, remediation │
+└───────────┴─────┴───────────────────────────────────────────┴──────────────────────────┘
+
+Showing 1 of 1 result
+```
+
+`--profile`, `--limit` and the json and yaml formats are in the [find reference](commands-reference.md#cis-bench-find).
+
+---
+
 ## Catalog Information
 
 ### Platform List
@@ -350,6 +395,7 @@ cis-bench catalog refresh
 ### Search Returns No Results
 
 **Check:**
+
 1. Is query too specific? Try broader terms
 2. Use `--status Archived` to see archived benchmarks
 3. Remove `--latest` to see all versions
@@ -439,3 +485,4 @@ cis-bench catalog refresh
 - [Commands Reference](commands-reference.md) - All commands
 - [Configuration](configuration.md) - Environment settings
 - [Search Command](commands-reference.md#cis-bench-search) - Detailed search docs
+- [Find Command](commands-reference.md#cis-bench-find) - Search inside downloaded benchmarks

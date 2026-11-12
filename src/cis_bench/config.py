@@ -305,13 +305,13 @@ class Settings(BaseSettings):
     search_limit: int = Field(
         default=100,
         ge=1,
-        description="Default number of results for search, catalog search, catalog list and get",
+        description="Default number of results for search, find, catalog search, catalog list and get",
         json_schema_extra={"accepted": _POSITIVE_INT},
     )
     table_title_width: int = Field(
         default=90,
         ge=1,
-        description="Widest the Title column of the search and get tables may grow, in characters",
+        description="Widest the Title column of the search, find and get tables may grow, in characters",
         json_schema_extra={"accepted": _POSITIVE_INT},
     )
     requests_per_second: float = Field(

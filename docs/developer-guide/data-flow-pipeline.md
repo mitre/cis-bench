@@ -70,6 +70,7 @@ return {
 
 **Why Strategy Pattern?**
 CIS WorkBench updates HTML structure periodically. When this happens:
+
 1. Create new strategy class (e.g., `v2_january2026.py`)
 2. Detector auto-selects based on HTML structure
 3. Old benchmarks still work with old strategy
@@ -1013,6 +1014,7 @@ cis-bench --verbose export 23598 --format xccdf --style cis
 ```
 
 **Logs show:**
+
 1. Loading configuration
 2. Applying field mappings
 3. Transformation applied to each field

@@ -186,6 +186,7 @@ benchmark:
 ```
 
 **How It Works:**
+
 1. With the benchmark's profile definitions (read from its WorkBench page on download): one Profile per definition, selecting the rules that name it or any ancestor (`parent`); a definition that selects no rule is left out, with a warning naming it
 2. Without them (a copy saved earlier): one Profile per profile name the rules use, selecting the rules that name it or a profile it `includes`; a mapping for that name gives its title, description and `includes`
 3. Each Profile id comes from `id_template`; title and description from the definition (description through `description_transform`) or the mapping; two profiles that get one id, or two mappings for one name, stop the export

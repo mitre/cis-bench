@@ -810,6 +810,7 @@ install cramfs /bin/true
 ```
 
 **Requirements:**
+
 1. Element name: `fixtext`
 2. Attribute: `fixref` with format "F-{ref_normalized}"
 3. Content: the stored remediation text (Markdown, written as it is)
@@ -1259,6 +1260,7 @@ as it is, there is no HTML conversion to name.
 **Symptom:** Field doesn't appear in XCCDF
 
 **Check:**
+
 1. Field exists in Pydantic model?
 2. Field mapping in config?
 3. Optional field but value is None?

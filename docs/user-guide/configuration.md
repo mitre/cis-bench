@@ -236,6 +236,7 @@ Defined in: `src/cis_bench/exporters/configs/styles/{style}.yaml`
 - `cis` - CIS native format
 
 **Adding new style:**
+
 1. Create `{name}.yaml` in `src/cis_bench/exporters/configs/styles/`
 2. Use: `--format xccdf --style {name}`
 

@@ -197,6 +197,7 @@ xmlns:dc="http://purl.org/dc/elements/1.1/">
 ### Compatibility Testing
 
 **Tools to test against:**
+
 1. **cis-bench validate**: XCCDF schema validation with the shipped NIST schemas
 2. **OpenSCAP**: Validate XCCDF 1.2 schema
 3. **CIS-CAT**: Import and assess (if available)
@@ -385,6 +386,7 @@ exporter.export(benchmark, output_path)
 **What we built:** Five-layer validation pipeline.
 
 **Validation layers:**
+
 1. **HTML parsing** - Strategy validates structure
 2. **Pydantic models** - Field validation and type checking
 3. **xsdata models** - XCCDF structure compliance

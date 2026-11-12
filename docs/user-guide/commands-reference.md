@@ -52,7 +52,7 @@ Error: cis-bench get needs CIS WorkBench to download benchmark 23598, and offlin
 
 | Command | Offline |
 | --- | --- |
-| `search`, `export`, `info`, `list`, `validate`, `remove`, `config`, `cache status`, `auth logout`, `catalog search`, `catalog list`, `catalog info`, `catalog platforms`, `catalog stats` | Work as usual (they never contact WorkBench) |
+| `search`, `find`, `export`, `info`, `list`, `validate`, `remove`, `config`, `cache status`, `auth logout`, `catalog search`, `catalog list`, `catalog info`, `catalog platforms`, `catalog stats` | Work as usual (they never contact WorkBench) |
 | `get` | Exports a downloaded benchmark; fails for one that is not downloaded |
 | `diff` | Compares files and downloaded benchmarks; fails for an ID that is not downloaded |
 | `download` | Reports each downloaded benchmark as already cached; fails each one that is not downloaded and exits 1 |
@@ -99,6 +99,7 @@ cis-bench auth login --browser chrome --no-verify-ssl
 ```
 
 **What it does:**
+
 1. Optionally opens browser to CIS WorkBench
 2. Extracts session cookies from your browser (or loads from file)
 3. Validates the session
@@ -256,6 +257,126 @@ cis-bench search
 
 ---
 
+### `cis-bench find`
+
+Search the recommendations of the downloaded benchmarks. `search` looks for benchmarks in the catalog; `find` looks inside the benchmarks you have downloaded, at the text of each recommendation. Everything is read from `catalog.db`; nothing is sent to CIS WorkBench, so it works in [offline mode](#offline-mode).
+
+**Syntax:**
+```bash
+cis-bench find QUERY [OPTIONS]
+```
+
+**Arguments:**
+
+- `QUERY` - Search words (required)
+
+**Options:**
+
+- `--benchmark ID` - Search only this downloaded benchmark
+- `--profile` - Keep recommendations of a profile whose name holds these words side by side (`"Level 2"` keeps `Level 2 - Server` and `Level 2 - Workstation`)
+- `--limit` - Maximum results to show (default: `CIS_BENCH_SEARCH_LIMIT`, 100). The count under the table is always the full number of matches: `Showing 2 of 8 results; use --limit to see more`
+- `-o, --output-format` - Format (table|json|yaml) - default: table
+
+**How a query matches:**
+
+- Every word must be found, as the start of a word, in the recommendation's title, description, rationale, audit or remediation (`opt` finds `options`). The words need not be next to each other or in the same field.
+- Punctuation and the words `AND`, `OR` and `NOT` are search words, not operators: `[/opt]` searches for `opt`, `AND` for the word "and".
+- Results come best match first. **Found in** names the fields where a word of the query was found.
+
+**Examples:**
+
+The output below comes from a data folder holding the synthetic benchmarks the tests use (IDs 90001 to 90005); your benchmarks, refs and counts will differ.
+
+```console
+$ cis-bench find ssh --limit 2
+                                    Recommendations matching ssh
+┏━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Benchmark ┃ Ref   ┃ Title                                ┃ Found in                              ┃
+┡━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ 90002     │ 4.1.1 │ Limit who can change the SSH server  │ title, description, audit,            │
+│           │       │ configuration file                   │ remediation                           │
+│ 90003     │ 4.1.1 │ Limit who can change the SSH server  │ title, description, audit,            │
+│           │       │ configuration file                   │ remediation                           │
+└───────────┴───────┴──────────────────────────────────────┴───────────────────────────────────────┘
+
+Showing 2 of 8 results; use --limit to see more
+```
+
+One profile's recommendations:
+
+```console
+$ cis-bench find "drive mapping" --profile "Level 2"
+                               Recommendations matching drive mapping
+┏━━━━━━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Benchmark ┃ Ref            ┃ Title                            ┃ Found in                         ┃
+┡━━━━━━━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ 90005     │ 18.10.42.3.3.3 │ Ensure 'Remote session drive     │ title, description, rationale,   │
+│           │                │ mapping' is set to 'Blocked'     │ remediation                      │
+└───────────┴────────────────┴──────────────────────────────────┴──────────────────────────────────┘
+
+Showing 1 of 1 result
+```
+
+JSON for scripts:
+
+```console
+$ cis-bench find auth-attempts --output-format json
+[
+  {
+    "benchmark_id": "90003",
+    "ref": "4.1.2",
+    "title": "Allow no more than four sign-in attempts per SSH connection",
+    "matched_fields": [
+      "title",
+      "description",
+      "audit",
+      "remediation"
+    ]
+  },
+  {
+    "benchmark_id": "90002",
+    "ref": "4.1.2",
+    "title": "Allow no more than four sign-in attempts per SSH connection",
+    "matched_fields": [
+      "title",
+      "description",
+      "audit",
+      "remediation"
+    ]
+  }
+]
+```
+
+One benchmark, as YAML:
+
+```console
+$ cis-bench find auth-attempts --benchmark 90003 --output-format yaml
+- benchmark_id: '90003'
+  ref: 4.1.2
+  title: Allow no more than four sign-in attempts per SSH connection
+  matched_fields:
+  - title
+  - description
+  - audit
+  - remediation
+```
+
+**When nothing is found** it says why and exits 0:
+
+```console
+$ cis-bench find kerberos
+No downloaded recommendation matches kerberos
+
+$ cis-bench find ssh --benchmark 23598
+Benchmark 23598 is not downloaded.
+Download it with:
+  cis-bench download 23598
+```
+
+With nothing downloaded at all, it says `No benchmarks are downloaded, so there is nothing to search.` and points at `cis-bench download`; it does not create `catalog.db`. In a table, a search with `--benchmark` (a downloaded one) or `--profile` that finds nothing also suggests trying again without them. With `json` or `yaml`, stdout carries only the data (`[]` when nothing is found); the notes that nothing is downloaded, or that the `--benchmark` one is not, go to stderr. A `catalog.db` that exists but cannot be read (corrupt, locked) is an error naming the file (exit code 1).
+
+---
+
 ### `cis-bench get`
 
 Unified command: search + download + export in one step.
@@ -308,6 +429,7 @@ cis-bench get "oracle cloud" --format json --non-interactive
 ```
 
 **What it does:**
+
 1. A catalog ID selects that benchmark. Otherwise searches the catalog among Published benchmarks: the latest release of each, plus any release the query names by its version (`kubernetes v2.0.1`)
 2. If single match: selects it automatically
 3. If multiple matches: shows a menu, best match first; with `--non-interactive` (or no usable terminal) takes the best match and prints how many others matched and the `search` command that lists them
@@ -375,6 +497,7 @@ cis-bench download --file urls.txt
 ```
 
 **What it does:**
+
 1. Checks if already cached (shows message if yes, unless --force)
 2. Uses saved session from `cis-bench auth login`
 3. Downloads benchmark from WorkBench with progress bar (see "How recommendations are fetched" below)
@@ -731,6 +854,7 @@ cis-bench catalog refresh --rate-limit 1.0
 ```
 
 **What it does:**
+
 1. Authenticates with WorkBench
 2. Scrapes catalog pages in parallel (`CIS_BENCH_BATCH_SIZE` pages per batch, `CIS_BENCH_MAX_CONCURRENT_REQUESTS` at a time, at most `CIS_BENCH_REQUESTS_PER_SECOND` requests per second)
 3. Detects the page count from page 1 (about 80 pages)
