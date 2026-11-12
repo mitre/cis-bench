@@ -3,6 +3,7 @@
 import logging
 import sys
 from contextlib import ExitStack, closing
+from gettext import ngettext
 from typing import TYPE_CHECKING
 
 import click
@@ -309,8 +310,9 @@ def _best_match(results: list[dict], total: int, query: str) -> dict:
         f"[green]✓[/green] Chose: {escape(str(selected['title']))} "
         f"{escape(str(selected.get('version', '')))}"
     )
-    console.print(
-        f"  {others} other benchmark{'s' if others != 1 else ''} matched. To see them all:"
-    )
+    matched = ngettext(
+        "{count} other benchmark matched.", "{count} other benchmarks matched.", others
+    ).format(count=others)
+    console.print(f"  {matched} To see them all:")
     console.print(f'    cis-bench search "{escape(query)}"\n')
     return selected

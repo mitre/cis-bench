@@ -1,6 +1,7 @@
 """Validate command: check XCCDF files against the schemas shipped with cis-bench."""
 
 import sys
+from gettext import ngettext
 
 import click
 from rich.console import Console
@@ -52,7 +53,7 @@ def validate_cmd(files):
         count = len(result.errors)
         error_console.print(
             f"[red]✗[/red] {escape(file)}: invalid XCCDF {result.version} "
-            f"({count} error{'' if count == 1 else 's'})",
+            + ngettext("({count} error)", "({count} errors)", count).format(count=count),
             soft_wrap=True,
         )
         for message in result.errors:

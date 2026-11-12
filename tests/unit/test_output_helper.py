@@ -332,3 +332,21 @@ class TestDisplayTime:
             display_time(datetime(2026, 11, 6, 20, 5, 58))
             == "2026-11-06 20:05:58 (zone not recorded)"
         )
+
+
+class TestShowingLine:
+    """The count line under a limited list; its noun agrees with the total."""
+
+    @pytest.mark.parametrize(
+        ("shown", "total", "expected"),
+        [
+            (1, 1, "Showing 1 of 1 result"),
+            (0, 0, "Showing 0 of 0 results"),
+            (5, 5, "Showing 5 of 5 results"),
+            (2, 5, "Showing 2 of 5 results; use --limit to see more"),
+        ],
+    )
+    def test_the_noun_agrees_with_the_total(self, shown, total, expected):
+        from cis_bench.cli.helpers.output import showing_line
+
+        assert showing_line(shown, total) == expected

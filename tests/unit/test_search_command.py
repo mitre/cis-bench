@@ -80,12 +80,35 @@ class TestSearchCommand:
                 result = runner.invoke(cli, ["search", "linux"])
 
                 assert result.exit_code == 0
-                assert "Found 2 benchmark(s)" in result.output
+                assert "Found 2 benchmarks" in result.output
                 # Check for titles in table (IDs might not be in captured text)
                 assert "AlmaLinux" in result.output
                 assert "Ubuntu" in result.output
+
                 # Verify search was called correctly
                 assert mock_search.search.called
+
+    def test_one_result_is_counted_in_the_singular(self, runner, tmp_path, monkeypatch):
+        catalog_path = tmp_path / "catalog.db"
+        catalog_path.touch()
+        monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
+
+        with (
+            patch("cis_bench.catalog.database.CatalogDatabase"),
+            patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class,
+        ):
+            mock_search_class.return_value.search.return_value = [
+                {
+                    "benchmark_id": "23598",
+                    "title": "CIS AlmaLinux OS 8 Benchmark",
+                    "version": "v4.0.0",
+                    "status": "Published",
+                },
+            ]
+            result = runner.invoke(cli, ["search", "almalinux"])
+
+        assert result.exit_code == 0, result.output
+        assert "Found 1 benchmark\n" in result.output
 
     def test_search_with_filters(self, runner, tmp_path, monkeypatch):
         """Search respects platform, status, and latest filters."""

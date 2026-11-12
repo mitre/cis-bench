@@ -1525,6 +1525,23 @@ class TestCatalogCheckUpdatesCommand:
         mock_auth.assert_not_called()
         mock_scraper_cls.assert_not_called()
 
+    @pytest.mark.parametrize(
+        ("refreshed", "expected"),
+        [(1, "Checked 1 downloaded benchmark\n"), (2, "Checked 2 downloaded benchmarks\n")],
+    )
+    @patch("cis_bench.cli.commands.catalog.get_catalog_db")
+    def test_check_updates_counts_the_benchmarks_it_checked(
+        self, mock_get_db, runner, mock_db, auth_manager_class, refreshed, expected
+    ):
+        mock_db.check_updates_available.return_value = []
+        mock_get_db.return_value = mock_db
+        with patch("cis_bench.catalog.scraper.CatalogScraper") as mock_scraper_cls:
+            mock_scraper_cls.return_value.refresh_downloaded_pages.return_value = refreshed
+            result = runner.invoke(cli, ["catalog", "check-updates"])
+
+        assert result.exit_code == 0, result.output
+        assert expected in result.output
+
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     def test_check_updates_refreshes_dates_then_lists_version_and_date_reasons(
         self, mock_get_db, runner, monkeypatch, auth_manager_class, new_york_clock

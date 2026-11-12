@@ -6,6 +6,7 @@ import logging
 import math
 from contextlib import closing
 from datetime import datetime
+from gettext import ngettext
 from typing import TYPE_CHECKING
 
 import click
@@ -636,7 +637,12 @@ def check_updates(offline):
                 session = workbench_session(settings, needs="read publication dates")
                 console.print("[cyan]Checking WorkBench publication dates...[/cyan]")
                 refreshed = catalog_scraper(settings, db, session).refresh_downloaded_pages()
-                console.print(f"[green]✓[/green] Checked {refreshed} downloaded benchmark(s)\n")
+                checked = ngettext(
+                    "Checked {count} downloaded benchmark",
+                    "Checked {count} downloaded benchmarks",
+                    refreshed,
+                ).format(count=refreshed)
+                console.print(f"[green]✓[/green] {checked}\n")
 
             updates = db.check_updates_available()
 

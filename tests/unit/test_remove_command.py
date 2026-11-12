@@ -76,6 +76,18 @@ class TestRemoveCommand:
         assert result.exit_code == 0, result.output
         assert db.get_downloaded("23598") is None
 
+    @pytest.mark.parametrize(
+        ("references", "expected"),
+        [
+            (("23598",), "Remove 1 cached benchmark?"),
+            (("23598", "24000"), "Remove 2 cached benchmarks?"),
+        ],
+    )
+    def test_the_prompt_counts_the_benchmarks(self, run, references, expected):
+        result = run(*references, input="n\n")
+
+        assert expected in result.output
+
     def test_a_benchmark_that_is_not_downloaded_is_reported_and_fails_the_run(self, db, run):
         db.insert_benchmark(_catalog_row("25000", "CIS Rocky Linux 9 Benchmark"))
 
