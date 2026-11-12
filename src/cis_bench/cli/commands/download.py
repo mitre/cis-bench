@@ -7,6 +7,7 @@ import os
 import re
 import sys
 from contextlib import closing
+from gettext import ngettext
 from typing import TYPE_CHECKING
 
 import click
@@ -166,8 +167,17 @@ def download(
     scraper: WorkbenchScraper | None = None
 
     # Download benchmarks
-    logger.debug(f"Starting download of {len(targets)} benchmark(s)")
-    console.print(f"[bold]Downloading {len(targets)} benchmark(s)...[/bold]\n")
+    downloading = ngettext(
+        "Downloading {count} benchmark...", "Downloading {count} benchmarks...", len(targets)
+    ).format(count=len(targets))
+    logger.debug(
+        ngettext(
+            "Starting download of {count} benchmark",
+            "Starting download of {count} benchmarks",
+            len(targets),
+        ).format(count=len(targets))
+    )
+    console.print(f"[bold]{downloading}[/bold]\n")
 
     failed: list[str] = []
     for idx, (benchmark_id, url) in enumerate(targets, 1):
@@ -292,8 +302,12 @@ def download(
     logger.debug("Download command completed")
     if failed:
         console.print(
-            f"[bold red]Download finished with errors:[/bold red] {len(failed)} of "
-            f"{len(targets)} benchmark(s) failed ({', '.join(failed)})."
+            "[bold red]Download finished with errors:[/bold red] "
+            + ngettext(
+                "{failed} of {total} benchmark failed ({ids}).",
+                "{failed} of {total} benchmarks failed ({ids}).",
+                len(targets),
+            ).format(failed=len(failed), total=len(targets), ids=", ".join(failed))
         )
         sys.exit(1)
     console.print("[bold green]Download complete![/bold green]")

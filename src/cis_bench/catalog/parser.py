@@ -5,6 +5,7 @@ Extracts benchmark metadata from HTML catalog listing pages.
 
 import logging
 import re
+from gettext import ngettext
 
 from bs4 import BeautifulSoup
 
@@ -83,7 +84,13 @@ class WorkBenchCatalogParser:
                 logger.warning(f"Failed to parse row: {e}")
                 continue
 
-        logger.debug(f"Parsed {len(benchmarks)} benchmarks from catalog page")
+        logger.debug(
+            ngettext(
+                "Parsed {count} benchmark from catalog page",
+                "Parsed {count} benchmarks from catalog page",
+                len(benchmarks),
+            ).format(count=len(benchmarks))
+        )
         return benchmarks
 
     @staticmethod
@@ -265,8 +272,15 @@ class WorkBenchCatalogParser:
 
             if page_numbers:
                 # Last page number is total pages
-                result["total_pages"] = max(page_numbers)
-                logger.debug(f"Detected {result['total_pages']} pages from nav element")
+                total_pages = max(page_numbers)
+                result["total_pages"] = total_pages
+                logger.debug(
+                    ngettext(
+                        "Detected {count} page from nav element",
+                        "Detected {count} pages from nav element",
+                        total_pages,
+                    ).format(count=total_pages)
+                )
 
         # Fallback: Look for old format pagination
         if result["total_pages"] is None:

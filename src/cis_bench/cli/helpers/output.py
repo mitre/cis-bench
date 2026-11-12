@@ -7,6 +7,7 @@ import csv
 import json
 import sys
 from datetime import datetime
+from gettext import ngettext
 from io import StringIO
 from typing import Any
 
@@ -144,7 +145,9 @@ def benchmark_table(results: list[dict], *, title_width: int) -> Table:
 
 def showing_line(shown: int, total: int) -> str:
     """'Showing N of TOTAL results', with a hint when the limit cut the list short."""
-    line = f"Showing {shown} of {total} results"
+    line = ngettext(
+        "Showing {shown} of {total} result", "Showing {shown} of {total} results", total
+    ).format(shown=shown, total=total)
     return f"{line}; use --limit to see more" if shown < total else line
 
 

@@ -53,6 +53,28 @@ class TestValidateCommand:
         assert "line 3:" in result.output
         assert "bogus" in result.output
 
+    @pytest.mark.parametrize(
+        ("document", "expected"),
+        [
+            (_benchmark("<bogus/>"), "(1 error)"),
+            (
+                f'<Benchmark xmlns="{XCCDF_1_2}" id="xccdf_org.example_benchmark_t">\n'
+                "<status>nonsense</status>\n<bogus/>\n<version>1</version>\n</Benchmark>\n",
+                "(2 errors)",
+            ),
+        ],
+    )
+    def test_the_error_count_agrees_with_the_number_of_errors(
+        self, runner, tmp_path, document, expected
+    ):
+        path = tmp_path / "broken.xml"
+        path.write_text(document)
+
+        result = runner.invoke(cli, ["validate", str(path)])
+
+        assert result.exit_code == 2, result.output
+        assert expected in result.output
+
     def test_several_files_are_all_reported_and_one_invalid_file_fails_the_run(
         self, runner, valid_file, invalid_file
     ):

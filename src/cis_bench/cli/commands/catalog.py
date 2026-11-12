@@ -6,6 +6,7 @@ import logging
 import math
 from contextlib import closing
 from datetime import datetime
+from gettext import ngettext
 from typing import TYPE_CHECKING
 
 import click
@@ -136,8 +137,15 @@ def refresh(browser, max_pages, rate_limit):
             scraper = catalog_scraper(settings, db, session)
 
             # Scrape catalog
-            pages_msg = f"{max_pages} pages" if max_pages else "all pages"
-            console.print(f"[cyan]Scraping catalog ({pages_msg})...[/cyan]")
+            if max_pages:
+                scraping = ngettext(
+                    "[cyan]Scraping catalog ({count} page)...[/cyan]",
+                    "[cyan]Scraping catalog ({count} pages)...[/cyan]",
+                    max_pages,
+                ).format(count=max_pages)
+            else:
+                scraping = "[cyan]Scraping catalog (all pages)...[/cyan]"
+            console.print(scraping)
 
             stats = scraper.scrape_full_catalog(max_pages=max_pages)
 
@@ -295,7 +303,10 @@ def search(query, platform, status, latest, limit, output_format):
                 output_data(results, output_format, csv_fields=csv_fields)
 
             # Human-friendly display
-            console.print(f"\n[cyan]Found {len(results)} benchmarks:[/cyan]\n")
+            found = ngettext(
+                "Found {count} benchmark:", "Found {count} benchmarks:", len(results)
+            ).format(count=len(results))
+            console.print(f"\n[cyan]{found}[/cyan]\n")
 
             for r in results:
                 formatted = search_obj.format_result_for_display(r)
@@ -346,7 +357,10 @@ def list_cmd(platform, status, latest, limit):
                 console.print("[yellow]No benchmarks found.[/yellow]")
                 return
 
-            console.print(f"\n[cyan]{len(results)} benchmarks:[/cyan]\n")
+            listed = ngettext("{count} benchmark:", "{count} benchmarks:", len(results)).format(
+                count=len(results)
+            )
+            console.print(f"\n[cyan]{listed}[/cyan]\n")
 
             for r in results:
                 formatted = search_obj.format_result_for_display(r)
@@ -636,7 +650,12 @@ def check_updates(offline):
                 session = workbench_session(settings, needs="read publication dates")
                 console.print("[cyan]Checking WorkBench publication dates...[/cyan]")
                 refreshed = catalog_scraper(settings, db, session).refresh_downloaded_pages()
-                console.print(f"[green]✓[/green] Checked {refreshed} downloaded benchmark(s)\n")
+                checked = ngettext(
+                    "Checked {count} downloaded benchmark",
+                    "Checked {count} downloaded benchmarks",
+                    refreshed,
+                ).format(count=refreshed)
+                console.print(f"[green]✓[/green] {checked}\n")
 
             updates = db.check_updates_available()
 
@@ -644,7 +663,12 @@ def check_updates(offline):
                 console.print("[green]✓[/green] All downloaded benchmarks are up-to-date!")
                 return
 
-            console.print(f"\n[yellow]Updates available for {len(updates)} benchmarks:[/yellow]\n")
+            available = ngettext(
+                "Updates available for {count} benchmark:",
+                "Updates available for {count} benchmarks:",
+                len(updates),
+            ).format(count=len(updates))
+            console.print(f"\n[yellow]{available}[/yellow]\n")
 
             for u in updates:
                 console.print(f"  [{u['benchmark_id']}] {escape(str(u['title']))}")

@@ -2,6 +2,7 @@
 
 import sys
 from contextlib import closing
+from gettext import ngettext
 
 import click
 from rich.console import Console
@@ -74,9 +75,12 @@ def remove_cmd(references: tuple[str, ...], yes: bool) -> None:
 
         if to_remove:
             if not yes:
-                click.confirm(
-                    f"Remove {len(to_remove)} cached benchmark(s)?", default=False, abort=True
-                )
+                question = ngettext(
+                    "Remove {count} cached benchmark?",
+                    "Remove {count} cached benchmarks?",
+                    len(to_remove),
+                ).format(count=len(to_remove))
+                click.confirm(question, default=False, abort=True)
             for benchmark_id in to_remove:
                 db.delete_downloaded(benchmark_id)
                 console.print(f"[green]✓[/green] Removed {benchmark_id} from the local cache")

@@ -1162,3 +1162,96 @@ class TestARefreshLogsOnlyRunLevelLinesAtInfo:
         assert not [m for m in info if "schema" in m.lower() or "FTS5" in m]
         assert "Will scrape 3 pages (detected from pagination)" in info
         assert any(m.startswith("Scrape complete: ") for m in info)
+
+
+class TestScraperCountsAgreeWithTheNumber:
+    @pytest.mark.parametrize(("attempts", "noun"), [(1, "attempt"), (3, "attempts")])
+    def test_a_fetch_error_counts_its_attempts(self, attempts, noun):
+        from cis_bench.exceptions import FetchError
+
+        assert str(FetchError("https://x", attempts, "timed out")).endswith(
+            f"timed out after {attempts} {noun}"
+        )
+
+    @pytest.mark.parametrize(
+        ("completed", "total", "expected"), [(1, 1, "(1/1 page)"), (1, 3, "(1/3 pages)")]
+    )
+    def test_the_progress_column_counts_the_pages(self, completed, total, expected):
+        from types import SimpleNamespace
+
+        from cis_bench.catalog.scraper import PagesColumn
+
+        task = SimpleNamespace(completed=completed, total=total)
+        assert PagesColumn().render(task).plain == expected
+
+    @pytest.mark.parametrize(
+        ("found", "expected"),
+        [(1, "Scraping catalog | 1 benchmark found"), (2, "Scraping catalog | 2 benchmarks found")],
+    )
+    def test_the_progress_description_counts_the_benchmarks(self, found, expected):
+        from cis_bench.catalog.scraper import progress_description
+
+        assert progress_description(found) == expected
+
+    @pytest.mark.parametrize(
+        ("invalid", "expected"), [(1, "The 1 benchmark"), (2, "All 2 benchmarks")]
+    )
+    def test_a_page_whose_benchmarks_all_fail_validation_says_how_many(
+        self, temp_db, mock_session, invalid, expected
+    ):
+        scraper = CatalogScraper(
+            temp_db,
+            mock_session,
+            base_url=BASE,
+            timeout=TIMEOUT,
+            max_workers=WORKERS,
+            batch_size=BATCH,
+        )
+
+        with pytest.raises(ValueError, match=f"{expected} on page 4 failed validation"):
+            scraper._insert_page_benchmarks([{} for _ in range(invalid)], 4)
+
+    @pytest.mark.parametrize(
+        ("failing", "expected"), [(1, "1 page failed."), (2, "2 pages failed.")]
+    )
+    def test_an_aborted_scrape_counts_the_failed_pages(
+        self, temp_db, sample_html, stub_session, failing, expected
+    ):
+        def answer(url):
+            if url.endswith("?page=1"):
+                return sample_html
+            raise ConnectionError("unreachable")
+
+        session, _ = stub_session(answer)
+        scraper = CatalogScraper(
+            temp_db, session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
+
+        with pytest.raises(Exception, match=f"Scraping aborted: {expected}"):
+            scraper.scrape_full_catalog(max_pages=1 + failing)
+
+
+class TestFailureRateErrorCountsThePages:
+    def test_the_error_log_counts_the_processed_pages(
+        self, temp_db, sample_html, stub_session, caplog
+    ):
+        import logging
+
+        def answer(url):
+            if url.endswith("?page=1"):
+                return sample_html
+            raise ConnectionError("unreachable")
+
+        session, _ = stub_session(answer)
+        scraper = CatalogScraper(
+            temp_db, session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
+
+        with (
+            caplog.at_level(logging.ERROR, logger="cis_bench.catalog.scraper"),
+            pytest.raises(Exception, match="Scraping aborted"),
+        ):
+            scraper.scrape_full_catalog(max_pages=2)
+
+        rate = [r.getMessage() for r in caplog.records if r.getMessage().startswith("Failure rate")]
+        assert rate == ["Failure rate too high: 1/2 pages failed (50.0%)"]

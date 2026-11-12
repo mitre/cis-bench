@@ -179,7 +179,8 @@ class TestDownloadDatabaseCaching:
         assert "database is locked [/x]" in flat
         assert "INSERT" not in result.output
         assert "Cached in database" not in result.output
-        assert "1 of 1 benchmark(s) failed (23598)" in flat
+        assert "Downloading 1 benchmark..." in flat
+        assert "1 of 1 benchmark failed (23598)" in flat
         assert "Traceback" not in result.output
         assert list((tmp_path / "benchmarks").glob("*.json"))
 

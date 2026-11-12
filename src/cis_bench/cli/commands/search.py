@@ -3,6 +3,7 @@
 import logging
 import sys
 from contextlib import closing
+from gettext import ngettext
 
 import click
 from rich.console import Console
@@ -148,7 +149,10 @@ def search_cmd(query, platform, platform_type, status, latest, limit, output_for
                 output_data(results, output_format, csv_fields=csv_fields)
 
             # Display results (human-friendly table)
-            console.print(f"[green]Found {len(results)} benchmark(s)[/green]\n")
+            found = ngettext(
+                "Found {count} benchmark", "Found {count} benchmarks", len(results)
+            ).format(count=len(results))
+            console.print(f"[green]{found}[/green]\n")
 
             console.print(benchmark_table(results, title_width=settings.table_title_width))
 

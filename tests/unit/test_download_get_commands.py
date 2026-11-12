@@ -448,6 +448,9 @@ class TestDownloadBenchmarkErrors:
                     assert result.exit_code == 1
                     assert "Error" in result.output
                     assert result.output.count("Error: Network error [/x]") == 1
+                    flat = " ".join(result.output.split())
+                    assert "Downloading 2 benchmarks..." in flat
+                    assert "1 of 2 benchmarks failed (12345)" in flat
                     assert "Download complete!" not in result.output
                     assert "1 of 2" in result.output
                     # A failed benchmark is reported in one line; the traceback is debug detail.
@@ -646,8 +649,12 @@ class TestGetInteractiveSelection:
                     assert result.exit_code == 1
                     assert "Cancelled" in result.output
 
+    @pytest.mark.parametrize(
+        ("others", "expected"),
+        [(1, "1 other benchmark matched"), (2, "2 other benchmarks matched")],
+    )
     def test_get_interactive_selection_exception_falls_back(
-        self, runner, sample_benchmark, tmp_path, monkeypatch, working_dir
+        self, runner, sample_benchmark, tmp_path, monkeypatch, working_dir, others, expected
     ):
         """Without a usable menu, get takes the best match as it does non-interactively."""
         catalog_path = tmp_path / "catalog.db"
@@ -670,7 +677,10 @@ class TestGetInteractiveSelection:
                 mock_search_class.return_value = mock_search
                 mock_search.search.return_value = [
                     {"benchmark_id": "1", "title": "A", "version": "v1", "status": "P"},
-                    {"benchmark_id": "2", "title": "B", "version": "v2", "status": "P"},
+                    *[
+                        {"benchmark_id": str(n), "title": "B", "version": "v2", "status": "P"}
+                        for n in range(2, 2 + others)
+                    ],
                 ]
 
                 with patch("cis_bench.cli.commands.get.questionary") as mock_q:
@@ -680,7 +690,7 @@ class TestGetInteractiveSelection:
 
                     assert result.exit_code == 0, result.output
                     assert "Chose: A v1" in result.output
-                    assert "1 other benchmark matched" in result.output
+                    assert expected in result.output
                     assert mock_db.get_downloaded.call_args.args == ("1",)
 
     def test_get_interactive_selection_success(

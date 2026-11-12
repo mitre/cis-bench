@@ -1,6 +1,7 @@
 """Markdown exporter for documentation."""
 
 import logging
+from gettext import ngettext
 
 from cis_bench.models.benchmark import Benchmark
 from cis_bench.utils.field_transformers import (
@@ -136,7 +137,11 @@ class MarkdownExporter(BaseExporter):
                 f.write("---\n\n")
 
         logger.debug(
-            f"Successfully exported Markdown with {len(benchmark.recommendations)} recommendations to {output_path}"
+            ngettext(
+                "Successfully exported Markdown with {count} recommendation to {path}",
+                "Successfully exported Markdown with {count} recommendations to {path}",
+                len(benchmark.recommendations),
+            ).format(count=len(benchmark.recommendations), path=output_path)
         )
         return output_path
 

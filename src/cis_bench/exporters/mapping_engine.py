@@ -30,6 +30,7 @@ import string
 import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass, field, fields
+from gettext import ngettext
 from pathlib import Path
 from types import ModuleType, UnionType
 from typing import Annotated, Any, Final, Union, get_args, get_origin
@@ -163,9 +164,13 @@ def dotted_number_path(value: Any, *labels: str) -> str:
     text = "" if value is None else str(value).strip()
     parts = text.split(".") if _DOTTED_NUMBER.fullmatch(text) else []
     if not parts or len(parts) > len(labels) + 1:
+        levels = len(labels) + 1
         raise ValueError(
-            f"{value!r} is not a dotted number of at most {len(labels) + 1} levels "
-            "(such as 13 or 8.5)"
+            ngettext(
+                "{value} is not a dotted number of at most {levels} level (such as 13 or 8.5)",
+                "{value} is not a dotted number of at most {levels} levels (such as 13 or 8.5)",
+                levels,
+            ).format(value=repr(value), levels=levels)
         )
     sublevels = zip(labels[: len(parts) - 1], parts[1:], strict=True)
     return parts[0] + "".join(f"/{label}/{part}" for label, part in sublevels)
@@ -1425,7 +1430,13 @@ class MappingEngine:
                     # Append to existing idents if any
                     existing_idents = rule_fields.get(target_element, [])
                     rule_fields[target_element] = existing_idents + idents
-                    logger.debug(f"Added {len(idents)} idents to rule_fields[{target_element}]")
+                    logger.debug(
+                        ngettext(
+                            "Added {count} ident to rule_fields[{target}]",
+                            "Added {count} idents to rule_fields[{target}]",
+                            len(idents),
+                        ).format(count=len(idents), target=target_element)
+                    )
                 continue
 
             # For metadata_from_config structure - generic metadata from YAML
@@ -1683,7 +1694,13 @@ class MappingEngine:
                 )
                 if profiles:
                     benchmark_fields["profile"] = profiles
-                    logger.debug(f"Added {len(profiles)} Profile elements to benchmark")
+                    logger.debug(
+                        ngettext(
+                            "Added {count} Profile element to benchmark",
+                            "Added {count} Profile elements to benchmark",
+                            len(profiles),
+                        ).format(count=len(profiles))
+                    )
 
         return XCCDFBenchmark(**benchmark_fields)
 
@@ -1789,7 +1806,11 @@ class MappingEngine:
                 idents.append(IdentType(system=system, value=value))
 
         logger.debug(
-            f"Generated {len(idents)} idents from {source_field} (system={system_template})"
+            ngettext(
+                "Generated {count} ident from {field} (system={system})",
+                "Generated {count} idents from {field} (system={system})",
+                len(idents),
+            ).format(count=len(idents), field=source_field, system=system_template)
         )
         return idents
 
@@ -1936,9 +1957,21 @@ class MappingEngine:
                     select=select_list,
                 )
             )
-            logger.debug(f"Generated profile '{profile_id}' with {len(select_list)} rules")
+            logger.debug(
+                ngettext(
+                    "Generated profile '{profile}' with {count} rule",
+                    "Generated profile '{profile}' with {count} rules",
+                    len(select_list),
+                ).format(count=len(select_list), profile=profile_id)
+            )
 
-        logger.debug(f"Generated {len(profiles)} Profile elements")
+        logger.debug(
+            ngettext(
+                "Generated {count} Profile element",
+                "Generated {count} Profile elements",
+                len(profiles),
+            ).format(count=len(profiles))
+        )
         return profiles
 
     def _defined_profiles(

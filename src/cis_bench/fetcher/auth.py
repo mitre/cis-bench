@@ -4,6 +4,7 @@ import http.cookiejar
 import logging
 import platform
 import re
+from gettext import ngettext
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
@@ -230,7 +231,13 @@ Workarounds:
                     session.cookies.set_cookie(cookie)
 
             cookie_count = len(list(session.cookies))
-            logger.debug(f"Extracted {cookie_count} cookies from {browser}")
+            logger.debug(
+                ngettext(
+                    "Extracted {count} cookie from {browser}",
+                    "Extracted {count} cookies from {browser}",
+                    cookie_count,
+                ).format(count=cookie_count, browser=browser)
+            )
 
             return session
 
@@ -278,7 +285,13 @@ Workarounds:
                 session.cookies.set_cookie(cookie)
 
             cookie_count = len(list(session.cookies))
-            logger.debug(f"Loaded {cookie_count} cookies from file")
+            logger.debug(
+                ngettext(
+                    "Loaded {count} cookie from file",
+                    "Loaded {count} cookies from file",
+                    cookie_count,
+                ).format(count=cookie_count)
+            )
 
             return session
 
@@ -311,7 +324,13 @@ Workarounds:
             cj.save(ignore_discard=True, ignore_expires=True)
 
             cookie_count = len(list(session.cookies))
-            logger.debug(f"Saved {cookie_count} cookies to {session_path}")
+            logger.debug(
+                ngettext(
+                    "Saved {count} cookie to {path}",
+                    "Saved {count} cookies to {path}",
+                    cookie_count,
+                ).format(count=cookie_count, path=session_path)
+            )
 
         except Exception as e:
             raise Exception(f"Failed to save session: {e}") from e

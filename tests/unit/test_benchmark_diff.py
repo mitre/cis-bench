@@ -900,7 +900,7 @@ class TestReformattedFields:
         )
 
         assert "1 reformatted" in " ".join(summary.output.split())
-        assert "Reformatted: 1 recommendations" in " ".join(table.output.split())
+        assert "Reformatted: 1 recommendation" in " ".join(table.output.split())
         assert "| Reformatted | 1 |" in markdown.output.splitlines()
         assert data["summary"]["reformatted"] == 1
 
@@ -991,3 +991,57 @@ class TestScraperVersionNotice:
 
         assert "scraper versions" not in summary.output
         assert data["scraper_versions_differ"] is False
+
+
+def _comparison(count: int) -> dict:
+    keys = ("added", "removed", "modified", "reformatted", "unchanged", "renumbered")
+    return {
+        "summary": dict.fromkeys(keys, count),
+        "changes": {
+            "added": [],
+            "removed": [],
+            "modified": [],
+            "renumbered": [],
+            "reformatted": [{} for _ in range(count)],
+        },
+        "benchmark_title": "Synthetic",
+        "old_version": "v1",
+        "new_version": "v2",
+        "scraper_versions_differ": False,
+    }
+
+
+class TestDiffCountsAgreeWithTheNumber:
+    @pytest.mark.parametrize(("count", "noun"), [(1, "recommendation"), (2, "recommendations")])
+    def test_the_summary_table_and_the_reformatted_note(self, count, noun):
+        import re
+        from io import StringIO
+
+        from rich.console import Console
+
+        from cis_bench.cli.commands.diff import _output_table
+
+        out = StringIO()
+        _output_table(_comparison(count), _console=Console(file=out, width=200))
+        text = out.getvalue()
+
+        for label in (
+            "Added:",
+            "Removed:",
+            "Modified:",
+            "Reformatted:",
+            "Unchanged:",
+            "Renumbered:",
+        ):
+            assert re.search(rf"{label}\s+{count} {noun}\n", text), label
+        assert f"No content changes; {count} {noun} reformatted" in text
+
+    @pytest.mark.parametrize(("count", "noun"), [(1, "recommendation"), (2, "recommendations")])
+    def test_the_total_in_the_summary_format(self, capsys, count, noun):
+        from cis_bench.cli.commands.diff import _output_summary
+
+        comparison = _comparison(0)
+        comparison["summary"]["added"] = count
+        _output_summary(comparison)
+
+        assert f"Total: {count} {noun} (0 unchanged)" in capsys.readouterr().out

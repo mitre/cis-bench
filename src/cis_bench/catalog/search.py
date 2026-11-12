@@ -4,6 +4,7 @@ Provides high-level search operations with filtering, ranking, and formatting.
 """
 
 import logging
+from gettext import ngettext
 
 from cis_bench.catalog.database import CatalogDatabase
 
@@ -68,7 +69,11 @@ class CatalogSearch:
             named_releases=named_releases,
         )
 
-        logger.debug(f"Search returned {len(results)} results")
+        logger.debug(
+            ngettext(
+                "Search returned {count} result", "Search returned {count} results", len(results)
+            ).format(count=len(results))
+        )
         return results
 
     def count(

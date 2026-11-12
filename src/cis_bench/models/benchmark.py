@@ -6,6 +6,7 @@ All scrapers produce this format, all exporters consume this format.
 
 import json
 from datetime import UTC, date, datetime
+from gettext import ngettext
 from typing import Annotated, Any, Final, Literal
 
 from pydantic import (
@@ -354,8 +355,13 @@ class Benchmark(BaseModel):
             actual_count = len(v)
             if expected_count != actual_count:
                 raise ValueError(
-                    f"total_recommendations field says {expected_count} but "
-                    f"recommendations list has {actual_count} items"
+                    ngettext(
+                        "total_recommendations field says {expected} but recommendations list "
+                        "has {actual} item",
+                        "total_recommendations field says {expected} but recommendations list "
+                        "has {actual} items",
+                        actual_count,
+                    ).format(expected=expected_count, actual=actual_count)
                 )
         return v
 

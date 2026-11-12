@@ -10,6 +10,7 @@ import re
 import threading
 from collections.abc import Callable
 from datetime import UTC, date, datetime
+from gettext import ngettext
 from typing import Any
 
 import requests
@@ -456,7 +457,14 @@ class WorkbenchScraper:
         # Fetch navigation tree
         navtree = self.fetch_navtree(benchmark_id)
         recommendations_list = self.parse_navtree(navtree)
-        log(f"Found {len(recommendations_list)} recommendations", level="debug")
+        log(
+            ngettext(
+                "Found {count} recommendation",
+                "Found {count} recommendations",
+                len(recommendations_list),
+            ).format(count=len(recommendations_list)),
+            level="debug",
+        )
 
         def build_recommendation(rec_meta: dict[str, str]) -> Recommendation:
             rec_data = self.fetch_recommendation(rec_meta["url"])
@@ -515,6 +523,13 @@ class WorkbenchScraper:
             downloaded_at=datetime.now(UTC),
         )
 
-        log(f"✓ Successfully downloaded {len(recommendations)} recommendations", level="debug")
+        log(
+            ngettext(
+                "✓ Successfully downloaded {count} recommendation",
+                "✓ Successfully downloaded {count} recommendations",
+                len(recommendations),
+            ).format(count=len(recommendations)),
+            level="debug",
+        )
 
         return benchmark

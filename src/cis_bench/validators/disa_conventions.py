@@ -5,6 +5,7 @@ Validates that XCCDF output follows DISA STIG conventions v1.10.0
 
 import logging
 import re
+from gettext import ngettext
 
 from lxml import etree
 
@@ -110,7 +111,11 @@ class DISAConventionsValidator:
     def _check_groups(self):
         """Check Group elements follow conventions."""
         groups = self.root.findall(f".//{{{self.xccdf_ns}}}Group")
-        logger.debug(f"Found {len(groups)} Group elements")
+        logger.debug(
+            ngettext(
+                "Found {count} Group element", "Found {count} Group elements", len(groups)
+            ).format(count=len(groups))
+        )
 
         if not groups:
             self.warnings.append("No Group elements found (DISA STIGs use Groups)")
@@ -126,13 +131,21 @@ class DISAConventionsValidator:
             rules = group.findall(f"{{{self.xccdf_ns}}}Rule")
             if len(rules) != 1:
                 self.warnings.append(
-                    f"Group {group.get('id')} has {len(rules)} Rules (DISA convention: exactly 1)"
+                    ngettext(
+                        "Group {group} has {count} Rule (DISA convention: exactly 1)",
+                        "Group {group} has {count} Rules (DISA convention: exactly 1)",
+                        len(rules),
+                    ).format(group=group.get("id"), count=len(rules))
                 )
 
     def _check_rules(self):
         """Check Rule elements follow conventions."""
         rules = self.root.findall(f".//{{{self.xccdf_ns}}}Rule")
-        logger.debug(f"Found {len(rules)} Rule elements")
+        logger.debug(
+            ngettext(
+                "Found {count} Rule element", "Found {count} Rule elements", len(rules)
+            ).format(count=len(rules))
+        )
 
         for rule in rules:
             rule_id = rule.get("id", "unknown")
@@ -194,14 +207,24 @@ def validate_disa_conventions(xccdf_file: str) -> bool:
     is_valid, errors, warnings = validator.validate()
 
     if errors:
-        logger.warning(f"Validation found {len(errors)} errors")
+        logger.warning(
+            ngettext(
+                "Validation found {count} error", "Validation found {count} errors", len(errors)
+            ).format(count=len(errors))
+        )
         print("ERRORS:")
         for error in errors:
             print(f"  ✗ {error}")
         print()
 
     if warnings:
-        logger.info(f"Validation found {len(warnings)} warnings")
+        logger.info(
+            ngettext(
+                "Validation found {count} warning",
+                "Validation found {count} warnings",
+                len(warnings),
+            ).format(count=len(warnings))
+        )
         print("WARNINGS:")
         for warning in warnings:
             print(f"  ⚠ {warning}")

@@ -2,6 +2,7 @@
 
 import csv
 import logging
+from gettext import ngettext
 
 from cis_bench.models.benchmark import Benchmark
 from cis_bench.utils.field_transformers import (
@@ -78,7 +79,11 @@ class CSVExporter(BaseExporter):
 
         # Write CSV
         if rows:
-            logger.debug(f"Writing {len(rows)} rows to CSV")
+            logger.debug(
+                ngettext(
+                    "Writing {count} row to CSV", "Writing {count} rows to CSV", len(rows)
+                ).format(count=len(rows))
+            )
             fieldnames = rows[0].keys()
 
             with open(output_path, "w", newline="", encoding="utf-8") as f:
@@ -86,7 +91,13 @@ class CSVExporter(BaseExporter):
                 writer.writeheader()
                 writer.writerows(rows)
 
-            logger.debug(f"Successfully exported CSV with {len(rows)} rows to {output_path}")
+            logger.debug(
+                ngettext(
+                    "Successfully exported CSV with {count} row to {path}",
+                    "Successfully exported CSV with {count} rows to {path}",
+                    len(rows),
+                ).format(count=len(rows), path=output_path)
+            )
         else:
             logger.warning("No recommendations to export - writing empty CSV")
 

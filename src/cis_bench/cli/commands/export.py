@@ -4,6 +4,7 @@ import logging
 import os
 import sys
 from contextlib import closing
+from gettext import ngettext
 
 import click
 from rich.console import Console
@@ -182,10 +183,12 @@ def _export_single_benchmark(
         file_size = os.path.getsize(actual_output_file) / 1024
         logger.debug(f"Export successful: {actual_output_file} ({file_size:.1f} KB)")
 
-        console.print(
-            f"{prefix} [green]✓[/green] Exported {len(benchmark.recommendations)} "
-            f"recommendations to [bold]{escape(str(actual_output_file))}[/bold]"
-        )
+        exported = ngettext(
+            "Exported {count} recommendation to [bold]{path}[/bold]",
+            "Exported {count} recommendations to [bold]{path}[/bold]",
+            len(benchmark.recommendations),
+        ).format(count=len(benchmark.recommendations), path=escape(str(actual_output_file)))
+        console.print(f"{prefix} [green]✓[/green] {exported}")
         console.print(f"      Format: [cyan]{exporter.format_name()}[/cyan]")
         console.print(f"      Size: [yellow]{file_size:.1f} KB[/yellow]")
 
@@ -299,9 +302,10 @@ def export_cmd(identifiers, export_format, style, output_file, output_dir, input
     if total > 1:
         console.print()
         if failed_count == 0:
-            console.print(
-                f"[bold green]Export complete![/bold green] {success_count} benchmarks exported."
-            )
+            exported = ngettext(
+                "{count} benchmark exported.", "{count} benchmarks exported.", success_count
+            ).format(count=success_count)
+            console.print(f"[bold green]Export complete![/bold green] {exported}")
         else:
             console.print(
                 f"[bold yellow]Export complete with errors.[/bold yellow] "

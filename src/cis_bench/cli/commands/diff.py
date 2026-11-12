@@ -6,6 +6,7 @@ import difflib
 import json
 import sys
 from contextlib import closing
+from gettext import ngettext
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -433,7 +434,13 @@ def _output_summary(comparison: dict) -> None:
         f"[cyan]↷ {summary['renumbered']} renumbered[/cyan]"
     )
     console.print()
-    console.print(f"Total: {total} recommendations ({summary['unchanged']} unchanged)")
+    console.print(
+        ngettext(
+            "Total: {total} recommendation ({unchanged} unchanged)",
+            "Total: {total} recommendations ({unchanged} unchanged)",
+            total,
+        ).format(total=total, unchanged=summary["unchanged"])
+    )
     notice = _scraper_notice(comparison)
     if notice:
         console.print(f"\n[dim]{escape(notice)}[/dim]")
@@ -456,23 +463,34 @@ def _output_table(comparison: dict, verbose: bool = False, _console: Console | N
     out.print()
 
     out.print("[bold]Summary:[/bold]")
+    rows = (
+        ("[green]✚ Added:[/green]     ", "added"),
+        ("[red]✖ Removed:[/red]   ", "removed"),
+        ("[yellow]⟳ Modified:[/yellow]  ", "modified"),
+        ("[blue]≈ Reformatted:[/blue]", "reformatted"),
+        ("[dim]═ Unchanged:[/dim]", "unchanged"),
+        ("[cyan]↷ Renumbered:[/cyan]", "renumbered"),
+    )
     out.print(
-        f"  [green]✚ Added:[/green]      {summary['added']} recommendations\n"
-        f"  [red]✖ Removed:[/red]    {summary['removed']} recommendations\n"
-        f"  [yellow]⟳ Modified:[/yellow]   {summary['modified']} recommendations\n"
-        f"  [blue]≈ Reformatted:[/blue] {summary['reformatted']} recommendations\n"
-        f"  [dim]═ Unchanged:[/dim] {summary['unchanged']} recommendations\n"
-        f"  [cyan]↷ Renumbered:[/cyan] {summary['renumbered']} recommendations"
+        "\n".join(
+            ngettext(
+                "  {label} {count} recommendation", "  {label} {count} recommendations", count
+            ).format(label=label, count=count)
+            for label, key in rows
+            for count in (summary[key],)
+        )
     )
     out.print()
 
     if not any([changes["added"], changes["removed"], changes["modified"], changes["renumbered"]]):
         if changes["reformatted"]:
             hint = "" if verbose else " --verbose lists them."
-            out.print(
-                f"[dim]No content changes; {len(changes['reformatted'])} recommendations "
-                f"reformatted (whitespace only).{hint}[/dim]"
-            )
+            reformatted = ngettext(
+                "No content changes; {count} recommendation reformatted (whitespace only).",
+                "No content changes; {count} recommendations reformatted (whitespace only).",
+                len(changes["reformatted"]),
+            ).format(count=len(changes["reformatted"]))
+            out.print(f"[dim]{reformatted}{hint}[/dim]")
             if verbose:
                 _print_reformatted(out, changes["reformatted"])
         else:

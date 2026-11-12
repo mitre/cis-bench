@@ -238,6 +238,13 @@ class TestDottedNumberPath:
         with pytest.raises(ValueError, match="dotted number"):
             TransformRegistry.get("dotted_number_path")(value, "subcontrol")
 
+    @pytest.mark.parametrize(
+        ("labels", "expected"), [((), "at most 1 level "), (("subcontrol",), "at most 2 levels ")]
+    )
+    def test_the_refusal_counts_the_levels(self, labels, expected):
+        with pytest.raises(ValueError, match=expected):
+            TransformRegistry.get("dotted_number_path")("1.2.3", *labels)
+
     @pytest.mark.parametrize(("value", "labels"), [("8.5", ("",)), ("1.2.3", ("subcontrol", " "))])
     def test_an_empty_label_is_refused(self, value, labels):
         # "{item.control|dotted_number_path:subcontrol,}" must not make "1/subcontrol/2//3".

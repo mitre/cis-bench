@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import sys
 import webbrowser
+from gettext import ngettext
 from urllib.parse import urlparse
 
 import click
@@ -169,7 +170,10 @@ def login(browser, cookies, open, no_verify_ssl):
                 sys.exit(1)
 
             cookie_count = len(list(session.cookies))
-            console.print(f"[green]✓[/green] Loaded {cookie_count} cookies from file")
+            loaded = ngettext(
+                "Loaded {count} cookie from file", "Loaded {count} cookies from file", cookie_count
+            ).format(count=cookie_count)
+            console.print(f"[green]✓[/green] {loaded}")
         else:
             # Extract cookies from browser
             console.print(f"[cyan]Extracting session cookies from {browser}...[/cyan]")
@@ -193,7 +197,12 @@ def login(browser, cookies, open, no_verify_ssl):
                 sys.exit(1)
 
             cookie_count = len(list(session.cookies))
-            console.print(f"[green]✓[/green] Extracted {cookie_count} cookies from {browser}")
+            extracted = ngettext(
+                "Extracted {count} cookie from {browser}",
+                "Extracted {count} cookies from {browser}",
+                cookie_count,
+            ).format(count=cookie_count, browser=browser)
+            console.print(f"[green]✓[/green] {extracted}")
 
         # Validate session
         console.print("[cyan]Validating session...[/cyan]")
@@ -282,7 +291,12 @@ def status(output_format):
             sys.exit(1)
 
         cookie_count = len(list(session.cookies))
-        notes.print(f"[green]✓[/green] Found saved session with {cookie_count} cookies")
+        found = ngettext(
+            "Found saved session with {count} cookie",
+            "Found saved session with {count} cookies",
+            cookie_count,
+        ).format(count=cookie_count)
+        notes.print(f"[green]✓[/green] {found}")
 
         # Validate session
         notes.print("[cyan]Validating session...[/cyan]")

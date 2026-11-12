@@ -3,6 +3,7 @@
 import logging
 import sys
 from contextlib import ExitStack, closing
+from gettext import ngettext
 from typing import TYPE_CHECKING
 
 import click
@@ -266,7 +267,11 @@ def _benchmark_matching(
         console.print("  cis-bench search --help")
         sys.exit(1)
 
-    logger.debug(f"Found {len(results)} results")
+    logger.debug(
+        ngettext("Found {count} result", "Found {count} results", len(results)).format(
+            count=len(results)
+        )
+    )
 
     if len(results) == 1:
         selected = results[0]
@@ -277,9 +282,12 @@ def _benchmark_matching(
         return _best_match(results, total, query)
 
     cut_off = f" (showing the first {len(results)})" if total > len(results) else ""
-    console.print(
-        f"[yellow]Found {total} benchmarks matching '{escape(query)}'{cut_off}[/yellow]\n"
-    )
+    found = ngettext(
+        "Found {count} benchmark matching '{query}'{cut_off}",
+        "Found {count} benchmarks matching '{query}'{cut_off}",
+        total,
+    ).format(count=total, query=escape(query), cut_off=cut_off)
+    console.print(f"[yellow]{found}[/yellow]\n")
 
     console.print(benchmark_table(results, title_width=settings.table_title_width))
     console.print()
@@ -309,8 +317,9 @@ def _best_match(results: list[dict], total: int, query: str) -> dict:
         f"[green]✓[/green] Chose: {escape(str(selected['title']))} "
         f"{escape(str(selected.get('version', '')))}"
     )
-    console.print(
-        f"  {others} other benchmark{'s' if others != 1 else ''} matched. To see them all:"
-    )
+    matched = ngettext(
+        "{count} other benchmark matched.", "{count} other benchmarks matched.", others
+    ).format(count=others)
+    console.print(f"  {matched} To see them all:")
     console.print(f'    cis-bench search "{escape(query)}"\n')
     return selected
