@@ -170,7 +170,13 @@ def download(
     downloading = ngettext(
         "Downloading {count} benchmark...", "Downloading {count} benchmarks...", len(targets)
     ).format(count=len(targets))
-    logger.debug(downloading)
+    logger.debug(
+        ngettext(
+            "Starting download of {count} benchmark",
+            "Starting download of {count} benchmarks",
+            len(targets),
+        ).format(count=len(targets))
+    )
     console.print(f"[bold]{downloading}[/bold]\n")
 
     failed: list[str] = []

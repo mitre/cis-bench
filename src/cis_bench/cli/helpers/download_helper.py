@@ -6,6 +6,7 @@ import logging
 import re
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from gettext import ngettext
 from typing import TYPE_CHECKING
 
 from rich.console import Console
@@ -38,7 +39,7 @@ def scraper_progress(
         if "Benchmark title:" in msg:
             title = msg.split("Benchmark title:", 1)[1].strip()
             console.print(f"{prefix} {escape(title)}", highlight=False)
-        elif match := re.search(r"Found (\d+) recommendations", msg):
+        elif match := re.search(r"Found (\d+) recommendations?\b", msg):
             total = int(match.group(1))
             progress_bar = Progress(
                 SpinnerColumn(),
@@ -50,9 +51,10 @@ def scraper_progress(
                 console=console,
             )
             progress_bar.start()
-            progress_task = progress_bar.add_task(
-                f"{prefix} Downloading {total} recommendations", total=total
-            )
+            downloading = ngettext(
+                "Downloading {count} recommendation", "Downloading {count} recommendations", total
+            ).format(count=total)
+            progress_task = progress_bar.add_task(f"{prefix} {downloading}", total=total)
         elif match := re.match(r"\[(\d+)/(\d+)\]", msg):
             if progress_bar and progress_task is not None:
                 progress_bar.update(progress_task, completed=int(match.group(1)))

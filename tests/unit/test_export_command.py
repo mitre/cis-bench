@@ -691,3 +691,20 @@ class TestTheStoredMarkdownIsWrittenAsItIs:
         assert result.exit_code == 0, result.output
         html = MarkdownIt("commonmark").render(Path("benchmark.md").read_text(encoding="utf-8"))
         assert "Ensure &lt;path&gt; is owned by &lt;user&gt;</a>" in html
+
+
+class TestExportCountsTheRecommendations:
+    @pytest.mark.parametrize(
+        ("keep", "expected"), [(1, "1 recommendation to"), (2, "2 recommendations to")]
+    )
+    def test_the_exported_line_agrees_with_the_number(
+        self, runner, sample_benchmark, working_dir, keep, expected
+    ):
+        sample_benchmark.recommendations = sample_benchmark.recommendations[:keep]
+        sample_benchmark.total_recommendations = keep
+        Path("in.json").write_text(sample_benchmark.model_dump_json())
+
+        result = runner.invoke(cli, ["export", "in.json", "--format", "yaml", "--output", "o.yaml"])
+
+        assert result.exit_code == 0, result.output
+        assert f"Exported {expected} o.yaml" in " ".join(result.output.split())

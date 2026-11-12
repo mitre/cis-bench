@@ -316,3 +316,32 @@ class TestDownloadWithProgress:
         # Verify the title was printed (stripped)
         call_args = str(mock_console.print.call_args)
         assert "CIS Ubuntu 22.04 Benchmark" in call_args
+
+
+class TestProgressCountsTheRecommendations:
+    @pytest.mark.parametrize(
+        ("message", "description"),
+        [
+            ("Found 1 recommendation", "Downloading 1 recommendation"),
+            ("Found 2 recommendations", "Downloading 2 recommendations"),
+        ],
+    )
+    @patch("cis_bench.cli.helpers.download_helper.Progress")
+    def test_the_progress_line_agrees_with_the_number(
+        self, mock_progress_class, sample_benchmark, message, description
+    ):
+        from cis_bench.cli.helpers.download_helper import download_with_progress
+
+        mock_scraper = MagicMock()
+
+        def report(url, progress_callback=None):
+            progress_callback(message)
+            return sample_benchmark
+
+        mock_scraper.download_benchmark.side_effect = report
+
+        download_with_progress(mock_scraper, "https://example.com/benchmarks/12345", prefix="[1/1]")
+
+        mock_progress_class.return_value.add_task.assert_called_once_with(
+            f"[1/1] {description}", total=int(message.split()[1])
+        )

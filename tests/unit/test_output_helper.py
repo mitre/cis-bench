@@ -344,6 +344,7 @@ class TestShowingLine:
             (0, 0, "Showing 0 of 0 results"),
             (5, 5, "Showing 5 of 5 results"),
             (2, 5, "Showing 2 of 5 results; use --limit to see more"),
+            (1, 5, "Showing 1 of 5 results; use --limit to see more"),
         ],
     )
     def test_the_noun_agrees_with_the_total(self, shown, total, expected):
