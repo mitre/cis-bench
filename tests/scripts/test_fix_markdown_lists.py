@@ -7,6 +7,7 @@ Run with: pytest tests/scripts (the plain test run leaves this folder out)
 """
 
 import importlib.util
+from collections.abc import Callable
 from pathlib import Path
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "fix_markdown_lists.py"
@@ -15,7 +16,7 @@ _spec = importlib.util.spec_from_file_location("fix_markdown_lists", SCRIPT)
 assert _spec is not None and _spec.loader is not None
 _script = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_script)
-fix_list_formatting = _script.fix_list_formatting
+fix_list_formatting: Callable[[str], tuple[str, int]] = _script.fix_list_formatting
 
 
 def fixed(text: str) -> str:
