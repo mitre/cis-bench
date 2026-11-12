@@ -373,7 +373,7 @@ Download it with:
   cis-bench download 23598
 ```
 
-With nothing downloaded at all, it says `No benchmarks are downloaded, so there is nothing to search.` and points at `cis-bench download`; it does not create `catalog.db`. With `--benchmark` or `--profile`, a search that finds nothing suggests trying again without them. With `json` or `yaml`, stdout carries only the data (`[]` when nothing is found); the notes that nothing is downloaded, or that the `--benchmark` one is not, go to stderr. A `catalog.db` that exists but cannot be read (corrupt, locked) is an error naming the file (exit code 1).
+With nothing downloaded at all, it says `No benchmarks are downloaded, so there is nothing to search.` and points at `cis-bench download`; it does not create `catalog.db`. In a table, a search with `--benchmark` (a downloaded one) or `--profile` that finds nothing also suggests trying again without them. With `json` or `yaml`, stdout carries only the data (`[]` when nothing is found); the notes that nothing is downloaded, or that the `--benchmark` one is not, go to stderr. A `catalog.db` that exists but cannot be read (corrupt, locked) is an error naming the file (exit code 1).
 
 ---
 

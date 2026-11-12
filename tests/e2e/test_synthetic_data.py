@@ -333,7 +333,9 @@ class TestCommandsOnTheSyntheticData:
         assert {benchmark_id for benchmark_id, _ in hits("ssh")} == {"90002", "90003", "90004"}
         # A copy stored the older way is searched as the text it loads as.
         assert hits("auth-attempts", "--benchmark", "90003") == [("90003", "4.1.2")]
-        assert hits("drive mapping", "--profile", "Level 2") == [("90005", "18.10.42.3.3.3")]
+        # Eight recommendations mention ssh; one of them is in a Level 2 profile.
+        assert len(hits("ssh")) == 8
+        assert hits("ssh", "--profile", "Level 2") == [("90003", "4.1.4")]
         assert hits("0.0.0.0/0") == [("90004", "4.1")]
 
     def test_diff_of_the_two_linux_versions_reports_each_kind_of_change(self, run):
