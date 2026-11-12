@@ -267,7 +267,11 @@ def _benchmark_matching(
         console.print("  cis-bench search --help")
         sys.exit(1)
 
-    logger.debug(f"Found {len(results)} results")
+    logger.debug(
+        ngettext("Found {count} result", "Found {count} results", len(results)).format(
+            count=len(results)
+        )
+    )
 
     if len(results) == 1:
         selected = results[0]

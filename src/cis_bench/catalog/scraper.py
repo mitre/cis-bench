@@ -150,7 +150,13 @@ class CatalogScraper:
         if max_pages:
             total_pages = min(total_pages, max_pages)
 
-        logger.info(f"Will scrape {total_pages} pages (detected from pagination)")
+        logger.info(
+            ngettext(
+                "Will scrape {count} page (detected from pagination)",
+                "Will scrape {count} pages (detected from pagination)",
+                total_pages,
+            ).format(count=total_pages)
+        )
 
         # Save first page
         total_benchmarks = self._insert_page_benchmarks(first_page_benchmarks, page_num=1)
@@ -209,7 +215,13 @@ class CatalogScraper:
                         failed_pages.append(page_num)
                         continue
                     total_benchmarks += inserted_count
-                    logger.debug(f"Page {page_num}: {inserted_count} benchmarks")
+                    logger.debug(
+                        ngettext(
+                            "Page {page}: {count} benchmark",
+                            "Page {page}: {count} benchmarks",
+                            inserted_count,
+                        ).format(count=inserted_count, page=page_num)
+                    )
                 progress.update(task, description=progress_description(total_benchmarks))
 
                 # Stop if >10% of pages have failed, including page 1
@@ -254,7 +266,7 @@ class CatalogScraper:
             ),
         }
 
-        logger.info(f"Scrape complete: {total_benchmarks} benchmarks from {total_pages} pages")
+        logger.info(f"Scrape complete: benchmarks={total_benchmarks}, pages={total_pages}")
 
         if failed_pages:
             logger.warning(f"Failed pages: {failed_pages}")
@@ -449,7 +461,13 @@ class CatalogScraper:
         response = get_with_retry(self._sessions.current(), url, timeout=self.timeout)
         html = workbench_page_text(response)
 
-        logger.debug(f"Fetched {len(html)} bytes from page {page_num}")
+        logger.debug(
+            ngettext(
+                "Fetched {count} byte from page {page}",
+                "Fetched {count} bytes from page {page}",
+                len(html),
+            ).format(count=len(html), page=page_num)
+        )
 
         return html
 

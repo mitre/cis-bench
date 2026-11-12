@@ -1240,3 +1240,27 @@ class TestValidateMethod:
 
         assert is_valid is True
         assert errors == []
+
+
+class TestValidationWarningCountsTheErrors:
+    @pytest.mark.parametrize(("errors", "expected"), [(1, "1 error"), (2, "2 errors")])
+    def test_the_warning_agrees_with_the_number(self, monkeypatch, caplog, errors, expected):
+        import logging
+
+        from cis_bench.validators import disa_conventions
+
+        monkeypatch.setattr(
+            disa_conventions.DISAConventionsValidator,
+            "validate",
+            lambda self: (False, [f"problem {n}" for n in range(errors)], []),
+        )
+        monkeypatch.setattr(
+            disa_conventions.DISAConventionsValidator, "__init__", lambda self, f: None
+        )
+
+        with caplog.at_level(logging.WARNING, logger="cis_bench.validators.disa_conventions"):
+            disa_conventions.validate_disa_conventions("x.xml")
+
+        assert [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING] == [
+            f"Validation found {expected}"
+        ]

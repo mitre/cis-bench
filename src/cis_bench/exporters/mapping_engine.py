@@ -1430,7 +1430,13 @@ class MappingEngine:
                     # Append to existing idents if any
                     existing_idents = rule_fields.get(target_element, [])
                     rule_fields[target_element] = existing_idents + idents
-                    logger.debug(f"Added {len(idents)} idents to rule_fields[{target_element}]")
+                    logger.debug(
+                        ngettext(
+                            "Added {count} ident to rule_fields[{target}]",
+                            "Added {count} idents to rule_fields[{target}]",
+                            len(idents),
+                        ).format(count=len(idents), target=target_element)
+                    )
                 continue
 
             # For metadata_from_config structure - generic metadata from YAML
@@ -1794,7 +1800,11 @@ class MappingEngine:
                 idents.append(IdentType(system=system, value=value))
 
         logger.debug(
-            f"Generated {len(idents)} idents from {source_field} (system={system_template})"
+            ngettext(
+                "Generated {count} ident from {field} (system={system})",
+                "Generated {count} idents from {field} (system={system})",
+                len(idents),
+            ).format(count=len(idents), field=source_field, system=system_template)
         )
         return idents
 
@@ -1941,7 +1951,13 @@ class MappingEngine:
                     select=select_list,
                 )
             )
-            logger.debug(f"Generated profile '{profile_id}' with {len(select_list)} rules")
+            logger.debug(
+                ngettext(
+                    "Generated profile '{profile}' with {count} rule",
+                    "Generated profile '{profile}' with {count} rules",
+                    len(select_list),
+                ).format(count=len(select_list), profile=profile_id)
+            )
 
         logger.debug(f"Generated {len(profiles)} Profile elements")
         return profiles

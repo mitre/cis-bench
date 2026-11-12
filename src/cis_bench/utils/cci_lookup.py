@@ -172,7 +172,7 @@ class CCILookupService:
                 extra_nist.append(cited)
 
         logger.debug(
-            f"Deduplication result: {len(all_ccis)} unique CCIs, {len(extra_nist)} extra NIST controls"
+            f"Deduplication result: unique_ccis={len(all_ccis)}, extra_nist_controls={len(extra_nist)}"
         )
         return all_ccis, extra_nist
 

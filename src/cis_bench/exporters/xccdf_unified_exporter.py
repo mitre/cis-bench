@@ -6,6 +6,7 @@ a new YAML config file - no Python code changes needed.
 """
 
 import logging
+from gettext import ngettext
 from pathlib import Path
 
 from cis_bench.exceptions import ExportError
@@ -79,7 +80,11 @@ class XCCDFExporter(BaseExporter):
             Path to created file
         """
         logger.debug(
-            f"Exporting {len(benchmark.recommendations)} recommendations to XCCDF ({self.style} style)"
+            ngettext(
+                "Exporting {count} recommendation to XCCDF ({style} style)",
+                "Exporting {count} recommendations to XCCDF ({style} style)",
+                len(benchmark.recommendations),
+            ).format(count=len(benchmark.recommendations), style=self.style)
         )
 
         # Step 1: Create XCCDF Benchmark using mapping engine
@@ -88,7 +93,13 @@ class XCCDFExporter(BaseExporter):
 
         # Step 2: Serialize to XML
         xml_output = XCCDFSerializer.serialize_to_string(xccdf_benchmark)
-        logger.debug(f"Serialized to XML ({len(xml_output)} chars)")
+        logger.debug(
+            ngettext(
+                "Serialized to XML ({count} char)",
+                "Serialized to XML ({count} chars)",
+                len(xml_output),
+            ).format(count=len(xml_output))
+        )
 
         # Step 3: Post-processing pipeline (config-driven)
         xml_output = self._apply_post_processing(xml_output, benchmark)
@@ -238,7 +249,13 @@ class XCCDFExporter(BaseExporter):
             logger.debug("No metadata for post-processing")
             return xml_output
 
-        logger.debug(f"Injecting {len(metadata_elements)} metadata elements (config-driven)")
+        logger.debug(
+            ngettext(
+                "Injecting {count} metadata element (config-driven)",
+                "Injecting {count} metadata elements (config-driven)",
+                len(metadata_elements),
+            ).format(count=len(metadata_elements))
+        )
 
         root = etree.fromstring(xml_output.encode("utf-8"))
         rules = root.xpath(".//*[local-name()='Rule']")

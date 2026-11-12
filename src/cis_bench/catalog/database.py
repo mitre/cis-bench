@@ -10,6 +10,7 @@ import sqlite3
 import tempfile
 from collections.abc import Callable, Iterable
 from datetime import date, datetime
+from gettext import ngettext
 from pathlib import Path
 from typing import NamedTuple, TypeVar
 
@@ -976,7 +977,13 @@ class CatalogDatabase:
                     .values(status_id=withdrawn_id, is_latest=False)
                 )
             session.commit()
-        logger.info(f"Marked {len(to_mark)} benchmarks withdrawn")
+        logger.info(
+            ngettext(
+                "Marked {count} benchmark withdrawn",
+                "Marked {count} benchmarks withdrawn",
+                len(to_mark),
+            ).format(count=len(to_mark))
+        )
         return len(to_mark)
 
     def mark_latest_versions(self) -> None:

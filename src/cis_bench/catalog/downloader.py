@@ -5,6 +5,7 @@ Integrates catalog database with WorkbenchScraper for efficient downloads.
 
 import logging
 from collections.abc import Callable
+from gettext import ngettext
 
 from cis_bench.catalog.database import (
     CatalogDatabase,
@@ -168,7 +169,8 @@ class CatalogDownloader:
         status = "updated" if existing else "downloaded"
 
         logger.debug(
-            f"Benchmark {status}: {len(benchmark.recommendations)} recommendations, {len(content_json)} bytes"
+            f"Benchmark {status}: recommendations={len(benchmark.recommendations)}, "
+            f"bytes={len(content_json)}"
         )
 
         return {
@@ -224,7 +226,13 @@ class CatalogDownloader:
             )
 
         # Interactive selection (requires questionary)
-        logger.debug(f"Found {len(results)} matches, prompting for selection")
+        logger.debug(
+            ngettext(
+                "Found {count} match, prompting for selection",
+                "Found {count} matches, prompting for selection",
+                len(results),
+            ).format(count=len(results))
+        )
         benchmark_id = self._interactive_select(results)
 
         return self.download_by_id(benchmark_id, force=force)

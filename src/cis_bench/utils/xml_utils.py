@@ -5,6 +5,7 @@ Helpers for XML namespace handling, serialization, and post-processing.
 
 import logging
 import re
+from gettext import ngettext
 
 from lxml import etree
 
@@ -91,7 +92,13 @@ class XCCDFSerializer:
         serializer = XmlSerializer(config=config)
         result = serializer.render(xccdf_obj)
 
-        logger.debug(f"Serialization complete: {len(result)} chars")
+        logger.debug(
+            ngettext(
+                "Serialization complete: {count} char",
+                "Serialization complete: {count} chars",
+                len(result),
+            ).format(count=len(result))
+        )
         return result
 
     @staticmethod

@@ -84,7 +84,8 @@ class HTMLCleaner:
         has_data = any(result.values())
         if has_data:
             logger.debug(
-                f"Parsed MITRE data: {len(result['techniques'])} techniques, {len(result['tactics'])} tactics, {len(result['mitigations'])} mitigations"
+                f"Parsed MITRE data: techniques={len(result['techniques'])}, "
+                f"tactics={len(result['tactics'])}, mitigations={len(result['mitigations'])}"
             )
         return result if has_data else None
 
