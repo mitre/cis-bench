@@ -833,3 +833,49 @@ class TestVerifiedTLSByDefault:
         assert auth_manager_class.call_args.kwargs["verify_ssl"] is True
         mock_auth.validate_session.assert_called_once_with(mock_session)
         assert '"ssl_verify": true' in result.output
+
+
+class TestCookieCountsAgreeWithTheNumber:
+    """Every message that counts cookies reads "1 cookie" or "N cookies"."""
+
+    @pytest.fixture
+    def session_with(self):
+        def make(count):
+            session = MagicMock()
+            session.cookies = [MagicMock() for _ in range(count)]
+            return session
+
+        return make
+
+    @pytest.mark.parametrize(("count", "noun"), [(1, "cookie"), (2, "cookies")])
+    def test_loading_a_cookie_file(self, mock_auth, runner, tmp_path, session_with, count, noun):
+        cookie_file = tmp_path / "cookies.txt"
+        cookie_file.write_text("# Netscape HTTP Cookie File\n")
+        mock_auth.load_cookies_from_file.return_value = session_with(count)
+        mock_auth.validate_session.return_value = True
+
+        result = runner.invoke(cli, ["auth", "login", "--cookies", str(cookie_file)])
+
+        assert f"Loaded {count} {noun} from file\n" in result.output
+
+    @pytest.mark.parametrize(("count", "noun"), [(1, "cookie"), (2, "cookies")])
+    def test_extracting_from_a_browser(self, mock_auth, runner, session_with, count, noun):
+        mock_auth.load_cookies_from_browser.return_value = session_with(count)
+        mock_auth.validate_session.return_value = True
+        mock_auth._is_windows_permission_error.return_value = False
+
+        result = runner.invoke(cli, ["auth", "login", "--browser", "firefox"])
+
+        assert f"Extracted {count} {noun} from firefox\n" in result.output
+
+    @pytest.mark.parametrize(("count", "noun"), [(1, "cookie"), (2, "cookies")])
+    def test_status_of_a_saved_session(
+        self, mock_auth, runner, session_file, session_with, count, noun
+    ):
+        session_file.touch()
+        mock_auth.load_saved_session.return_value = session_with(count)
+        mock_auth.validate_session.return_value = True
+
+        result = runner.invoke(cli, ["auth", "status"])
+
+        assert f"Found saved session with {count} {noun}\n" in result.output

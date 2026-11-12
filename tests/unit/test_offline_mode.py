@@ -482,3 +482,15 @@ class TestCacheStatus:
 
         assert result.exit_code == 0, result.output
         assert json.loads(result.stdout)["catalog"]["last_update"] == "2026-11-04T10:00:00+00:00"
+
+
+class TestCacheStatusCountsTheCatalog:
+    @pytest.mark.parametrize(("count", "expected"), [(1, "1 benchmark"), (2, "2 benchmarks")])
+    def test_the_catalog_line_agrees_with_the_number(self, capsys, count, expected):
+        from cis_bench.cli.commands.cache import _print_catalog
+
+        _print_catalog(
+            {"present": True, "benchmarks": count, "last_full_refresh": None, "last_update": None}
+        )
+
+        assert f"Catalog: {expected}\n" in capsys.readouterr().out

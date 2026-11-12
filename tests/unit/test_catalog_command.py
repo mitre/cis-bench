@@ -176,6 +176,25 @@ class TestTheBrowserSettingIsTheDefaultBrowser:
 class TestCatalogRefreshCommand:
     """Tests for catalog refresh command."""
 
+    @pytest.mark.parametrize(("pages", "expected"), [("1", "(1 page)"), ("2", "(2 pages)")])
+    def test_refresh_counts_the_pages_it_will_scrape(
+        self, runner, mock_db, auth_manager_class, pages, expected
+    ):
+        with (
+            patch("cis_bench.cli.commands.catalog.get_catalog_db", return_value=mock_db),
+            patch("cis_bench.catalog.scraper.CatalogScraper") as scraper_class,
+        ):
+            scraper_class.return_value.scrape_full_catalog.return_value = {
+                "total_benchmarks": 1,
+                "pages_scraped": int(pages),
+                "failed_pages": [],
+                "withdrawn": None,
+            }
+            result = runner.invoke(cli, ["catalog", "refresh", "--max-pages", pages])
+
+        assert result.exit_code == 0, result.output
+        assert f"Scraping catalog {expected}..." in result.output
+
     @pytest.mark.parametrize(
         ("args", "expected_rate"),
         [(["--rate-limit", "2"], 0.5), ([], 3.0)],
@@ -599,8 +618,24 @@ class TestCatalogSearchCommand:
         result = runner.invoke(cli, ["catalog", "search", "ubuntu"])
 
         assert result.exit_code == 0
-        assert "Found 1 benchmarks" in result.output
+        assert "Found 1 benchmark:" in result.output
         mock_search.format_result_for_display.assert_called()
+
+    @patch("cis_bench.cli.commands.catalog.get_catalog_db")
+    @patch("cis_bench.cli.commands.catalog.CatalogSearch")
+    def test_search_counts_several_results_in_the_plural(
+        self, mock_search_class, mock_get_db, runner, mock_db, mock_search, monkeypatch
+    ):
+        mock_get_db.return_value = mock_db
+        first = mock_search.search.return_value[0]
+        mock_search.search.return_value = [first, {**first, "benchmark_id": "23599"}]
+        mock_search_class.return_value = mock_search
+        monkeypatch.setenv("CIS_BENCH_SEARCH_LIMIT", "1000")
+
+        result = runner.invoke(cli, ["catalog", "search", "ubuntu"])
+
+        assert result.exit_code == 0, result.output
+        assert "Found 2 benchmarks:" in result.output
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     @patch("cis_bench.cli.commands.catalog.CatalogSearch")
@@ -767,6 +802,18 @@ class TestCatalogListCommand:
         else:
             assert "CIS Kept Benchmark" in result.output
 
+    @pytest.mark.parametrize(
+        ("args", "expected"),
+        [([], "1 benchmark:"), (["--status", "all"], "2 benchmarks:")],
+    )
+    def test_list_counts_the_benchmarks_it_lists(
+        self, runner, published_and_withdrawn, args, expected
+    ):
+        result = runner.invoke(cli, ["catalog", "list", *args])
+
+        assert result.exit_code == 0, result.output
+        assert f"\n{expected}\n" in result.output
+
     def test_list_help_describes_the_status_option(self, runner):
         result = runner.invoke(cli, ["catalog", "list", "--help"])
 
@@ -826,7 +873,7 @@ class TestCatalogListCommand:
         result = runner.invoke(cli, ["catalog", "list"])
 
         assert result.exit_code == 0
-        assert "1 benchmarks" in result.output
+        assert "1 benchmark:" in result.output
         mock_search.format_result_for_display.assert_called()
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
@@ -1524,6 +1571,29 @@ class TestCatalogCheckUpdatesCommand:
         assert "All downloaded benchmarks are up-to-date" in result.output
         mock_auth.assert_not_called()
         mock_scraper_cls.assert_not_called()
+
+    @patch("cis_bench.cli.commands.catalog.get_catalog_db")
+    def test_check_updates_counts_one_update_in_the_singular(
+        self, mock_get_db, runner, mock_db, auth_manager_class
+    ):
+        mock_db.check_updates_available.return_value = [
+            {
+                "benchmark_id": "23598",
+                "title": "CIS Ubuntu Linux 20.04 LTS Benchmark",
+                "downloaded_version": "v1.0.0",
+                "catalog_version": "v2.0.1",
+                "downloaded_at": datetime(2024, 7, 15, 12, 0, 0, tzinfo=UTC),
+                "published_date": None,
+                "reason": "newer version in catalog",
+            }
+        ]
+        mock_get_db.return_value = mock_db
+        with patch("cis_bench.catalog.scraper.CatalogScraper") as mock_scraper_cls:
+            mock_scraper_cls.return_value.refresh_downloaded_pages.return_value = 1
+            result = runner.invoke(cli, ["catalog", "check-updates"])
+
+        assert result.exit_code == 0, result.output
+        assert "Updates available for 1 benchmark:" in " ".join(result.output.split())
 
     @pytest.mark.parametrize(
         ("refreshed", "expected"),

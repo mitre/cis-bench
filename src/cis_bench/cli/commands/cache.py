@@ -7,6 +7,7 @@ Nothing here contacts WorkBench, so every command works in offline mode.
 import logging
 from contextlib import closing
 from datetime import UTC, datetime
+from gettext import ngettext
 from pathlib import Path
 
 import click
@@ -143,7 +144,12 @@ def _print_catalog(catalog: dict) -> None:
         console.print("[dim]Build it with:[/dim]")
         console.print("  cis-bench catalog refresh")
         return
-    console.print(f"Catalog: {catalog['benchmarks']} benchmarks")
+    count = catalog["benchmarks"]
+    console.print(
+        ngettext("Catalog: {count} benchmark", "Catalog: {count} benchmarks", count).format(
+            count=count
+        )
+    )
     console.print(f"  Last full refresh: {_when(catalog['last_full_refresh'])}")
     console.print(f"  Last update: {_when(catalog['last_update'])}")
 
