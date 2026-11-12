@@ -282,9 +282,12 @@ def _benchmark_matching(
         return _best_match(results, total, query)
 
     cut_off = f" (showing the first {len(results)})" if total > len(results) else ""
-    console.print(
-        f"[yellow]Found {total} benchmarks matching '{escape(query)}'{cut_off}[/yellow]\n"
-    )
+    found = ngettext(
+        "Found {count} benchmark matching '{query}'{cut_off}",
+        "Found {count} benchmarks matching '{query}'{cut_off}",
+        total,
+    ).format(count=total, query=escape(query), cut_off=cut_off)
+    console.print(f"[yellow]{found}[/yellow]\n")
 
     console.print(benchmark_table(results, title_width=settings.table_title_width))
     console.print()

@@ -1264,3 +1264,30 @@ class TestValidationWarningCountsTheErrors:
         assert [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING] == [
             f"Validation found {expected}"
         ]
+
+
+class TestGroupRuleCountWarning:
+    _RULE = """
+    <Rule id="R-{n}" severity="medium" weight="10.0">
+      <version>1.0</version>
+      <title>Rule Title</title>
+      <description>&lt;VulnDiscussion&gt;Test&lt;/VulnDiscussion&gt;</description>
+      <fixtext>Fix</fixtext>
+      <check system="test"><check-content>Check</check-content></check>
+    </Rule>"""
+
+    @pytest.mark.parametrize(("rules", "expected"), [(0, "has 0 Rules"), (2, "has 2 Rules")])
+    def test_a_group_without_exactly_one_rule_is_counted(self, tmp_path, rules, expected):
+        body = "".join(self._RULE.format(n=n) for n in range(rules))
+        file_path = tmp_path / "rules.xml"
+        file_path.write_text(
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<Benchmark xmlns="http://checklists.nist.gov/xccdf/1.1" id="test">\n'
+            "  <status>draft</status>\n  <version>1.0</version>\n"
+            f'  <Group id="G-1"><title>T</title><description>D</description>{body}\n  </Group>\n'
+            "</Benchmark>\n"
+        )
+
+        _, _, warnings = DISAConventionsValidator(str(file_path)).validate()
+
+        assert f"Group G-1 {expected} (DISA convention: exactly 1)" in warnings

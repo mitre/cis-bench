@@ -229,7 +229,11 @@ class CatalogScraper:
                 failure_rate = len(failed_pages) / pages_processed
                 if failure_rate > 0.10:
                     logger.error(
-                        f"Failure rate too high: {len(failed_pages)}/{pages_processed} pages failed ({failure_rate:.1%})"
+                        ngettext(
+                            "Failure rate too high: {failed}/{count} page failed ({rate:.1%})",
+                            "Failure rate too high: {failed}/{count} pages failed ({rate:.1%})",
+                            pages_processed,
+                        ).format(failed=len(failed_pages), count=pages_processed, rate=failure_rate)
                     )
                     progress.stop()
                     raise Exception(

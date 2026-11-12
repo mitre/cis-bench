@@ -302,9 +302,10 @@ def export_cmd(identifiers, export_format, style, output_file, output_dir, input
     if total > 1:
         console.print()
         if failed_count == 0:
-            console.print(
-                f"[bold green]Export complete![/bold green] {success_count} benchmarks exported."
-            )
+            exported = ngettext(
+                "{count} benchmark exported.", "{count} benchmarks exported.", success_count
+            ).format(count=success_count)
+            console.print(f"[bold green]Export complete![/bold green] {exported}")
         else:
             console.print(
                 f"[bold yellow]Export complete with errors.[/bold yellow] "

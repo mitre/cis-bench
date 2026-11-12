@@ -1229,3 +1229,29 @@ class TestScraperCountsAgreeWithTheNumber:
 
         with pytest.raises(Exception, match=f"Scraping aborted: {expected}"):
             scraper.scrape_full_catalog(max_pages=1 + failing)
+
+
+class TestFailureRateErrorCountsThePages:
+    def test_the_error_log_counts_the_processed_pages(
+        self, temp_db, sample_html, stub_session, caplog
+    ):
+        import logging
+
+        def answer(url):
+            if url.endswith("?page=1"):
+                return sample_html
+            raise ConnectionError("unreachable")
+
+        session, _ = stub_session(answer)
+        scraper = CatalogScraper(
+            temp_db, session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
+
+        with (
+            caplog.at_level(logging.ERROR, logger="cis_bench.catalog.scraper"),
+            pytest.raises(Exception, match="Scraping aborted"),
+        ):
+            scraper.scrape_full_catalog(max_pages=2)
+
+        rate = [r.getMessage() for r in caplog.records if r.getMessage().startswith("Failure rate")]
+        assert rate == ["Failure rate too high: 1/2 pages failed (50.0%)"]

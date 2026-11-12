@@ -127,7 +127,11 @@ class DISAConventionsValidator:
             rules = group.findall(f"{{{self.xccdf_ns}}}Rule")
             if len(rules) != 1:
                 self.warnings.append(
-                    f"Group {group.get('id')} has {len(rules)} Rules (DISA convention: exactly 1)"
+                    ngettext(
+                        "Group {group} has {count} Rule (DISA convention: exactly 1)",
+                        "Group {group} has {count} Rules (DISA convention: exactly 1)",
+                        len(rules),
+                    ).format(group=group.get("id"), count=len(rules))
                 )
 
     def _check_rules(self):

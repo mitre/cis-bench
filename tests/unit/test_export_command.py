@@ -223,7 +223,7 @@ class TestExportFromFile:
         )
 
         assert result.exit_code == 0, result.output
-        assert "Export complete!" in result.output
+        assert "Export complete! 2 benchmarks exported." in result.output
 
     def test_an_id_with_surrounding_spaces_still_reads_the_cache(
         self, runner, sample_benchmark, tmp_path, monkeypatch, working_dir
