@@ -176,9 +176,16 @@ class TestTheBrowserSettingIsTheDefaultBrowser:
 class TestCatalogRefreshCommand:
     """Tests for catalog refresh command."""
 
-    @pytest.mark.parametrize(("pages", "expected"), [("1", "(1 page)"), ("2", "(2 pages)")])
+    @pytest.mark.parametrize(
+        ("args", "expected"),
+        [
+            (["--max-pages", "1"], "(1 page)"),
+            (["--max-pages", "2"], "(2 pages)"),
+            ([], "(all pages)"),
+        ],
+    )
     def test_refresh_counts_the_pages_it_will_scrape(
-        self, runner, mock_db, auth_manager_class, pages, expected
+        self, runner, mock_db, auth_manager_class, args, expected
     ):
         with (
             patch("cis_bench.cli.commands.catalog.get_catalog_db", return_value=mock_db),
@@ -186,11 +193,11 @@ class TestCatalogRefreshCommand:
         ):
             scraper_class.return_value.scrape_full_catalog.return_value = {
                 "total_benchmarks": 1,
-                "pages_scraped": int(pages),
+                "pages_scraped": 2,
                 "failed_pages": [],
                 "withdrawn": None,
             }
-            result = runner.invoke(cli, ["catalog", "refresh", "--max-pages", pages])
+            result = runner.invoke(cli, ["catalog", "refresh", *args])
 
         assert result.exit_code == 0, result.output
         assert f"Scraping catalog {expected}..." in result.output

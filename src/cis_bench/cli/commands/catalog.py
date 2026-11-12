@@ -137,12 +137,15 @@ def refresh(browser, max_pages, rate_limit):
             scraper = catalog_scraper(settings, db, session)
 
             # Scrape catalog
-            pages_msg = (
-                ngettext("{count} page", "{count} pages", max_pages).format(count=max_pages)
-                if max_pages
-                else "all pages"
-            )
-            console.print(f"[cyan]Scraping catalog ({pages_msg})...[/cyan]")
+            if max_pages:
+                scraping = ngettext(
+                    "[cyan]Scraping catalog ({count} page)...[/cyan]",
+                    "[cyan]Scraping catalog ({count} pages)...[/cyan]",
+                    max_pages,
+                ).format(count=max_pages)
+            else:
+                scraping = "[cyan]Scraping catalog (all pages)...[/cyan]"
+            console.print(scraping)
 
             stats = scraper.scrape_full_catalog(max_pages=max_pages)
 

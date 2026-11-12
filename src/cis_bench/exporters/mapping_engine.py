@@ -1694,7 +1694,13 @@ class MappingEngine:
                 )
                 if profiles:
                     benchmark_fields["profile"] = profiles
-                    logger.debug(f"Added {len(profiles)} Profile elements to benchmark")
+                    logger.debug(
+                        ngettext(
+                            "Added {count} Profile element to benchmark",
+                            "Added {count} Profile elements to benchmark",
+                            len(profiles),
+                        ).format(count=len(profiles))
+                    )
 
         return XCCDFBenchmark(**benchmark_fields)
 
@@ -1959,7 +1965,13 @@ class MappingEngine:
                 ).format(count=len(select_list), profile=profile_id)
             )
 
-        logger.debug(f"Generated {len(profiles)} Profile elements")
+        logger.debug(
+            ngettext(
+                "Generated {count} Profile element",
+                "Generated {count} Profile elements",
+                len(profiles),
+            ).format(count=len(profiles))
+        )
         return profiles
 
     def _defined_profiles(

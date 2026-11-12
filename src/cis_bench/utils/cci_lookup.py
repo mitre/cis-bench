@@ -9,6 +9,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass
+from gettext import ngettext
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -45,7 +46,13 @@ class CCILookupService:
         with open(mapping_file) as f:
             mapping_data = json.load(f)
 
-        logger.debug(f"Loaded {len(mapping_data)} CCI mapping entries")
+        logger.debug(
+            ngettext(
+                "Loaded {count} CCI mapping entry",
+                "Loaded {count} CCI mapping entries",
+                len(mapping_data),
+            ).format(count=len(mapping_data))
+        )
 
         # Each safeguard's CCIs, read once through the one entry reader: only OFFICIAL
         # entries give CCIs (INFERRED and UNMAPPED entries are kept in the file as
@@ -148,7 +155,8 @@ class CCILookupService:
               so those stay.
         """
         logger.debug(
-            f"Deduplicating NIST controls: {len(cis_control_ids)} CIS controls, {len(cited_nist_controls)} cited NIST (extract={extract})"
+            f"Deduplicating NIST controls: cis_controls={len(cis_control_ids)}, "
+            f"cited_nist={len(cited_nist_controls)}, extract={extract}"
         )
         seen_ccis = set()
         all_ccis = []

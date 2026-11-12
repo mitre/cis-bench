@@ -111,7 +111,11 @@ class DISAConventionsValidator:
     def _check_groups(self):
         """Check Group elements follow conventions."""
         groups = self.root.findall(f".//{{{self.xccdf_ns}}}Group")
-        logger.debug(f"Found {len(groups)} Group elements")
+        logger.debug(
+            ngettext(
+                "Found {count} Group element", "Found {count} Group elements", len(groups)
+            ).format(count=len(groups))
+        )
 
         if not groups:
             self.warnings.append("No Group elements found (DISA STIGs use Groups)")
@@ -137,7 +141,11 @@ class DISAConventionsValidator:
     def _check_rules(self):
         """Check Rule elements follow conventions."""
         rules = self.root.findall(f".//{{{self.xccdf_ns}}}Rule")
-        logger.debug(f"Found {len(rules)} Rule elements")
+        logger.debug(
+            ngettext(
+                "Found {count} Rule element", "Found {count} Rule elements", len(rules)
+            ).format(count=len(rules))
+        )
 
         for rule in rules:
             rule_id = rule.get("id", "unknown")
