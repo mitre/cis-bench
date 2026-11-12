@@ -259,6 +259,7 @@ XCCDF files are verbose (XML + metadata). This is normal.
 ### Validation Errors
 
 Both styles validate against NIST schemas. If you get errors:
+
 1. Check you're using correct schema version
 2. Report as bug with sample data
 

@@ -88,6 +88,7 @@ cis-bench auth login --browser firefox
 ```
 
 **What this does:**
+
 1. Optionally opens CIS WorkBench in your browser
 2. Extracts session cookies from your browser
 3. Validates the session

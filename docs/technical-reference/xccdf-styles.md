@@ -434,6 +434,7 @@ for being "close" to a CCI.
 ## Implementation Plan
 
 ### Phase 1: DISA Style Exporter
+
 1. Add `cci_mappings: List[str]` to Pydantic Recommendation model
 2. Create `cis_bench/utils/cci_lookup.py` - Load and query cis-cci-mapping.json
 3. Enhance `cis_bench/exporters/xccdf_exporter.py`:
@@ -447,6 +448,7 @@ for being "close" to a CCI.
 4. Test with DISA tools
 
 ### Phase 2: CIS Native Exporter
+
 1. Create `cis_bench/exporters/xccdf_cis_exporter.py`
 2. Clean structure (no embedded tags)
 3. Separate rationale element
@@ -455,6 +457,7 @@ for being "close" to a CCI.
 6. Test validation
 
 ### Phase 3: CLI Integration
+
 1. Add `--style disa|cis` flag to export command
 2. Default to DISA (broader compatibility)
 3. Document both in README

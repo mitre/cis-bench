@@ -361,6 +361,7 @@ Process of reading authentication cookies from your browser's cookie store.
 Testing if saved cookies still work with CIS WorkBench.
 
 **Checks:**
+
 1. Cookies exist
 2. Request to /benchmarks doesn't redirect to login
 3. Response is not the login page HTML
@@ -520,6 +521,7 @@ DISA tool for viewing and managing STIG checklists.
 Chef's compliance testing framework using Ruby DSL.
 
 **Relationship to this CLI:**
+
 1. Export CIS Benchmark to XCCDF
 2. Convert XCCDF to InSpec using SAF CLI
 3. Run InSpec scans with generated profile
@@ -624,6 +626,7 @@ Single command that searches, downloads, and exports in one step.
 **Syntax:** `cis-bench get "query" --format xccdf --style cis`
 
 **Steps:**
+
 1. Search catalog for query
 2. Interactive selection (if multiple matches)
 3. Download benchmark (or use cache)
@@ -641,6 +644,7 @@ CLI presents a menu for user selection (uses questionary library).
 Stored data to avoid re-downloading or re-processing.
 
 **Types:**
+
 1. **Session cache** - Saved authentication cookies
 2. **Catalog cache** - Benchmark metadata database
 3. **Download cache** - Full benchmark JSON in database
@@ -704,6 +708,7 @@ Downloaded benchmark in JSON format with all 19 fields.
 **Contains:** Complete Pydantic Benchmark model serialized to JSON
 
 **Stored:**
+
 1. File in output directory
 2. JSON in catalog database (downloaded_benchmarks table)
 

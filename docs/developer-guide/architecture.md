@@ -347,6 +347,7 @@ return strategy
 ```
 
 **Adding new HTML format:**
+
 1. Create new strategy class
 2. Register with detector
 3. Old benchmarks still work
@@ -366,6 +367,7 @@ exporter = ExporterFactory.create("xccdf", style="cis")
 ```
 
 **Adding new format:**
+
 1. Create exporter class
 2. Register with factory
 3. Available in CLI
@@ -390,6 +392,7 @@ requires_post_processing: true
 ```
 
 **Adding new XCCDF style:**
+
 1. Create `style_name_style.yaml`
 2. Define field mappings
 3. Use: `--format xccdf --style style_name`
@@ -575,6 +578,7 @@ source_field: "nist_controls"
 - `embedded_xml_tags` - Tags inside an element's text, from config (a STIG description's VulnDiscussion and the tags after it)
 
 **Adding new structure:**
+
 1. Define in YAML with `structure: "new_type"`
 2. Add handler in MappingEngine
 3. OR use existing structure types
