@@ -213,6 +213,33 @@ def one_definition_per_title(definitions: list[ProfileDefinition]) -> list[Profi
 ProfileDefinitions = Annotated[list[ProfileDefinition], AfterValidator(one_definition_per_title)]
 
 
+class BenchmarkAsset(BaseModel):
+    """A product a benchmark applies to, as its WorkBench page lists it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    title: str = Field(..., description="The product's name (e.g. 'AlmaLinux OS 9')")
+    cpe_id: str = Field(..., description="The product's CPE 2.3 name")
+
+
+class RevisionHistoryEntry(BaseModel):
+    """One row of the revision history on a benchmark's WorkBench page."""
+
+    model_config = ConfigDict(frozen=True)
+
+    revised_at: datetime | None = Field(
+        default=None,
+        description="When the revision was made, as the page shows it; the page names no "
+        "time zone, so none is attached",
+    )
+    author: str | None = Field(
+        default=None, description="Who made the revision, as the page names them"
+    )
+    modification_count: int | None = Field(
+        default=None, description="How many changes the revision made"
+    )
+
+
 class BenchmarkPage(BaseModel):
     """What a benchmark's own WorkBench page says about the release.
 
@@ -270,6 +297,41 @@ class Benchmark(BaseModel):
         default_factory=list,
         description="The benchmark's profiles as its page defines them (title, description, "
         "the profile each extends); empty for copies saved before they were read",
+    )
+
+    # The rest of what the benchmark's WorkBench page says about it. None, or an empty
+    # list, when the page does not give it or the copy was saved before it was read.
+    release_type: str | None = Field(
+        default=None,
+        description="The kind of release (e.g. 'Planned Update'), as the page names it",
+    )
+    contributors: list[str] = Field(
+        default_factory=list, description="The contributors, in the order the page lists them"
+    )
+    parent_benchmark_url: HttpUrl | None = Field(
+        default=None, description="The WorkBench page of the benchmark this one was based on"
+    )
+    parent_benchmark_title: str | None = Field(
+        default=None, description="The title of the benchmark this one was based on"
+    )
+    community_url: HttpUrl | None = Field(
+        default=None, description="The WorkBench page of the community that maintains the benchmark"
+    )
+    milestone_name: str | None = Field(default=None, description="The release milestone's name")
+    milestone_url: HttpUrl | None = Field(
+        default=None, description="The WorkBench page of the release milestone"
+    )
+    intended_audience: str | None = Field(
+        default=None, description="Who the benchmark is for, as the Markdown its page gives"
+    )
+    acknowledgements: str | None = Field(
+        default=None, description="The page's acknowledgements, as Markdown"
+    )
+    assets: list[BenchmarkAsset] = Field(
+        default_factory=list, description="The products the benchmark applies to (CPE names)"
+    )
+    revision_history: list[RevisionHistoryEntry] = Field(
+        default_factory=list, description="The page's revision history, newest first"
     )
 
     downloaded_at: datetime = Field(

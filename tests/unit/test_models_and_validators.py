@@ -544,6 +544,85 @@ class TestBenchmark:
         assert all(isinstance(r, Recommendation) for r in benchmark.recommendations)
 
 
+# What a benchmark's WorkBench page says about it beyond its recommendations, in our own
+# words: release type, contributors, the benchmark it came from, community, milestone,
+# audience, acknowledgements, assets (CPE names) and revision history.
+PAGE_METADATA = {
+    "release_type": "Planned Update",
+    "contributors": ["Alex Example", "Sam Sample", "Alex Example"],
+    "parent_benchmark_url": "https://workbench.cisecurity.org/benchmarks/11111",
+    "parent_benchmark_title": "CIS Example Platform Benchmark v1.0.0",
+    "community_url": "https://workbench.cisecurity.org/communities/42",
+    "milestone_name": "Example Platform v2.0.0",
+    "milestone_url": "https://workbench.cisecurity.org/community/42/milestones/7",
+    "intended_audience": "Administrators who install and run the example platform.",
+    "acknowledgements": "The example platform community.",
+    "assets": [
+        {"title": "Example OS 9", "cpe_id": "cpe:2.3:o:example:example_os:9:*:*:*:*:*:*:*"},
+        {"title": "Example OS 10", "cpe_id": "cpe:2.3:o:example:example_os:10:*:*:*:*:*:*:*"},
+    ],
+    "revision_history": [
+        {"revised_at": "2025-09-23T14:54:00", "author": "Alex", "modification_count": 1},
+        {"revised_at": "2025-09-23T14:53:00", "author": "Sam", "modification_count": 2},
+    ],
+}
+
+
+class TestBenchmarkPageMetadata:
+    """The page metadata a Benchmark carries is kept through the stored JSON."""
+
+    def test_the_page_metadata_round_trips_through_the_stored_json(self, minimal_benchmark_data):
+        from cis_bench.catalog.database import serialize_benchmark_json
+
+        benchmark = Benchmark(**minimal_benchmark_data, **PAGE_METADATA)
+
+        content_json, _ = serialize_benchmark_json(benchmark)
+        stored = json.loads(content_json)
+        loaded = deserialize_benchmark_json(content_json)
+
+        for name, value in PAGE_METADATA.items():
+            assert stored[name] == value, name
+        assert loaded == benchmark
+
+    def test_the_page_metadata_round_trips_through_a_json_file(
+        self, minimal_benchmark_data, tmp_path
+    ):
+        benchmark = Benchmark(**minimal_benchmark_data, **PAGE_METADATA)
+        path = tmp_path / "benchmark.json"
+
+        benchmark.to_json_file(str(path))
+        loaded = Benchmark.from_json_file(str(path)).model_dump(mode="json")
+
+        for name, value in PAGE_METADATA.items():
+            assert loaded.get(name) == value, name
+
+    def test_a_copy_saved_before_the_page_metadata_loads_with_none_and_empty_lists(
+        self, minimal_benchmark_data
+    ):
+        loaded = deserialize_benchmark_json(json.dumps(minimal_benchmark_data))
+
+        dumped = loaded.model_dump()
+        for name in PAGE_METADATA:
+            assert name in dumped, name
+            expected = [] if isinstance(PAGE_METADATA[name], list) else None
+            assert dumped[name] == expected, name
+
+    def test_an_asset_needs_its_cpe_name(self, minimal_benchmark_data):
+        with pytest.raises(ValidationError, match="cpe_id"):
+            Benchmark(**minimal_benchmark_data, assets=[{"title": "Example OS 9"}])
+
+    def test_the_page_metadata_is_part_of_the_content_hash(self, minimal_benchmark_data):
+        # A copy whose page metadata changed is different content.
+        from cis_bench.catalog.database import serialize_benchmark_json
+
+        _, before = serialize_benchmark_json(Benchmark(**minimal_benchmark_data))
+        _, after = serialize_benchmark_json(
+            Benchmark(**minimal_benchmark_data, release_type="Planned Update")
+        )
+
+        assert before != after
+
+
 # ============================================================================
 # SERIALIZATION TESTS
 # ============================================================================
