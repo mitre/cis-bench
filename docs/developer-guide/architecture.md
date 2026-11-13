@@ -245,6 +245,7 @@ M --> H
 - `collections` - Categories/tags
 - `owners` - Authors
 - `catalog_benchmarks` - Main table with FKs
+- `benchmark_contributors`, `benchmark_assets`, `revision_history` - The lists on a benchmark's page, one row per entry at its place in the list (`sort_order`)
 - `downloaded_benchmarks` - Cached content
 - `recommendations_fts` - Search index over the downloaded benchmarks' recommendations
 - `scrape_metadata` - Tracking
@@ -597,6 +598,9 @@ catalog_benchmarks }o--|| benchmark_statuses : has
 catalog_benchmarks }o--|| communities : belongs_to
 catalog_benchmarks }o--|| owners : owned_by
 catalog_benchmarks }o--o{ collections : has
+catalog_benchmarks ||--o{ benchmark_contributors : lists
+catalog_benchmarks ||--o{ benchmark_assets : applies_to
+catalog_benchmarks ||--o{ revision_history : records
 
 catalog_benchmarks {
 string benchmark_id PK
@@ -607,7 +611,36 @@ int platform_id FK
 int community_id FK
 int owner_id FK
 date published_date
+string description
+string release_type
+string parent_benchmark_id
+string parent_benchmark_url
+string intended_audience
+string acknowledgements
+string milestone_name
+string milestone_url
 bool is_latest
+}
+
+benchmark_contributors {
+string benchmark_id PK
+int sort_order PK
+string name
+}
+
+benchmark_assets {
+string benchmark_id PK
+int sort_order PK
+string title
+string cpe_id
+}
+
+revision_history {
+string benchmark_id PK
+int sort_order PK
+datetime revised_at
+string author
+int modification_count
 }
 
 downloaded_benchmarks {
@@ -635,6 +668,8 @@ bool is_active
 - No data duplication
 - Referential integrity via FKs
 - Fast queries with indexes
+
+The page fields on `catalog_benchmarks` and the three list tables hold what a release's own WorkBench page says; the catalog listing carries none of it, so a refresh never changes them. A catalog an earlier version wrote gains the columns and tables when it is opened (`CatalogDatabase._upgrade_schema`, in the same write transaction as its other upgrades), so a command that reads a release works before any refresh.
 
 **FTS5 Virtual Table:**
 ```sql

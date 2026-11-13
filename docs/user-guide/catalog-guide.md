@@ -353,7 +353,14 @@ cis-bench catalog refresh --max-pages 5
 **catalog_benchmarks:**
 
 - Metadata for all benchmarks
-- Fields: id, title, version, status, platform_type, platform, etc. from the listing; published_date and description from the benchmark's page, once it has been read
+- Fields: id, title, version, status, platform_type, platform, etc. from the listing; published_date, description, release_type, parent_benchmark_id, parent_benchmark_url, intended_audience, acknowledgements, milestone_name and milestone_url from the benchmark's page, once it has been read
+
+**benchmark_contributors, benchmark_assets, revision_history:**
+
+- The lists on a benchmark's page, one row per entry in the page's order: its contributors, the products it applies to (title and CPE name), and its revision history (time, author, number of changes)
+- Empty until the benchmark's page has been read
+
+A catalog an earlier version of cis-bench wrote gains new columns and tables the first time a command opens it; no refresh is needed.
 
 **downloaded_benchmarks:**
 
