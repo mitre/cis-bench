@@ -95,6 +95,7 @@ nav:
 
 hooks:
   - scripts/mkdocs_settings_table.py
+  - scripts/mkdocs_benchmark_schema.py
 
 plugins:
   - search

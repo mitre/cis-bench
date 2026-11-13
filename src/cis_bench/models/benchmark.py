@@ -278,8 +278,22 @@ def _as_markdown(
     return Recommendation.model_validate(data)
 
 
+# Fields a copy saved before they existed may omit: forms_of_a_copy_saved_without_them gives
+# them their values when the copy loads.
+_FORM_FIELDS: Final[frozenset[str]] = frozenset({"text_format", "artifact_title_format"})
+
+
+def _form_fields_may_be_absent(schema: dict[str, Any]) -> None:
+    """The JSON Schema of a benchmark file cis-bench reads: a model validator, which schema
+    generation cannot see, completes the form fields of an older copy, so the schema does
+    not require them (each field's description says what an absent one means)."""
+    schema["required"] = [name for name in schema["required"] if name not in _FORM_FIELDS]
+
+
 class Benchmark(BaseModel):
     """A complete CIS benchmark with metadata and recommendations."""
+
+    model_config = ConfigDict(json_schema_extra=_form_fields_may_be_absent)
 
     # Required metadata
     title: str = Field(..., description="Full benchmark title")

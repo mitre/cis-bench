@@ -98,212 +98,33 @@ flowchart LR
 ## Our JSON Schema
 
 ### Location
-`cis_bench/models/schema.json`
+
+The schema is generated from the `Benchmark` model when the docs are built, and published with them: [schemas/benchmark.json](../schemas/benchmark.json) (`https://mitre.github.io/cis-bench/schemas/benchmark.json`). It is JSON Schema Draft 2020-12 and names that draft in its `$schema` keyword. The model is its only source, so there is no copy to keep up to date. To print it from an installed cis-bench (without the `$schema` keyword the published file adds):
+
+```bash
+python -c "import json; from cis_bench.models.benchmark import Benchmark; print(json.dumps(Benchmark.model_json_schema(), indent=2))"
+```
 
 ### Structure
 
-```json
-{
-"$schema": "http://json-schema.org/draft-07/schema#",
-"$id": "https://github.com/yourusername/cis-benchmark-cli/schemas/benchmark-v1.0.json",
-"title": "CIS Benchmark",
-"description": "Canonical data format for CIS Benchmark downloaded from CIS WorkBench",
-"type": "object",
-"required": ["title", "benchmark_id", "url", "version", "recommendations"],
-"properties": {
-"title": {
-"type": "string",
-"description": "Full benchmark title (e.g., 'CIS Amazon EKS Benchmark v1.8.0')",
-"examples": ["CIS Amazon EKS Benchmark v1.8.0", "CIS NGINX Benchmark vNEXT"]
-},
-"benchmark_id": {
-"type": "string",
-"description": "CIS WorkBench benchmark ID",
-"pattern": "^[0-9]+$",
-"examples": ["22605", "18528"]
-},
-"url": {
-"type": "string",
-"format": "uri",
-"description": "Source URL of the benchmark"
-},
-"version": {
-"type": "string",
-"description": "Benchmark version (extracted from title or metadata)",
-"examples": ["v1.8.0", "vNEXT", "v1.0.0"]
-},
-"published_date": {
-"type": ["string", "null"],
-"format": "date",
-"description": "The date WorkBench shows this release as published, read from the benchmark's page",
-"examples": ["2025-08-28"]
-},
-"description": {
-"type": ["string", "null"],
-"description": "The benchmark's overview, as the Markdown its page gives"
-},
-"profile_definitions": {
-"type": "array",
-"description": "The benchmark's profiles as its page defines them: title, description, the profile each extends"
-},
-"release_type": {"type": ["string", "null"], "examples": ["Planned Update"]},
-"contributors": {"type": "array", "items": {"type": "string"}},
-"parent_benchmark_url": {"type": ["string", "null"], "format": "uri"},
-"parent_benchmark_title": {"type": ["string", "null"]},
-"community_url": {"type": ["string", "null"], "format": "uri"},
-"milestone_name": {"type": ["string", "null"]},
-"milestone_url": {"type": ["string", "null"], "format": "uri"},
-"intended_audience": {"type": ["string", "null"]},
-"acknowledgements": {"type": ["string", "null"]},
-"assets": {
-"type": "array",
-"items": {"type": "object", "required": ["title", "cpe_id"]}
-},
-"revision_history": {
-"type": "array",
-"items": {"type": "object", "properties": {"revised_at": {}, "author": {}, "modification_count": {}}}
-},
-"downloaded_at": {
-"type": "string",
-"format": "date-time",
-"description": "ISO 8601 timestamp when benchmark was downloaded"
-},
-"scraper_version": {
-"type": "string",
-"description": "Scraper strategy version used",
-"examples": ["v1_2025_10", "v2_2026_01"]
-},
-"text_format": {
-"type": "string",
-"enum": ["html", "markdown"],
-"description": "The form of the recommendation text fields as written; a copy saved before this field existed is 'html' when its scraper_version is v1_2025_10"
-},
-"artifact_title_format": {
-"type": "string",
-"enum": ["html", "markdown"],
-"description": "The form of the artifact titles as written; a copy saved before this field existed is 'html'"
-},
-"total_recommendations": {
-"type": "integer",
-"minimum": 0,
-"description": "Total number of recommendations in benchmark"
-},
-"recommendations": {
-"type": "array",
-"description": "Array of benchmark recommendations",
-"items": {
-"$ref": "#/$defs/recommendation"
-}
-}
-},
-
-"$defs": {
-"recommendation": {
-"type": "object",
-"required": ["ref", "title", "url"],
-"properties": {
-"ref": {
-"type": "string",
-"description": "Recommendation reference number",
-"pattern": "^[0-9]+(\\.[0-9]+)*$",
-"examples": ["3.1.1", "5.2.3"]
-},
-"title": {
-"type": "string",
-"description": "Recommendation title",
-"minLength": 1
-},
-"url": {
-"type": "string",
-"format": "uri",
-"description": "Direct URL to recommendation page"
-},
-"assessment_status": {
-"type": "string",
-"description": "Assessment type: 'Automated' or 'Manual'"
-},
-"description": {
-"type": ["string", "null"],
-"description": "Detailed description of the recommendation (Markdown)"
-},
-"rationale": {
-"type": ["string", "null"],
-"description": "Rationale/justification for the recommendation (Markdown)"
-},
-"impact": {
-"type": ["string", "null"],
-"description": "Impact statement (Markdown)"
-},
-"audit": {
-"type": ["string", "null"],
-"description": "Audit procedure to verify compliance (Markdown)"
-},
-"remediation": {
-"type": ["string", "null"],
-"description": "Remediation steps to achieve compliance (Markdown)"
-},
-"additional_info": {
-"type": ["string", "null"],
-"description": "Additional information and notes (Markdown)"
-},
-"default_value": {
-"type": ["string", "null"],
-"description": "Default configuration value (Markdown)"
-},
-"artifact_equation": {
-"type": ["string", "null"],
-"description": "Artifact equation logic (Markdown)"
-},
-"mitre_mapping": {
-"type": ["object", "null"],
-"description": "MITRE ATT&CK mapping: techniques, tactics, mitigations (lists of IDs)"
-},
-"references": {
-"type": ["string", "null"],
-"description": "External references and citations (Markdown)"
-}
-},
-"additionalProperties": false
-}
-}
-}
-```
+A benchmark file is one object: the benchmark's fields (see [Field Definitions](#field-definitions)) and `recommendations`, an array of recommendation objects. A copy saved before `text_format` and `artifact_title_format` existed may leave them out: cis-bench works them out from `scraper_version` when it loads the copy, and the schema accepts such a copy.
 
 ## Using JSON Schema
 
 ### Validation
 
+cis-bench itself validates a benchmark with the `Benchmark` model when it builds or loads one; it does not read the JSON Schema. The schema is for other tools that read cis-bench's benchmark files, for example with `jsonschema`:
+
 ```python
 import json
-import jsonschema
 
-# Load schema
-with open('cis_bench/models/schema.json') as f:
-schema = json.load(f)
+from jsonschema import Draft202012Validator
 
-# Validate scraped data
-try:
-jsonschema.validate(instance=benchmark_data, schema=schema)
-print(" Data is valid")
-except jsonschema.ValidationError as e:
-print(f" Validation failed: {e.message}")
-print(f" Path: {' '.join(str(p) for p in e.path)}")
+with open("benchmark-schema.json") as f:  # schemas/benchmark.json from the docs site
+    schema = json.load(f)
+with open("23598.json") as f:  # a benchmark file cis-bench wrote
+    Draft202012Validator(schema).validate(json.load(f))
 ```
-
-### Data Generation from Schema
-
-We can also use tools like `datamodel-code-generator` to create Python dataclasses from our schema:
-
-```bash
-pip install datamodel-code-generator
-
-datamodel-codegen \
---input cis_bench/models/schema.json \
---output cis_bench/models/benchmark.py \
---input-file-type jsonschema
-```
-
-This generates type-safe Python classes that match our schema exactly!
 
 ## Exporter Mapping
 
@@ -499,21 +320,7 @@ copy saved before that is converted once as it loads. In exports the text is:
 
 ## Tools and Libraries
 
-**JSON Schema Validation**:
-```bash
-pip install jsonschema
-```
-
-**Code Generation from Schema**:
-```bash
-pip install datamodel-code-generator
-```
-
-**Schema Documentation**:
-```bash
-pip install json-schema-for-humans
-json-schema-for-humans cis_bench/models/schema.json docs/schema.html
-```
+**JSON Schema validation** (for tools that read cis-bench's files): `pip install jsonschema`
 
 ## Example: Complete Benchmark
 
@@ -560,7 +367,7 @@ def export(self, data: dict, output_path: str) -> str:
 """Export benchmark data.
 
 Args:
-data: Dictionary matching cis_bench/models/schema.json
+data: Dictionary matching the benchmark JSON Schema
 output_path: Where to write output
 
 Returns:
@@ -602,63 +409,7 @@ benchmark_title,benchmark_id,ref,title,description,audit,...
 
 ## Validation Implementation
 
-### In WorkbenchScraper
-
-```python
-import jsonschema
-
-class WorkbenchScraper:
-def __init__(self, session, schema_path='cis_bench/models/schema.json'):
-self.session = session
-
-# Load schema
-with open(schema_path) as f:
-self.schema = json.load(f)
-
-def download_benchmark(self, benchmark_url):
-# ... scraping logic ...
-
-benchmark_data = {
-'title': title,
-'benchmark_id': benchmark_id,
-'recommendations': recommendations,
-# ...
-}
-
-# VALIDATE before returning
-try:
-jsonschema.validate(instance=benchmark_data, schema=self.schema)
-except jsonschema.ValidationError as e:
-raise ValueError(f"Scraped data validation failed: {e.message}")
-
-return benchmark_data
-```
-
-### In Exporters
-
-```python
-class BaseExporter(ABC):
-def _validate_input(self, data: dict):
-"""Validate input data against schema."""
-with open('cis_bench/models/schema.json') as f:
-schema = json.load(f)
-
-jsonschema.validate(instance=data, schema=schema)
-```
-
-## Schema Files
-
-We'll maintain multiple schema versions:
-
-```
-cis_bench/models/
-├── schema.json # Current schema (symlink to v1.0.0)
-├── schemas/
-│ ├── v1.0.0.json # Version 1.0.0
-│ ├── v1.1.0.json # Version 1.1.0 (future)
-│ └── v2.0.0.json # Version 2.0.0 (future)
-└── schema_validator.py # Validation utilities
-```
+The scraper builds a `Benchmark`, so pydantic validates every field as the benchmark is made; `deserialize_benchmark_json` validates a stored copy the same way when it loads. Exporters receive a validated `Benchmark`. The JSON Schema is generated from that same model and is not used at runtime.
 
 ## Benefits in Practice
 
