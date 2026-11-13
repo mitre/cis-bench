@@ -161,6 +161,16 @@ class CatalogBenchmark(SQLModel, table=True):
     # The release's overview, read from its page as published_date is
     description: str | None = None
 
+    # The rest of what the release's page says about it, read as published_date is. Its
+    # contributors, assets and revision history are lists, kept in tables of their own.
+    release_type: str | None = None
+    parent_benchmark_id: str | None = None
+    parent_benchmark_url: str | None = None
+    intended_audience: str | None = None
+    acknowledgements: str | None = None
+    milestone_name: str | None = None
+    milestone_url: str | None = None
+
     # Flags
     is_latest: bool = Field(default=False)
     is_vnext: bool = Field(default=False)
@@ -188,6 +198,45 @@ class BenchmarkCollection(SQLModel, table=True):
 
     benchmark_id: str = Field(foreign_key="catalog_benchmarks.benchmark_id", primary_key=True)
     collection_id: int = Field(foreign_key="collections.collection_id", primary_key=True)
+
+
+# ============================================================================
+# Lists from a release's own page, each row at its place (sort_order) in the list
+# ============================================================================
+
+
+class BenchmarkContributor(SQLModel, table=True):
+    """A contributor the release's page names; a name the page lists twice is kept twice."""
+
+    __tablename__ = "benchmark_contributors"
+
+    benchmark_id: str = Field(foreign_key="catalog_benchmarks.benchmark_id", primary_key=True)
+    sort_order: int = Field(primary_key=True)
+    name: str
+
+
+class BenchmarkAsset(SQLModel, table=True):
+    """A product the release applies to, with its CPE 2.3 name."""
+
+    __tablename__ = "benchmark_assets"
+
+    benchmark_id: str = Field(foreign_key="catalog_benchmarks.benchmark_id", primary_key=True)
+    sort_order: int = Field(primary_key=True)
+    title: str
+    cpe_id: str
+
+
+class RevisionHistory(SQLModel, table=True):
+    """A row of the release's revision history, newest first (sort_order 0)."""
+
+    __tablename__ = "revision_history"
+
+    benchmark_id: str = Field(foreign_key="catalog_benchmarks.benchmark_id", primary_key=True)
+    sort_order: int = Field(primary_key=True)
+    # As the page shows it: the page names no time zone, so none is stored
+    revised_at: datetime | None = None
+    author: str | None = None
+    modification_count: int | None = None
 
 
 # ============================================================================

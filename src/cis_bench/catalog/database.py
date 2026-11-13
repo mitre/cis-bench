@@ -47,7 +47,9 @@ from cis_bench.catalog.fts import (
     version_index_text,
 )
 from cis_bench.catalog.models import (
+    BenchmarkAsset,
     BenchmarkCollection,
+    BenchmarkContributor,
     BenchmarkStatus,
     BenchmarkStatusModel,
     CatalogBenchmark,
@@ -56,6 +58,7 @@ from cis_bench.catalog.models import (
     DownloadedBenchmark,
     Owner,
     Platform,
+    RevisionHistory,
     ScrapeMetadata,
     utcnow,
 )
@@ -170,6 +173,39 @@ def _normalize_base_title(title: str | None) -> str:
 # when it is opened: (name, SQLite type).
 _ADDED_DOWNLOADED_COLUMNS = (("version", "VARCHAR"), ("published_date", "DATE"))
 
+# Columns catalog_benchmarks gained for the page metadata of a release, added to an older
+# database when it is opened: (name, SQLite type).
+_ADDED_CATALOG_COLUMNS = (
+    ("release_type", "VARCHAR"),
+    ("parent_benchmark_id", "VARCHAR"),
+    ("parent_benchmark_url", "VARCHAR"),
+    ("intended_audience", "VARCHAR"),
+    ("acknowledgements", "VARCHAR"),
+    ("milestone_name", "VARCHAR"),
+    ("milestone_url", "VARCHAR"),
+)
+
+# Catalog columns read from a release's own page (record_page), never from the listing: a
+# catalog refresh must not overwrite them.
+_PAGE_COLUMNS = frozenset(
+    {"published_date", "description", *(name for name, _ in _ADDED_CATALOG_COLUMNS)}
+)
+
+# Keys of a listing row insert_benchmark does not copy onto an existing catalog row: the
+# identity and the references it sets itself, and the columns the release's page owns.
+_NOT_COPIED_FROM_LISTING = (
+    frozenset(
+        {"benchmark_id", "title", "url", "platform", "community", "owner", "status", "collections"}
+    )
+    | _PAGE_COLUMNS
+)
+
+# Tables added for the lists on a release's page, created in an older database when it is
+# opened, so a command that reads a release (catalog info) works before any refresh.
+_ADDED_CATALOG_TABLES = tuple(
+    model.__tablename__ for model in (BenchmarkContributor, BenchmarkAsset, RevisionHistory)
+)
+
 
 class _PendingUpgrades(NamedTuple):
     """What _upgrade_schema has to change in a database an earlier version wrote."""
@@ -177,10 +213,16 @@ class _PendingUpgrades(NamedTuple):
     downloaded_columns: tuple[tuple[str, str], ...]
     rebuild_index: bool
     create_recommendation_index: bool = False
+    catalog_columns: tuple[tuple[str, str], ...] = ()
+    catalog_tables: tuple[str, ...] = ()
 
     def __bool__(self) -> bool:
         return (
-            bool(self.downloaded_columns) or self.rebuild_index or self.create_recommendation_index
+            bool(self.downloaded_columns)
+            or self.rebuild_index
+            or self.create_recommendation_index
+            or bool(self.catalog_columns)
+            or bool(self.catalog_tables)
         )
 
 
@@ -340,7 +382,8 @@ class CatalogDatabase:
 
         Runs whenever an existing database file is opened, so no command needs a catalog
         refresh first. Only what is found is changed: a table that is not there yet is left
-        for initialize_schema to create. A database that cannot be written (read-only,
+        for initialize_schema to create, except the page-list tables of an existing catalog,
+        which reading a release needs. A database that cannot be written (read-only,
         locked by another process) or read is left as it is with a warning; reading it
         still works as far as its schema allows.
         """
@@ -361,6 +404,14 @@ class CatalogDatabase:
                         text(f"ALTER TABLE downloaded_benchmarks ADD COLUMN {name} {sql_type}")
                     )
                     logger.info(f"Added column downloaded_benchmarks.{name}")
+                for name, sql_type in pending.catalog_columns:
+                    session.execute(
+                        text(f"ALTER TABLE catalog_benchmarks ADD COLUMN {name} {sql_type}")
+                    )
+                    logger.info(f"Added column catalog_benchmarks.{name}")
+                for table_name in pending.catalog_tables:
+                    SQLModel.metadata.tables[table_name].create(session.connection())
+                    logger.info(f"Added table {table_name}")
                 if pending.rebuild_index:
                     self._rebuild_fts(session)
                     logger.info("Rebuilt the search index in the current layout")
@@ -376,9 +427,10 @@ class CatalogDatabase:
 
     @staticmethod
     def _pending_upgrades(connection: Connection | Session) -> _PendingUpgrades:
-        """What an earlier version's database lacks: columns of downloaded_benchmarks added
-        since, and whether the search index is in another layout. A table that does not
-        exist needs nothing."""
+        """What an earlier version's database lacks: columns of downloaded_benchmarks and
+        catalog_benchmarks added since, the tables of page lists a catalog does not have yet,
+        and whether the search index is in another layout. A table that does not exist
+        needs nothing: initialize_schema creates it with the rest."""
 
         def columns(table_name: str) -> list[str]:
             rows = connection.execute(text(f"PRAGMA table_info({table_name})"))
@@ -386,7 +438,16 @@ class CatalogDatabase:
 
         downloaded = columns("downloaded_benchmarks")
         index = columns("benchmarks_fts")
+        catalog = columns("catalog_benchmarks")
         return _PendingUpgrades(
+            catalog_columns=tuple(
+                (name, sql_type)
+                for name, sql_type in _ADDED_CATALOG_COLUMNS
+                if catalog and name not in catalog
+            ),
+            catalog_tables=tuple(
+                name for name in _ADDED_CATALOG_TABLES if catalog and not columns(name)
+            ),
             downloaded_columns=tuple(
                 (name, sql_type)
                 for name, sql_type in _ADDED_DOWNLOADED_COLUMNS
@@ -611,20 +672,7 @@ class CatalogDatabase:
                 existing.title = title
                 existing.url = url
                 for key, value in benchmark_data.items():
-                    if key not in {
-                        "benchmark_id",
-                        "title",
-                        "url",
-                        "platform",
-                        "community",
-                        "owner",
-                        "status",
-                        "collections",
-                        # Read from the release's own page (record_page), never the listing:
-                        # a refresh must not overwrite them
-                        "published_date",
-                        "description",
-                    }:
+                    if key not in _NOT_COPIED_FROM_LISTING:
                         setattr(existing, key, value)
 
                 existing.platform_id = platform.platform_id if platform else None
@@ -921,6 +969,40 @@ class CatalogDatabase:
                 "owner": benchmark.owner.username if benchmark.owner else None,
                 "published_date": benchmark.published_date,
                 "description": benchmark.description,
+                "release_type": benchmark.release_type,
+                "parent_benchmark_id": benchmark.parent_benchmark_id,
+                "parent_benchmark_url": benchmark.parent_benchmark_url,
+                "intended_audience": benchmark.intended_audience,
+                "acknowledgements": benchmark.acknowledgements,
+                "milestone_name": benchmark.milestone_name,
+                "milestone_url": benchmark.milestone_url,
+                "contributors": list(
+                    session.exec(
+                        select(BenchmarkContributor.name)
+                        .where(col(BenchmarkContributor.benchmark_id) == benchmark_id)
+                        .order_by(col(BenchmarkContributor.sort_order))
+                    ).all()
+                ),
+                "assets": [
+                    {"title": asset.title, "cpe_id": asset.cpe_id}
+                    for asset in session.exec(
+                        select(BenchmarkAsset)
+                        .where(col(BenchmarkAsset.benchmark_id) == benchmark_id)
+                        .order_by(col(BenchmarkAsset.sort_order))
+                    ).all()
+                ],
+                "revision_history": [
+                    {
+                        "revised_at": revision.revised_at,
+                        "author": revision.author,
+                        "modification_count": revision.modification_count,
+                    }
+                    for revision in session.exec(
+                        select(RevisionHistory)
+                        .where(col(RevisionHistory.benchmark_id) == benchmark_id)
+                        .order_by(col(RevisionHistory.sort_order))
+                    ).all()
+                ],
                 "is_latest": benchmark.is_latest,
                 "is_vnext": benchmark.is_vnext,
                 "collections": collection_names,

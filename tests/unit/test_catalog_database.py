@@ -1847,6 +1847,61 @@ class TestOpeningAnOlderCatalog:
         with closing(sqlite3.connect(path)) as con:
             con.executescript(sql)
 
+    # What the catalog gained for the page metadata of a release (its WorkBench page).
+    PAGE_COLUMNS = (
+        "release_type",
+        "parent_benchmark_id",
+        "parent_benchmark_url",
+        "intended_audience",
+        "acknowledgements",
+        "milestone_name",
+        "milestone_url",
+    )
+    PAGE_TABLES = ("benchmark_contributors", "benchmark_assets", "revision_history")
+
+    @classmethod
+    def _without_page_metadata(cls, path):
+        """Take out what this version added for page metadata, leaving the catalog as the
+        version before it wrote it."""
+        import sqlite3
+
+        with closing(sqlite3.connect(path)) as con:
+            columns = {row[1] for row in con.execute("PRAGMA table_info(catalog_benchmarks)")}
+            for name in cls.PAGE_COLUMNS:
+                if name in columns:
+                    con.execute(f"ALTER TABLE catalog_benchmarks DROP COLUMN {name}")
+            for table in cls.PAGE_TABLES:
+                con.execute(f"DROP TABLE IF EXISTS {table}")
+            con.commit()
+
+    def test_existing_database_gains_extended_metadata_columns_on_open(self, tmp_path):
+        """A catalog from before page metadata gains its columns and tables when it is
+        opened, by a command that reads it, with every row kept as it was."""
+        import sqlite3
+
+        path = tmp_path / "older.db"
+        self._catalog(path, "")
+        self._without_page_metadata(path)
+
+        for _ in range(2):
+            with closing(CatalogDatabase(path)) as db:
+                row = db.get_benchmark("210")
+
+        assert (row["title"], row["version"], row["community"]) == (
+            "CIS Kubernetes Benchmark",
+            "v2.1.0",
+            "CIS Kubernetes Benchmarks",
+        )
+        assert {name: row[name] for name in self.PAGE_COLUMNS} == dict.fromkeys(self.PAGE_COLUMNS)
+        assert (row["contributors"], row["assets"], row["revision_history"]) == ([], [], [])
+        with closing(sqlite3.connect(path)) as con:
+            columns = {row[1] for row in con.execute("PRAGMA table_info(catalog_benchmarks)")}
+            tables = {
+                row[0] for row in con.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            }
+        assert set(self.PAGE_COLUMNS) <= columns
+        assert set(self.PAGE_TABLES) <= tables
+
     def test_a_downloaded_table_without_the_version_column_gets_it(self, tmp_path):
         path = tmp_path / "older.db"
         self._catalog(path, "ALTER TABLE downloaded_benchmarks DROP COLUMN version;")
