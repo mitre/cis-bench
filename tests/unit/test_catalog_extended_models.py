@@ -108,6 +108,23 @@ def test_each_release_reads_only_its_own_lists(db):
     )
 
 
+def test_a_listing_row_cannot_overwrite_the_page_metadata(db):
+    # The page owns these columns, as it owns published_date and description.
+    _record(db, "100", ROW, [], [], [])
+
+    db.insert_benchmark(
+        {
+            "benchmark_id": "100",
+            "title": "CIS Example Platform Benchmark",
+            "url": "https://workbench.cisecurity.org/benchmarks/100",
+            "status": "Published",
+            **dict.fromkeys(ROW, "not from the listing"),
+        }
+    )
+
+    assert {name: db.get_benchmark("100")[name] for name in ROW} == ROW
+
+
 def test_catalog_refresh_keeps_the_page_metadata(db):
     # The listing carries none of it; refreshing a release must not erase it.
     _record(db, "100", ROW, CONTRIBUTORS, ASSETS, REVISIONS)

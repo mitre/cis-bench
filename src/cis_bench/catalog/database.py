@@ -185,6 +185,21 @@ _ADDED_CATALOG_COLUMNS = (
     ("milestone_url", "VARCHAR"),
 )
 
+# Catalog columns read from a release's own page (record_page), never from the listing: a
+# catalog refresh must not overwrite them.
+_PAGE_COLUMNS = frozenset(
+    {"published_date", "description", *(name for name, _ in _ADDED_CATALOG_COLUMNS)}
+)
+
+# Keys of a listing row insert_benchmark does not copy onto an existing catalog row: the
+# identity and the references it sets itself, and the columns the release's page owns.
+_NOT_COPIED_FROM_LISTING = (
+    frozenset(
+        {"benchmark_id", "title", "url", "platform", "community", "owner", "status", "collections"}
+    )
+    | _PAGE_COLUMNS
+)
+
 # Tables added for the lists on a release's page, created in an older database when it is
 # opened, so a command that reads a release (catalog info) works before any refresh.
 _ADDED_CATALOG_TABLES = tuple(
@@ -657,20 +672,7 @@ class CatalogDatabase:
                 existing.title = title
                 existing.url = url
                 for key, value in benchmark_data.items():
-                    if key not in {
-                        "benchmark_id",
-                        "title",
-                        "url",
-                        "platform",
-                        "community",
-                        "owner",
-                        "status",
-                        "collections",
-                        # Read from the release's own page (record_page), never the listing:
-                        # a refresh must not overwrite them
-                        "published_date",
-                        "description",
-                    }:
+                    if key not in _NOT_COPIED_FROM_LISTING:
                         setattr(existing, key, value)
 
                 existing.platform_id = platform.platform_id if platform else None

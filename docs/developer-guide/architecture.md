@@ -227,7 +227,7 @@ F --> G[Extract Metadata]
 
 G --> H[CatalogDatabase]
 H --> I[SQLite]
-I --> J[8 Tables - 3NF]
+I --> J[Normalized tables - 3NF]
 I --> K[FTS5 Search]
 
 B --> H
