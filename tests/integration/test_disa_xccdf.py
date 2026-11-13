@@ -6,7 +6,7 @@ from lxml import etree
 from cis_bench.exporters import ExporterFactory
 from cis_bench.models.benchmark import Benchmark
 from cis_bench.validators.disa_conventions import DISAConventionsValidator
-from cis_bench.validators.xccdf_schema import validate_xccdf
+from cis_bench.validators.xccdf_schema import read_xccdf, validate_xccdf
 
 
 @pytest.fixture
@@ -40,7 +40,7 @@ def test_disa_export_validates_nist_schema(disa_export_file):
 
 def test_disa_export_passes_conventions(disa_export_file):
     """Test DISA export follows DISA conventions v1.10.0."""
-    validator = DISAConventionsValidator(str(disa_export_file))
+    validator = DISAConventionsValidator(read_xccdf(disa_export_file))
     is_valid, errors, warnings = validator.validate()
 
     assert is_valid, f"DISA conventions validation failed: {errors}"

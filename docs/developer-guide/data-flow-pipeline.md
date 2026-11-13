@@ -924,7 +924,7 @@ Catalog refresh and benchmark download both fetch in batches with `utils/paralle
 2. **Field Extraction** - Pydantic validates
 3. **XCCDF Structure** - xsdata validates
 4. **XML Schema** - `cis-bench validate` against the NIST schema
-5. **DISA Conventions** - DisaValidator checks STIG requirements
+5. **DISA Conventions** - `DISAConventionsValidator` (`cis_bench.validators.disa_conventions`) checks STIG requirements on the same parsed document
 
 ### Quality Checks
 
@@ -935,8 +935,12 @@ cis-bench export 23598 --format xccdf --style disa -o output.xml
 # Validate against the XCCDF schema
 cis-bench validate output.xml
 
-# Check DISA conventions
-python -c "from cis_bench.validators.disa_conventions import validate; validate('output.xml')"
+# Check DISA conventions (prints each error and warning; exits 1 on an error)
+python -c "
+import sys
+from cis_bench.validators.disa_conventions import validate_disa_conventions
+sys.exit(0 if validate_disa_conventions('output.xml') else 1)
+"
 ```
 
 ---

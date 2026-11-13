@@ -543,20 +543,15 @@ echo " XCCDF schema validation failed"
 exit 1
 fi
 
-# 3. Check DISA conventions
-python3 << EOF
+# 3. Check DISA conventions (prints each error and warning; stops on an error)
+python3 -c "
+import sys
 from cis_bench.validators.disa_conventions import validate_disa_conventions
-issues = validate_disa_conventions('rhel9-disa.xml')
-if not issues:
-print(" DISA conventions validated")
-else:
-print(f"WARNING: {len(issues)} convention issues found:")
-for issue in issues:
-print(f" - {issue}")
-EOF
+sys.exit(0 if validate_disa_conventions('rhel9-disa.xml') else 1)
+" || exit 1
 
 # 5. Verify CCI count (should be reasonable)
-cci_count=$(xmllint --xpath "count(//ident)" rhel9-disa.xml)
+cci_count=$(xmllint --xpath "count(//*[local-name()='ident'])" rhel9-disa.xml)
 echo "Total CCIs: $cci_count"
 
 # Sanity check (should be ~500-1500 for typical benchmark)

@@ -219,12 +219,6 @@ def synthetic_complete_benchmark(synthetic_complete_file):
     return Benchmark.from_json_file(str(synthetic_complete_file))
 
 
-@pytest.fixture(scope="session")
-def valid_disa_xccdf_file(xccdf_fixtures):
-    """Path to valid DISA XCCDF export (our known-good output)."""
-    return xccdf_fixtures / "generated" / "disa" / "valid_disa_full.xml"
-
-
 @pytest.fixture
 def sample_recommendation_minimal():
     """Minimal valid recommendation for unit testing."""

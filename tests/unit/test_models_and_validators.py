@@ -6,7 +6,8 @@ Tests cover:
 3. Serialization/deserialization (JSON round-trips)
 4. Nested models and relationships
 5. Edge cases and error handling
-6. DISAConventionsValidator functionality
+
+The DISA conventions validator is tested in test_disa_validators.py.
 """
 
 import json
@@ -29,12 +30,6 @@ from cis_bench.models.benchmark import (
     Recommendation,
 )
 
-# Import validator
-from cis_bench.validators.disa_conventions import (
-    DISAConventionsValidator,
-    validate_disa_conventions,
-)
-
 # ============================================================================
 # FIXTURES
 # ============================================================================
@@ -42,7 +37,6 @@ from cis_bench.validators.disa_conventions import (
 # Using shared fixtures from tests/conftest.py:
 #   - project_root
 #   - synthetic_complete_file (points to tests/fixtures/benchmarks/synthetic_complete.json)
-#   - valid_disa_xccdf_file (points to tests/fixtures/xccdf/generated/disa/valid_disa_full.xml)
 
 
 @pytest.fixture
@@ -825,111 +819,6 @@ class TestSyntheticBenchmarkData:
             assert rec.mitre_mapping.techniques
             assert rec.mitre_mapping.tactics
             assert rec.mitre_mapping.mitigations
-
-
-# ============================================================================
-# VALIDATOR TESTS - DISAConventionsValidator
-# ============================================================================
-
-
-class TestDISAConventionsValidator:
-    """Test DISA conventions validator."""
-
-    def test_validator_accepts_valid_xccdf(self, valid_disa_xccdf_file):
-        """Test validator passes valid DISA XCCDF."""
-        validator = DISAConventionsValidator(str(valid_disa_xccdf_file))
-        is_valid, errors, warnings = validator.validate()
-
-        # Should be valid (or at least have no errors)
-        assert is_valid or len(errors) == 0
-
-    def test_validator_checks_required_elements(self, valid_disa_xccdf_file):
-        """Test validator checks for required benchmark elements."""
-        validator = DISAConventionsValidator(str(valid_disa_xccdf_file))
-        validator._check_required_benchmark_elements()
-
-        # Should not have errors for missing required elements
-        required_errors = [e for e in validator.errors if "Missing required element" in e]
-        assert len(required_errors) == 0
-
-    def test_validator_checks_plain_text_elements(self, valid_disa_xccdf_file):
-        """Test validator checks plain-text elements."""
-        validator = DISAConventionsValidator(str(valid_disa_xccdf_file))
-        validator._check_plain_text_elements()
-
-        # Should have all required plain-text IDs
-        required_ids = ["release-info", "generator", "conventionsVersion"]
-        for req_id in required_ids:
-            errors = [e for e in validator.errors if req_id in e]
-            assert len(errors) == 0, f"Missing plain-text id='{req_id}'"
-
-    def test_validator_checks_reference_element(self, valid_disa_xccdf_file):
-        """Test validator checks reference has DC elements."""
-        validator = DISAConventionsValidator(str(valid_disa_xccdf_file))
-        validator._check_reference_element()
-
-        # Should have dc:publisher and dc:source
-        ref_errors = [e for e in validator.errors if "reference missing" in e]
-        assert len(ref_errors) == 0
-
-    def test_validator_checks_groups(self, valid_disa_xccdf_file):
-        """Test validator checks Group elements."""
-        validator = DISAConventionsValidator(str(valid_disa_xccdf_file))
-        validator._check_groups()
-
-        # Should have groups (DISA STIGs use Groups)
-        no_groups_warning = [w for w in validator.warnings if "No Group elements" in w]
-        assert len(no_groups_warning) == 0
-
-    def test_validator_checks_rules(self, valid_disa_xccdf_file):
-        """Test validator checks Rule elements."""
-        validator = DISAConventionsValidator(str(valid_disa_xccdf_file))
-        validator._check_rules()
-
-        # Rules should have required attributes
-        severity_errors = [e for e in validator.errors if "severity" in e]
-        # Some warnings are OK, but no critical errors
-        assert len([e for e in severity_errors if "missing severity" in e]) == 0
-
-    def test_validator_detects_invalid_cci_format(self):
-        """Test validator detects invalid CCI format."""
-        # This test would need a fixture with invalid CCI
-        # For now, just verify the regex pattern works
-        import re
-
-        valid_ccis = ["CCI-000001", "CCI-123456", "CCI-999999"]
-        invalid_ccis = ["CCI-1", "CCI-12345", "CCI-1234567", "CCE-12345"]
-
-        cci_pattern = r"^CCI-\d{6}$"  # Anchors for exact match
-
-        for cci in valid_ccis:
-            assert re.match(cci_pattern, cci), f"{cci} should be valid"
-
-        for cci in invalid_ccis:
-            assert not re.match(cci_pattern, cci), f"{cci} should be invalid"
-
-    def test_validator_returns_tuple(self, valid_disa_xccdf_file):
-        """Test validator returns (is_valid, errors, warnings) tuple."""
-        validator = DISAConventionsValidator(str(valid_disa_xccdf_file))
-        result = validator.validate()
-
-        assert isinstance(result, tuple)
-        assert len(result) == 3
-        is_valid, errors, warnings = result
-        assert isinstance(is_valid, bool)
-        assert isinstance(errors, list)
-        assert isinstance(warnings, list)
-
-    def test_validator_helper_function(self, valid_disa_xccdf_file, capsys):
-        """Test validate_disa_conventions helper function."""
-        is_valid = validate_disa_conventions(str(valid_disa_xccdf_file))
-
-        assert isinstance(is_valid, bool)
-
-        # Check output was printed
-        captured = capsys.readouterr()
-        # Should print either errors, warnings, or success message
-        assert len(captured.out) > 0
 
 
 # ============================================================================
