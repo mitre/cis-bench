@@ -45,6 +45,11 @@ cis-bench export benchmark.json --format xccdf
 - Includes CCI (Control Correlation Identifiers) for NIST 800-53 mapping
 - Follows STIG element structure and naming
 
+The DISA conventions check (`cis_bench.validators.disa_conventions`) checks a DISA-style document against these conventions. Among its errors:
+
+- The Benchmark's own children must include `notice`, `front-matter`, `rear-matter`, `reference` (with `dc:publisher` and `dc:source`), `plain-text` with the ids `release-info`, `generator` and `conventionsVersion`, and `version`. An element of the same name inside a Group or Rule does not count.
+- Every `ident` with the system `http://cyber.mil/cci` is `CCI-` followed by exactly six digits, nothing more.
+
 ### Target Tools
 
 - DISA SCAP Compliance Checker (SCC)

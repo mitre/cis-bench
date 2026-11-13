@@ -60,13 +60,13 @@ class DISAConventionsValidator:
         required = ["notice", "front-matter", "rear-matter", "reference", "plain-text", "version"]
 
         for elem_name in required:
-            elem = self.root.find(f".//{{{self.xccdf_ns}}}{elem_name}")
+            elem = self.root.find(f"{{{self.xccdf_ns}}}{elem_name}")
             if elem is None:
                 self.errors.append(f"Missing required element: {elem_name}")
 
     def _check_plain_text_elements(self):
         """Check plain-text elements follow DISA conventions."""
-        plain_texts = self.root.findall(f".//{{{self.xccdf_ns}}}plain-text")
+        plain_texts = self.root.findall(f"{{{self.xccdf_ns}}}plain-text")
 
         required_ids = ["release-info", "generator", "conventionsVersion"]
         found_ids = [pt.get("id") for pt in plain_texts if pt.get("id")]
@@ -89,7 +89,7 @@ class DISAConventionsValidator:
 
     def _check_reference_element(self):
         """Check reference has Dublin Core elements."""
-        ref = self.root.find(f".//{{{self.xccdf_ns}}}reference")
+        ref = self.root.find(f"{{{self.xccdf_ns}}}reference")
 
         if ref is None:
             self.errors.append("Missing required reference element")
@@ -186,7 +186,7 @@ class DISAConventionsValidator:
             idents = rule.findall(f"{{{self.xccdf_ns}}}ident")
             for ident in idents:
                 if ident.get("system") == "http://cyber.mil/cci":
-                    if not re.match(r"CCI-\d{6}", ident.text or ""):
+                    if not re.fullmatch(r"CCI-\d{6}", ident.text or ""):
                         self.errors.append(f"Rule {rule_id} invalid CCI format: {ident.text}")
 
 

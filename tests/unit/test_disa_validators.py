@@ -1322,3 +1322,99 @@ class TestGroupRuleCountWarning:
         _, _, warnings = DISAConventionsValidator(read_xccdf(file_path)).validate()
 
         assert f"Group G-1 {expected} (DISA convention: exactly 1)" in warnings
+
+
+def _errors(content: str) -> list[str]:
+    _, errors, _ = DISAConventionsValidator(parse_xccdf(content.encode(), "test")).validate()
+    return errors
+
+
+class TestCciValues:
+    """A CCI is CCI- and exactly six digits; the whole value must match."""
+
+    @pytest.mark.parametrize("value", ["CCI-0000001", "CCI-000001x", "CCI-000001 extra"])
+    def test_a_cci_with_more_after_six_digits_is_an_error(self, valid_disa_xccdf, value):
+        content = valid_disa_xccdf.read_text().replace("CCI-000001", value)
+
+        assert f"Rule R-1 invalid CCI format: {value}" in _errors(content)
+
+
+class TestBenchmarkLevelRulesLookAtTheBenchmark:
+    """Benchmark-level rules look only at the Benchmark's own children: an element of the
+    same name inside a Group or Rule does not satisfy them."""
+
+    _BENCHMARK = """<Benchmark xmlns="http://checklists.nist.gov/xccdf/1.1"
+           xmlns:dc="http://purl.org/dc/elements/1.1/" id="test">
+  <status>draft</status>
+  <title>T</title>
+  <notice id="terms-of-use"/>
+  <front-matter/>
+  <rear-matter/>
+  {benchmark_reference}
+  {benchmark_plain_text}
+  {benchmark_version}
+  <Group id="G-1">
+    <title>G</title>
+    <description>D</description>
+    <Rule id="R-1" severity="medium" weight="10.0">
+      <version>1.0</version>
+      <title>R</title>
+      <description>&lt;VulnDiscussion&gt;V&lt;/VulnDiscussion&gt;</description>
+      <reference><dc:publisher>P</dc:publisher><dc:source>S</dc:source></reference>
+      <fixtext fixref="F-1">Fix</fixtext>
+      <check system="C-1"><check-content>Check</check-content></check>
+    </Rule>
+  </Group>
+</Benchmark>
+"""
+    _REFERENCE = (
+        '<reference href="https://example.com">'
+        "<dc:publisher>P</dc:publisher><dc:source>S</dc:source></reference>"
+    )
+    _PLAIN_TEXT = (
+        '<plain-text id="release-info">Release: 1 Benchmark Date: 18 Oct 2025</plain-text>'
+        '<plain-text id="generator">g</plain-text>'
+        '<plain-text id="conventionsVersion">1.10.0</plain-text>'
+    )
+
+    def _document(self, reference=True, plain_text=True, version=True) -> str:
+        return self._BENCHMARK.format(
+            benchmark_reference=self._REFERENCE if reference else "",
+            benchmark_plain_text=self._PLAIN_TEXT if plain_text else "",
+            benchmark_version="<version>1</version>" if version else "",
+        )
+
+    def test_the_document_with_every_benchmark_element_has_no_errors(self):
+        assert _errors(self._document()) == []
+
+    def test_a_rules_version_does_not_stand_in_for_the_benchmarks(self):
+        assert "Missing required element: version" in _errors(self._document(version=False))
+
+    def test_a_rules_reference_does_not_stand_in_for_the_benchmarks(self):
+        errors = _errors(self._document(reference=False))
+
+        assert "Missing required element: reference" in errors
+        assert "Missing required reference element" in errors
+
+    def test_plain_text_inside_a_group_does_not_stand_in_for_the_benchmarks(self):
+        content = self._document(plain_text=False).replace(
+            "<description>D</description>", f"<description>D</description>{self._PLAIN_TEXT}"
+        )
+
+        errors = _errors(content)
+
+        assert "Missing required element: plain-text" in errors
+        assert "Missing required plain-text element: id='release-info'" in errors
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["U_RHEL_9_STIG_V2R5_Manual-xccdf.xml", "U_CAN_Ubuntu_24-04_LTS_STIG_V1R1_Manual-xccdf.xml"],
+)
+def test_an_official_disa_stig_follows_the_conventions(xccdf_fixtures, name):
+    """DISA's own STIGs are what the conventions describe; the check must pass them."""
+    document = read_xccdf(xccdf_fixtures / "official" / "disa" / name)
+
+    is_valid, errors, _ = DISAConventionsValidator(document).validate()
+
+    assert (is_valid, errors) == (True, [])
