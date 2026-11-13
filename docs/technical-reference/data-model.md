@@ -53,7 +53,7 @@ flowchart LR
     style Output fill:#FFF4E6,stroke:#CC6600
 ```
 
-**KEY PRINCIPLE:** All data MUST validate against our JSON Schema before it can be exported to any format.
+**KEY PRINCIPLE:** Every exporter takes a `Benchmark` object, so every benchmark is validated by the `Benchmark` model before it is exported to any format. The JSON Schema is generated from that model (see [Validation](#validation)).
 
 ## Why JSON Schema as Canonical Format?
 
@@ -83,11 +83,10 @@ flowchart LR
 - Backward compatibility tracking
 - Migration paths
 
-**Code Generation**
+**Generated from the model**
 
-- Can generate Python dataclasses from schema
-- Type hints from schema
-- Validation code auto-generated
+- The `Benchmark` pydantic model is the source; the schema is generated from it at docs build
+- Types and required fields in the schema are the model's
 
 **Testing**
 
@@ -113,7 +112,12 @@ A benchmark file is one object: the benchmark's fields (see [Field Definitions](
 
 ### Validation
 
-cis-bench itself validates a benchmark with the `Benchmark` model when it builds or loads one; it does not read the JSON Schema. The schema is for other tools that read cis-bench's benchmark files, for example with `jsonschema`:
+cis-bench itself validates a benchmark with the `Benchmark` model when it builds or loads one; it does not read the JSON Schema. The schema checks a file's structure and types. The model also checks what a JSON Schema does not express:
+
+- `total_recommendations` equals the number of items in `recommendations`
+- each profile title is defined once in `profile_definitions`
+
+The schema is for other tools that read cis-bench's benchmark files, for example with `jsonschema`:
 
 ```python
 import json
