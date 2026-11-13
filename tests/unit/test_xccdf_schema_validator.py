@@ -9,6 +9,7 @@ from lxml import etree
 
 from cis_bench.validators.xccdf_schema import (
     NotXccdfError,
+    check_xccdf,
     untrusted_xml_parser,
     validate_xccdf,
 )
@@ -81,13 +82,37 @@ class TestInvalidDocuments:
             + _benchmark(XCCDF_1_2, "xccdf_org.example_benchmark_t", "<title>&leak;</title>"),
         )
 
-        try:
-            result = validate_xccdf(path)
-        except NotXccdfError as error:
-            assert "the-secret-value" not in str(error)
-        else:
-            assert not result.is_valid
-            assert "the-secret-value" not in "\n".join(result.errors)
+        with pytest.raises(NotXccdfError, match="document type declaration") as refused:
+            validate_xccdf(path)
+
+        assert "the-secret-value" not in str(refused.value)
+
+
+class TestDocumentsGivenAsBytes:
+    """An export is checked before it is written, so the check takes the serialized bytes."""
+
+    def test_a_document_given_as_bytes_reports_errors_with_their_lines(self):
+        content = _benchmark(XCCDF_1_2, "xccdf_org.example_benchmark_t", "<bogus/>").encode()
+
+        result = check_xccdf(content, "export of 23598")
+
+        assert not result.is_valid
+        assert result.version == "1.2"
+        assert len(result.errors) == 1
+        assert result.errors[0].startswith("line 3: ")
+        assert "bogus" in result.errors[0]
+
+    def test_a_valid_document_given_as_bytes_validates(self):
+        content = _benchmark(XCCDF_1_1, "t").encode()
+
+        result = check_xccdf(content, "export of 23598")
+
+        assert result.is_valid
+        assert result.version == "1.1"
+
+    def test_bytes_that_are_not_xccdf_are_refused_by_their_source_name(self):
+        with pytest.raises(NotXccdfError, match="^export of 23598: not an XCCDF document"):
+            check_xccdf(b'<html xmlns="http://www.w3.org/1999/xhtml"/>', "export of 23598")
 
 
 class TestNotXccdf:

@@ -6,8 +6,10 @@ Validates that XCCDF output follows DISA STIG conventions v1.10.0
 import logging
 import re
 from gettext import ngettext
+from pathlib import Path
 
-from lxml import etree
+from cis_bench.utils.xccdf_versions import DUBLIN_CORE_NAMESPACE
+from cis_bench.validators.xccdf_schema import XccdfDocument, read_xccdf
 
 logger = logging.getLogger(__name__)
 
@@ -15,18 +17,13 @@ logger = logging.getLogger(__name__)
 class DISAConventionsValidator:
     """Validates XCCDF against DISA conventions v1.10.0."""
 
-    def __init__(self, xccdf_file: str):
-        """Initialize validator with XCCDF file."""
-        logger.info(f"Initializing DISA conventions validator for: {xccdf_file}")
-        self.tree = etree.parse(xccdf_file)
-        self.root = self.tree.getroot()
-
-        # Auto-detect XCCDF namespace from root element
-        root_ns = self.root.tag.split("}")[0].strip("{") if "}" in self.root.tag else None
-        self.xccdf_ns = root_ns if root_ns else "http://checklists.nist.gov/xccdf/1.1"
-        logger.debug(f"Detected XCCDF namespace: {self.xccdf_ns}")
-
-        self.dc_ns = "http://purl.org/dc/elements/1.1/"
+    def __init__(self, document: XccdfDocument):
+        """Initialize the validator with a document the shared XCCDF check parsed."""
+        logger.info(f"Initializing DISA conventions validator for: {document.source}")
+        self.tree = document.tree
+        self.root = document.root
+        self.xccdf_ns = document.version.namespace
+        self.dc_ns = DUBLIN_CORE_NAMESPACE
         self.errors: list[str] = []
         self.warnings: list[str] = []
 
@@ -193,7 +190,7 @@ class DISAConventionsValidator:
                         self.errors.append(f"Rule {rule_id} invalid CCI format: {ident.text}")
 
 
-def validate_disa_conventions(xccdf_file: str) -> bool:
+def validate_disa_conventions(xccdf_file: str | Path) -> bool:
     """Validate XCCDF file against DISA conventions.
 
     Args:
@@ -201,9 +198,12 @@ def validate_disa_conventions(xccdf_file: str) -> bool:
 
     Returns:
         True if valid, False otherwise (prints errors/warnings)
+
+    Raises:
+        NotXccdfError: the file cannot be read or is not an XCCDF document
     """
     logger.info(f"Validating DISA conventions for: {xccdf_file}")
-    validator = DISAConventionsValidator(xccdf_file)
+    validator = DISAConventionsValidator(read_xccdf(xccdf_file))
     is_valid, errors, warnings = validator.validate()
 
     if errors:

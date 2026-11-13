@@ -199,6 +199,18 @@ def test_pci_dss_xsd_validation(sample_benchmark, tmp_path):
     assert result.is_valid, result.errors
 ```
 
+`validate_xccdf` reads a file. For a document still in memory, `check_xccdf(content, source)` takes the serialized bytes and returns the same result; `source` names the document in messages.
+
+A style built on the DISA style also has to pass the DISA conventions check, which runs on the document the shared check parsed:
+
+```python
+from cis_bench.validators.disa_conventions import DISAConventionsValidator
+from cis_bench.validators.xccdf_schema import read_xccdf
+
+is_valid, errors, warnings = DISAConventionsValidator(read_xccdf(output_file)).validate()
+assert is_valid, errors
+```
+
 **XSD validation is mandatory before releasing a new style.**
 
 ---
