@@ -75,18 +75,35 @@ def _schema(version: XccdfVersion) -> etree.XMLSchema:
 
 
 def parse_xccdf(content: bytes, source: str) -> XccdfDocument:
-    """Parse an XCCDF document once and name its version; ``source`` names it in messages.
-
-    Raises:
-        NotXccdfError: the bytes are not well-formed XML, carry a document type declaration,
-            have a root element outside the XCCDF namespaces, or name an XCCDF version with no
-            shipped schema.
-    """
+    """Parse an XCCDF document given as bytes, such as an export not yet written; ``source``
+    names it in messages (see ``_xccdf_document`` for what is refused)."""
     try:
         tree = etree.parse(BytesIO(content), untrusted_xml_parser())
     except etree.XMLSyntaxError as error:
         raise NotXccdfError(f"{source}: not well-formed XML ({error.msg})") from error
+    return _xccdf_document(tree, source)
 
+
+def read_xccdf(path: str | Path) -> XccdfDocument:
+    """Read and parse one XCCDF file with lxml's own file reader (which also reads a
+    gzip-compressed file) and the same protected parser (see ``_xccdf_document``)."""
+    path = Path(path)
+    try:
+        tree = etree.parse(str(path), untrusted_xml_parser())
+    except OSError as error:
+        raise NotXccdfError(f"{path}: cannot be read ({error.strerror or error})") from error
+    except etree.XMLSyntaxError as error:
+        raise NotXccdfError(f"{path}: not well-formed XML ({error.msg})") from error
+    return _xccdf_document(tree, str(path))
+
+
+def _xccdf_document(tree: etree._ElementTree, source: str) -> XccdfDocument:
+    """The checks every parsed document goes through, from a file or from memory.
+
+    Raises:
+        NotXccdfError: the document carries a document type declaration, has a root element
+            outside the XCCDF namespaces, or names an XCCDF version with no shipped schema.
+    """
     if tree.docinfo.internalDTD is not None or tree.docinfo.externalDTD is not None:
         # XCCDF carries no document type declaration; one here could only declare entities,
         # which this parser does not expand, so the document cannot be validated as written
@@ -104,19 +121,6 @@ def parse_xccdf(content: bytes, source: str) -> XccdfDocument:
             f"{source}: XCCDF {named} has no schema shipped with cis-bench (known: {known})"
         )
     return XccdfDocument(source=source, tree=tree, version=version)
-
-
-def _read(path: Path) -> bytes:
-    try:
-        return path.read_bytes()
-    except OSError as error:
-        raise NotXccdfError(f"{path}: cannot be read ({error.strerror or error})") from error
-
-
-def read_xccdf(path: str | Path) -> XccdfDocument:
-    """Read and parse one XCCDF file (see ``parse_xccdf``)."""
-    path = Path(path)
-    return parse_xccdf(_read(path), str(path))
 
 
 def check_document(document: XccdfDocument) -> XccdfValidation:
@@ -140,7 +144,6 @@ def validate_xccdf(path: str | Path) -> XccdfValidation:
 
     Raises:
         NotXccdfError: the file cannot be read, or is not an XCCDF document with a shipped
-            schema (see ``parse_xccdf``).
+            schema (see ``read_xccdf``).
     """
-    path = Path(path)
-    return check_xccdf(_read(path), str(path))
+    return check_document(read_xccdf(path))

@@ -114,6 +114,18 @@ class TestDISAConventionsValidatorInit:
         with pytest.raises(NotXccdfError, match="not an XCCDF document"):
             validate_disa_conventions(str(file_path))
 
+    def test_a_root_outside_the_xccdf_namespace_is_refused_whatever_its_children(self, tmp_path):
+        """The root decides whether a document is XCCDF, for this check as for the schema
+        check: XCCDF children under a root with no XCCDF namespace do not make it one."""
+        file_path = tmp_path / "mixed.xml"
+        file_path.write_text(
+            '<Benchmark xmlns:x="http://checklists.nist.gov/xccdf/1.1" id="test">'
+            "<x:status>draft</x:status><x:title>Mixed</x:title></Benchmark>"
+        )
+
+        with pytest.raises(NotXccdfError, match="not an XCCDF document"):
+            validate_disa_conventions(str(file_path))
+
     def test_a_file_that_is_not_xml_is_not_xccdf(self, tmp_path):
         file_path = tmp_path / "notes.txt"
         file_path.write_text("just text\n")
@@ -125,8 +137,11 @@ class TestDISAConventionsValidatorInit:
         """An export is parsed once, in memory, and both checks read that one document."""
         document = parse_xccdf(valid_disa_xccdf.read_bytes(), "export of 23598")
 
-        is_valid, errors, _ = DISAConventionsValidator(document).validate()
+        validator = DISAConventionsValidator(document)
+        is_valid, errors, _ = validator.validate()
 
+        assert validator.tree is document.tree
+        assert validator.root is document.root
         assert (is_valid, errors) == (True, [])
 
     def test_a_document_in_memory_with_a_missing_element_is_reported(self, minimal_xccdf):

@@ -2,6 +2,7 @@
 reports validity the way ``oscap xccdf validate`` does: valid, invalid with line numbers, or
 not an XCCDF document at all."""
 
+import gzip
 from pathlib import Path
 
 import pytest
@@ -49,6 +50,19 @@ class TestValidDocuments:
 
         assert result.is_valid
         assert result.version == "1.1"
+
+    def test_a_gzip_compressed_file_validates(self, tmp_path):
+        """lxml reads a compressed file natively; validating one must not depend on how the
+        file is stored."""
+        path = tmp_path / "b.xml.gz"
+        path.write_bytes(
+            gzip.compress(_benchmark(XCCDF_1_2, "xccdf_org.example_benchmark_t").encode())
+        )
+
+        result = validate_xccdf(path)
+
+        assert result.is_valid
+        assert result.version == "1.2"
 
     def test_an_official_disa_stig_validates(self, xccdf_fixtures):
         official = xccdf_fixtures / "official" / "disa" / "U_RHEL_9_STIG_V2R5_Manual-xccdf.xml"

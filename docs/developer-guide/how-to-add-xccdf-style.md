@@ -207,8 +207,13 @@ A style built on the DISA style also has to pass the DISA conventions check, whi
 from cis_bench.validators.disa_conventions import DISAConventionsValidator
 from cis_bench.validators.xccdf_schema import read_xccdf
 
-is_valid, errors, warnings = DISAConventionsValidator(read_xccdf(output_file)).validate()
-assert is_valid, errors
+def test_my_disa_style_follows_the_conventions(sample_benchmark, tmp_path):
+    output_file = tmp_path / "my_disa_style.xml"
+    ExporterFactory.create("xccdf", style="my-disa-style").export(sample_benchmark, output_file)
+
+    is_valid, errors, warnings = DISAConventionsValidator(read_xccdf(output_file)).validate()
+
+    assert is_valid, errors
 ```
 
 **XSD validation is mandatory before releasing a new style.**
