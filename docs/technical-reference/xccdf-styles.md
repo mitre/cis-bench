@@ -48,7 +48,7 @@ cis-bench export benchmark.json --format xccdf
 The DISA conventions check (`cis_bench.validators.disa_conventions`) checks a DISA-style document against these conventions. Among its errors:
 
 - The Benchmark's own children must include `notice`, `front-matter`, `rear-matter`, `reference` (with `dc:publisher` and `dc:source`), `plain-text` with the ids `release-info`, `generator` and `conventionsVersion`, and `version`. An element of the same name inside a Group or Rule does not count.
-- Every `ident` with the system `http://cyber.mil/cci` is `CCI-` followed by exactly six digits, nothing more.
+- Every `ident` with the system `http://cyber.mil/cci` is `CCI-` followed by exactly six digits 0-9, nothing more.
 
 ### Target Tools
 

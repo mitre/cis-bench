@@ -186,7 +186,7 @@ class DISAConventionsValidator:
             idents = rule.findall(f"{{{self.xccdf_ns}}}ident")
             for ident in idents:
                 if ident.get("system") == "http://cyber.mil/cci":
-                    if not re.fullmatch(r"CCI-\d{6}", ident.text or ""):
+                    if not re.fullmatch(r"CCI-[0-9]{6}", ident.text or ""):
                         self.errors.append(f"Rule {rule_id} invalid CCI format: {ident.text}")
 
 

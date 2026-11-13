@@ -1338,6 +1338,17 @@ class TestCciValues:
 
         assert f"Rule R-1 invalid CCI format: {value}" in _errors(content)
 
+    @pytest.mark.parametrize(
+        "value",
+        ["CCI-１２３４５６", "CCI-٠١٢٣٤٥", "CCI-00000١"],
+        ids=["full-width", "arabic-indic", "mixed"],
+    )
+    def test_a_cci_with_digits_other_than_0_to_9_is_an_error(self, valid_disa_xccdf, value):
+        """A CCI number is ASCII digits; other Unicode decimal digits are not a CCI."""
+        content = valid_disa_xccdf.read_text(encoding="utf-8").replace("CCI-000001", value)
+
+        assert f"Rule R-1 invalid CCI format: {value}" in _errors(content)
+
 
 class TestBenchmarkLevelRulesLookAtTheBenchmark:
     """Benchmark-level rules look only at the Benchmark's own children: an element of the
