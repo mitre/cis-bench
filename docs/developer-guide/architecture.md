@@ -669,7 +669,7 @@ bool is_active
 - Referential integrity via FKs
 - Fast queries with indexes
 
-The page fields on `catalog_benchmarks` and the three list tables hold what a release's own WorkBench page says; the catalog listing carries none of it, so a refresh never changes them. A catalog an earlier version wrote gains the columns and tables when it is opened (`CatalogDatabase._upgrade_schema`, in the same write transaction as its other upgrades), so a command that reads a release works before any refresh.
+The page fields on `catalog_benchmarks` and the three list tables hold what a release's own WorkBench page says; the catalog listing carries none of it, so a refresh never changes them. `record_page` writes `published_date` and `description` when a command reads the page; the other page columns and the three tables are not filled yet. A catalog an earlier version wrote gains the columns and tables when it is opened (`CatalogDatabase._upgrade_schema`, in the same write transaction as its other upgrades), so a command that reads a release works before any refresh.
 
 **FTS5 Virtual Table:**
 ```sql

@@ -408,7 +408,7 @@ f.write(xml_output)
 | `total_recommendations` | integer | | Count of recommendations |
 | `recommendations` | array | | Array of recommendation objects |
 
-The fields from `release_type` to `revision_history` are what the benchmark's WorkBench page says beyond its recommendations. Each is null, or an empty array, when the page does not give it and for a copy saved before it was read; nothing is filled in.
+The fields from `release_type` to `revision_history` hold what the benchmark's WorkBench page says beyond its recommendations. cis-bench does not read them from the page yet, so every copy has them null or as an empty array; a copy saved before they existed loads the same way. When they are read, a field the page does not give stays null or empty: nothing is filled in.
 
 ### Recommendation Level
 

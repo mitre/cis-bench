@@ -299,6 +299,15 @@ cis-bench catalog refresh
 
 **Note:** Downloaded benchmarks are cached separately. Refreshing catalog updates metadata only, not downloaded content.
 
+**What a refresh gives you:** every benchmark WorkBench lists, with the fields of the listing (title, version, status, platform, community, owner, collections). What a benchmark's own WorkBench page adds, such as its publish date and description, comes one benchmark at a time, when you download it (see [Check for Updates](#check-for-updates)); no command reads every benchmark's page. To download several benchmarks, pass their IDs to `download`, or a file of IDs made from a search:
+
+```bash
+cis-bench search "almalinux" --latest --output-format json | jq -r '.[].benchmark_id' > ids.txt
+cis-bench download --file ids.txt
+```
+
+A download reads the benchmark's page and every recommendation, many requests per benchmark, so download the benchmarks you need rather than the whole catalog.
+
 ### Check for Updates
 
 See which downloaded benchmarks have updates:
@@ -353,12 +362,13 @@ cis-bench catalog refresh --max-pages 5
 **catalog_benchmarks:**
 
 - Metadata for all benchmarks
-- Fields: id, title, version, status, platform_type, platform, etc. from the listing; published_date, description, release_type, parent_benchmark_id, parent_benchmark_url, intended_audience, acknowledgements, milestone_name and milestone_url from the benchmark's page, once it has been read
+- Fields: id, title, version, status, platform_type, platform, etc. from the listing; published_date and description from the benchmark's page, once it has been read
+- Columns for more of the page: release_type, parent_benchmark_id, parent_benchmark_url, intended_audience, acknowledgements, milestone_name and milestone_url. cis-bench does not read these from the page yet, so they are empty
 
 **benchmark_contributors, benchmark_assets, revision_history:**
 
 - The lists on a benchmark's page, one row per entry in the page's order: its contributors, the products it applies to (title and CPE name), and its revision history (time, author, number of changes)
-- Empty until the benchmark's page has been read
+- Empty: cis-bench does not read them from the page yet
 
 A catalog an earlier version of cis-bench wrote gains new columns and tables the first time a command opens it; no refresh is needed.
 
