@@ -496,8 +496,8 @@ extract: "primary" # Only primary CCI per NIST control
 xsdata generates Python classes from XSD schemas. For XCCDF:
 
 ```bash
-# Generate models from NIST XCCDF schema
-xsdata src/cis_bench/schemas/xccdf_1.2.xsd --package models.xccdf
+# Generate models from NIST XCCDF schema (the generator comes with the dev extra)
+xsdata generate src/cis_bench/schemas/xccdf_1.2.xsd --config .xsdata.xml --package cis_bench.models.xccdf
 ```
 
 **Result:**

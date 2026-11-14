@@ -189,7 +189,7 @@ Do NOT push multiple separate commits to main in quick succession. This causes r
 ## Dependencies
 
 ### Core
-- **xsdata** - XCCDF model generation from NIST XSD schemas
+- **xsdata** - XCCDF models (generated from the NIST XSD schemas) and their XML serialization; the generator, `xsdata[cli]`, is in the dev extra
 - **Click** - CLI framework
 - **Rich** - Terminal styling and progress
 - **Pydantic** - Data validation

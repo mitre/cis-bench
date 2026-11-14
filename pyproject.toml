@@ -54,7 +54,7 @@ dependencies = [
     "pydantic-settings>=2.16.0",
     # Export formats
     "PyYAML>=6.0.0",
-    "xsdata[cli,lxml]>=24.0.0",
+    "xsdata[lxml]>=26.10",
     "lxml>=5.0.0",
     "requests-ratelimiter>=0.10.0",
     # Comparing two benchmark versions (cis-bench diff)
@@ -69,6 +69,8 @@ dev = [
     "pytest-cov>=4.1.0",
     # Validates benchmark files against the JSON Schema the docs build publishes
     "jsonschema>=4.26.0",
+    # Generates the XCCDF models from the XCCDF schemas
+    "xsdata[cli]>=26.10",
     # Linting and formatting
     "ruff>=0.8.0",
     # Security
