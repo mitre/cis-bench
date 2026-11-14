@@ -352,6 +352,25 @@ class TestRendering:
         assert root.prefix == "xccdf"
         assert root.nsmap == {"xccdf": XCCDF_1_1, "dc": DUBLIN_CORE}
 
+    def test_metadata_is_injected_in_the_xccdf_namespace_when_it_is_declared_with_a_prefix(
+        self, sample_benchmark, tmp_path
+    ):
+        from cis_bench.validators.xccdf_schema import validate_xccdf
+
+        xccdf_1_2 = "http://checklists.nist.gov/xccdf/1.2"
+        exporter = XCCDFExporter(style="cis")
+        namespaces = exporter.config.benchmark["namespaces"]
+        namespaces["xccdf"] = namespaces.pop("default")
+        output_file = tmp_path / "out.xml"
+
+        exporter.export(sample_benchmark, str(output_file))
+        root = etree.parse(str(output_file)).getroot()
+
+        assert root.prefix == "xccdf"
+        assert root.findall(f".//{{{xccdf_1_2}}}Rule/{{{xccdf_1_2}}}metadata")
+        assert [e.tag for e in root.iter("*") if etree.QName(e).namespace is None] == []
+        assert validate_xccdf(output_file).errors == []
+
     @pytest.mark.parametrize("style", ["disa", "cis"])
     def test_the_rendered_document_uses_only_the_prefixes_the_style_declares(
         self, style, sample_benchmark

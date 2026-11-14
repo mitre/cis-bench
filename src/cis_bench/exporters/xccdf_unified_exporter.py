@@ -252,7 +252,8 @@ class XCCDFExporter(BaseExporter):
 
         root = etree.fromstring(xml_output.encode("utf-8"))
         rules = root.xpath(".//*[local-name()='Rule']")
-        xccdf_ns = root.nsmap.get(None) or root.nsmap.get("default")
+        # The Benchmark's own namespace, however the style binds it (default or a prefix)
+        xccdf_ns = etree.QName(root).namespace
 
         for i, rule in enumerate(rules):
             rule_id = rule.get("id")
@@ -273,8 +274,7 @@ class XCCDFExporter(BaseExporter):
                     break
 
             for offset, metadata_elem in enumerate(rule_metas):
-                metadata_tag = f"{{{xccdf_ns}}}metadata" if xccdf_ns else "metadata"
-                metadata_wrapper = etree.Element(metadata_tag)
+                metadata_wrapper = etree.Element(etree.QName(xccdf_ns, "metadata"))
                 metadata_wrapper.append(metadata_elem)
                 rule.insert(insert_idx + offset, metadata_wrapper)
 
