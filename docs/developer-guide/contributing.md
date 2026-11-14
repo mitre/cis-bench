@@ -278,6 +278,9 @@ uv run python scripts/generate_xccdf_models.py --check   # exit 1 if the committ
 - Generating needs the network: `xccdf-1.1.4.xsd` imports `dc.xsd` from `http://dublincore.org`. For the XML namespace schema (`xml.xsd`), xsdata uses its own bundled copy.
 - Some imports name schemas that do not exist: the CPE language schemas at `/schema/cpe/...`, and `../../common/xml.xsd` in the 1.1.4 copy's sibling schemas. xsdata warns about them and generates the fields that use the CPE types as plain strings. The script lists these imports for each model and stops with an error if xsdata cannot read any other schema or import. xsdata itself carries on, still exiting 0, in that case.
 - CI runs `--check`, so a hand edit or a changed schema copy without regenerated models fails the build.
+- **xsdata bug workaround:** both XCCDF schemas hold `<schema>XCCDF Language</schema>` inside `xsd:appinfo`. xsdata ([tefra/xsdata#1079](https://github.com/tefra/xsdata/issues/1079), not fixed in 26.10) treats that element as a schema of its own and writes `"namespace": ""` on the element fields after it. The models would then render those elements outside any namespace.
+    - The script runs xsdata on a temporary copy of the schema folder with that element renamed; the schema files are not changed.
+    - A test in `tests/scripts/test_generate_xccdf_models.py` shows the installed xsdata still has the bug. When it fails after an xsdata upgrade, remove the rename and regenerate.
 
 ---
 

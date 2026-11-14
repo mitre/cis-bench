@@ -557,7 +557,7 @@ class SelChoicesType:
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
             "min_occurs": 1,
         },
     )
@@ -785,7 +785,7 @@ class CheckType:
         metadata={
             "name": "check-import",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     check_export: list[CheckExportType] = field(
@@ -793,7 +793,7 @@ class CheckType:
         metadata={
             "name": "check-export",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     check_content_ref: list[CheckContentRefType] = field(
@@ -801,7 +801,7 @@ class CheckType:
         metadata={
             "name": "check-content-ref",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     check_content: None | CheckContentType = field(
@@ -809,7 +809,7 @@ class CheckType:
         metadata={
             "name": "check-content",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     system: str = field(
@@ -932,12 +932,12 @@ class FixType:
                 {
                     "name": "sub",
                     "type": IdrefType,
-                    "namespace": "",
+                    "namespace": "http://checklists.nist.gov/xccdf/1.1",
                 },
                 {
                     "name": "instance",
                     "type": InstanceFixType,
-                    "namespace": "",
+                    "namespace": "http://checklists.nist.gov/xccdf/1.1",
                 },
             ),
         },
@@ -1018,7 +1018,7 @@ class HtmlTextWithSubType:
                 {
                     "name": "sub",
                     "type": IdrefType,
-                    "namespace": "",
+                    "namespace": "http://checklists.nist.gov/xccdf/1.1",
                 },
             ),
         },
@@ -1063,7 +1063,6 @@ class Model:
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
         },
     )
     system: str = field(
@@ -1183,7 +1182,7 @@ class ProfileNoteType:
                 {
                     "name": "sub",
                     "type": IdrefType,
-                    "namespace": "",
+                    "namespace": "http://checklists.nist.gov/xccdf/1.1",
                 },
             ),
         },
@@ -1274,7 +1273,7 @@ class TextWithSubType:
                 {
                     "name": "sub",
                     "type": IdrefType,
-                    "namespace": "",
+                    "namespace": "http://checklists.nist.gov/xccdf/1.1",
                 },
             ),
         },
@@ -1302,7 +1301,7 @@ class ComplexCheckType:
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     complex_check: list[ComplexCheckType] = field(
@@ -1310,7 +1309,7 @@ class ComplexCheckType:
         metadata={
             "name": "complex-check",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     operator: CcOperatorEnumType = field(
@@ -1385,20 +1384,20 @@ class OverrideType:
         metadata={
             "name": "old-result",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         }
     )
     new_result: ResultEnumType = field(
         metadata={
             "name": "new-result",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         }
     )
     remark: TextType = field(
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         }
     )
     time: XmlDateTime = field(
@@ -1434,7 +1433,7 @@ class ProfileRefineRuleType:
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     idref: str = field(
@@ -1491,7 +1490,7 @@ class ProfileRefineValueType:
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     idref: str = field(
@@ -1532,7 +1531,7 @@ class ProfileSelectType:
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     idref: str = field(
@@ -1565,7 +1564,7 @@ class TargetFactsType:
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
 
@@ -1610,42 +1609,42 @@ class ItemType:
         default=None,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     title: list[TextWithSubType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     description: list[HtmlTextWithSubType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     warning: list[WarningType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     question: list[TextType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     reference: list[ReferenceType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     id: str = field(
@@ -1733,14 +1732,14 @@ class ProfileType:
         default=None,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     title: list[TextWithSubType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
             "min_occurs": 1,
         },
     )
@@ -1748,28 +1747,28 @@ class ProfileType:
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     reference: list[ReferenceType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     platform: list[UriidrefType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     select: list[ProfileSelectType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     set_value: list[ProfileSetValueType] = field(
@@ -1777,7 +1776,7 @@ class ProfileType:
         metadata={
             "name": "set-value",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     refine_value: list[ProfileRefineValueType] = field(
@@ -1785,7 +1784,7 @@ class ProfileType:
         metadata={
             "name": "refine-value",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     refine_rule: list[ProfileRefineRuleType] = field(
@@ -1793,14 +1792,14 @@ class ProfileType:
         metadata={
             "name": "refine-rule",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     signature: None | SignatureType = field(
         default=None,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     id: str = field(
@@ -1865,49 +1864,49 @@ class RuleResultType:
     result: ResultEnumType = field(
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         }
     )
     override: list[OverrideType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     ident: list[IdentType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     message: list[MessageType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     instance: list[InstanceResultType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     fix: list[FixType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     check: list[CheckType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     idref: str = field(
@@ -1985,28 +1984,28 @@ class SelectableItemType(ItemType):
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     platform: list[OverrideableUriidrefType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     requires: list[IdrefListType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     conflicts: list[IdrefType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     selected: bool = field(
@@ -2042,49 +2041,49 @@ class TestResultType:
         default=None,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     title: list[TextType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     remark: list[TextType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     organization: list[str] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     identity: None | IdentityType = field(
         default=None,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     profile: None | IdrefType = field(
         default=None,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     target: list[str] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
             "min_occurs": 1,
         },
     )
@@ -2093,7 +2092,7 @@ class TestResultType:
         metadata={
             "name": "target-address",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     target_facts: None | TargetFactsType = field(
@@ -2101,14 +2100,14 @@ class TestResultType:
         metadata={
             "name": "target-facts",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     platform: list[UriidrefType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     set_value: list[ProfileSetValueType] = field(
@@ -2116,7 +2115,7 @@ class TestResultType:
         metadata={
             "name": "set-value",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     rule_result: list[RuleResultType] = field(
@@ -2124,14 +2123,14 @@ class TestResultType:
         metadata={
             "name": "rule-result",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     score: list[ScoreType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
             "min_occurs": 1,
         },
     )
@@ -2139,7 +2138,7 @@ class TestResultType:
         default=None,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     id: str = field(
@@ -2204,7 +2203,7 @@ class ValueType(ItemType):
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
             "min_occurs": 1,
         },
     )
@@ -2212,14 +2211,14 @@ class ValueType(ItemType):
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     match: list[SelStringType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     lower_bound: list[SelNumType] = field(
@@ -2227,7 +2226,7 @@ class ValueType(ItemType):
         metadata={
             "name": "lower-bound",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     upper_bound: list[SelNumType] = field(
@@ -2235,28 +2234,28 @@ class ValueType(ItemType):
         metadata={
             "name": "upper-bound",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     choices: list[SelChoicesType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     source: list[UriRefType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     signature: None | SignatureType = field(
         default=None,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     type_value: ValueTypeType = field(
@@ -2313,7 +2312,7 @@ class RuleType(SelectableItemType):
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     impact_metric: None | str = field(
@@ -2321,7 +2320,7 @@ class RuleType(SelectableItemType):
         metadata={
             "name": "impact-metric",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     profile_note: list[ProfileNoteType] = field(
@@ -2329,28 +2328,28 @@ class RuleType(SelectableItemType):
         metadata={
             "name": "profile-note",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     fixtext: list[FixTextType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     fix: list[FixType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     check: list[CheckType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     complex_check: None | ComplexCheckType = field(
@@ -2358,14 +2357,14 @@ class RuleType(SelectableItemType):
         metadata={
             "name": "complex-check",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     signature: None | SignatureType = field(
         default=None,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
     role: RoleEnumType = field(
@@ -2441,7 +2440,7 @@ class GroupType(SelectableItemType):
         default=None,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
 
@@ -2476,21 +2475,18 @@ class Benchmark:
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
         },
     )
     description: list[HtmlTextWithSubType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
         },
     )
     notice: list[NoticeType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
         },
     )
     front_matter: list[HtmlTextWithSubType] = field(
@@ -2498,7 +2494,6 @@ class Benchmark:
         metadata={
             "name": "front-matter",
             "type": "Element",
-            "namespace": "",
         },
     )
     rear_matter: list[HtmlTextWithSubType] = field(
@@ -2506,14 +2501,12 @@ class Benchmark:
         metadata={
             "name": "rear-matter",
             "type": "Element",
-            "namespace": "",
         },
     )
     reference: list[ReferenceType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
         },
     )
     plain_text: list[PlainTextType] = field(
@@ -2521,7 +2514,6 @@ class Benchmark:
         metadata={
             "name": "plain-text",
             "type": "Element",
-            "namespace": "",
         },
     )
     platform_definitions: None | PlatformDefinitions = field(
@@ -2560,20 +2552,17 @@ class Benchmark:
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
         },
     )
     version: VersionType = field(
         metadata={
             "type": "Element",
-            "namespace": "",
         }
     )
     metadata: list[MetadataType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
         },
     )
     model: list[Model] = field(
@@ -2621,7 +2610,6 @@ class Benchmark:
         default=None,
         metadata={
             "type": "Element",
-            "namespace": "",
         },
     )
     id: str = field(
