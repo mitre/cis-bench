@@ -279,7 +279,7 @@ class TestCreateBenchmark:
 
 
 class TestPostProcessing:
-    """Tests for _apply_post_processing method."""
+    """The style's post_processing settings, as the loaded config gives them."""
 
     def test_the_root_declares_the_namespaces_of_the_loaded_config(
         self, tmp_path, minimal_benchmark
@@ -318,8 +318,8 @@ def _declared(exporter: XCCDFExporter) -> dict[str | None, str]:
 
 
 def _rendered_root(exporter: XCCDFExporter, benchmark: Benchmark):
-    """The root of the document xsdata writes, before any post-processing."""
-    return etree.fromstring(exporter._render(exporter._create_benchmark(benchmark)).encode())
+    """The root of the tree xsdata renders, before any post-processing."""
+    return exporter._render(exporter._create_benchmark(benchmark))
 
 
 class TestRendering:
@@ -384,7 +384,6 @@ class TestRendering:
         self, style, sample_benchmark, tmp_path
     ):
         exporter = XCCDFExporter(style=style)
-        exporter.config.post_processing["handlers"] = []
         rendered = _rendered_root(exporter, sample_benchmark)
         output_file = tmp_path / "out.xml"
 
@@ -396,7 +395,7 @@ class TestRendering:
 
     @pytest.mark.parametrize("style", ["disa", "cis"])
     def test_only_the_root_declares_namespaces(self, style, sample_benchmark, tmp_path):
-        # Injected metadata uses the prefixes the root declares; nothing below it adds one.
+        # Metadata uses the prefixes the root declares; nothing below it adds one.
         exporter = XCCDFExporter(style=style)
         output_file = tmp_path / "out.xml"
 

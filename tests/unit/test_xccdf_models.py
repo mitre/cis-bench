@@ -82,7 +82,7 @@ def test_the_raw_render_of_an_export_writes_no_element_outside_a_namespace(
     # post-processing, which is what export() runs first.
     exporter = ExporterFactory.create("xccdf", style=style)
     xccdf_benchmark = exporter._create_benchmark(Benchmark.from_json_file(str(fixture)))
-    root = etree.fromstring(XCCDFSerializer.serialize_to_string(xccdf_benchmark).encode())
+    root = XCCDFSerializer.serialize_to_tree(xccdf_benchmark)
 
     outside = sorted(
         {

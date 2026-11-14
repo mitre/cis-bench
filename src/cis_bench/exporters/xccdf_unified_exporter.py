@@ -9,7 +9,7 @@ import logging
 from gettext import ngettext
 from pathlib import Path
 
-from lxml.etree import QName
+from lxml import etree
 from xsdata.formats.dataclass.context import XmlContext
 
 from cis_bench.exceptions import ExportError
@@ -94,8 +94,10 @@ class XCCDFExporter(BaseExporter):
         xccdf_benchmark = self._create_benchmark(benchmark)
         logger.debug("Created XCCDF Benchmark structure from mapping engine")
 
-        # Step 2: Serialize to XML
-        xml_output = self._render(xccdf_benchmark)
+        # Step 2: Render to a tree, apply the style's post-processing on it, write it once
+        root = self._render(xccdf_benchmark)
+        XCCDFPostProcessor.process(root, self.config.post_processing)
+        xml_output = XCCDFSerializer.tree_to_string(root)
         logger.debug(
             ngettext(
                 "Serialized to XML ({count} char)",
@@ -104,32 +106,29 @@ class XCCDFExporter(BaseExporter):
             ).format(count=len(xml_output))
         )
 
-        # Step 3: Post-processing (config-driven)
-        xml_output = self._apply_post_processing(xml_output)
-
-        # Step 4: Write to file
+        # Step 3: Write to file
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(xml_output)
 
         logger.debug(f"Export successful: {output_path}")
         return output_path
 
-    def _render(self, xccdf_benchmark) -> str:
-        """The XCCDF Benchmark as XML, as xsdata writes it, declaring the style's namespaces
-        (benchmark.namespaces; "default" is the default namespace) on the root."""
+    def _render(self, xccdf_benchmark) -> etree._Element:
+        """The XCCDF Benchmark as an lxml tree, as xsdata renders it, declaring the style's
+        namespaces (benchmark.namespaces; "default" is the default namespace) on the root."""
         ns_map = {
             (None if prefix == "default" else prefix): uri
             for prefix, uri in self.config.namespaces.items()
         }
         # The Benchmark's own namespace must be one the style names; xsdata would otherwise
         # make up a prefix (ns0) for every XCCDF element.
-        xccdf_namespace = QName(XmlContext().build(type(xccdf_benchmark)).qname).namespace
+        xccdf_namespace = etree.QName(XmlContext().build(type(xccdf_benchmark)).qname).namespace
         if xccdf_namespace not in ns_map.values():
             raise ValueError(
                 f"style '{self.style}' does not declare the XCCDF namespace {xccdf_namespace} "
                 "in benchmark.namespaces"
             )
-        return XCCDFSerializer.serialize_to_string(xccdf_benchmark, ns_map=ns_map)
+        return XCCDFSerializer.serialize_to_tree(xccdf_benchmark, ns_map)
 
     def _create_benchmark(self, benchmark: Benchmark):
         """Create XCCDF Benchmark using mapping engine (config-driven).
@@ -169,19 +168,6 @@ class XCCDFExporter(BaseExporter):
         xccdf_bench = self.engine.map_benchmark(benchmark, groups, context)
 
         return xccdf_bench
-
-    def _apply_post_processing(self, xml_output: str) -> str:
-        """Apply the style's post_processing settings (inherited through extends like every
-        other section). Namespaces are not touched here: the serializer declared them.
-        """
-        post_processing_config = self.config.post_processing
-        logger.debug(f"Post-processing config: {post_processing_config}")
-
-        xml_output = XCCDFPostProcessor.process(xml_output, post_processing_config)
-
-        logger.debug("Applied final post-processing")
-
-        return xml_output
 
     def format_name(self) -> str:
         """Return format name with style."""

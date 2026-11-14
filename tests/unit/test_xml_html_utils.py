@@ -16,53 +16,17 @@ from lxml import etree
 class TestXCCDFSerializer:
     """Tests for XCCDFSerializer."""
 
-    def test_serialize_to_string_basic(self):
-        """Should serialize xsdata objects to XML string (lines 66-77)."""
-        from dataclasses import dataclass
-
+    def test_an_object_is_rendered_to_a_tree_declaring_the_namespace_map(self):
+        from cis_bench.models.xccdf.xccdf_1_2 import Rule
         from cis_bench.utils.xml_utils import XCCDFSerializer
 
-        # Create a simple dataclass that xsdata can serialize
-        @dataclass
-        class SimpleElement:
-            value: str = "test"
+        ns_map = {None: XCCDF_1_2, "dc": "http://purl.org/dc/elements/1.1/"}
 
-        obj = SimpleElement(value="hello")
-        result = XCCDFSerializer.serialize_to_string(obj)
+        root = XCCDFSerializer.serialize_to_tree(Rule(id="xccdf_org.example_rule_r"), ns_map)
 
-        assert "<?xml" in result
-        assert "hello" in result
-
-    def test_serialize_to_string_no_pretty(self):
-        """Should serialize without indentation when pretty=False."""
-        from dataclasses import dataclass
-
-        from cis_bench.utils.xml_utils import XCCDFSerializer
-
-        @dataclass
-        class SimpleElement:
-            value: str = "test"
-
-        obj = SimpleElement(value="compact")
-        result = XCCDFSerializer.serialize_to_string(obj, pretty=False)
-
-        assert "<?xml" in result
-        assert "compact" in result
-
-    def test_serialize_to_string_custom_indent(self):
-        """Should use custom indent string."""
-        from dataclasses import dataclass
-
-        from cis_bench.utils.xml_utils import XCCDFSerializer
-
-        @dataclass
-        class SimpleElement:
-            value: str = "test"
-
-        obj = SimpleElement(value="indented")
-        result = XCCDFSerializer.serialize_to_string(obj, indent="    ")  # 4 spaces
-
-        assert "indented" in result
+        assert root.tag == f"{{{XCCDF_1_2}}}Rule"
+        assert root.get("id") == "xccdf_org.example_rule_r"
+        assert root.nsmap == ns_map
 
     def test_tree_to_string_basic(self):
         """Should convert lxml Element to string."""
@@ -119,11 +83,10 @@ class TestXsiTypeValues:
         # A Rule description given a subtype: xsdata names the subtype in xsi:type
         rule = Rule(id="xccdf_org.example_rule_r", description=[WarningType(content=["d"])])
 
-        # As the exporter writes it: serialized, then post-processed
-        written = XCCDFPostProcessor.process(
-            XCCDFSerializer.serialize_to_string(rule, ns_map=ns_map)
-        )
-        root = etree.fromstring(written.encode())
+        # As the exporter writes it: rendered to a tree, post-processed, written once
+        tree = XCCDFSerializer.serialize_to_tree(rule, ns_map)
+        XCCDFPostProcessor.process(tree)
+        root = etree.fromstring(XCCDFSerializer.tree_to_string(tree).encode())
         description = root.find(f"{{{XCCDF_1_2}}}description")
         xsi_type = description.get("{http://www.w3.org/2001/XMLSchema-instance}type")
 
@@ -131,7 +94,8 @@ class TestXsiTypeValues:
 
 
 class TestXCCDFPostProcessor:
-    """Tests for XCCDFPostProcessor.process: attributes only, namespaces left as written."""
+    """XCCDFPostProcessor.process changes the rendered tree in place: attributes only,
+    namespaces left as written."""
 
     DOCUMENT = (
         f'<Benchmark xmlns="{XCCDF_1_2}" xmlns:dc="http://purl.org/dc/elements/1.1/"'
@@ -143,24 +107,28 @@ class TestXCCDFPostProcessor:
     def test_override_attributes_are_removed_by_default(self):
         from cis_bench.utils.xml_utils import XCCDFPostProcessor
 
-        root = etree.fromstring(XCCDFPostProcessor.process(self.DOCUMENT).encode())
+        root = etree.fromstring(self.DOCUMENT)
+
+        XCCDFPostProcessor.process(root)
 
         assert {e.get("override") for e in root.iter("*")} == {None}
 
     def test_override_attributes_stay_when_the_style_keeps_them(self):
         from cis_bench.utils.xml_utils import XCCDFPostProcessor
 
-        result = XCCDFPostProcessor.process(self.DOCUMENT, {"remove_override_attr": False})
+        root = etree.fromstring(self.DOCUMENT)
 
-        assert etree.fromstring(result.encode()).find(f"{{{XCCDF_1_2}}}Rule").get("override") == (
-            "true"
-        )
+        XCCDFPostProcessor.process(root, {"remove_override_attr": False})
+
+        assert root.find(f"{{{XCCDF_1_2}}}Rule").get("override") == "true"
 
     def test_every_element_name_and_namespace_declaration_is_kept(self):
         from cis_bench.utils.xml_utils import XCCDFPostProcessor
 
-        before = etree.fromstring(self.DOCUMENT.encode())
-        after = etree.fromstring(XCCDFPostProcessor.process(self.DOCUMENT).encode())
+        before = etree.fromstring(self.DOCUMENT)
+        after = etree.fromstring(self.DOCUMENT)
+
+        XCCDFPostProcessor.process(after)
 
         assert [(e.tag, e.prefix, e.nsmap) for e in after.iter("*")] == [
             (e.tag, e.prefix, e.nsmap) for e in before.iter("*")
