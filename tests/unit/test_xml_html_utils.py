@@ -101,7 +101,7 @@ class TestXCCDFPostProcessor:
         f'<Benchmark xmlns="{XCCDF_1_2}" xmlns:dc="http://purl.org/dc/elements/1.1/"'
         ' xmlns:controls="http://cisecurity.org/controls">'
         '<Rule id="r" override="true"><dc:title>T</dc:title>'
-        "<metadata><controls:cis_controls/></metadata></Rule></Benchmark>"
+        '<metadata><controls:cis_controls override="kept"/></metadata></Rule></Benchmark>'
     )
 
     def test_override_attributes_are_removed_by_default(self):
@@ -111,7 +111,17 @@ class TestXCCDFPostProcessor:
 
         XCCDFPostProcessor.process(root)
 
-        assert {e.get("override") for e in root.iter("*")} == {None}
+        assert root.find(f"{{{XCCDF_1_2}}}Rule").get("override") is None
+
+    def test_an_override_attribute_of_another_namespaces_element_is_kept(self):
+        from cis_bench.utils.xml_utils import XCCDFPostProcessor
+
+        root = etree.fromstring(self.DOCUMENT)
+
+        XCCDFPostProcessor.process(root)
+
+        (controls,) = root.iter("{http://cisecurity.org/controls}cis_controls")
+        assert controls.get("override") == "kept"
 
     def test_override_attributes_stay_when_the_style_keeps_them(self):
         from cis_bench.utils.xml_utils import XCCDFPostProcessor

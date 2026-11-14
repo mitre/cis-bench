@@ -133,7 +133,7 @@ extract: "all"
 | `field_mappings` | Rule-level field transformations | Yes |
 | `rule_defaults` | Default attributes for all rules | No |
 | `validation` | Validation rules and constraints | No |
-| `post_processing` | `override` attribute removal after serialization (`remove_override_attr`) | No |
+| `post_processing` | `override` attribute removal on the rendered tree, XCCDF elements only (`remove_override_attr`) | No |
 
 ### Benchmark ID
 

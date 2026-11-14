@@ -109,7 +109,10 @@ dc: "http://purl.org/dc/elements/1.1/"
   serialization.
 - The namespace of the style's XCCDF version must be listed, as `default` or under a prefix,
   or the export stops. xsdata would otherwise make up a prefix such as `ns0` for it.
-- List each URI once. xsdata keeps one binding per URI and drops the default namespace when
+- A prefix is `default` or an XML name without a colon, never `xml` or `xmlns`; a URI is not
+  empty and is not one of the two namespaces XML reserves. Anything else is refused when the
+  style loads.
+- List each URI once (a second binding is refused). xsdata keeps one binding per URI and drops the default namespace when
   a prefix has the same URI, so a second prefix for the XCCDF namespace would put that
   prefix on every element.
 - Mappings look their prefixes up here (`dc_elements`, an ident attribute's
@@ -310,7 +313,8 @@ applies to the Benchmark's own `reference` (`benchmark.reference.dc_elements`).
 ### Rule Metadata (metadata_from_config)
 
 A Rule's `<metadata>` content, built as xsdata model content in the namespace the style
-declares for `namespace_prefix` (the rule_elements entry gives `xccdf_type: "MetadataType"`):
+declares for `namespace_prefix` (no `rule_elements` entry is needed: the type comes from the
+XCCDF model):
 
 ```yaml
 cis_controls_metadata:

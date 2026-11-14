@@ -250,6 +250,7 @@ framework_controls:
 framework_metadata:
   target_element: "metadata"
   structure: "metadata_from_config"
+  source_field: "cis_controls"
   metadata_spec:
     root_element: "framework_controls"
     namespace_prefix: "org"  # declared in benchmark.namespaces
@@ -260,7 +261,8 @@ framework_metadata:
         id: "{group_key}"
       item_element:
         element: "control"
-        # ... structure from config
+        attributes:
+          id: "{item.control}"
 ```
 
 ### 3. generate_profiles_from_rules

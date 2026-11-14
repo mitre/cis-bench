@@ -87,5 +87,8 @@ class XCCDFPostProcessor:
         """
         config = post_processing_config or {}
         if config.get("remove_override_attr", True):
-            for element in root.iter("*"):
+            # override is an XCCDF attribute: only the document's own XCCDF elements lose it,
+            # never content of another namespace (a Rule's metadata)
+            xccdf_namespace = etree.QName(root).namespace or ""
+            for element in root.iter(f"{{{xccdf_namespace}}}*"):
                 element.attrib.pop("override", None)

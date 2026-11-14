@@ -74,8 +74,8 @@ serialization.
 4. **Attributes:** template-based; booleans are written as lowercase `true`/`false`
 5. **Content:** static or template-based text
 6. **Children:** nested to any depth under an item
-7. **Empty handling:** with `allow_empty`, an empty root when the source list is empty;
-   otherwise no metadata element
+7. **Empty handling:** with `allow_empty`, an empty root when the source list is empty or no
+   item falls in a group; otherwise no metadata element
 8. **Namespace:** every element is in the namespace `benchmark.namespaces` declares for
    `namespace_prefix`
 
@@ -119,7 +119,8 @@ field_name:
             content: "Protect"
 ```
 
-The `rule_elements` section gives the mapping its type (`xccdf_type: "MetadataType"`).
+The mapping needs no `rule_elements` entry: the type that holds the content is the one the
+XCCDF model gives the Rule's target element (`MetadataType` for `metadata`).
 
 ### Checked when the style loads
 
@@ -127,12 +128,13 @@ XCCDF allows only elements from another namespace inside `metadata`
 (`xsd:any namespace="##other"`), and XCCDF 1.1.4 Rules have no `metadata` element. The engine
 refuses a style, before any export, when a metadata mapping:
 
-- targets an element the XCCDF version's Rule does not have (any metadata mapping on 1.1.4)
-- has no `source_field`, or no `group_by`
+- targets an element the XCCDF version's Rule does not have (any metadata mapping on 1.1.4),
+  or one whose type does not hold elements of another namespace alone (`title`, `ident`)
+- has no `source_field`, or no `group_by`, or a `group_by` that is no field of the listed items
 - has no `namespace_prefix`, a prefix `benchmark.namespaces` does not declare, or a prefix
   that resolves to the XCCDF namespace
 - names an element or attribute that is not an XML name without a prefix (`xsi:type`,
-  `{uri}name` and `two words` are refused)
+  `{uri}name`, `two words` and `xmlns` are refused)
 - sets a removed key: `requires_post_processing`, `metadata_spec.namespace` (the URI comes
   from `benchmark.namespaces`)
 

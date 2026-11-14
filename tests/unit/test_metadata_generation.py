@@ -151,6 +151,27 @@ class TestBuiltContent:
 
         assert engine.generate_metadata_from_config(recommendation(), mapping) is None
 
+    @pytest.mark.parametrize(("allow_empty", "expected"), [(False, None), (True, "empty root")])
+    def test_items_that_fall_in_no_group_are_handled_like_no_data(
+        self, engine, controls_mapping, allow_empty, expected
+    ):
+        # Grouping by a field that is false for every item gives no group.
+        mapping = {
+            **controls_mapping,
+            "metadata_spec": {
+                **controls_mapping["metadata_spec"],
+                "group_by": "item.ig1",
+                "allow_empty": allow_empty,
+            },
+        }
+
+        root = engine.generate_metadata_from_config(
+            recommendation(control(8, "4.8", "t", ig1=False)), mapping
+        )
+
+        assert (root and "empty root") == expected
+        assert root is None or shape(root) == (f"{{{CONTROLS}}}cis_controls", {}, None, [])
+
     def test_an_attribute_value_xsdata_would_rewrite_as_a_type_name_stops_the_export(
         self, engine, controls_mapping
     ):
@@ -179,7 +200,6 @@ class TestMetadataOnTheRule:
         style = tmp_path / "style.yaml"
         style.write_text(
             f"extends: {cis_config_path}\nmetadata:\n  style_name: child\n"
-            "rule_elements:\n  second_metadata:\n    xccdf_type: MetadataType\n"
             "field_mappings:\n  second_metadata:\n    target_element: metadata\n"
             "    structure: metadata_from_config\n    source_field: cis_controls\n"
             "    metadata_spec:\n      root_element: second\n"
@@ -239,6 +259,15 @@ class TestRefusedWhenTheStyleLoads:
                 "xsi:type",
                 id="attribute name with a prefix",
             ),
+            pytest.param(
+                '      group_element:\n        attributes:\n          xmlns: "urn:x"\n',
+                "xmlns",
+                id="a namespace declaration as an attribute",
+            ),
+            pytest.param('      root_element: "xmlns"\n', "xmlns", id="xmlns as an element"),
+            pytest.param(
+                '      group_by: "item.versoin"\n', "versoin", id="grouping by no field of the item"
+            ),
         ],
     )
     def test_a_metadata_spec_that_cannot_be_written_is_refused(
@@ -247,6 +276,19 @@ class TestRefusedWhenTheStyleLoads:
         style = self._with_metadata_spec(tmp_path, cis_config_path, spec_lines)
 
         with pytest.raises(ValueError, match=message):
+            MappingEngine(style)
+
+    def test_metadata_aimed_at_an_element_that_holds_no_foreign_content_is_refused(
+        self, tmp_path, cis_config_path
+    ):
+        # A Rule's title holds text; only metadata holds elements of another namespace.
+        style = self._style(
+            tmp_path,
+            cis_config_path,
+            "field_mappings:\n  cis_controls_metadata:\n    target_element: title\n",
+        )
+
+        with pytest.raises(ValueError, match="title"):
             MappingEngine(style)
 
     def test_the_removed_requires_post_processing_key_is_refused(self, tmp_path, cis_config_path):
@@ -312,6 +354,25 @@ class TestTheExportedMetadata:
         XCCDFExporter(style="cis").export(benchmark(rec), str(output))
 
         assert [s["title"] for s in self._safeguards(output)] == titles
+
+    def test_long_element_text_is_written_as_given(self, tmp_path, cis_config_path):
+        style = tmp_path / "style.yaml"
+        style.write_text(
+            f"extends: {cis_config_path}\nmetadata:\n  style_name: child\n"
+            "field_mappings:\n  cis_controls_metadata:\n    metadata_spec:\n"
+            "      group_element:\n        item_element:\n          children:\n"
+            '            - element: note\n              content: "{item.title}"\n'
+        )
+        title = "Long <text> & more " + "y" * 5000
+        exporter = XCCDFExporter(style="cis")
+        exporter.engine = MappingEngine(style)
+        exporter.config = exporter.engine.config
+        output = tmp_path / "cis.xml"
+
+        exporter.export(benchmark(recommendation(control(8, "4.8", title))), str(output))
+
+        root = etree.parse(str(output)).getroot()
+        assert [e.text for e in root.iter(f"{{{CONTROLS}}}note")] == [title]
 
     def test_two_exports_from_one_exporter_are_identical(self, tmp_path):
         exporter = XCCDFExporter(style="cis")

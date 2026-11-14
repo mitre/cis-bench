@@ -633,8 +633,8 @@ so a second prefix for the XCCDF namespace would put an `xccdf:` prefix on every
 
 ### Post-Processing
 
-After rendering, the exporter removes `override` attributes on the tree
-(`remove_override_attr`, default true). It renames no element and changes no namespace
+After rendering, the exporter removes `override` attributes from the tree's XCCDF elements
+(`remove_override_attr`, default true); content of another namespace keeps its attributes. It renames no element and changes no namespace
 declaration. A Rule's CIS Controls metadata is not added here: the mapping engine builds it
 as model content (`metadata_from_config`), so xsdata writes it in schema order with the
 prefixes the root declares. Prefixes are chosen once, when xsdata renders the document,

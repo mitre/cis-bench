@@ -614,6 +614,50 @@ class TestStyleInheritance:
         assert child.post_processing == {"remove_override_attr": False}
 
 
+class TestDeclaredNamespaces:
+    """benchmark.namespaces holds only bindings an XML document can declare (Namespaces in
+    XML 1.0); anything else is refused when the style loads, not when an export fails."""
+
+    @pytest.mark.parametrize(
+        ("binding", "message"),
+        [
+            pytest.param('ex: ""', "'ex'", id="empty URI"),
+            pytest.param("ex: null", "'ex'", id="no URI"),
+            pytest.param('"two words": "urn:example"', "two words", id="prefix that is no name"),
+            pytest.param('"a:b": "urn:example"', "a:b", id="prefix with a colon"),
+            pytest.param('xml: "urn:example"', "'xml'", id="reserved prefix xml"),
+            pytest.param('xmlns: "urn:example"', "'xmlns'", id="reserved prefix xmlns"),
+            pytest.param(
+                'ex: "http://www.w3.org/XML/1998/namespace"', "'ex'", id="the xml namespace"
+            ),
+            pytest.param('ex: "http://www.w3.org/2000/xmlns/"', "'ex'", id="the xmlns namespace"),
+            pytest.param(
+                'again: "http://cisecurity.org/controls"', "again", id="a URI bound twice"
+            ),
+        ],
+    )
+    def test_a_binding_a_document_cannot_declare_is_refused(
+        self, tmp_path, cis_config_path, binding, message
+    ):
+        style = tmp_path / "style.yaml"
+        style.write_text(
+            f"extends: {cis_config_path}\nmetadata:\n  style_name: child\n"
+            f"benchmark:\n  namespaces:\n    {binding}\n"
+        )
+
+        with pytest.raises(ValueError, match=rf"benchmark\.namespaces.*{message}"):
+            ConfigLoader.load(style)
+
+    def test_a_new_prefix_for_a_new_uri_loads(self, tmp_path, cis_config_path):
+        style = tmp_path / "style.yaml"
+        style.write_text(
+            f"extends: {cis_config_path}\nmetadata:\n  style_name: child\n"
+            'benchmark:\n  namespaces:\n    ex: "urn:example"\n'
+        )
+
+        assert ConfigLoader.load(style).namespaces["ex"] == "urn:example"
+
+
 class TestPostProcessingSettings:
     """A post_processing setting the exporter does not read is refused when the style loads."""
 

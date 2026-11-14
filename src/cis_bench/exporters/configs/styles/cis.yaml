@@ -159,12 +159,6 @@ rule_elements:
     xccdf_type: "CheckType"
     source: "audit"
 
-  metadata:
-    xccdf_type: "MetadataType"
-
-  cis_controls_metadata:
-    xccdf_type: "MetadataType"
-
   cis_controls_ident:
     xccdf_type: "IdentType"
 
