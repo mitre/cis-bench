@@ -607,14 +607,47 @@ class TestStyleInheritance:
         parent = ConfigLoader.load(cis_config_path)
 
         child = self._child(
-            tmp_path, cis_config_path, "post_processing:\n  strip_namespace_prefixes: true\n"
+            tmp_path, cis_config_path, "post_processing:\n  remove_override_attr: false\n"
         )
 
         assert child.post_processing == {
             **parent.post_processing,
-            "strip_namespace_prefixes": True,
+            "remove_override_attr": False,
         }
         assert child.post_processing["handlers"] == parent.post_processing["handlers"] != []
+
+
+class TestPostProcessingSettings:
+    """A post_processing setting the exporter does not read is refused when the style loads."""
+
+    @staticmethod
+    def _style(tmp_path, post_processing: str):
+        style = tmp_path / "style.yaml"
+        style.write_text(f"metadata:\n  style_name: s\npost_processing:\n{post_processing}")
+        return style
+
+    @pytest.mark.parametrize("setting", ["strip_namespace_prefixes", "preserve_namespaces"])
+    def test_a_removed_namespace_setting_is_refused_with_where_namespaces_are_declared(
+        self, tmp_path, setting
+    ):
+        style = self._style(tmp_path, f"  {setting}: null\n")
+
+        with pytest.raises(ValueError, match=rf"{setting}.*benchmark\.namespaces"):
+            ConfigLoader.load(style)
+
+    def test_an_unknown_setting_is_refused_by_name(self, tmp_path):
+        style = self._style(tmp_path, "  pretty_print: true\n")
+
+        with pytest.raises(ValueError, match="pretty_print"):
+            ConfigLoader.load(style)
+
+    def test_the_settings_the_exporter_reads_load(self, tmp_path):
+        style = self._style(tmp_path, "  remove_override_attr: false\n  handlers: []\n")
+
+        assert ConfigLoader.load(style).post_processing == {
+            "remove_override_attr": False,
+            "handlers": [],
+        }
 
 
 class TestVariableSubstituter:

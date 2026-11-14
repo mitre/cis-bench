@@ -1,6 +1,7 @@
-"""XML utilities for XCCDF processing.
+"""XML utilities for XCCDF processing: identifiers, serialization and post-processing.
 
-Helpers for XML namespace handling, serialization, and post-processing.
+The namespaces of an XCCDF document are chosen when xsdata writes it (the namespace map a
+style declares); nothing renames elements or rewrites namespace declarations afterwards.
 """
 
 import logging
@@ -28,51 +29,23 @@ def ncname_slug(text: str) -> str:
     return _NCNAME_SEPARATORS.sub("_", text).strip("_")
 
 
-class XCCDFNamespaceFixer:
-    """Fix xsdata namespace issues in generated XML.
-
-    xsdata Issue #1079: Child elements sometimes get namespace=""
-    This utility adds proper XCCDF namespace to all unnamespaced elements.
-    """
-
-    @staticmethod
-    def fix_namespaces(xml_string: str, xccdf_namespace: str) -> str:
-        """Fix xsdata namespace bug by adding XCCDF namespace to unnamespaced elements.
-
-        Args:
-            xml_string: XML output from xsdata serializer
-            xccdf_namespace: XCCDF namespace URI (e.g., 'http://checklists.nist.gov/xccdf/1.1')
-
-        Returns:
-            Fixed XML string with proper namespaces on all elements
-
-        Example:
-            >>> xml = '<Benchmark><title xmlns="">Test</title></Benchmark>'
-            >>> fixed = XCCDFNamespaceFixer.fix_namespaces(xml, 'http://checklists.nist.gov/xccdf/1.1')
-            >>> # Result: <Benchmark xmlns="..."><title>Test</title></Benchmark>
-        """
-        root = etree.fromstring(xml_string.encode("utf-8"))
-
-        # Add XCCDF namespace to all unnamespaced elements
-        for elem in root.iter():
-            if elem.tag and not elem.tag.startswith("{"):
-                elem.tag = f"{{{xccdf_namespace}}}{elem.tag}"
-
-        xml_bytes: bytes = etree.tostring(
-            root, pretty_print=True, xml_declaration=True, encoding="UTF-8"
-        )
-        return xml_bytes.decode("utf-8")
-
-
 class XCCDFSerializer:
     """XCCDF XML serialization utilities."""
 
     @staticmethod
-    def serialize_to_string(xccdf_obj, pretty: bool = True, indent: str = "  ") -> str:
+    def serialize_to_string(
+        xccdf_obj,
+        ns_map: dict[str | None, str] | None = None,
+        pretty: bool = True,
+        indent: str = "  ",
+    ) -> str:
         """Serialize xsdata XCCDF object to XML string.
 
         Args:
             xccdf_obj: xsdata XCCDF object (Benchmark, Rule, etc.)
+            ns_map: Prefix -> namespace URI the document declares on its root (None for the
+                default namespace); xsdata names every element and xsi:type value with these
+                prefixes and makes up one only for a namespace the map does not hold
             pretty: Enable pretty printing
             indent: Indentation string (default: 2 spaces)
 
@@ -90,7 +63,7 @@ class XCCDFSerializer:
         # Use 'indent' instead of deprecated 'pretty_print'
         config = SerializerConfig(indent=indent if pretty else None, xml_declaration=True)
         serializer = XmlSerializer(config=config)
-        result = serializer.render(xccdf_obj)
+        result = serializer.render(xccdf_obj, ns_map=ns_map)
 
         logger.debug(
             ngettext(
@@ -113,7 +86,7 @@ class XCCDFSerializer:
             XML string with declaration
 
         Note:
-            Used for post-processed XML (after namespace fixes, metadata injection, etc.).
+            Used for post-processed XML (after metadata injection and attribute removal).
         """
         xml_bytes: bytes = etree.tostring(
             tree, pretty_print=pretty, xml_declaration=True, encoding="UTF-8"
@@ -122,98 +95,26 @@ class XCCDFSerializer:
 
 
 class XCCDFPostProcessor:
-    """Complete XCCDF post-processing pipeline.
-
-    Combines namespace fixing and the other output workarounds for xsdata limitations.
-
-    All behavior is CONFIG-DRIVEN via post_processing_config parameter.
-    No hardcoded style-specific logic.
-    """
+    """The post-processing that remains after serialization, driven by the style's
+    post_processing settings. It changes attributes only; namespaces are the serializer's."""
 
     @staticmethod
-    def process(
-        xml_string: str,
-        xccdf_namespace: str,
-        namespace_map: dict | None = None,
-        post_processing_config: dict | None = None,
-    ) -> str:
-        """Apply XCCDF post-processing steps based on config.
+    def process(xml_string: str, post_processing_config: dict | None = None) -> str:
+        """Apply the style's post-processing to a serialized XCCDF document.
 
         Args:
-            xml_string: Raw XML from xsdata serializer
-            xccdf_namespace: XCCDF namespace URI
-            namespace_map: All available namespaces from config
-                          e.g., {None: xccdf_ns, 'dc': dc_ns, 'controls': ...}
-            post_processing_config: Config-driven settings (from YAML)
-                - strip_namespace_prefixes: bool (default: False)
-                - preserve_namespaces: list or None (default: None = all)
-                - remove_rule_status: bool (default: False)
+            xml_string: XML as the serializer wrote it (after any handlers)
+            post_processing_config: The style's post_processing settings
                 - remove_override_attr: bool (default: True)
 
         Returns:
             Fully processed XML ready for output
         """
-        # Default config if not provided
-        if post_processing_config is None:
-            post_processing_config = {}
-
-        # Extract config values with defaults
-        strip_ns_prefixes = post_processing_config.get("strip_namespace_prefixes", False)
-        preserve_ns_list = post_processing_config.get("preserve_namespaces", None)
-        remove_override = post_processing_config.get("remove_override_attr", True)
-
-        logger.debug(
-            f"Post-processing config: strip_ns={strip_ns_prefixes}, preserve_ns={preserve_ns_list}"
-        )
-
-        # Step 1: Fix namespaces (always needed - xsdata bug workaround)
-        xml_string = XCCDFNamespaceFixer.fix_namespaces(xml_string, xccdf_namespace)
-
-        # Step 2: Parse XML for remaining processing
+        config = post_processing_config or {}
         root = etree.fromstring(xml_string.encode("utf-8"))
 
-        # Step 3: Process elements based on config
-        for elem in root.iter():
-            # Remove 'override' attribute if configured
-            if remove_override and "override" in elem.attrib:
-                del elem.attrib["override"]
-
-            # Strip namespace prefixes if configured
-            if strip_ns_prefixes and elem.tag.startswith("{"):
-                ns, local = elem.tag[1:].split("}", 1)
-                # Always keep DC elements with their namespace (for proper serialization)
-                if "purl.org/dc" not in ns:
-                    elem.tag = local
-
-        # Step 4: Rebuild root with appropriate namespaces
-        if namespace_map:
-            # Determine which namespaces to include
-            if preserve_ns_list is not None:
-                # Only include specified namespaces
-                final_nsmap: dict[str | None, str] = {}
-                for key in preserve_ns_list:
-                    if key == "default":
-                        # Default namespace uses None key in lxml
-                        if None in namespace_map:
-                            final_nsmap[None] = namespace_map[None]
-                        elif "default" in namespace_map:
-                            final_nsmap[None] = namespace_map["default"]
-                    elif key in namespace_map:
-                        final_nsmap[key] = namespace_map[key]
-                logger.debug(f"Using filtered namespaces: {list(final_nsmap.keys())}")
-            else:
-                # Use all namespaces from config
-                final_nsmap = namespace_map
-                logger.debug(f"Using all namespaces: {list(final_nsmap.keys())}")
-
-            # Create new root with correct namespace map
-            new_root = etree.Element(root.tag, attrib=root.attrib, nsmap=final_nsmap)
-            new_root.text = root.text
-
-            # Copy all children
-            for child in root:
-                new_root.append(child)
-
-            root = new_root
+        if config.get("remove_override_attr", True):
+            for element in root.iter("*"):
+                element.attrib.pop("override", None)
 
         return XCCDFSerializer.tree_to_string(root)

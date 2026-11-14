@@ -21,6 +21,7 @@ xccdf_version: "..."
 
 benchmark: # Benchmark-level mappings
 id_template: "..."
+namespaces: {...} # Prefix -> namespace URI the documents declare
 title: {...}
 description: {...}
 version: {...}
@@ -47,6 +48,10 @@ algorithm: {...}
 
 validation: # Validation rules
 require_cci_for_cis_controls: false
+
+post_processing: # After serialization
+handlers: [...]
+remove_override_attr: true
 ```
 
 ## Metadata Section
@@ -87,6 +92,32 @@ version:
 source: "version"
 transform: "none"
 ```
+
+### Namespaces
+
+`benchmark.namespaces` maps each prefix to its namespace URI; `default` is the default
+namespace. It lists exactly the namespaces the style's documents use:
+
+```yaml
+benchmark:
+namespaces:
+default: "http://checklists.nist.gov/xccdf/1.1" # the style's XCCDF version
+dc: "http://purl.org/dc/elements/1.1/"
+```
+
+- The serializer (xsdata) declares every listed namespace on the root and names each
+  element with its namespace's prefix. Nothing changes a prefix or a declaration after
+  serialization.
+- The namespace of the style's XCCDF version must be listed, as `default` or under a prefix,
+  or the export stops. xsdata would otherwise make up a prefix such as `ns0` for it.
+- List each URI once. xsdata keeps one binding per URI and drops the default namespace when
+  a prefix has the same URI, so a second prefix for the XCCDF namespace would put that
+  prefix on every element.
+- Mappings look their prefixes up here (`dc_elements`, an ident attribute's
+  `namespace_prefix`). A prefix that is not listed stops the export.
+- A style that extends another inherits its namespaces and cannot drop one. So the shipped
+  `base.yaml` declares none: DISA declares XCCDF 1.1 and `dc`; CIS declares XCCDF 1.2 and
+  the namespaces of its CIS Controls metadata and idents.
 
 ## Rule Defaults
 
@@ -560,6 +591,20 @@ cis_cites: "CM-7(5)"
 result: "written" # a different enhancement
 ```
 
+## Post-processing Section
+
+What runs after serialization:
+
+```yaml
+post_processing:
+handlers: [metadata_injection] # injects the lxml metadata of requires_post_processing mappings
+remove_override_attr: true # remove xsdata's override attributes (default true)
+```
+
+These are the only settings; any other key is refused when the style loads. The settings
+`strip_namespace_prefixes` and `preserve_namespaces` are gone: a style's namespaces are the
+ones it lists in `benchmark.namespaces`, declared by the serializer.
+
 ## Validation Section
 
 Validation rules for export:
@@ -584,6 +629,8 @@ xccdf_version: "1.2"
 
 benchmark:
 id_template: "xccdf_org.cisecurity.benchmarks_benchmark_{version}_{title_slug}"
+namespaces:
+default: "http://checklists.nist.gov/xccdf/1.2"
 title:
 source: "title"
 transform: "none"

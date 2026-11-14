@@ -213,6 +213,34 @@ class ConfigLoader:
         "a style declares none",
     }
 
+    # The post_processing settings the exporter reads, and where a removed one went.
+    _POST_PROCESSING_SETTINGS: Final[frozenset[str]] = frozenset(
+        {"handlers", "remove_override_attr"}
+    )
+    _REMOVED_POST_PROCESSING_HINTS: Final[dict[str, str]] = {
+        "strip_namespace_prefixes": "the serializer writes the namespaces declared in "
+        "benchmark.namespaces; nothing rewrites prefixes afterwards",
+        "preserve_namespaces": "a style declares exactly the namespaces its documents use in "
+        "benchmark.namespaces, and all of them are declared on the root",
+    }
+
+    @staticmethod
+    def _refuse_unread_post_processing_settings(
+        config_path: Path, config_data: dict[str, Any]
+    ) -> None:
+        """A post_processing setting the exporter does not read is refused, by name, so a
+        style cannot promise a behaviour nothing applies."""
+        for name in config_data.get("post_processing") or {}:
+            if name in ConfigLoader._POST_PROCESSING_SETTINGS:
+                continue
+            hint = ConfigLoader._REMOVED_POST_PROCESSING_HINTS.get(name)
+            raise ValueError(
+                f"{config_path.name}: post_processing.{name} is not a setting the exporter reads"
+                + (f" ({hint})" if hint else "")
+                + "; the settings are: "
+                + ", ".join(sorted(ConfigLoader._POST_PROCESSING_SETTINGS))
+            )
+
     @staticmethod
     def _refuse_unread_sections(config_path: Path, config_data: dict[str, Any]) -> None:
         """A top-level section the loader does not read is refused, by name.
@@ -294,6 +322,7 @@ class ConfigLoader:
             with open(config_path) as f:
                 config_data = yaml.safe_load(f) or {}
             ConfigLoader._refuse_unread_sections(config_path, config_data)
+            ConfigLoader._refuse_unread_post_processing_settings(config_path, config_data)
 
             # Check for inheritance
             if "extends" in config_data:
@@ -1768,6 +1797,14 @@ class MappingEngine:
         system_template = ident_spec.get("system_template", "")
         value_template = ident_spec.get("value_template", "{item}")
         custom_attrs = ident_spec.get("attributes", [])
+        # Checked before any prefix is resolved: declaring the attributes' namespaces would
+        # not help a version whose ident takes no attributes from other namespaces.
+        if custom_attrs and "other_attributes" not in {f.name for f in fields(IdentType)}:
+            names = sorted(str(attr.get("name")) for attr in custom_attrs)
+            raise ValueError(
+                f"ident attributes {names} need an XCCDF version whose "
+                "ident allows attributes from other namespaces"
+            )
 
         for item in items:
             # Build context for template substitution
@@ -1794,11 +1831,6 @@ class MappingEngine:
                 other_attributes[f"{{{self._namespace_uri(prefix)}}}{attr_name}"] = str(attr_value)
 
             if other_attributes:
-                if "other_attributes" not in {f.name for f in fields(IdentType)}:
-                    raise ValueError(
-                        f"ident attributes {sorted(other_attributes)} need an XCCDF version whose "
-                        "ident allows attributes from other namespaces"
-                    )
                 idents.append(
                     IdentType(system=system, value=value, other_attributes=other_attributes)
                 )

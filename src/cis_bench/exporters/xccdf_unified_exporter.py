@@ -9,6 +9,9 @@ import logging
 from gettext import ngettext
 from pathlib import Path
 
+from lxml.etree import QName
+from xsdata.formats.dataclass.context import XmlContext
+
 from cis_bench.exceptions import ExportError
 from cis_bench.exporters.base import BaseExporter, ExporterFactory
 from cis_bench.exporters.mapping_engine import MappingEngine
@@ -92,7 +95,7 @@ class XCCDFExporter(BaseExporter):
         logger.debug("Created XCCDF Benchmark structure from mapping engine")
 
         # Step 2: Serialize to XML
-        xml_output = XCCDFSerializer.serialize_to_string(xccdf_benchmark)
+        xml_output = self._render(xccdf_benchmark)
         logger.debug(
             ngettext(
                 "Serialized to XML ({count} char)",
@@ -110,6 +113,23 @@ class XCCDFExporter(BaseExporter):
 
         logger.debug(f"Export successful: {output_path}")
         return output_path
+
+    def _render(self, xccdf_benchmark) -> str:
+        """The XCCDF Benchmark as XML, as xsdata writes it, declaring the style's namespaces
+        (benchmark.namespaces; "default" is the default namespace) on the root."""
+        ns_map = {
+            (None if prefix == "default" else prefix): uri
+            for prefix, uri in self.config.namespaces.items()
+        }
+        # The Benchmark's own namespace must be one the style names; xsdata would otherwise
+        # make up a prefix (ns0) for every XCCDF element.
+        xccdf_namespace = QName(XmlContext().build(type(xccdf_benchmark)).qname).namespace
+        if xccdf_namespace not in ns_map.values():
+            raise ValueError(
+                f"style '{self.style}' does not declare the XCCDF namespace {xccdf_namespace} "
+                "in benchmark.namespaces"
+            )
+        return XCCDFSerializer.serialize_to_string(xccdf_benchmark, ns_map=ns_map)
 
     def _create_benchmark(self, benchmark: Benchmark):
         """Create XCCDF Benchmark using mapping engine (config-driven).
@@ -163,25 +183,12 @@ class XCCDFExporter(BaseExporter):
     def _apply_post_processing(self, xml_output: str, benchmark: Benchmark) -> str:
         """Apply post-processing pipeline based on style config.
 
-        All behavior is CONFIG-DRIVEN - no hardcoded style checks.
-        Reads the post_processing and benchmark.namespaces sections of the loaded style
-        config, inherited through extends like every other section.
+        All behavior is CONFIG-DRIVEN - no hardcoded style checks. Reads the post_processing
+        section of the loaded style config, inherited through extends like every other
+        section. Namespaces are not touched here: the serializer declared them.
         """
-        namespaces_config = self.config.namespaces
         post_processing_config = self.config.post_processing
-
-        logger.debug(f"Loaded namespaces: {list(namespaces_config.keys())}")
         logger.debug(f"Post-processing config: {post_processing_config}")
-
-        # Get XCCDF namespace from config (NO HARDCODING)
-        if "default" in namespaces_config:
-            xccdf_ns = namespaces_config["default"]
-        elif "xccdf" in namespaces_config:
-            xccdf_ns = namespaces_config["xccdf"]
-        else:
-            raise ValueError(f"No XCCDF namespace found in config for style '{self.style}'")
-
-        logger.debug(f"Applying post-processing for style: {self.style}, namespace: {xccdf_ns}")
 
         # Run handlers from config (in order)
         handlers = post_processing_config.get("handlers", [])
@@ -193,22 +200,8 @@ class XCCDFExporter(BaseExporter):
             else:
                 logger.warning(f"Unknown post-processing handler: {handler}")
 
-        # Build namespace map for lxml (convert "default" key to None)
-        nsmap_for_lxml: dict[str | None, str] = {}
-        for key, value in namespaces_config.items():
-            if key == "default":
-                nsmap_for_lxml[None] = value
-            else:
-                nsmap_for_lxml[key] = value
+        xml_output = XCCDFPostProcessor.process(xml_output, post_processing_config)
 
-        # Final processing (namespace cleanup, attribute removal, etc.)
-        # All behavior driven by post_processing_config
-        xml_output = XCCDFPostProcessor.process(
-            xml_output,
-            xccdf_namespace=xccdf_ns,
-            namespace_map=nsmap_for_lxml,
-            post_processing_config=post_processing_config,
-        )
         logger.debug("Applied final post-processing")
 
         return xml_output
