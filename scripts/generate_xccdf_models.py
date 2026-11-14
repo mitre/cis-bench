@@ -14,45 +14,67 @@ Inputs, the schema copies in src/cis_bench/schemas/:
     xccdf_1.2.xsd   -> cis_bench.models.xccdf
 These are not the schemas `cis-bench validate` checks documents with (xccdf/1.1/ and
 xccdf/1.2/ in the same folder); they are the copies the committed models were first made from.
-Generating reads xml.xsd from http://www.w3.org and dc.xsd from dublincore.org, so it needs
-the network. The copies also name CPE schemas at /schema/cpe/... paths that do not exist;
-xsdata warns about those and generates the fields that use them as plain strings.
+
+Generating reads dc.xsd from http://dublincore.org (imported by xccdf-1.1.4.xsd), so it needs
+the network; for the XML namespace schema xsdata uses its own bundled copy of xml.xsd. Some
+imports name schemas that do not exist (the CPE language schemas at /schema/cpe/..., and
+../../common/xml.xsd from the 1.1.4 copy's sibling schemas). xsdata warns about them and goes
+on; each model lists them in `known_missing`. xsdata also goes on, still exiting 0, when any
+other import or the schema itself cannot be read, so any other "Resource not found" is an
+error, as is a listed import xsdata no longer reports.
 
 xsdata writes into the folder it runs in, so the packages are generated in a temporary folder
 and only the model package files are compared or copied into src/. Generating replaces every
-module in a model package and removes modules the generator no longer writes.
+module in a model package and removes modules the generator no longer writes. Nothing is
+written until every package has been generated and formatted, and nothing is written through
+a symbolic link.
 """
 
 import argparse
+import re
 import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urljoin
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = Path(".xsdata.xml")
 SOURCE_FOLDER = Path("src")
+# How xsdata reports a schema or import it could not read (a warning; it still exits 0).
+RESOURCE_NOT_FOUND = re.compile(r"Resource not found (\S+)")
 
 
 @dataclass(frozen=True)
 class Model:
-    """A schema (relative to the project root) and the package its models are generated into."""
+    """A schema (relative to the project root) and the package its models are generated into.
+
+    known_missing: import locations, as the schemas in the schema's folder write them, that do
+    not exist and that xsdata is expected to report as not found.
+    """
 
     schema: Path
     package: str
+    known_missing: tuple[str, ...] = ()
 
 
 MODELS: tuple[Model, ...] = (
     Model(
-        schema=Path("src/cis_bench/schemas/xccdf-1.1.4.xsd"), package="cis_bench.models.xccdf_v1_1"
+        schema=Path("src/cis_bench/schemas/xccdf-1.1.4.xsd"),
+        package="cis_bench.models.xccdf_v1_1",
+        known_missing=("/schema/cpe/2.1/cpe-language_2.1.xsd", "../../common/xml.xsd"),
     ),
-    Model(schema=Path("src/cis_bench/schemas/xccdf_1.2.xsd"), package="cis_bench.models.xccdf"),
+    Model(
+        schema=Path("src/cis_bench/schemas/xccdf_1.2.xsd"),
+        package="cis_bench.models.xccdf",
+        known_missing=("/schema/cpe/2.3/cpe-language_2.3.xsd",),
+    ),
 )
 
 
 class GenerationError(Exception):
-    """xsdata or ruff could not produce a model package; nothing was written."""
+    """A model package could not be generated, formatted or written; nothing was written."""
 
 
 def package_folder(root: Path, package: str) -> Path:
@@ -76,9 +98,11 @@ def _run(
 def _generate(model: Model, root: Path, workdir: Path) -> dict[str, str]:
     """Run xsdata for one schema in workdir; return the package's modules by file name.
 
-    xsdata exits 0 with only a warning when it cannot read a schema, so a run that writes no
-    module is the error.
+    xsdata exits 0 with only a warning when it cannot read the schema or one of its imports, so
+    its "Resource not found" warnings are compared with the model's known missing imports, and a
+    run that writes no module is an error.
     """
+    schema_uri = (root / model.schema).resolve().as_uri()
     result = _run(
         [
             sys.executable,
@@ -93,6 +117,22 @@ def _generate(model: Model, root: Path, workdir: Path) -> dict[str, str]:
         ],
         cwd=workdir,
     )
+    reported = set(RESOURCE_NOT_FOUND.findall(result.stdout + result.stderr))
+    expected = {urljoin(schema_uri, location): location for location in model.known_missing}
+    unreadable = sorted(reported - set(expected))
+    if unreadable:
+        raise GenerationError(
+            f"{model.schema}: xsdata could not read {', '.join(unreadable)}\n"
+            f"{result.stdout}{result.stderr}"
+        )
+    no_longer_missing = sorted(
+        location for uri, location in expected.items() if uri not in reported
+    )
+    if no_longer_missing:
+        raise GenerationError(
+            f"{model.schema}: listed as known missing but not reported by xsdata: "
+            f"{', '.join(no_longer_missing)}"
+        )
     output = workdir / Path(*model.package.split("."))
     modules = {path.name: path.read_text(encoding="utf-8") for path in sorted(output.glob("*.py"))}
     if result.returncode != 0 or not modules:
@@ -150,6 +190,18 @@ def differences(rendered: dict[Path, str], current: dict[Path, str], root: Path)
     return lines
 
 
+def check_writable(model: Model, root: Path) -> None:
+    """Refuse a package folder that resolves outside its place in the project, or a module that
+    is a symbolic link: writing or removing through either would change files elsewhere."""
+    folder = package_folder(root, model.package)
+    expected = root.resolve() / SOURCE_FOLDER / Path(*model.package.split("."))
+    if folder.resolve() != expected:
+        raise GenerationError(f"{folder.relative_to(root)}: resolves to {folder.resolve()}")
+    for path in sorted(folder.glob("*.py")):
+        if path.is_symlink():
+            raise GenerationError(f"{path.relative_to(root)}: is a symbolic link")
+
+
 def write(rendered: dict[Path, str], current: dict[Path, str]) -> None:
     """Write the generated modules and remove the package's modules that were not generated."""
     for path in sorted(set(current) - set(rendered)):
@@ -190,6 +242,12 @@ def main(
         print("The committed models match the generator's output.")
         return 0
 
+    try:
+        for model in models:
+            check_writable(model, root)
+    except GenerationError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 2
     for model in models:
         write(rendered[model], committed(model, root))
         print(f"generated {model.package} from {model.schema.as_posix()}")

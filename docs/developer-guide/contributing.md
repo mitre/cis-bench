@@ -275,8 +275,8 @@ uv run python scripts/generate_xccdf_models.py --check   # exit 1 if the committ
 
 - The script runs `xsdata generate` with `.xsdata.xml`, then `ruff check --fix` and `ruff format` with the project's settings. It replaces every module in the two packages and removes any module the generator no longer writes.
 - xsdata comes from the `dev` extra.
-- Generating needs the network: the schemas import `xml.xsd` from `http://www.w3.org` and `dc.xsd` from `dublincore.org`.
-- xsdata warns about the CPE schemas the copies name at `/schema/cpe/...`, which do not exist. The fields that use them are generated as plain strings.
+- Generating needs the network: `xccdf-1.1.4.xsd` imports `dc.xsd` from `http://dublincore.org`. For the XML namespace schema (`xml.xsd`), xsdata uses its own bundled copy.
+- Some imports name schemas that do not exist: the CPE language schemas at `/schema/cpe/...`, and `../../common/xml.xsd` in the 1.1.4 copy's sibling schemas. xsdata warns about them and generates the fields that use the CPE types as plain strings. The script lists these imports for each model and stops with an error if xsdata cannot read any other schema or import. xsdata itself carries on, still exiting 0, in that case.
 - CI runs `--check`, so a hand edit or a changed schema copy without regenerated models fails the build.
 
 ---

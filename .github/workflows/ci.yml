@@ -83,7 +83,7 @@ jobs:
       - name: Test the generation script
         run: uv run --frozen --all-extras pytest tests/scripts/test_generate_xccdf_models.py -v
 
-      # Generating reads xml.xsd from www.w3.org and dc.xsd from dublincore.org.
+      # Generating reads dc.xsd from dublincore.org.
       - name: Check the committed models match the generator
         run: uv run --frozen --all-extras python scripts/generate_xccdf_models.py --check
 
