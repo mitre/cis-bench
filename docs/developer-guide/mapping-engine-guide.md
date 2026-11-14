@@ -133,7 +133,7 @@ extract: "all"
 | `field_mappings` | Rule-level field transformations | Yes |
 | `rule_defaults` | Default attributes for all rules | No |
 | `validation` | Validation rules and constraints | No |
-| `post_processing` | Handlers and namespace clean-up after serialization | No |
+| `post_processing` | Handlers (`metadata_injection`) and `override` attribute removal after serialization | No |
 
 ### Benchmark ID
 
@@ -632,12 +632,7 @@ less minimal.xml
 ### Base Style Pattern
 
 ```yaml
-# base_style.yaml - Common configuration
-benchmark:
-  namespaces:
-    default: "http://checklists.nist.gov/xccdf/1.2"
-    dc: "http://purl.org/dc/elements/1.1/"
-
+# base_style.yaml - Common configuration (no namespaces: each style declares its own)
 rule_defaults:
   severity: "medium"
 ```
@@ -651,6 +646,12 @@ extends: base_style.yaml # Inherit all from base
 # Override specific settings
 metadata:
   xccdf_version: "1.1.4" # Override (base has 1.2)
+
+# The namespaces this style's documents use, declared on the root by the serializer
+benchmark:
+  namespaces:
+    default: "http://checklists.nist.gov/xccdf/1.1"
+    dc: "http://purl.org/dc/elements/1.1/"
 
 # field_mappings are merged (not replaced)
 field_mappings:
@@ -667,7 +668,12 @@ So a child adds to or overrides `field_mappings`, `metadata`, `rule_defaults`,
 sets `post_processing.handlers` replaces the parent's list of handlers. The transforms a
 mapping may name are the ones registered in `mapping_engine.py` (`TransformRegistry`),
 not a section of the style; a style that carries a top-level section the loader does not
-read is refused when it loads, with the section's name.
+read, or a `post_processing` setting the exporter does not read, is refused when it loads,
+with its name.
+
+A child can add a namespace but cannot drop one it inherits, and the serializer declares
+every namespace in `benchmark.namespaces` on the root. So namespaces belong to the style
+whose documents use them, not to a shared base: the shipped `base.yaml` declares none.
 
 ---
 

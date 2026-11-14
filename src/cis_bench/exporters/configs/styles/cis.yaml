@@ -28,10 +28,10 @@ benchmark:
   # {version} and {title_slug} are the benchmark version and title reduced to NCName-safe text.
   id_template: "xccdf_org.cisecurity.benchmarks_benchmark_{version}_{title_slug}"
 
-  # Namespace declarations (prefix -> URI); a style that extends this one inherits them
+  # The namespaces CIS documents declare (prefix -> URI), on the root by the serializer;
+  # XCCDF 1.2 is the default namespace. A style that extends this one inherits them.
   namespaces:
     default: "http://checklists.nist.gov/xccdf/1.2"
-    xccdf: "http://checklists.nist.gov/xccdf/1.2"
     xhtml: "http://www.w3.org/1999/xhtml"
     controls: "http://cisecurity.org/controls"
     cc6: "http://cisecurity.org/20-cc/v6.1"
@@ -361,14 +361,7 @@ validation:
   max_references_per_rule: 100  # Sanity check
 
 # Post-processing for CIS format
-# CIS-CAT and OpenSCAP need rich namespace declarations
 post_processing:
-  # Keep all namespaces - CIS format uses them for rich metadata
-  strip_namespace_prefixes: false
-
-  # Preserve all namespaces from the namespaces section
-  preserve_namespaces: null  # null = keep all
-
   # Remove 'override' attributes (xsdata artifact)
   remove_override_attr: true
 

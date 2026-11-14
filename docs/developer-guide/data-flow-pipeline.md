@@ -589,74 +589,54 @@ Benchmark
 ## Stage 6: XML Serialization
 
 **Input:** xsdata `Benchmark` object
-**Component:** xsdata XML serializer
-**Output:** Valid NIST XCCDF XML
+**Component:** xsdata XML serializer (`XCCDFExporter._render`, `XCCDFSerializer.serialize_to_string`)
+**Output:** XCCDF XML with the style's namespaces declared on the root
 
 ### Serialization Process
 
+The exporter passes the style's `benchmark.namespaces` to xsdata as its namespace map, with
+`default` as the default namespace:
+
 ```python
-from xsdata.formats.dataclass.serializers import XmlSerializer
-from xsdata.formats.dataclass.serializers.config import SerializerConfig
-
-# Configure serializer
-config = SerializerConfig(
-pretty_print=True,
-xml_declaration=True,
-encoding="UTF-8"
-)
-
-serializer = XmlSerializer(config=config)
-
-# Serialize Benchmark object to XML
-xml_string = serializer.render(
-benchmark,
-ns_map={
-None: "http://checklists.nist.gov/xccdf/1.2",
-"dc": "http://purl.org/dc/elements/1.1/",
-"xhtml": "http://www.w3.org/1999/xhtml"
+# src/cis_bench/exporters/xccdf_unified_exporter.py (XCCDFExporter._render)
+ns_map = {
+    (None if prefix == "default" else prefix): uri
+    for prefix, uri in self.config.namespaces.items()
 }
-)
+return XCCDFSerializer.serialize_to_string(xccdf_benchmark, ns_map=ns_map)
 ```
+
+`XCCDFSerializer.serialize_to_string` calls `XmlSerializer(config=SerializerConfig(indent="  ",
+xml_declaration=True)).render(xccdf_obj, ns_map=ns_map)`.
 
 ### Namespace Handling
 
-**XCCDF requires multiple namespaces:**
-```xml
-<Benchmark
-xmlns="http://checklists.nist.gov/xccdf/1.2"
-xmlns:dc="http://purl.org/dc/elements/1.1/"
-xmlns:xhtml="http://www.w3.org/1999/xhtml"
-xmlns:controls="http://cisecurity.org/xccdf/controls/1.0"
-xmlns:mitre="http://cisecurity.org/xccdf/mitre/1.0">
-```
+The generated XCCDF models put every element in its XCCDF version's namespace (or the one
+the schema gives it, such as Dublin Core); see
+[Regenerating the XCCDF Models](contributing.md#regenerating-the-xccdf-models). xsdata names
+each element with the prefix the namespace map gives its namespace and declares the whole
+map on the root. It makes up a prefix (`ns0`, ...) only for a namespace the map does not
+hold. It writes `xsi:type` values as QNames with the prefix in scope, so they resolve.
 
-**Namespace Purpose:**
+Each style declares in `benchmark.namespaces` exactly the namespaces its documents use:
 
-- `xccdf` (default) - Core XCCDF elements
-- `dc` - Dublin Core metadata (title, publisher, source)
-- `xhtml` - HTML content in descriptions
-- `controls` - CIS Controls v8 (custom namespace)
-- `mitre` - MITRE ATT&CK (custom namespace)
+| Style | Declared on the root |
+|-------|----------------------|
+| DISA | XCCDF 1.1 (default), `dc` |
+| CIS | XCCDF 1.2 (default), `xhtml`, `controls`, `cc6`, `cc7`, `cc8`, `dc`, `enhanced`, `xsi` |
+
+A namespace URI is listed once per style. xsdata keeps one binding per URI and drops the
+default namespace when a prefix has the same URI (`xsdata.utils.namespaces.clean_prefixes`),
+so a second prefix for the XCCDF namespace would put an `xccdf:` prefix on every element.
 
 ### Post-Processing
 
-xsdata sometimes generates incorrect namespace prefixes. We fix this:
-
-```python
-# src/cis_bench/utils/xml_utils.py
-
-def fix_xccdf_namespaces(xml_string):
-"""Fix namespace issues in xsdata output."""
-
-# Problem: xsdata adds ns0: prefix to custom namespaces
-# <ns0:cis_control>4.8</ns0:cis_control>
-
-# Fix: Replace with proper prefix
-xml_string = xml_string.replace('ns0:cis_', 'controls:')
-xml_string = xml_string.replace('ns0:mitre_', 'mitre:')
-
-return xml_string
-```
+After serialization the exporter runs the style's `post_processing.handlers` (the CIS style
+injects its CIS Controls metadata with `metadata_injection`) and removes `override`
+attributes (`remove_override_attr`, default true). Neither renames an element or changes a
+namespace declaration: the injected elements use the prefixes the root declares. Prefixes
+are chosen once, when xsdata writes the document, never rewritten afterwards (see the W3C
+TAG finding [QNames as identifiers in content](https://www.w3.org/2001/tag/doc/qnameids.html)).
 
 ---
 
@@ -804,11 +784,11 @@ TypeError: Rule.title expects TextType, got str
 
 ### Stage 5: XML Serialization
 
-**Error:** Namespace issue
+**Error:** A prefix the style does not declare
 ```
-Namespace prefix 'ns0' not declared
- Post-processing fixes namespace prefixes
- Check xml_utils.fix_xccdf_namespaces()
+ValueError: namespace prefix 'cc9' is not declared in the style's namespaces
+ A mapping names a prefix (ident attribute namespace_prefix, dc_elements)
+ Fix: declare it in the style's benchmark.namespaces
 ```
 
 ---
@@ -1042,11 +1022,11 @@ ERROR: Rule.title expects TextType, got str
  Fix: Ensure MappingEngine wraps in correct type
 ```
 
-**"Namespace prefix not found"**
+**"... is not a setting the exporter reads"**
 ```
-ERROR: Namespace prefix 'ns0' not declared
- Check: xml_utils.fix_xccdf_namespaces() ran?
- Fix: Update namespace fixing regex
+ValueError: style.yaml: post_processing.preserve_namespaces is not a setting the exporter reads
+ Check: the style's post_processing section (the settings are handlers, remove_override_attr)
+ Fix: declare the namespaces the style's documents use in benchmark.namespaces
 ```
 
 ---

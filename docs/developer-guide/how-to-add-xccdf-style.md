@@ -71,10 +71,12 @@ metadata:
 # Benchmark-level configuration
 benchmark:
   id_template: "xccdf_org.pcisecuritystandards_benchmark_{version}_{title_slug}"
-  # Namespaces (required for XCCDF); a style that extends another inherits its parent's
+  # The namespaces this style's documents use (prefix -> URI). The serializer declares all
+  # of them on the root; "default" is the default namespace. List each URI once: a second
+  # prefix for the XCCDF namespace would replace the default namespace with that prefix.
+  # A style that extends another inherits its parent's and cannot drop one.
   namespaces:
     default: "http://checklists.nist.gov/xccdf/1.2"
-    xccdf: "http://checklists.nist.gov/xccdf/1.2"
     dc: "http://purl.org/dc/elements/1.1/"
     pci: "http://pci-dss.org/xccdf/1.0"  # Your custom namespace
   title:

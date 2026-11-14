@@ -308,18 +308,107 @@ class TestPostProcessing:
         assert controls_metadata(XCCDFExporter(style="cis"))
         assert controls_metadata(without_injection) == []
 
-    def test_post_processing_missing_xccdf_namespace_raises_error(self, minimal_benchmark):
-        """Should raise ValueError if no XCCDF namespace in config."""
+
+XCCDF_1_1 = "http://checklists.nist.gov/xccdf/1.1"
+DUBLIN_CORE = "http://purl.org/dc/elements/1.1/"
+
+
+def _declared(exporter: XCCDFExporter) -> dict[str | None, str]:
+    """The style's namespaces as an lxml nsmap ("default" is the default namespace)."""
+    return {
+        (None if prefix == "default" else prefix): uri
+        for prefix, uri in exporter.config.namespaces.items()
+    }
+
+
+def _rendered_root(exporter: XCCDFExporter, benchmark: Benchmark):
+    """The root of the document xsdata writes, before any post-processing."""
+    return etree.fromstring(exporter._render(exporter._create_benchmark(benchmark)).encode())
+
+
+class TestRendering:
+    """xsdata writes the style's namespaces itself; nothing repairs them afterwards."""
+
+    def test_the_rendered_document_already_declares_the_styles_namespaces(self, minimal_benchmark):
+        root = _rendered_root(XCCDFExporter(style="disa"), minimal_benchmark)
+
+        assert root.tag == f"{{{XCCDF_1_1}}}Benchmark"
+        assert root.nsmap == {None: XCCDF_1_1, "dc": DUBLIN_CORE}
+
+    def test_a_style_that_does_not_declare_its_xccdf_namespace_is_refused(self, minimal_benchmark):
+        # xsdata would make up a prefix (ns0) for it; the style must name the namespace.
         exporter = XCCDFExporter(style="disa")
+        del exporter.config.benchmark["namespaces"]["default"]
 
-        # Create minimal XML to process
-        test_xml = '<?xml version="1.0"?><Benchmark id="test"/>'
+        with pytest.raises(ValueError, match=f"{XCCDF_1_1}.*benchmark.namespaces"):
+            _rendered_root(exporter, minimal_benchmark)
 
-        exporter.config.benchmark["namespaces"] = {}  # No default or xccdf key
-        exporter.config.post_processing = {"handlers": []}
+    def test_a_style_may_declare_its_xccdf_namespace_with_a_prefix(self, minimal_benchmark):
+        exporter = XCCDFExporter(style="disa")
+        exporter.config.benchmark["namespaces"] = {"xccdf": XCCDF_1_1, "dc": DUBLIN_CORE}
 
-        with pytest.raises(ValueError, match="No XCCDF namespace found"):
-            exporter._apply_post_processing(test_xml, minimal_benchmark)
+        root = _rendered_root(exporter, minimal_benchmark)
+
+        assert root.prefix == "xccdf"
+        assert root.nsmap == {"xccdf": XCCDF_1_1, "dc": DUBLIN_CORE}
+
+    def test_metadata_is_injected_in_the_xccdf_namespace_when_it_is_declared_with_a_prefix(
+        self, sample_benchmark, tmp_path
+    ):
+        from cis_bench.validators.xccdf_schema import validate_xccdf
+
+        xccdf_1_2 = "http://checklists.nist.gov/xccdf/1.2"
+        exporter = XCCDFExporter(style="cis")
+        namespaces = exporter.config.benchmark["namespaces"]
+        namespaces["xccdf"] = namespaces.pop("default")
+        output_file = tmp_path / "out.xml"
+
+        exporter.export(sample_benchmark, str(output_file))
+        root = etree.parse(str(output_file)).getroot()
+
+        assert root.prefix == "xccdf"
+        assert root.findall(f".//{{{xccdf_1_2}}}Rule/{{{xccdf_1_2}}}metadata")
+        assert [e.tag for e in root.iter("*") if etree.QName(e).namespace is None] == []
+        assert validate_xccdf(output_file).errors == []
+
+    @pytest.mark.parametrize("style", ["disa", "cis"])
+    def test_the_rendered_document_uses_only_the_prefixes_the_style_declares(
+        self, style, sample_benchmark
+    ):
+        exporter = XCCDFExporter(style=style)
+        root = _rendered_root(exporter, sample_benchmark)
+
+        assert root.nsmap == _declared(exporter)
+        assert {element.prefix for element in root.iter() if isinstance(element.tag, str)} <= set(
+            _declared(exporter)
+        )
+
+    @pytest.mark.parametrize("style", ["disa", "cis"])
+    def test_post_processing_changes_no_element_name_or_namespace_declaration(
+        self, style, sample_benchmark, tmp_path
+    ):
+        exporter = XCCDFExporter(style=style)
+        exporter.config.post_processing["handlers"] = []
+        rendered = _rendered_root(exporter, sample_benchmark)
+        output_file = tmp_path / "out.xml"
+
+        exporter.export(sample_benchmark, str(output_file))
+        written = etree.parse(str(output_file)).getroot()
+
+        assert written.nsmap == rendered.nsmap
+        assert [e.tag for e in written.iter("*")] == [e.tag for e in rendered.iter("*")]
+
+    @pytest.mark.parametrize("style", ["disa", "cis"])
+    def test_only_the_root_declares_namespaces(self, style, sample_benchmark, tmp_path):
+        # Injected metadata uses the prefixes the root declares; nothing below it adds one.
+        exporter = XCCDFExporter(style=style)
+        output_file = tmp_path / "out.xml"
+
+        exporter.export(sample_benchmark, str(output_file))
+        root = etree.parse(str(output_file)).getroot()
+
+        assert root.nsmap == _declared(exporter)
+        assert [e.tag for e in root.iter("*") if e.nsmap != root.nsmap] == []
 
 
 # ============================================================================

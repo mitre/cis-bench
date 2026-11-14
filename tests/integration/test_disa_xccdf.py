@@ -8,6 +8,9 @@ from cis_bench.models.benchmark import Benchmark
 from cis_bench.validators.disa_conventions import DISAConventionsValidator
 from cis_bench.validators.xccdf_schema import read_xccdf, validate_xccdf
 
+# The DISA style writes XCCDF 1.1; lookups name it, so output in no namespace fails them
+XCCDF = {"x": "http://checklists.nist.gov/xccdf/1.1"}
+
 
 @pytest.fixture
 def test_benchmark(synthetic_complete_file):
@@ -55,14 +58,16 @@ def test_disa_export_has_ccis(disa_export_file):
     tree = etree.parse(str(disa_export_file))
     root = tree.getroot()
 
-    # Use namespace-agnostic XPath (works with any namespace prefix)
-    idents = root.xpath('.//*[local-name()="ident"][@system="http://cyber.mil/cci"]')
+    idents = root.xpath('.//x:ident[@system="http://cyber.mil/cci"]', namespaces=XCCDF)
+    rules = root.xpath(".//x:Rule", namespaces=XCCDF)
+    assert idents
+    assert rules
 
     # Every DISA Rule carries at least one CCI (the fallback when its controls map to
     # none); which CCIs each rule gets is checked against the mapping file in
     # tests/regression/test_structure_compliance.py.
-    for rule in root.xpath('.//*[local-name()="Rule"]'):
-        assert rule.xpath('./*[local-name()="ident"][@system="http://cyber.mil/cci"]'), rule.get(
+    for rule in rules:
+        assert rule.xpath('./x:ident[@system="http://cyber.mil/cci"]', namespaces=XCCDF), rule.get(
             "id"
         )
 
@@ -104,12 +109,12 @@ def test_disa_export_has_all_required_elements(disa_export_file):
 
     # Use namespace-agnostic XPath
     required = {
-        "notice": root.xpath('.//*[local-name()="notice"]'),
-        "front-matter": root.xpath('.//*[local-name()="front-matter"]'),
-        "rear-matter": root.xpath('.//*[local-name()="rear-matter"]'),
-        "reference": root.xpath('.//*[local-name()="reference"]'),
-        "plain-text": root.xpath('.//*[local-name()="plain-text"]'),
-        "version": root.xpath('.//*[local-name()="version"]'),
+        "notice": root.xpath(".//x:notice", namespaces=XCCDF),
+        "front-matter": root.xpath(".//x:front-matter", namespaces=XCCDF),
+        "rear-matter": root.xpath(".//x:rear-matter", namespaces=XCCDF),
+        "reference": root.xpath(".//x:reference", namespaces=XCCDF),
+        "plain-text": root.xpath(".//x:plain-text", namespaces=XCCDF),
+        "version": root.xpath(".//x:version", namespaces=XCCDF),
     }
 
     for name, elems in required.items():
@@ -170,7 +175,7 @@ def _embedded_tags(description) -> list[tuple[str, str]]:
 
 def _text(element, name: str) -> str:
     """The text of the element's child named name (a check's check-content: pass the check)."""
-    return "".join(element.xpath(f"./*[local-name()='{name}']//text()"))
+    return "".join(element.xpath(f"./x:{name}//text()", namespaces=XCCDF))
 
 
 class TestTheStoredMarkdownIsWrittenAsItIs:
@@ -205,12 +210,12 @@ class TestTheStoredMarkdownIsWrittenAsItIs:
         output_path = tmp_path / "disa.xml"
         ExporterFactory.create("xccdf", style="disa").export(benchmark, str(output_path))
         root = etree.parse(str(output_path)).getroot()
-        return root, root.xpath("//*[local-name()='Rule']")[0]
+        return root, root.xpath("//x:Rule", namespaces=XCCDF)[0]
 
     def test_the_description_holds_every_official_tag_with_each_part_as_stored(self, exported):
         _, rule = exported
 
-        tags = _embedded_tags(rule.xpath("./*[local-name()='description']")[0])
+        tags = _embedded_tags(rule.xpath("./x:description", namespaces=XCCDF)[0])
 
         assert tags == [
             (
@@ -234,9 +239,9 @@ class TestTheStoredMarkdownIsWrittenAsItIs:
 
         assert _text(rule, "title") == "Ensure <path> is owned by <user>"
         assert _text(rule, "fixtext") == "Run:\n\n```\n# chage --mindays <N> <user>\n```"
-        check = rule.xpath("./*[local-name()='check']")[0]
+        check = rule.xpath("./x:check", namespaces=XCCDF)[0]
         assert _text(check, "check-content") == "Run:\n\n```\n# stat -c %U <path>\n```"
-        assert _text(root.xpath("//*[local-name()='Profile']")[0], "description") == (
+        assert _text(root.xpath("//x:Profile", namespaces=XCCDF)[0], "description") == (
             "Items for every <user>."
         )
         # The group's description is the rule's title, as stored
@@ -255,8 +260,8 @@ class TestTheStoredMarkdownIsWrittenAsItIs:
         ExporterFactory.create("xccdf", style="disa").export(benchmark, str(output_path))
 
         root = etree.parse(str(output_path)).getroot()
-        description = root.xpath("//*[local-name()='Rule']")[0].xpath(
-            "./*[local-name()='description']"
+        description = root.xpath("//x:Rule", namespaces=XCCDF)[0].xpath(
+            "./x:description", namespaces=XCCDF
         )[0]
         tags = _embedded_tags(description)
         assert [tag for tag, _ in tags] == list(OFFICIAL_EMBEDDED_TAGS)

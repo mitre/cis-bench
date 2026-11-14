@@ -14,10 +14,22 @@ CC7 = "http://cisecurity.org/20-cc/v7.0"
 CC8 = "http://cisecurity.org/20-cc/v8.0"
 CC = {7: CC7, 8: CC8}
 
+# XCCDF namespaces by style (the CIS style writes 1.2, the DISA style 1.1); lookups name
+# them, so output in no namespace fails them
+XCCDF_BY_STYLE = {
+    "cis": "http://checklists.nist.gov/xccdf/1.2",
+    "disa": "http://checklists.nist.gov/xccdf/1.1",
+}
+XCCDF = {"x": XCCDF_BY_STYLE["cis"]}
+
+
+def _xccdf(style: str) -> dict[str, str]:
+    return {"x": XCCDF_BY_STYLE[style]}
+
 
 def _rule(root, ref_slug: str):
     return root.xpath(
-        f".//*[local-name()='Rule'][@id='xccdf_org.cisecurity.benchmarks_rule_{ref_slug}']"
+        f".//x:Rule[@id='xccdf_org.cisecurity.benchmarks_rule_{ref_slug}']", namespaces=XCCDF
     )[0]
 
 
@@ -44,7 +56,7 @@ def _with_cis_controls(benchmark: Benchmark, mappings: list[tuple[int, str]]) ->
 def _cis_idents(rule) -> list[tuple[str, str, str]]:
     """(system, controlURI namespace, controlURI) of each CIS Controls ident on a Rule."""
     found = []
-    for ident in rule.xpath("./*[local-name()='ident']"):
+    for ident in rule.xpath("./x:ident", namespaces=XCCDF):
         system = ident.get("system", "")
         if not system.startswith("http://cisecurity.org/20-cc/"):
             continue
@@ -90,7 +102,7 @@ class TestCISXCCDFExport:
             tree = etree.parse(output_path)
             root = tree.getroot()
 
-            assert root.tag.endswith("Benchmark")
+            assert root.tag == f"{{{XCCDF_BY_STYLE['cis']}}}Benchmark"
 
         finally:
             Path(output_path).unlink()
@@ -177,14 +189,14 @@ class TestCISXCCDFExport:
 
         root = etree.parse(str(output_path)).getroot()
         cis_idents = root.xpath(
-            ".//*[local-name()='ident'][starts-with(@system, 'http://cisecurity.org/20-cc/')]"
+            ".//x:ident[starts-with(@system, 'http://cisecurity.org/20-cc/')]", namespaces=XCCDF
         )
         mapped = sum(len(rec.cis_controls) for rec in sample_benchmark.recommendations)
         assert mapped == 38
         assert len(cis_idents) == mapped
 
         rule = root.xpath(
-            ".//*[local-name()='Rule'][@id='xccdf_org.cisecurity.benchmarks_rule_3_2_1']"
+            ".//x:Rule[@id='xccdf_org.cisecurity.benchmarks_rule_3_2_1']", namespaces=XCCDF
         )[0]
         assert _cis_idents(rule) == [
             (
@@ -283,13 +295,13 @@ class TestCISXCCDFExport:
 
             # MITRE now as ident elements (cleaner, no namespace pollution)
             mitre_technique_idents = root.xpath(
-                ".//*[local-name()='ident'][@system='https://attack.mitre.org/techniques']"
+                ".//x:ident[@system='https://attack.mitre.org/techniques']", namespaces=XCCDF
             )
             mitre_tactic_idents = root.xpath(
-                ".//*[local-name()='ident'][@system='https://attack.mitre.org/tactics']"
+                ".//x:ident[@system='https://attack.mitre.org/tactics']", namespaces=XCCDF
             )
             mitre_mitigation_idents = root.xpath(
-                ".//*[local-name()='ident'][@system='https://attack.mitre.org/mitigations']"
+                ".//x:ident[@system='https://attack.mitre.org/mitigations']", namespaces=XCCDF
             )
 
             assert len(mitre_technique_idents) > 0, "Should have MITRE technique idents"
@@ -317,7 +329,7 @@ class TestCISXCCDFExport:
             root = tree.getroot()
 
             # Profiles now at Benchmark level (proper XCCDF standard)
-            profile_elements = root.xpath(".//*[local-name()='Profile']")
+            profile_elements = root.xpath(".//x:Profile", namespaces=XCCDF)
             assert len(profile_elements) > 0, "Should have Profile elements"
 
             # Verify at least 2 profiles (Level 1 Server/Workstation)
@@ -327,7 +339,7 @@ class TestCISXCCDFExport:
 
             # Verify profiles have select elements
             for profile in profile_elements:
-                selects = profile.xpath(".//*[local-name()='select']")
+                selects = profile.xpath(".//x:select", namespaces=XCCDF)
                 assert len(selects) > 0, "Profiles should have select elements"
 
         finally:
@@ -359,8 +371,8 @@ class TestCISXCCDFExport:
 
         root = etree.parse(str(output_path)).getroot()
         counts = {
-            p.get("id"): len(p.xpath("./*[local-name()='select'][@selected='true']"))
-            for p in root.xpath("./*[local-name()='Profile']")
+            p.get("id"): len(p.xpath("./x:select[@selected='true']", namespaces=_xccdf(style)))
+            for p in root.xpath("./x:Profile", namespaces=_xccdf(style))
         }
         separator = "_" if style == "cis" else "-"
 
@@ -405,8 +417,10 @@ class TestCISXCCDFExport:
 
         root = etree.parse(str(output_path)).getroot()
         rule_ids = {
-            "".join(rule.xpath("./*[local-name()='title']//text()")).strip(): rule.get("id")
-            for rule in root.xpath("//*[local-name()='Rule']")
+            "".join(rule.xpath("./x:title//text()", namespaces=_xccdf(style))).strip(): rule.get(
+                "id"
+            )
+            for rule in root.xpath("//x:Rule", namespaces=_xccdf(style))
         }
         rule_1_1_1, rule_2_1_1 = (
             rule_ids[rec.title] for rec in recs if rec.ref in ("1.1.1", "2.1.1")
@@ -415,14 +429,14 @@ class TestCISXCCDFExport:
             p.get("id"): (
                 [
                     "".join(d.xpath(".//text()")).strip()
-                    for d in p.xpath("./*[local-name()='description']")
+                    for d in p.xpath("./x:description", namespaces=_xccdf(style))
                 ],
                 [
                     (s.get("idref"), s.get("selected"))
-                    for s in p.xpath("./*[local-name()='select']")
+                    for s in p.xpath("./x:select", namespaces=_xccdf(style))
                 ],
             )
-            for p in root.xpath("./*[local-name()='Profile']")
+            for p in root.xpath("./x:Profile", namespaces=_xccdf(style))
         }
         assert profiles == {
             f"{prefix}alpha": (["First tier."], [(rule_1_1_1, "true")]),
@@ -445,15 +459,10 @@ class TestCISXCCDFExport:
                 "dc": "http://purl.org/dc/elements/1.1/",
             }
 
-            # Find references with Dublin Core (namespace-agnostic)
-            dc_titles = tree.xpath(
-                '//*[local-name()="title" and namespace-uri()="http://purl.org/dc/elements/1.1/"]'
-            )
+            dc_titles = tree.xpath("//dc:title", namespaces=ns)
             assert len(dc_titles) > 0, "Should have Dublin Core titles"
 
-            dc_identifiers = tree.xpath(
-                '//*[local-name()="identifier" and namespace-uri()="http://purl.org/dc/elements/1.1/"]'
-            )
+            dc_identifiers = tree.xpath("//dc:identifier", namespaces=ns)
             assert len(dc_identifiers) > 0, "Should have Dublin Core identifiers"
 
             # Verify content
@@ -502,18 +511,14 @@ class TestCISXCCDFExport:
             assert root is not None
 
             # Verify basic structure
-            assert root.tag.endswith("Benchmark")
+            assert root.tag == f"{{{XCCDF_BY_STYLE['cis']}}}Benchmark"
 
             # Should have Groups
-            groups = tree.findall(".//Group") + tree.findall(
-                ".//{http://checklists.nist.gov/xccdf/1.2}Group"
-            )
+            groups = tree.xpath(".//x:Group", namespaces=XCCDF)
             assert len(groups) == 20
 
             # Should have Rules
-            rules = tree.findall(".//Rule") + tree.findall(
-                ".//{http://checklists.nist.gov/xccdf/1.2}Rule"
-            )
+            rules = tree.xpath(".//x:Rule", namespaces=XCCDF)
             assert len(rules) == 20
 
         finally:
@@ -595,7 +600,8 @@ class TestCISXCCDFExport:
 def _benchmark_id(exporter, benchmark, output_path: Path) -> str:
     exporter.export(benchmark, str(output_path))
     root = etree.parse(str(output_path)).getroot()
-    assert root.tag.endswith("Benchmark")
+    assert etree.QName(root).localname == "Benchmark"
+    assert etree.QName(root).namespace in XCCDF_BY_STYLE.values()
     return root.get("id")
 
 
@@ -680,10 +686,10 @@ class TestTheStoredMarkdownIsWrittenAsItIs:
         )
 
         root = etree.parse(str(output_path)).getroot()
-        rule = root.xpath("//*[local-name()='Rule']")[0]
+        rule = root.xpath("//x:Rule", namespaces=XCCDF)[0]
 
         def text(element, name):
-            return "".join(element.xpath(f"./*[local-name()='{name}']//text()"))
+            return "".join(element.xpath(f"./x:{name}//text()", namespaces=XCCDF))
 
         assert text(rule, "title") == "Ensure <path> is owned by <user>"
         assert text(rule, "description") == (
@@ -691,14 +697,14 @@ class TestTheStoredMarkdownIsWrittenAsItIs:
             "Default Value:\n\n<path> is owned by root.\n\n"
             "Additional Information:\n\nCheck <path> after every <tool> run."
         )
-        assert [i.text for i in rule.xpath("./*[local-name()='ident'][@system='URL']")] == [
+        assert [i.text for i in rule.xpath("./x:ident[@system='URL']", namespaces=XCCDF)] == [
             "GRID: <id>",
             "https://example.com/<user>",
         ]
         assert text(rule, "rationale") == "A file owned by <user> is read by <user> alone."
         assert text(rule, "warning") == "Users in <group> lose access."
         assert text(rule, "fixtext") == "Run:\n\n```\n# chage --mindays <N> <user>\n```"
-        check = rule.xpath("./*[local-name()='check']")[0]
+        check = rule.xpath("./x:check", namespaces=XCCDF)[0]
         assert text(check, "check-content") == "Run:\n\n```\n# stat -c %U <path>\n```"
-        profile = root.xpath("//*[local-name()='Profile']")[0]
+        profile = root.xpath("//x:Profile", namespaces=XCCDF)[0]
         assert text(profile, "description") == "Items for every <user>."

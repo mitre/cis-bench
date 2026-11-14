@@ -1,44 +1,16 @@
 """Tests for XML and HTML utility modules.
 
 Tests for:
-- cis_bench.utils.xml_utils: XCCDF namespace handling, serialization, post-processing
+- cis_bench.utils.xml_utils: XCCDF serialization with a namespace map, post-processing
 - cis_bench.utils.html_parser: HTML cleaning, parsing, and validation
 """
 
+import pytest
+from lxml import etree
 
 # ============================================================================
 # XML Utils Tests
 # ============================================================================
-
-
-class TestXCCDFNamespaceFixer:
-    """Tests for XCCDFNamespaceFixer.fix_namespaces."""
-
-    def test_fix_namespaces_basic(self):
-        """Should add XCCDF namespace to unnamespaced elements."""
-        from cis_bench.utils.xml_utils import XCCDFNamespaceFixer
-
-        xml_input = "<Benchmark><title>Test</title></Benchmark>"
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.1"
-
-        result = XCCDFNamespaceFixer.fix_namespaces(xml_input, xccdf_ns)
-
-        # Namespace should be added to both root and child elements
-        assert xccdf_ns in result
-        assert "Test" in result
-
-    def test_fix_namespaces_already_namespaced(self):
-        """Should not modify elements that already have namespaces."""
-        from cis_bench.utils.xml_utils import XCCDFNamespaceFixer
-
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.1"
-        xml_input = f'<Benchmark xmlns="{xccdf_ns}"><title>Test</title></Benchmark>'
-
-        result = XCCDFNamespaceFixer.fix_namespaces(xml_input, xccdf_ns)
-
-        # Should still have the namespace
-        assert xccdf_ns in result
-        assert "Test" in result
 
 
 class TestXCCDFSerializer:
@@ -123,113 +95,76 @@ class TestXCCDFSerializer:
         assert "<root>" in result
 
 
+XCCDF_1_2 = "http://checklists.nist.gov/xccdf/1.2"
+
+
+def _resolve(element, qname: str) -> str:
+    """A QName value (prefix:local or local) resolved with the namespaces in scope."""
+    prefix, _, local = qname.rpartition(":")
+    return f"{{{element.nsmap[prefix or None]}}}{local}"
+
+
+class TestXsiTypeValues:
+    """An xsi:type value is a QName in the document: its prefix must be one in scope."""
+
+    @pytest.mark.parametrize(
+        "ns_map", [{None: XCCDF_1_2}, {"xccdf": XCCDF_1_2}], ids=["unprefixed", "prefixed"]
+    )
+    def test_an_xsi_type_value_resolves_to_its_type(self, ns_map):
+        from xsdata.formats.dataclass.context import XmlContext
+
+        from cis_bench.models.xccdf.xccdf_1_2 import Rule, WarningType
+        from cis_bench.utils.xml_utils import XCCDFPostProcessor, XCCDFSerializer
+
+        # A Rule description given a subtype: xsdata names the subtype in xsi:type
+        rule = Rule(id="xccdf_org.example_rule_r", description=[WarningType(content=["d"])])
+
+        # As the exporter writes it: serialized, then post-processed
+        written = XCCDFPostProcessor.process(
+            XCCDFSerializer.serialize_to_string(rule, ns_map=ns_map)
+        )
+        root = etree.fromstring(written.encode())
+        description = root.find(f"{{{XCCDF_1_2}}}description")
+        xsi_type = description.get("{http://www.w3.org/2001/XMLSchema-instance}type")
+
+        assert _resolve(description, xsi_type) == XmlContext().build(WarningType).target_qname
+
+
 class TestXCCDFPostProcessor:
-    """Tests for XCCDFPostProcessor.process."""
+    """Tests for XCCDFPostProcessor.process: attributes only, namespaces left as written."""
 
-    def test_process_default_config(self):
-        """Should use default config when none provided (line 323)."""
+    DOCUMENT = (
+        f'<Benchmark xmlns="{XCCDF_1_2}" xmlns:dc="http://purl.org/dc/elements/1.1/"'
+        ' xmlns:controls="http://cisecurity.org/controls">'
+        '<Rule id="r" override="true"><dc:title>T</dc:title>'
+        "<metadata><controls:cis_controls/></metadata></Rule></Benchmark>"
+    )
+
+    def test_override_attributes_are_removed_by_default(self):
         from cis_bench.utils.xml_utils import XCCDFPostProcessor
 
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.1"
-        xml_input = f'<Benchmark xmlns="{xccdf_ns}"><title>Test</title></Benchmark>'
+        root = etree.fromstring(XCCDFPostProcessor.process(self.DOCUMENT).encode())
 
-        # Call with post_processing_config=None (triggers line 323)
-        result = XCCDFPostProcessor.process(xml_input, xccdf_ns)
+        assert {e.get("override") for e in root.iter("*")} == {None}
 
-        assert "Test" in result
-        assert "<?xml" in result
-
-    def test_process_removes_override_attr(self):
-        """Should remove override attribute by default."""
+    def test_override_attributes_stay_when_the_style_keeps_them(self):
         from cis_bench.utils.xml_utils import XCCDFPostProcessor
 
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.1"
-        xml_input = f'<Benchmark xmlns="{xccdf_ns}"><Rule override="true">Test</Rule></Benchmark>'
+        result = XCCDFPostProcessor.process(self.DOCUMENT, {"remove_override_attr": False})
 
-        result = XCCDFPostProcessor.process(xml_input, xccdf_ns)
-
-        assert 'override="true"' not in result
-        assert "Test" in result
-
-    def test_process_preserve_namespaces_default_key(self):
-        """Should handle 'default' key in preserve_namespaces (lines 371-372)."""
-        from cis_bench.utils.xml_utils import XCCDFPostProcessor
-
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.1"
-        dc_ns = "http://purl.org/dc/elements/1.1/"
-
-        xml_input = f'<Benchmark xmlns="{xccdf_ns}"><title>Test</title></Benchmark>'
-
-        # Use namespace_map with None key (lxml convention)
-        namespace_map = {None: xccdf_ns, "dc": dc_ns}
-
-        config = {"preserve_namespaces": ["default", "dc"]}
-
-        result = XCCDFPostProcessor.process(
-            xml_input, xccdf_ns, namespace_map=namespace_map, post_processing_config=config
+        assert etree.fromstring(result.encode()).find(f"{{{XCCDF_1_2}}}Rule").get("override") == (
+            "true"
         )
 
-        assert "Test" in result
-        assert xccdf_ns in result
-
-    def test_process_preserve_namespaces_from_default_string(self):
-        """Should handle 'default' in namespace_map directly (line 372 branch)."""
+    def test_every_element_name_and_namespace_declaration_is_kept(self):
         from cis_bench.utils.xml_utils import XCCDFPostProcessor
 
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.1"
+        before = etree.fromstring(self.DOCUMENT.encode())
+        after = etree.fromstring(XCCDFPostProcessor.process(self.DOCUMENT).encode())
 
-        xml_input = f'<Benchmark xmlns="{xccdf_ns}"><title>Test</title></Benchmark>'
-
-        # Use namespace_map with 'default' string key instead of None
-        namespace_map = {"default": xccdf_ns}
-
-        config = {"preserve_namespaces": ["default"]}
-
-        result = XCCDFPostProcessor.process(
-            xml_input, xccdf_ns, namespace_map=namespace_map, post_processing_config=config
-        )
-
-        assert "Test" in result
-
-    def test_process_strip_namespace_prefixes(self):
-        """Should strip namespace prefixes when configured."""
-        from cis_bench.utils.xml_utils import XCCDFPostProcessor
-
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.1"
-
-        xml_input = f'<Benchmark xmlns="{xccdf_ns}"><title>Test</title></Benchmark>'
-
-        config = {"strip_namespace_prefixes": True}
-
-        result = XCCDFPostProcessor.process(xml_input, xccdf_ns, post_processing_config=config)
-
-        # Still valid XML
-        assert "Test" in result
-        assert "<?xml" in result
-
-    def test_process_use_all_namespaces(self):
-        """Should use all namespaces when preserve_namespaces not specified (lines 378-379)."""
-        from cis_bench.utils.xml_utils import XCCDFPostProcessor
-
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.1"
-        dc_ns = "http://purl.org/dc/elements/1.1/"
-        cis_ns = "http://cisecurity.org/xccdf/metadata/1.0"
-
-        xml_input = f'<Benchmark xmlns="{xccdf_ns}"><title>Test</title></Benchmark>'
-
-        # Provide namespace_map but NO preserve_namespaces config
-        namespace_map = {None: xccdf_ns, "dc": dc_ns, "cis": cis_ns}
-
-        # Empty config - preserve_namespaces will be None, triggering lines 378-379
-        config = {}
-
-        result = XCCDFPostProcessor.process(
-            xml_input, xccdf_ns, namespace_map=namespace_map, post_processing_config=config
-        )
-
-        # All namespaces should be included
-        assert xccdf_ns in result
-        assert "Test" in result
+        assert [(e.tag, e.prefix, e.nsmap) for e in after.iter("*")] == [
+            (e.tag, e.prefix, e.nsmap) for e in before.iter("*")
+        ]
 
 
 # ============================================================================
