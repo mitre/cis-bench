@@ -75,7 +75,7 @@ class MappingConfig:
     group_id: dict[str, str] = field(default_factory=dict)  # Group ID template configuration
     field_mappings: dict[str, Any] = field(default_factory=dict)
     cci_deduplication: dict[str, Any] = field(default_factory=dict)
-    # Specification of each Rule and Group element and its xsdata type
+    # What each Group element is filled from (its type comes from the XCCDF model)
     group_elements: dict[str, Any] = field(default_factory=dict)
     validation: dict[str, Any] | None = None
     # How the serialized XML is finished (remove_override_attr)
@@ -848,17 +848,14 @@ class MappingEngine:
         version does not have, so no mapping is skipped without a word at export.
 
         Raises:
-            ValueError: An xccdf_type is set (group_elements, benchmark elements); a field
-                mapping's target is no element of Rule; a group_elements name is no element
-                of Group; a benchmark element with a source is no element of Benchmark.
+            ValueError: An xccdf_type is set (field mappings, group_elements, benchmark
+                elements); a field mapping's target is no element of Rule; a group_elements
+                name is no element of Group; a benchmark element with a source is no element
+                of Benchmark.
         """
         targets: list[tuple[str, str, str]] = []
-        for name, mapping in self.config.field_mappings.items():
-            if isinstance(mapping, dict):
-                targets.append(
-                    (f"field_mappings.{name}", "Rule", mapping.get("target_element", name))
-                )
         for section, parent, elements in (
+            ("field_mappings", "Rule", self.config.field_mappings),
             ("group_elements", "Group", self.config.group_elements),
             ("benchmark", "Benchmark", self.config.benchmark),
         ):
@@ -870,7 +867,11 @@ class MappingEngine:
                         f"{section}.{name}.xccdf_type is no longer read: an element's type "
                         "comes from the XCCDF model"
                     )
-                if section == "group_elements" or "source" in element:
+                if section == "field_mappings":
+                    targets.append(
+                        (f"{section}.{name}", parent, element.get("target_element", name))
+                    )
+                elif section == "group_elements" or "source" in element:
                     targets.append((f"{section}.{name}", parent, name))
         for where, parent, target in targets:
             try:

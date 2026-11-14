@@ -666,6 +666,11 @@ class TestElementTypesComeFromTheModels:
         ("body", "where"),
         [
             pytest.param(
+                "field_mappings:\n  title:\n    xccdf_type: TextWithSubType\n",
+                r"field_mappings\.title",
+                id="field mapping",
+            ),
+            pytest.param(
                 "group_elements:\n  title:\n    xccdf_type: TextWithSubType\n",
                 r"group_elements\.title",
                 id="group element",
