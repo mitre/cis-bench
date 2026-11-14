@@ -32,6 +32,7 @@ a symbolic link.
 
 import argparse
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -39,11 +40,20 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urljoin
 
+from lxml import etree
+
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = Path(".xsdata.xml")
 SOURCE_FOLDER = Path("src")
 # How xsdata reports a schema or import it could not read (a warning; it still exits 0).
 RESOURCE_NOT_FOUND = re.compile(r"Resource not found (\S+)")
+XSD_NAMESPACE = "http://www.w3.org/2001/XMLSchema"
+# xsdata (tefra/xsdata#1079, unfixed in 26.10) treats an element named "schema" inside
+# xsd:appinfo, as both XCCDF schemas have (<schema>XCCDF Language</schema>), as a schema of
+# its own and writes "namespace": "" on the element fields declared after it, so those
+# elements are rendered outside any namespace. The schema copies given to xsdata have that
+# element renamed to APPINFO_SCHEMA_RENAME; the schema files themselves are not changed.
+APPINFO_SCHEMA_RENAME = "name"
 
 
 @dataclass(frozen=True)
@@ -95,21 +105,46 @@ def _run(
     )
 
 
-def _generate(model: Model, root: Path, workdir: Path) -> dict[str, str]:
-    """Run xsdata for one schema in workdir; return the package's modules by file name.
+def _copy_schemas(model: Model, root: Path, destination: Path) -> Path:
+    """Copy the .xsd files of the model schema's folder to the same relative path under
+    destination, renaming each element named "schema" inside xsd:appinfo (tefra/xsdata#1079);
+    a file without one is copied as it is. Return the copy of the model's schema.
+    """
+    source_folder = (root / model.schema).parent
+    target_folder = destination / model.schema.parent
+    target_folder.mkdir(parents=True)
+    parser = etree.XMLParser(resolve_entities=False, no_network=True)
+    for source in sorted(source_folder.glob("*.xsd")):
+        target = target_folder / source.name
+        tree = etree.parse(str(source), parser)
+        nested = tree.xpath(
+            "//xsd:appinfo/*[local-name() = 'schema']", namespaces={"xsd": XSD_NAMESPACE}
+        )
+        if not nested:
+            shutil.copyfile(source, target)
+            continue
+        for element in nested:
+            element.tag = etree.QName(etree.QName(element).namespace, APPINFO_SCHEMA_RENAME).text
+        tree.write(str(target), xml_declaration=True, encoding=tree.docinfo.encoding)
+    return target_folder / model.schema.name
+
+
+def _generate(model: Model, schema: Path, root: Path, workdir: Path) -> dict[str, str]:
+    """Run xsdata on one schema (a copy of the model's) in workdir; return the package's
+    modules by file name.
 
     xsdata exits 0 with only a warning when it cannot read the schema or one of its imports, so
     its "Resource not found" warnings are compared with the model's known missing imports, and a
     run that writes no module is an error.
     """
-    schema_uri = (root / model.schema).resolve().as_uri()
+    schema_uri = schema.resolve().as_uri()
     result = _run(
         [
             sys.executable,
             "-m",
             "xsdata",
             "generate",
-            str(root / model.schema),
+            str(schema),
             "--config",
             str(root / CONFIG),
             "--package",
@@ -168,8 +203,12 @@ def render(model: Model, root: Path) -> dict[Path, str]:
 
     Nothing in the project is written.
     """
-    with tempfile.TemporaryDirectory(prefix="xccdf-models-") as workdir:
-        modules = _generate(model, root, Path(workdir))
+    with (
+        tempfile.TemporaryDirectory(prefix="xccdf-schemas-") as schemas,
+        tempfile.TemporaryDirectory(prefix="xccdf-models-") as workdir,
+    ):
+        schema = _copy_schemas(model, root, Path(schemas))
+        modules = _generate(model, schema, root, Path(workdir))
     folder = package_folder(root, model.package)
     return {folder / name: _format(text, folder / name, root) for name, text in modules.items()}
 

@@ -73,7 +73,29 @@ CRATE_SCHEMA = """<?xml version="1.0" encoding="UTF-8"?>
 </xsd:schema>
 """
 
+# A schema whose xsd:appinfo holds an element named "schema", as both XCCDF schemas do.
+# xsdata (tefra/xsdata#1079) then writes "namespace": "" on its local element fields.
+NOTE_SCHEMA = """<?xml version="1.0" encoding="UTF-8"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            xmlns="urn:example:note" targetNamespace="urn:example:note"
+            elementFormDefault="qualified">
+  <xsd:annotation>
+    <xsd:appinfo>
+      <schema>Note Language</schema>
+    </xsd:appinfo>
+  </xsd:annotation>
+  <xsd:element name="Note">
+    <xsd:complexType>
+      <xsd:sequence>
+        <xsd:element name="text" type="xsd:string"/>
+      </xsd:sequence>
+    </xsd:complexType>
+  </xsd:element>
+</xsd:schema>
+"""
+
 BOX = gen.Model(schema=Path("schemas/box.xsd"), package="example.models.box")
+NOTE = gen.Model(schema=Path("schemas/note.xsd"), package="example.models.note")
 CRATE = gen.Model(schema=Path("schemas/crate.xsd"), package="example.models.crate")
 
 
@@ -85,6 +107,7 @@ def project(tmp_path: Path) -> Path:
     (tmp_path / "schemas" / "box.xsd").write_text(BOX_SCHEMA, encoding="utf-8")
     (tmp_path / "schemas" / "verdict.xsd").write_text(VERDICT_SCHEMA, encoding="utf-8")
     (tmp_path / "schemas" / "crate.xsd").write_text(CRATE_SCHEMA, encoding="utf-8")
+    (tmp_path / "schemas" / "note.xsd").write_text(NOTE_SCHEMA, encoding="utf-8")
     return tmp_path
 
 
@@ -280,3 +303,45 @@ def test_a_failed_xsdata_run_reports_xsdata_output_not_the_known_missing_list(
     assert "GeneratorConfig" in err
     assert "known missing" not in err
     assert not (project / "src").exists()
+
+
+EMPTY_NAMESPACE = '"namespace": ""'
+
+
+def test_a_nested_schema_element_in_appinfo_does_not_empty_the_field_namespaces(project: Path):
+    schema = project / "schemas" / "note.xsd"
+    before = schema.read_bytes()
+
+    rendered = gen.render(NOTE, project)
+
+    module = rendered[project / "src" / "example" / "models" / "note" / "note.py"]
+    assert "text: str" in module
+    assert EMPTY_NAMESPACE not in module
+    assert schema.read_bytes() == before
+
+
+def test_the_installed_xsdata_still_empties_the_field_namespaces_without_the_workaround(
+    project: Path,
+):
+    # When this fails, xsdata no longer has tefra/xsdata#1079: remove the appinfo rename from
+    # scripts/generate_xccdf_models.py and regenerate the models.
+    workdir = project / "plain"
+    workdir.mkdir()
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "xsdata",
+            "generate",
+            str(project / "schemas" / "note.xsd"),
+            "--config",
+            str(project / ".xsdata.xml"),
+            "--package",
+            "plain",
+        ],
+        cwd=workdir,
+        capture_output=True,
+        check=True,
+    )
+
+    assert EMPTY_NAMESPACE in (workdir / "plain" / "note.py").read_text(encoding="utf-8")
