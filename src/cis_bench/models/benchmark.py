@@ -5,10 +5,42 @@ All scrapers produce this format, all exporters consume this format.
 """
 
 import json
-from datetime import datetime
-from typing import Any
+from datetime import UTC, date, datetime
+from gettext import ngettext
+from typing import Annotated, Any, Final, Literal
 
-from pydantic import BaseModel, Field, HttpUrl, field_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    HttpUrl,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
+
+from cis_bench.utils.markdown_text import html_to_markdown, unix_line_breaks
+
+# Scraper strategy versions that saved the page's rendered HTML in recommendation text.
+# WorkbenchV1Strategy (v1_2025_10, the first strategy) copied each field's HTML from the
+# page; WorkbenchV2Strategy (v2_2026_01, its successor) reads the Markdown WorkBench gives.
+# A stored copy names the strategy that saved it in scraper_version, and a copy from one
+# of these versions is converted to Markdown when it loads (Benchmark.text_as_markdown).
+HTML_ERA_SCRAPER_VERSIONS: Final[frozenset[str]] = frozenset({"v1_2025_10"})
+
+# A recommendation's text fields: Markdown in a loaded copy, with \n line breaks.
+RECOMMENDATION_TEXT_FIELDS: Final[tuple[str, ...]] = (
+    "description",
+    "rationale",
+    "impact",
+    "audit",
+    "remediation",
+    "additional_info",
+    "default_value",
+    "artifact_equation",
+    "references",
+)
 
 
 class CISControl(BaseModel):
@@ -37,11 +69,17 @@ class MITREMapping(BaseModel):
 
 
 class Artifact(BaseModel):
-    """Test artifact for automated compliance checking."""
+    """Test artifact for automated compliance checking.
+
+    WorkBench's artifact payload gives some titles as HTML (``<p>...</p>``); the parser
+    converts them to Markdown as the payload is read, and a copy saved before that is
+    converted once as it loads (Benchmark.artifact_title_format says which form a copy
+    holds), so every artifact holds Markdown.
+    """
 
     id: int
     view_level: str = Field(..., description="Artifact reference (e.g., '1.1.1.1.1')")
-    title: str
+    title: str = Field(..., description="Artifact title (Markdown)")
     status: str
     artifact_type: dict[str, Any] = Field(..., description="Artifact type metadata")
 
@@ -99,47 +137,286 @@ class Recommendation(BaseModel):
         default_factory=list, description="Test artifacts for automated compliance checking"
     )
 
-    # ============ Content Fields (HTML) ============
-    description: str | None = Field(None, description="Detailed description (HTML format)")
+    # ============ Content Fields (Markdown, as WorkBench gives it) ============
+    description: str | None = Field(None, description="Detailed description (Markdown)")
 
-    rationale: str | None = Field(None, description="Rationale/justification (HTML format)")
+    rationale: str | None = Field(None, description="Rationale/justification (Markdown)")
 
-    impact: str | None = Field(None, description="Impact statement (HTML format)")
+    impact: str | None = Field(None, description="Impact statement (Markdown)")
 
-    audit: str | None = Field(None, description="Audit procedure (HTML format with code blocks)")
+    audit: str | None = Field(None, description="Audit procedure (Markdown with code blocks)")
 
     remediation: str | None = Field(
-        None, description="Remediation steps (HTML format with code blocks)"
+        None, description="Remediation steps (Markdown with code blocks)"
     )
 
     additional_info: str | None = Field(
-        None, description="Additional information and notes (HTML format)"
+        None, description="Additional information and notes (Markdown)"
     )
 
-    default_value: str | None = Field(None, description="Default configuration value (HTML format)")
+    default_value: str | None = Field(None, description="Default configuration value (Markdown)")
 
-    artifact_equation: str | None = Field(None, description="Artifact equation logic (HTML format)")
+    artifact_equation: str | None = Field(None, description="Artifact equation logic (Markdown)")
 
-    references: str | None = Field(
-        None, description="External references and citations (HTML format)"
+    references: str | None = Field(None, description="External references and citations (Markdown)")
+
+    @field_validator(*RECOMMENDATION_TEXT_FIELDS)
+    @classmethod
+    def line_breaks_are_newlines(cls, value: str | None) -> str | None:
+        """Every text field's line breaks are \\n; WorkBench's Markdown comes with \\r\\n."""
+        return None if value is None else unix_line_breaks(value)
+
+    @field_validator("profiles")
+    @classmethod
+    def one_entry_per_profile(cls, profiles: list[str]) -> list[str]:
+        """One entry per profile, whatever the source gave.
+
+        WorkBench's recommendation page gives a rule's profiles as one text with a line
+        break between the names, and copies saved before this rule hold that text as a
+        single entry. Every line is a profile: stripped, empty lines dropped, first
+        appearance kept in order.
+        """
+        names = (line.strip() for entry in profiles for line in entry.splitlines())
+        return list(dict.fromkeys(name for name in names if name))
+
+
+class ProfileDefinition(BaseModel):
+    """One of a benchmark's profiles as its WorkBench page defines it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    title: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)] = Field(
+        ..., description="Profile title, as rules name it"
     )
+    description: str | None = Field(None, description="What the profile is for (Markdown)")
+    parent: Annotated[str, StringConstraints(strip_whitespace=True)] | None = Field(
+        None, description="Title of the profile this one extends (its rules are included)"
+    )
+
+    @field_validator("description", "parent")
+    @classmethod
+    def blank_is_none(cls, value: str | None) -> str | None:
+        """Blank text is no description or no parent."""
+        return value if value and value.strip() else None
+
+
+def one_definition_per_title(definitions: list[ProfileDefinition]) -> list[ProfileDefinition]:
+    """Rules name profiles by title, so a benchmark defines each title once."""
+    seen: set[str] = set()
+    for definition in definitions:
+        if definition.title in seen:
+            raise ValueError(f"profile {definition.title!r} is defined more than once")
+        seen.add(definition.title)
+    return definitions
+
+
+ProfileDefinitions = Annotated[list[ProfileDefinition], AfterValidator(one_definition_per_title)]
+
+
+class BenchmarkAsset(BaseModel):
+    """A product a benchmark applies to, as its WorkBench page lists it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    title: str = Field(..., description="The product's name (e.g. 'AlmaLinux OS 9')")
+    cpe_id: str = Field(..., description="The product's CPE 2.3 name")
+
+
+class RevisionHistoryEntry(BaseModel):
+    """One row of the revision history on a benchmark's WorkBench page."""
+
+    model_config = ConfigDict(frozen=True)
+
+    revised_at: datetime | None = Field(
+        default=None,
+        description="When the revision was made, as the page shows it; the page names no "
+        "time zone, so none is attached",
+    )
+    author: str | None = Field(
+        default=None, description="Who made the revision, as the page names them"
+    )
+    modification_count: int | None = Field(
+        default=None, description="How many changes the revision made"
+    )
+
+
+class BenchmarkPage(BaseModel):
+    """What a benchmark's own WorkBench page says about the release.
+
+    Read whenever a command fetches the page (every download, and an online check-updates)
+    and recorded on the release's catalog row; the catalog listing carries none of it.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    title: str
+    published_date: date | None = None
+    description: str | None = Field(
+        None, description="The benchmark's overview, as the Markdown its page gives"
+    )
+    profile_definitions: ProfileDefinitions = Field(default_factory=list)
+
+
+def _as_markdown(
+    recommendation: Recommendation, text_is_html: bool, titles_are_html: bool
+) -> Recommendation:
+    """The recommendation with its HTML text fields and artifact titles as Markdown."""
+    data = recommendation.model_dump()
+    if text_is_html:
+        data.update(
+            {
+                name: html_to_markdown(value)
+                for name in RECOMMENDATION_TEXT_FIELDS
+                if (value := getattr(recommendation, name))
+            }
+        )
+    if titles_are_html:
+        data["artifacts"] = [
+            {**artifact, "title": html_to_markdown(artifact["title"])}
+            for artifact in data["artifacts"]
+        ]
+    return Recommendation.model_validate(data)
+
+
+# Fields a copy saved before they existed may omit: forms_of_a_copy_saved_without_them gives
+# them their values when the copy loads.
+_FORM_FIELDS: Final[frozenset[str]] = frozenset({"text_format", "artifact_title_format"})
+
+
+def _form_fields_may_be_absent(schema: dict[str, Any]) -> None:
+    """The JSON Schema of a benchmark file cis-bench reads: a model validator, which schema
+    generation cannot see, completes the form fields of an older copy, so the schema does
+    not require them (each field's description says what an absent one means)."""
+    schema["required"] = [name for name in schema["required"] if name not in _FORM_FIELDS]
 
 
 class Benchmark(BaseModel):
     """A complete CIS benchmark with metadata and recommendations."""
+
+    model_config = ConfigDict(json_schema_extra=_form_fields_may_be_absent)
 
     # Required metadata
     title: str = Field(..., description="Full benchmark title")
     benchmark_id: str = Field(..., description="CIS WorkBench benchmark ID")
     url: HttpUrl = Field(..., description="Source URL")
     version: str = Field(..., description="Benchmark version")
+    published_date: date | None = Field(
+        None,
+        description="The date WorkBench shows this release as published, read from its page",
+    )
+    description: str | None = Field(
+        None, description="The benchmark's overview, as the Markdown its page gives"
+    )
+    profile_definitions: ProfileDefinitions = Field(
+        default_factory=list,
+        description="The benchmark's profiles as its page defines them (title, description, "
+        "the profile each extends); empty for copies saved before they were read",
+    )
 
-    downloaded_at: datetime = Field(default_factory=datetime.now, description="Download timestamp")
+    # The rest of what the benchmark's WorkBench page says about it. None, or an empty
+    # list, when the page does not give it or the copy was saved before it was read.
+    release_type: str | None = Field(
+        default=None,
+        description="The kind of release (e.g. 'Planned Update'), as the page names it",
+    )
+    contributors: list[str] = Field(
+        default_factory=list, description="The contributors, in the order the page lists them"
+    )
+    parent_benchmark_url: HttpUrl | None = Field(
+        default=None, description="The WorkBench page of the benchmark this one was based on"
+    )
+    parent_benchmark_title: str | None = Field(
+        default=None, description="The title of the benchmark this one was based on"
+    )
+    community_url: HttpUrl | None = Field(
+        default=None, description="The WorkBench page of the community that maintains the benchmark"
+    )
+    milestone_name: str | None = Field(default=None, description="The release milestone's name")
+    milestone_url: HttpUrl | None = Field(
+        default=None, description="The WorkBench page of the release milestone"
+    )
+    intended_audience: str | None = Field(
+        default=None, description="Who the benchmark is for, as the Markdown its page gives"
+    )
+    acknowledgements: str | None = Field(
+        default=None, description="The page's acknowledgements, as Markdown"
+    )
+    assets: list[BenchmarkAsset] = Field(
+        default_factory=list, description="The products the benchmark applies to (CPE names)"
+    )
+    revision_history: list[RevisionHistoryEntry] = Field(
+        default_factory=list, description="The page's revision history, newest first"
+    )
+
+    downloaded_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        description="When the benchmark was downloaded, with its zone (UTC)",
+    )
 
     scraper_version: str = Field(..., description="Scraper strategy version used")
 
+    text_format: Literal["html", "markdown"] = Field(
+        ...,
+        description="The form of the recommendation text fields as written: 'markdown', the "
+        "form WorkBench gives and every loaded copy holds, or 'html' for a copy the v1 "
+        "scraper saved, which is converted to Markdown when it loads. A stored copy saved "
+        "before this field existed is 'html' when its scraper_version saved HTML and "
+        "'markdown' otherwise",
+    )
+
+    artifact_title_format: Literal["html", "markdown"] = Field(
+        ...,
+        description="The form of the artifact titles as written: 'markdown', the form every "
+        "loaded copy holds, since the parser converts the HTML the artifact payload gives "
+        "some titles in, or 'html' for a copy saved before that, which is converted to "
+        "Markdown when it loads. A stored copy saved without this field is 'html'",
+    )
+
     total_recommendations: int = Field(..., ge=0)
     recommendations: list[Recommendation] = Field(...)
+
+    @model_validator(mode="before")
+    @classmethod
+    def forms_of_a_copy_saved_without_them(cls, data: Any) -> Any:
+        """A copy saved before the form fields existed names its forms by what saved it.
+
+        text_format follows the scraper (the v1 scraper saved HTML); artifact titles were
+        saved as the payload gave them, HTML for some, until the parser converted them.
+        """
+        if not isinstance(data, dict):
+            return data
+        forms: dict[str, str] = {}
+        if "text_format" not in data:
+            html_era = data.get("scraper_version") in HTML_ERA_SCRAPER_VERSIONS
+            forms["text_format"] = "html" if html_era else "markdown"
+        if "artifact_title_format" not in data:
+            forms["artifact_title_format"] = "html"
+        return {**data, **forms} if forms else data
+
+    @model_validator(mode="after")
+    def text_as_markdown(self) -> "Benchmark":
+        """A loaded copy holds Markdown: HTML a stored copy holds is converted here, once.
+
+        text_format names the form of the recommendation text fields (HTML in a v1-era
+        copy) and artifact_title_format the form of the artifact titles (HTML in a copy
+        saved before the parser converted them). The converted recommendations are new,
+        validated Recommendation objects: the Markdown goes through the field validators
+        (so a line break the HTML spelled as an entity ends as \\n too), and Recommendation
+        objects the caller passed in keep their text (building twice from them converts
+        each time from that text, once). Afterwards both fields say markdown, so a dumped
+        and reloaded copy is not converted again: in Markdown a placeholder such as <user>
+        looks like a tag to an HTML parser, which would drop it.
+        """
+        text_is_html = self.text_format == "html"
+        titles_are_html = self.artifact_title_format == "html"
+        if text_is_html or titles_are_html:
+            self.recommendations = [
+                _as_markdown(recommendation, text_is_html, titles_are_html)
+                for recommendation in self.recommendations
+            ]
+            self.text_format = "markdown"
+            self.artifact_title_format = "markdown"
+        return self
 
     @field_validator("recommendations")
     @classmethod
@@ -154,8 +431,13 @@ class Benchmark(BaseModel):
             actual_count = len(v)
             if expected_count != actual_count:
                 raise ValueError(
-                    f"total_recommendations field says {expected_count} but "
-                    f"recommendations list has {actual_count} items"
+                    ngettext(
+                        "total_recommendations field says {expected} but recommendations list "
+                        "has {actual} item",
+                        "total_recommendations field says {expected} but recommendations list "
+                        "has {actual} items",
+                        actual_count,
+                    ).format(expected=expected_count, actual=actual_count)
                 )
         return v
 

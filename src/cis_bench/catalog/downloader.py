@@ -3,14 +3,20 @@
 Integrates catalog database with WorkbenchScraper for efficient downloads.
 """
 
-import hashlib
-import json
 import logging
+from collections.abc import Callable
+from gettext import ngettext
 
-from cis_bench.catalog.database import CatalogDatabase
+from cis_bench.catalog.database import (
+    CatalogDatabase,
+    deserialize_benchmark_json,
+    serialize_benchmark_json,
+    update_reason,
+)
 from cis_bench.catalog.search import CatalogSearch
 from cis_bench.fetcher.workbench import WorkbenchScraper
-from cis_bench.models.benchmark import Benchmark
+from cis_bench.models.benchmark import Benchmark, BenchmarkPage
+from cis_bench.utils.workbench_urls import normalize_benchmark_url
 
 logger = logging.getLogger(__name__)
 
@@ -18,23 +24,81 @@ logger = logging.getLogger(__name__)
 class CatalogDownloader:
     """Download benchmarks using catalog with change detection."""
 
-    def __init__(self, database: CatalogDatabase, scraper: WorkbenchScraper):
+    def __init__(
+        self, database: CatalogDatabase, connect: Callable[[], WorkbenchScraper] | None = None
+    ):
         """Initialize downloader.
 
         Args:
             database: CatalogDatabase instance
-            scraper: WorkbenchScraper instance (authenticated)
+            connect: Returns an authenticated WorkbenchScraper. It is called the first time a
+                benchmark must be fetched, and only then: a copy that is up to date, or a
+                benchmark the catalog does not list, never opens a WorkBench session. None
+                for a downloader that only caches benchmarks fetched elsewhere.
         """
         self.db = database
-        self.scraper = scraper
+        self._connect = connect
+        self._scraper: WorkbenchScraper | None = None
         self.search = CatalogSearch(database)
 
-    def download_by_id(self, benchmark_id: str, force: bool = False) -> dict:
+    @property
+    def scraper(self) -> WorkbenchScraper:
+        """The scraper for this downloader, connecting to WorkBench on first use."""
+        if self._scraper is None:
+            if self._connect is None:
+                raise RuntimeError(
+                    "This CatalogDownloader was built with no way to connect to WorkBench; "
+                    "pass connect to download"
+                )
+            self._scraper = self._connect()
+        return self._scraper
+
+    def cache(self, benchmark_id: str, benchmark: Benchmark) -> tuple[str, str]:
+        """Cache a downloaded benchmark: the one place every command caches a download.
+
+        The cached row carries the copy's version and the date WorkBench showed it as
+        published. What the benchmark's page said (publish date, description) is recorded on
+        the release's catalog row (record_page), which holds what WorkBench shows now;
+        check-updates compares the two dates.
+
+        Returns:
+            The cached JSON and its content hash, as serialize_benchmark_json gives them
+        """
+        content_json, content_hash = serialize_benchmark_json(benchmark)
+        self.db.save_downloaded(
+            version=benchmark.version,
+            benchmark_id=benchmark_id,
+            content_json=content_json,
+            content_hash=content_hash,
+            recommendation_count=len(benchmark.recommendations),
+            downloaded_at=benchmark.downloaded_at,
+            published_date=benchmark.published_date,
+            benchmark=benchmark,
+        )
+        self.db.record_page(
+            benchmark_id,
+            BenchmarkPage(
+                title=benchmark.title,
+                published_date=benchmark.published_date,
+                description=benchmark.description,
+            ),
+        )
+        logger.debug(f"Cached benchmark {benchmark_id}")
+        return content_json, content_hash
+
+    def download_by_id(
+        self,
+        benchmark_id: str,
+        force: bool = False,
+        progress_callback: Callable[[str], None] | None = None,
+    ) -> dict:
         """Download benchmark by catalog ID.
 
         Args:
             benchmark_id: Benchmark ID from catalog
             force: Force re-download even if up-to-date
+            progress_callback: Receives the scraper's progress messages, for a caller that
+                shows its own progress
 
         Returns:
             Dictionary with download info
@@ -42,7 +106,7 @@ class CatalogDownloader:
         Raises:
             ValueError: If benchmark not in catalog
         """
-        logger.info(f"Downloading benchmark: {benchmark_id}")
+        logger.debug(f"Downloading benchmark: {benchmark_id}")
 
         # Get catalog entry
         catalog_entry = self.db.get_benchmark(benchmark_id)
@@ -57,47 +121,43 @@ class CatalogDownloader:
         existing = self.db.get_downloaded(benchmark_id)
 
         if existing and not force:
-            logger.debug("Benchmark already downloaded, checking if up-to-date")
-
-            # Compare revision dates if available
-            if (
-                catalog_entry.get("last_revision_date")
-                and existing.get("workbench_last_modified")
-                and catalog_entry["last_revision_date"] == existing["workbench_last_modified"]
-            ):
-                logger.info("Benchmark is up-to-date (matching revision date)")
+            reason = update_reason(
+                catalog_version=catalog_entry.get("version"),
+                catalog_published=catalog_entry.get("published_date"),
+                copy_version=existing.get("version"),
+                copy_published=existing.get("published_date"),
+                downloaded_at=existing["downloaded_at"],
+            )
+            if reason is None:
+                logger.debug(f"Benchmark {benchmark_id} is cached and up to date")
                 return {
                     "benchmark_id": benchmark_id,
                     "status": "already_current",
                     "downloaded_at": existing["downloaded_at"],
                     "recommendation_count": existing["recommendation_count"],
-                    "message": "Already up-to-date. Use --force to re-download.",
+                    "message": "Already up to date. Use --force to download it again.",
                 }
+            logger.debug(f"Downloading benchmark {benchmark_id} again: {reason}")
 
-        # Download from WorkBench
-        logger.info(f"Fetching from WorkBench: {catalog_entry['url']}")
+        # Validate and canonicalize the URL against the origin the scraper fetches from
+        _, benchmark_url = normalize_benchmark_url(
+            catalog_entry["url"],
+            base_url=self.scraper.base_url,
+            expected_benchmark_id=str(benchmark_id),
+        )
 
-        benchmark = self.scraper.fetch_benchmark(catalog_entry["url"])
-
-        # Serialize to JSON
-        content_json = benchmark.model_dump_json(indent=2)
-
-        # Calculate hash
-        content_hash = hashlib.sha256(content_json.encode()).hexdigest()
+        logger.debug(f"Fetching from WorkBench: {benchmark_url}")
+        benchmark = self.scraper.download_benchmark(
+            benchmark_url, progress_callback=progress_callback
+        )
+        content_json, content_hash = self.cache(benchmark_id, benchmark)
 
         # Check if content actually changed
-        if existing and existing.get("content_hash") == content_hash and not force:
-            logger.info("Content unchanged (same hash), updating timestamp only")
+        is_unchanged = bool(existing and existing.get("content_hash") == content_hash and not force)
+        if is_unchanged:
+            logger.debug("Content unchanged (same hash), timestamp updated only")
 
-            # Just update access time
-            self.db.save_downloaded(
-                benchmark_id=benchmark_id,
-                content_json=content_json,
-                content_hash=content_hash,
-                recommendation_count=len(benchmark.recommendations),
-                workbench_last_modified=catalog_entry.get("last_revision_date"),
-            )
-
+        if is_unchanged:
             return {
                 "benchmark_id": benchmark_id,
                 "status": "unchanged",
@@ -106,19 +166,11 @@ class CatalogDownloader:
                 "message": "Content unchanged (verified by hash).",
             }
 
-        # Save to database
-        self.db.save_downloaded(
-            benchmark_id=benchmark_id,
-            content_json=content_json,
-            content_hash=content_hash,
-            recommendation_count=len(benchmark.recommendations),
-            workbench_last_modified=catalog_entry.get("last_revision_date"),
-        )
-
         status = "updated" if existing else "downloaded"
 
-        logger.info(
-            f"Benchmark {status}: {len(benchmark.recommendations)} recommendations, {len(content_json)} bytes"
+        logger.debug(
+            f"Benchmark {status}: recommendations={len(benchmark.recommendations)}, "
+            f"bytes={len(content_json)}"
         )
 
         return {
@@ -131,14 +183,19 @@ class CatalogDownloader:
         }
 
     def download_by_name(
-        self, name_query: str, latest: bool = True, interactive: bool = False
+        self,
+        name_query: str,
+        latest: bool = True,
+        interactive: bool = False,
+        force: bool = False,
     ) -> dict:
-        """Download benchmark by name (fuzzy search).
+        """Download benchmark by name (catalog search).
 
         Args:
-            name_query: Search query (fuzzy matched)
+            name_query: Search query (every word matches the start of a word)
             latest: Only search latest versions
             interactive: If multiple matches, prompt user to select
+            force: Force re-download even if up-to-date
 
         Returns:
             Download result dict
@@ -146,7 +203,7 @@ class CatalogDownloader:
         Raises:
             ValueError: If no matches or multiple matches without interactive
         """
-        logger.info(f"Searching catalog for: {name_query}")
+        logger.debug(f"Searching catalog for: {name_query}")
 
         results = self.search.find_by_name(name_query, latest_only=latest)
 
@@ -156,8 +213,8 @@ class CatalogDownloader:
         if len(results) == 1:
             # Single match - download it
             benchmark_id = results[0]["benchmark_id"]
-            logger.info(f"Found single match: {results[0]['title']}")
-            return self.download_by_id(benchmark_id)
+            logger.debug(f"Found single match: {results[0]['title']}")
+            return self.download_by_id(benchmark_id, force=force)
 
         # Multiple matches
         if not interactive:
@@ -169,10 +226,16 @@ class CatalogDownloader:
             )
 
         # Interactive selection (requires questionary)
-        logger.info(f"Found {len(results)} matches, prompting for selection")
+        logger.debug(
+            ngettext(
+                "Found {count} match, prompting for selection",
+                "Found {count} matches, prompting for selection",
+                len(results),
+            ).format(count=len(results))
+        )
         benchmark_id = self._interactive_select(results)
 
-        return self.download_by_id(benchmark_id)
+        return self.download_by_id(benchmark_id, force=force)
 
     def _interactive_select(self, results: list[dict]) -> str:
         """Interactive selection from multiple results.
@@ -185,14 +248,22 @@ class CatalogDownloader:
         """
         import questionary
 
-        choices = [f"[{r['benchmark_id']}] {r['title']} {r.get('version', '')}" for r in results]
+        choices = []
+        for r in results:
+            version = r.get("version")
+            version_suffix = f" {version}" if version else ""
+            choices.append(
+                questionary.Choice(
+                    title=f"[{r['benchmark_id']}] {r['title']}{version_suffix}",
+                    value=str(r["benchmark_id"]),
+                )
+            )
 
         selection = questionary.select("Select benchmark:", choices=choices).ask()
+        if not isinstance(selection, str) or not selection:
+            raise ValueError("Benchmark selection cancelled")
 
-        # Extract ID from selection
-        benchmark_id = selection.split("]")[0].lstrip("[")
-
-        return benchmark_id
+        return selection
 
     def get_downloaded_benchmark(self, benchmark_id: str) -> Benchmark | None:
         """Get downloaded benchmark from database.
@@ -208,17 +279,4 @@ class CatalogDownloader:
         if not downloaded:
             return None
 
-        # Parse JSON back to Benchmark object
-        benchmark_dict = json.loads(downloaded["content_json"])
-        return Benchmark(**benchmark_dict)
-
-    def list_downloaded(self) -> list[dict]:
-        """List all downloaded benchmarks.
-
-        Returns:
-            List of downloaded benchmark info
-        """
-        # This needs a database query - add to database.py if needed
-        # For now, return empty list
-        logger.warning("list_downloaded not fully implemented yet")
-        return []
+        return deserialize_benchmark_json(downloaded["content_json"])

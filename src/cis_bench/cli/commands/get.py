@@ -2,16 +2,25 @@
 
 import logging
 import sys
+from contextlib import ExitStack, closing
+from gettext import ngettext
+from typing import TYPE_CHECKING
 
 import click
 import questionary
 from rich.console import Console
+from rich.markup import escape
 
-from cis_bench.config import Config
+from cis_bench.cli.helpers.errors import DOWNLOAD_ERRORS, report_download_error
+from cis_bench.cli.helpers.output import benchmark_table, display_time
+from cis_bench.cli.helpers.services import settings_from, workbench_scraper, workbench_session
 from cis_bench.exporters import ExporterFactory
 from cis_bench.exporters.xccdf_unified_exporter import XCCDFExporter
-from cis_bench.fetcher.auth import AuthManager
-from cis_bench.fetcher.workbench import WorkbenchScraper
+from cis_bench.utils.workbench_urls import is_benchmark_id, resolve_benchmark_reference
+
+if TYPE_CHECKING:
+    from cis_bench.catalog.search import CatalogSearch
+    from cis_bench.config import Settings
 
 console = Console()
 logger = logging.getLogger(__name__)
@@ -48,23 +57,34 @@ class DynamicStyleChoice(click.Choice):
 @click.option(
     "--output",
     "-o",
-    help="Output file path (default: auto-generated)",
+    type=click.Path(dir_okay=False),
+    help="Output file (a file path, not a folder; default: auto-generated)",
 )
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose (DEBUG level) logging")
 @click.option("--debug", "-d", is_flag=True, help="Enable debug logging (same as --verbose)")
 @click.option("--quiet", "-q", is_flag=True, help="Quiet mode (warnings and errors only)")
 @click.option(
-    "--non-interactive", is_flag=True, help="Disable interactive prompts (show table instead)"
+    "--non-interactive",
+    is_flag=True,
+    help="No menu: when several benchmarks match, take the best match",
 )
-def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_interactive):
+@click.option(
+    "--force", is_flag=True, help="Download again and replace the cached copy, if there is one"
+)
+def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_interactive, force):
     """Search, download, and export benchmark in one command.
 
     This is the easiest way to get a CIS benchmark. It combines search,
-    download, and export into a single command.
+    download, and export into a single command. QUERY is search words or a
+    catalog ID. When several benchmarks match, a menu offers them, best match
+    first; with --non-interactive the best match is taken.
 
     \b
     Examples:
         cis-bench get "ubuntu 20.04" --format xccdf --style cis
+        cis-bench get "kubernetes v2.0.1" --format xccdf
+        cis-bench get 23598 --format xccdf
+        cis-bench get 23598 --force --format xccdf
         cis-bench get "aws" --format yaml
         cis-bench get "docker" --format markdown
 
@@ -81,216 +101,225 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
 
     logger.debug(f"Get command: query='{query}', format={export_format}, style={style}")
 
+    settings = settings_from()
+
     # Step 1: Check catalog exists
-    catalog_db_path = Config.get_catalog_db_path()
+    catalog_db_path = settings.catalog_db_path
 
     if not catalog_db_path.exists():
         console.print("[bold red]Catalog not found[/bold red]\n")
         console.print("The 'get' command requires a catalog database to search.\n")
         console.print("[bold cyan]First, initialize the catalog:[/bold cyan]")
         console.print("  cis-bench catalog refresh --browser chrome")
-        console.print("\n[dim]This is a one-time setup (~10 minutes)[/dim]\n")
+        console.print("\n[dim]This is a one-time setup (under a minute)[/dim]\n")
         console.print("[cyan]After initialization, you can use:[/cyan]")
-        console.print(f'  cis-bench get "{query}" --format {export_format}')
+        console.print(f'  cis-bench get "{escape(query)}" --format {export_format}')
         sys.exit(1)
 
-    # Step 2: Search catalog
-    try:
-        from cis_bench.catalog.database import CatalogDatabase
-        from cis_bench.catalog.search import CatalogSearch
+    # Step 2: Find the benchmark: by its catalog ID, or by searching the catalog. Opening
+    # the catalog is part of that step (its failure is reported the same way), and the
+    # database stays open through the download and the export, closed on every exit.
+    with ExitStack() as resources:
+        try:
+            from cis_bench.catalog.database import CatalogDatabase
+            from cis_bench.catalog.search import CatalogSearch
 
-        logger.debug(f"Searching catalog for: {query}")
-        console.print(f"[cyan]Searching for:[/cyan] {query}\n")
+            db = resources.enter_context(closing(CatalogDatabase(catalog_db_path)))
+            search = CatalogSearch(db)
 
-        db = CatalogDatabase(catalog_db_path)
-        search = CatalogSearch(db)
-
-        # Search with Published filter by default
-        results = search.search(query, status="Published", latest_only=True, limit=50)
-
-        if not results:
-            console.print("[yellow]No results found[/yellow]\n")
-            console.print("[dim]Try a different search term or check:[/dim]")
-            console.print("  cis-bench search --help")
+            if is_benchmark_id(query):
+                selected = _benchmark_with_id(search, query.strip())
+            else:
+                selected = _benchmark_matching(search, query, settings, non_interactive)
+        except Exception as e:
+            logger.debug("Search failed", exc_info=True)
+            console.print(f"[red]✗ Search failed: {escape(str(e))}[/red]")
             sys.exit(1)
 
-        logger.debug(f"Found {len(results)} results")
+        benchmark_id = str(selected["benchmark_id"])
+        logger.debug(f"Selected benchmark ID: {benchmark_id}")
 
-    except Exception as e:
-        logger.error(f"Search failed: {e}", exc_info=True)
-        console.print(f"[red]✗ Search failed: {e}[/red]")
+        # Step 3: Use the cached copy, unless there is none or --force says to replace it
+        existing = None if force else db.get_downloaded(benchmark_id)
+
+        if existing:
+            console.print(
+                "[green]✓[/green] Benchmark already cached "
+                f"(downloaded {display_time(existing['downloaded_at'])})\n"
+            )
+            logger.debug(f"Using cached benchmark {benchmark_id}")
+        else:
+            # Step 4: Download benchmark
+            try:
+                # The catalog row's ID becomes a canonical WorkBench URL on the configured origin
+                _, benchmark_url = resolve_benchmark_reference(
+                    str(benchmark_id), base_url=settings.workbench_url
+                )
+            except ValueError as e:
+                console.print(f"[red]✗ {escape(str(e))}[/red]")
+                sys.exit(1)
+
+            try:
+                # Get authenticated session (uses saved session only)
+                logger.debug("Getting authenticated session for download")
+                session = workbench_session(settings, needs=f"download benchmark {benchmark_id}")
+                console.print("[cyan]Downloading benchmark...[/cyan]\n")
+
+                from cis_bench.catalog.downloader import CatalogDownloader
+                from cis_bench.cli.helpers.download_helper import download_with_progress
+
+                scraper = workbench_scraper(settings, session)
+                benchmark = download_with_progress(scraper, benchmark_url, prefix="  ")
+                CatalogDownloader(db).cache(benchmark_id, benchmark)
+
+                console.print(f"[green]✓[/green] Downloaded: {escape(benchmark.title)}")
+                console.print(f"  Recommendations: {benchmark.total_recommendations}\n")
+
+            except click.ClickException:
+                raise  # Click reports its own errors (offline mode refuses with one)
+            except DOWNLOAD_ERRORS as e:
+                report_download_error(console, e)
+                sys.exit(1)
+            except Exception as e:
+                logger.debug("Download failed", exc_info=True)
+                console.print(f"[red]✗ Download failed: {escape(str(e))}[/red]")
+                sys.exit(1)
+
+        # Step 5: Export to requested format
+        try:
+            from cis_bench.catalog.database import deserialize_benchmark_json
+
+            console.print(f"[cyan]Exporting to {export_format}...[/cyan]")
+
+            # Load from database
+            downloaded = db.get_downloaded(benchmark_id)
+            if not downloaded:
+                raise ValueError(f"Benchmark {benchmark_id} not found in catalog cache")
+            benchmark = deserialize_benchmark_json(downloaded["content_json"])
+
+            # Create exporter
+            exporter_kwargs = {}
+            if export_format in ["xccdf", "xml"]:
+                exporter_kwargs["style"] = style
+
+            exporter = ExporterFactory.create(export_format, **exporter_kwargs)
+
+            # Determine output filename
+            if not output:
+                base = f"benchmark_{benchmark_id}"
+                ext = exporter.get_file_extension()
+                output = f"{base}.{ext}"
+
+            # Export
+            exporter.export(benchmark, output)
+
+            import os
+
+            file_size = os.path.getsize(output) / 1024
+
+            console.print("\n[bold green]✓ Success![/bold green]")
+            console.print(f"  Format: {exporter.format_name()}")
+            console.print(f"  Output: [bold]{escape(str(output))}[/bold]")
+            console.print(f"  Size: {file_size:.1f} KB")
+
+            logger.debug(f"Export complete: {output}")
+
+        except Exception as e:
+            logger.debug("Export failed", exc_info=True)
+            console.print(f"[red]✗ Export failed: {escape(str(e))}[/red]")
+            sys.exit(1)
+
+
+def _benchmark_with_id(search: "CatalogSearch", benchmark_id: str) -> dict:
+    """The catalog row with this ID, whatever its status or age; exit 1 when there is none."""
+    found = search.find_by_id(benchmark_id)
+    if found is None:
+        console.print(f"[yellow]No benchmark with ID {benchmark_id} in the catalog[/yellow]\n")
+        console.print("[dim]If it is new on WorkBench, update the catalog first:[/dim]")
+        console.print("  cis-bench catalog refresh")
+        sys.exit(1)
+    console.print(f"[green]✓[/green] Found: {escape(found['title'])} {escape(found['version'])}\n")
+    return found
+
+
+def _benchmark_matching(
+    search: "CatalogSearch", query: str, settings: "Settings", non_interactive: bool
+) -> dict:
+    """The benchmark a word query means: the only match, the best-ranked match, or the one
+    chosen from a menu. Exit 1 when nothing matches or the menu is left without a choice."""
+    console.print(f"[cyan]Searching for:[/cyan] {escape(query)}\n")
+    logger.debug(f"Searching catalog for: {query}")
+
+    # Published benchmarks: the latest release of each, and any release the query names
+    # by its version. CIS_BENCH_SEARCH_LIMIT caps the candidates; they come best match first.
+    limit = settings.search_limit
+    results = search.search(
+        query, status="Published", latest_only=True, named_releases=True, limit=limit
+    )
+    # A list shorter than the limit is complete; only a full one may have been cut off.
+    total = len(results)
+    if len(results) >= limit:
+        total = search.count(query, status="Published", latest_only=True, named_releases=True)
+
+    if not results:
+        console.print("[yellow]No results found[/yellow]\n")
+        console.print("[dim]Try a different search term or check:[/dim]")
+        console.print("  cis-bench search --help")
         sys.exit(1)
 
-    # Step 3: Select benchmark
+    logger.debug(
+        ngettext("Found {count} result", "Found {count} results", len(results)).format(
+            count=len(results)
+        )
+    )
+
     if len(results) == 1:
         selected = results[0]
-        console.print(f"[green]✓[/green] Found: {selected['title']}\n")
-    else:
-        # Multiple results
-        console.print(f"[yellow]Found {len(results)} benchmarks matching '{query}'[/yellow]\n")
+        console.print(f"[green]✓[/green] Found: {escape(str(selected['title']))}\n")
+        return selected
 
-        from rich.table import Table
+    if non_interactive:
+        return _best_match(results, total, query)
 
-        table = Table(show_header=True, header_style="bold cyan")
-        table.add_column("ID", style="yellow", width=8)
-        table.add_column("Title", style="white", width=90)
-        table.add_column("Version", style="cyan", width=12)
-        table.add_column("Status", style="green", width=12)
+    cut_off = f" (showing the first {len(results)})" if total > len(results) else ""
+    found = ngettext(
+        "Found {count} benchmark matching '{query}'{cut_off}",
+        "Found {count} benchmarks matching '{query}'{cut_off}",
+        total,
+    ).format(count=total, query=escape(query), cut_off=cut_off)
+    console.print(f"[yellow]{found}[/yellow]\n")
 
-        for r in results:
-            title = r["title"]
-            if len(title) > 87:
-                title = title[:84] + "..."
-
-            table.add_row(
-                str(r["benchmark_id"]),
-                title,
-                r.get("version", "N/A"),
-                r.get("status", "N/A"),
-            )
-
-        console.print(table)
-
-        # Interactive selection (if not disabled)
-        if not non_interactive:
-            console.print()
-            try:
-                choices = [
-                    f"{r['benchmark_id']}: {r['title']} ({r.get('version', 'N/A')})"
-                    for r in results
-                ]
-
-                answer = questionary.select("Select benchmark:", choices=choices).ask()
-
-                if not answer:
-                    console.print("\n[yellow]Cancelled[/yellow]")
-                    sys.exit(0)
-
-                # Extract ID from answer
-                selected_id = answer.split(":")[0]
-                selected = next(r for r in results if str(r["benchmark_id"]) == selected_id)
-
-                console.print(f"\n[green]✓[/green] Selected: {selected['title']}\n")
-
-            except Exception as e:
-                logger.warning(f"Interactive selection failed: {e}")
-                # Fall through to non-interactive mode
-                non_interactive = True
-
-        # Non-interactive mode - show instructions
-        if non_interactive:
-            console.print("\n[bold cyan]Multiple matches found. Please:[/bold cyan]")
-            console.print('  1. Be more specific: [bold]cis-bench get "almalinux 9"[/bold]')
-            console.print(
-                "  2. Or use ID directly: [bold]cis-bench download <ID> --format xccdf[/bold]"
-            )
-            console.print(
-                "\n[dim]Example: cis-bench download 23598 --format xccdf --style cis[/dim]"
-            )
-            sys.exit(0)
-
-    benchmark_id = str(selected["benchmark_id"])
-    logger.debug(f"Selected benchmark ID: {benchmark_id}")
-
-    # Step 4: Check if already downloaded
-    existing = db.get_downloaded(benchmark_id)
-
-    if existing:
-        console.print(
-            f"[green]✓[/green] Benchmark already cached (downloaded {existing['downloaded_at']})\n"
-        )
-        logger.debug(f"Using cached benchmark {benchmark_id}")
-    else:
-        # Step 5: Download benchmark
-        console.print("[cyan]Downloading benchmark...[/cyan]\n")
-
-        try:
-            # Get authenticated session (uses saved session only)
-            logger.debug("Getting authenticated session for download")
-            session = AuthManager.get_or_create_session()
-
-            # Download with progress bar
-            import hashlib
-
-            from cis_bench.cli.helpers.download_helper import download_with_progress
-            from cis_bench.models.benchmark import Benchmark
-
-            scraper = WorkbenchScraper(session)
-            benchmark_url = f"https://workbench.cisecurity.org/benchmarks/{benchmark_id}"
-
-            benchmark = download_with_progress(scraper, benchmark_url, prefix="  ")
-
-            console.print(f"[green]✓[/green] Downloaded: {benchmark.title}")
-            console.print(f"  Recommendations: {benchmark.total_recommendations}\n")
-
-            # Save to database
-            content_json = benchmark.model_dump_json()
-            content_hash = hashlib.sha256(content_json.encode()).hexdigest()
-            recommendation_count = len(benchmark.recommendations)
-
-            db.save_downloaded(
-                benchmark_id=benchmark_id,
-                content_json=content_json,
-                content_hash=content_hash,
-                recommendation_count=recommendation_count,
-            )
-
-            logger.debug(f"Saved benchmark {benchmark_id} to database")
-
-        except ValueError:
-            console.print("\n[bold red]Authentication Required[/bold red]\n")
-            console.print("[cyan]Please log in first:[/cyan]")
-            console.print("  cis-bench auth login --browser chrome")
-            console.print(
-                "\n[dim]Windows users: If Chrome fails, try Firefox or --cookies option.[/dim]"
-            )
-            sys.exit(1)
-        except Exception as e:
-            logger.error(f"Download failed: {e}", exc_info=True)
-            console.print(f"[red]✗ Download failed: {e}[/red]")
-            sys.exit(1)
-
-    # Step 6: Export to requested format
+    console.print(benchmark_table(results, title_width=settings.table_title_width))
+    console.print()
+    choices = [f"{r['benchmark_id']}: {r['title']} ({r.get('version', 'N/A')})" for r in results]
     try:
-        import json
-
-        from cis_bench.models.benchmark import Benchmark
-
-        console.print(f"[cyan]Exporting to {export_format}...[/cyan]")
-
-        # Load from database
-        downloaded = db.get_downloaded(benchmark_id)
-        benchmark_data = json.loads(downloaded["content_json"])
-        benchmark = Benchmark(**benchmark_data)
-
-        # Create exporter
-        exporter_kwargs = {}
-        if export_format in ["xccdf", "xml"]:
-            exporter_kwargs["style"] = style
-
-        exporter = ExporterFactory.create(export_format, **exporter_kwargs)
-
-        # Determine output filename
-        if not output:
-            base = f"benchmark_{benchmark_id}"
-            ext = exporter.get_file_extension()
-            output = f"{base}.{ext}"
-
-        # Export
-        exporter.export(benchmark, output)
-
-        import os
-
-        file_size = os.path.getsize(output) / 1024
-
-        console.print("\n[bold green]✓ Success![/bold green]")
-        console.print(f"  Format: {exporter.format_name()}")
-        console.print(f"  Output: [bold]{output}[/bold]")
-        console.print(f"  Size: {file_size:.1f} KB")
-
-        logger.debug(f"Export complete: {output}")
-
+        answer = questionary.select("Select benchmark:", choices=choices).ask()
     except Exception as e:
-        logger.error(f"Export failed: {e}", exc_info=True)
-        console.print(f"[red]✗ Export failed: {e}[/red]")
+        # No usable terminal for a menu (a pipe, a CI job): the best match, as without one
+        logger.warning(f"Interactive selection failed: {e}")
+        return _best_match(results, total, query)
+    if not answer:
+        # Nothing was exported; a script must not take this for success
+        console.print("\n[yellow]Cancelled[/yellow]")
         sys.exit(1)
+
+    selected_id = answer.split(":")[0]
+    selected = next(r for r in results if str(r["benchmark_id"]) == selected_id)
+    console.print(f"\n[green]✓[/green] Selected: {escape(str(selected['title']))}\n")
+    return selected
+
+
+def _best_match(results: list[dict], total: int, query: str) -> dict:
+    """The best-ranked match, saying how many others there were and how to see them."""
+    selected = results[0]
+    others = total - 1
+    console.print(
+        f"[green]✓[/green] Chose: {escape(str(selected['title']))} "
+        f"{escape(str(selected.get('version', '')))}"
+    )
+    matched = ngettext(
+        "{count} other benchmark matched.", "{count} other benchmarks matched.", others
+    ).format(count=others)
+    console.print(f"  {matched} To see them all:")
+    console.print(f'    cis-bench search "{escape(query)}"\n')
+    return selected

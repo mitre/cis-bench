@@ -6,13 +6,11 @@ This strategy extracts ALL fields including:
 - Parsed compliance mappings (MITRE, NIST, CIS Controls)
 """
 
-from typing import Any
-
 from bs4 import BeautifulSoup
 
+from cis_bench.fetcher.strategies.base import ExtractedRecommendation, ScraperStrategy
+from cis_bench.utils.html_parser import attribute_text
 from cis_bench.utils.parsers import WorkbenchParser
-
-from .base import ScraperStrategy
 
 
 class WorkbenchV1Strategy(ScraperStrategy):
@@ -44,7 +42,7 @@ class WorkbenchV1Strategy(ScraperStrategy):
             "additional_info": {"id": "notes-recommendation-data"},
         }
 
-    def extract_recommendation(self, html: str) -> dict[str, Any]:
+    def extract_recommendation(self, html: str) -> ExtractedRecommendation:
         """Extract ALL recommendation fields from HTML.
 
         Extracts:
@@ -56,81 +54,68 @@ class WorkbenchV1Strategy(ScraperStrategy):
             html: Raw HTML content from recommendation page
 
         Returns:
-            Dictionary with all extracted and parsed fields
+            Every field the page supplies, parsed where the model wants structure
         """
         soup = BeautifulSoup(html, "html.parser")
-        data = {}
 
         # ============ Step 1: Extract HTML content from div elements ============
-        for field, selector in self.selectors.items():
-            elem = None
-
-            if "id" in selector:
-                elem = soup.find(id=selector["id"])
-
-            if elem is not None:
-                data[field] = elem.decode_contents().strip()
-            else:
-                data[field] = None
+        content = {
+            field: self._element_content(soup, selector)
+            for field, selector in self.selectors.items()
+        }
 
         # ============ Step 2: Extract from custom <wb-*> elements ============
-
-        # Profiles
         profiles_elem = soup.find("wb-recommendation-profiles")
-        if profiles_elem and profiles_elem.get("profiles"):
-            data["profiles"] = WorkbenchParser.parse_profiles_json(profiles_elem.get("profiles"))
-        else:
-            data["profiles"] = []
+        profiles_json = attribute_text(profiles_elem, "profiles") if profiles_elem else None
 
-        # CIS Controls
         controls_elem = soup.find("wb-recommendation-feature-controls")
-        if controls_elem and controls_elem.get("json-controls"):
-            data["cis_controls"] = WorkbenchParser.parse_cis_controls_json(
-                controls_elem.get("json-controls")
-            )
-        else:
-            data["cis_controls"] = []
+        controls_json = attribute_text(controls_elem, "json-controls") if controls_elem else None
 
-        # Artifacts
         artifacts_elem = soup.find("wb-recommendation-artifacts")
-        if artifacts_elem and artifacts_elem.get("artifacts-json"):
-            data["artifacts"] = WorkbenchParser.parse_artifacts_json(
-                artifacts_elem.get("artifacts-json")
-            )
-        else:
-            data["artifacts"] = []
+        artifacts_json = (
+            attribute_text(artifacts_elem, "artifacts-json") if artifacts_elem else None
+        )
 
         # ============ Step 3: Parse HTML tables/content to structured data ============
+        assessment_html = content["assessment_html"]
+        mitre_html = content["mitre_mapping_html"]
+        references = content["references"]
+        return ExtractedRecommendation(
+            assessment_status=(
+                WorkbenchParser.extract_assessment_status(assessment_html)
+                if assessment_html
+                else "Unknown"
+            ),
+            profiles=WorkbenchParser.parse_profiles_json(profiles_json) if profiles_json else [],
+            cis_controls=(
+                WorkbenchParser.parse_cis_controls_json(controls_json) if controls_json else []
+            ),
+            mitre_mapping=WorkbenchParser.parse_mitre_table(mitre_html) if mitre_html else None,
+            nist_controls=WorkbenchParser.parse_nist_controls(references) if references else [],
+            parent=WorkbenchParser.parse_parent_link(html),
+            artifacts=(
+                WorkbenchParser.parse_artifacts_json(artifacts_json) if artifacts_json else []
+            ),
+            description=content["description"],
+            rationale=content["rationale"],
+            impact=content["impact"],
+            audit=content["audit"],
+            remediation=content["remediation"],
+            additional_info=content["additional_info"],
+            default_value=content["default_value"],
+            artifact_equation=content["artifact_equation"],
+            references=references,
+        )
 
-        # Parse MITRE mapping table
-        if data.get("mitre_mapping_html"):
-            data["mitre_mapping"] = WorkbenchParser.parse_mitre_table(data["mitre_mapping_html"])
-        else:
-            data["mitre_mapping"] = None
-
-        # Parse NIST controls from references
-        if data.get("references"):
-            data["nist_controls"] = WorkbenchParser.parse_nist_controls(data["references"])
-        else:
-            data["nist_controls"] = []
-
-        # Parse assessment status
-        if data.get("assessment_html"):
-            data["assessment_status"] = WorkbenchParser.extract_assessment_status(
-                data["assessment_html"]
-            )
-        else:
-            data["assessment_status"] = "Unknown"
-
-        # Parse parent reference (from full HTML)
-        data["parent"] = WorkbenchParser.parse_parent_link(html)
-
-        # ============ Step 4: Clean up temporary fields ============
-        # Remove temporary HTML fields we only needed for parsing
-        data.pop("assessment_html", None)
-        data.pop("mitre_mapping_html", None)
-
-        return data
+    @staticmethod
+    def _element_content(soup: BeautifulSoup, selector: dict[str, str]) -> str | None:
+        """The inner HTML of the element the selector names, stripped; None when absent."""
+        if "id" not in selector:
+            return None
+        elem = soup.find(id=selector["id"])
+        if elem is None:
+            return None
+        return elem.decode_contents().strip()
 
     def is_compatible(self, html: str) -> bool:
         """Check if this strategy works with given HTML.

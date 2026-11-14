@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import Enum
@@ -9,14 +11,13 @@ from cis_bench.models.xccdf.xml import LangValue
 __NAMESPACE__ = "http://checklists.nist.gov/xccdf/1.2"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Cpe2IdrefType:
-    """Data type for &lt;xccdf:platform&gt; elements that do not need @override
-    attributes.
-
-    (I.e., &lt;xccdf:platform&gt; elements that are in structures that
-    cannot be extended, such as &lt;xccdf:TestResult&gt; and
-    &lt;xccdf:Benchmark&gt; elements.) This is used to identify the
+    """
+    Data type for &lt;xccdf:platform&gt; elements that do not need
+    @override attributes. (I.e., &lt;xccdf:platform&gt; elements that are
+    in structures that cannot be extended, such as &lt;xccdf:TestResult&gt;
+    and &lt;xccdf:Benchmark&gt; elements.) This is used to identify the
     applicable target platform for its respective parent elements.
 
     :ivar idref: Should be a CPE 2.3 Applicability Language identifier
@@ -32,16 +33,14 @@ class Cpe2IdrefType:
     class Meta:
         name = "CPE2idrefType"
 
-    idref: str | None = field(
-        default=None,
+    idref: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class BenchmarkReferenceType:
     """
     Type for a reference to the &lt;xccdf:Benchmark&gt; document.
@@ -54,14 +53,12 @@ class BenchmarkReferenceType:
     class Meta:
         name = "benchmarkReferenceType"
 
-    href: str | None = field(
-        default=None,
+    href: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
-    id: str | None = field(
+    id: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -70,11 +67,12 @@ class BenchmarkReferenceType:
 
 
 class CcOperatorEnumType(Enum):
-    """The type for the allowed @operator names for the &lt;xccdf:complex-check&gt;
-    operator attribute.
+    """
+    The type for the allowed @operator names for the
+    &lt;xccdf:complex-check&gt; operator attribute.
 
-    Only AND and OR operators are supported. (The &lt;xccdf:complex-
-    check&gt; has a separate mechanism for negation.)
+    Only AND and OR operators are supported. (The
+    &lt;xccdf:complex-check&gt; has a separate mechanism for negation.).
 
     :cvar OR: The logical OR of the component terms
     :cvar AND: The logical AND of the component terms
@@ -84,14 +82,15 @@ class CcOperatorEnumType(Enum):
     AND = "AND"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class CheckContentRefType:
-    """Data type for the &lt;xccdf:check-content-ref&gt; element, which points to
-    the code for a detached check in another file.
+    """
+    Data type for the &lt;xccdf:check-content-ref&gt; element, which points
+    to the code for a detached check in another file.
 
-    This element has no body, just a couple of attributes: @href and
-    @name. The @name is optional, if it does not appear then this
-    reference is to the entire document.
+    This element has no body, just a couple of attributes: @href and @name.
+    The @name is optional, if it does not appear then this reference is to
+    the entire document.
 
     :ivar href: Identifies the referenced document containing checking
         instructions.
@@ -102,14 +101,12 @@ class CheckContentRefType:
     class Meta:
         name = "checkContentRefType"
 
-    href: str | None = field(
-        default=None,
+    href: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
-    name: str | None = field(
+    name: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -117,16 +114,16 @@ class CheckContentRefType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class CheckContentType:
-    """Data type for the &lt;xccdf:check-content&gt; element.
+    """
+    Data type for the &lt;xccdf:check-content&gt; element.
 
     The body of this element holds the actual code of a check, in the
     language or system specified by the &lt;xccdf:check&gt; element’s
-    @system attribute. The body of this element may be any XML, but
-    cannot contain any XCCDF elements. XCCDF tools do not process its
-    content directly but instead pass the content directly to checking
-    engines.
+    @system attribute. The body of this element may be any XML, but cannot
+    contain any XCCDF elements. XCCDF tools do not process its content
+    directly but instead pass the content directly to checking engines.
     """
 
     class Meta:
@@ -142,19 +139,19 @@ class CheckContentType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class CheckExportType:
-    """Data type for the &lt;xccdf:check-export&gt; element, which specifies a
-    mapping from an &lt;xccdf:Value&gt; element to a checking system variable
-    (i.e., external name or id for use by the checking system).
+    """
+    Data type for the &lt;xccdf:check-export&gt; element, which specifies a
+    mapping from an &lt;xccdf:Value&gt; element to a checking system
+    variable (i.e., external name or id for use by the checking system).
 
-    This supports export of tailoring &lt;xccdf:Value&gt; elements from
-    the XCCDF processing environment to the checking system. The
-    interface between the XCCDF benchmark consumer and the checking
-    system should support, at a minimum, passing the &lt;xccdf:value&gt;
-    property of the &lt;xccdf:Value&gt; element, but may also support
-    passing the &lt;xccdf:Value&gt; element's @type and @operator
-    properties.
+    This supports export of tailoring &lt;xccdf:Value&gt; elements from the
+    XCCDF processing environment to the checking system. The interface
+    between the XCCDF benchmark consumer and the checking system should
+    support, at a minimum, passing the &lt;xccdf:value&gt; property of the
+    &lt;xccdf:Value&gt; element, but may also support passing the
+    &lt;xccdf:Value&gt; element's @type and @operator properties.
 
     :ivar value_id: The id of the &lt;xccdf:Value&gt; element to export.
     :ivar export_name: An identifier indicating some structure in the
@@ -165,36 +162,33 @@ class CheckExportType:
     class Meta:
         name = "checkExportType"
 
-    value_id: str | None = field(
-        default=None,
+    value_id: str = field(
         metadata={
             "name": "value-id",
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
-    export_name: str | None = field(
-        default=None,
+    export_name: str = field(
         metadata={
             "name": "export-name",
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class CheckImportType:
-    """Data type for the &lt;xccdf:check-import&gt; element, which specifies a
-    value that the &lt;xccdf:Benchmark&gt; author wishes to retrieve from the
-    checking system during testing of a target system.
+    """
+    Data type for the &lt;xccdf:check-import&gt; element, which specifies a
+    value that the &lt;xccdf:Benchmark&gt; author wishes to retrieve from
+    the checking system during testing of a target system.
 
     The @import-name attribute identifies some structure in the checking
     system that is then retrieved. The mapping from the values of this
-    attribute to specific checking system structures is beyond the scope
-    of the XCCDF specification. When the &lt;xccdf:check-import&gt;
-    element appears in the context of an &lt;xccdf:Rule&gt;, then it
-    should be empty and any content must be ignored. When the
+    attribute to specific checking system structures is beyond the scope of
+    the XCCDF specification. When the &lt;xccdf:check-import&gt; element
+    appears in the context of an &lt;xccdf:Rule&gt;, then it should be
+    empty and any content must be ignored. When the
     &lt;xccdf:check-import&gt; element appears in the context of an
     &lt;xccdf:rule-result&gt;, then its body holds the imported value.
 
@@ -210,15 +204,13 @@ class CheckImportType:
     class Meta:
         name = "checkImportType"
 
-    import_name: str | None = field(
-        default=None,
+    import_name: str = field(
         metadata={
             "name": "import-name",
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
-    import_xpath: str | None = field(
+    import_xpath: None | str = field(
         default=None,
         metadata={
             "name": "import-xpath",
@@ -235,9 +227,10 @@ class CheckImportType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ComplexValueType:
-    """Data type that supports values that are lists of simple types.
+    """
+    Data type that supports values that are lists of simple types.
 
     Each element in the list is represented by an instance of the
     &lt;xccdf:item&gt; child element. If there are no &lt;xccdf:item&gt;
@@ -253,17 +246,18 @@ class ComplexValueType:
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class DcStatusType:
     """
-    Data type element for the &lt;xccdf:dc-status&gt; element, which holds status
-    information about its parent element using the Dublin Core format, expressed as
-    elements of the DCMI Simple DC Element specification.
+    Data type element for the &lt;xccdf:dc-status&gt; element, which holds
+    status information about its parent element using the Dublin Core
+    format, expressed as elements of the DCMI Simple DC Element
+    specification.
     """
 
     class Meta:
@@ -279,7 +273,8 @@ class DcStatusType:
 
 
 class FixStrategyEnumType(Enum):
-    """Allowed @strategy keyword values for an &lt;xccdf:Rule&gt; element's
+    """
+    Allowed @strategy keyword values for an &lt;xccdf:Rule&gt; element's
     &lt;xccdf:fix&gt; or &lt;xccdf:fixtext&gt; elements.
 
     The values indicate the method or approach for fixing non-compliance
@@ -309,16 +304,17 @@ class FixStrategyEnumType(Enum):
     UPDATE = "update"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class IdentType:
-    """Data type for the &lt;xccdf:ident&gt; element, a globally meaningful
+    """
+    Data type for the &lt;xccdf:ident&gt; element, a globally meaningful
     identifier for an &lt;xccdf:Rule&gt;.
 
-    The body of &lt;xccdf:ident&gt; element is the name or identifier of
-    a security configuration issue or vulnerability that the
-    &lt;xccdf:Rule&gt; addresses. It has an associated URI that denotes
-    the organization or naming scheme that assigned the name. By setting
-    an &lt;xccdf:ident&gt; element on an &lt;xccdf:Rule&gt;, the
+    The body of &lt;xccdf:ident&gt; element is the name or identifier of a
+    security configuration issue or vulnerability that the
+    &lt;xccdf:Rule&gt; addresses. It has an associated URI that denotes the
+    organization or naming scheme that assigned the name. By setting an
+    &lt;xccdf:ident&gt; element on an &lt;xccdf:Rule&gt;, the
     &lt;xccdf:Benchmark&gt; author effectively declares that the
     &lt;xccdf:Rule&gt; instantiates, implements, or remediates the issue
     for which the name was assigned.
@@ -334,18 +330,11 @@ class IdentType:
     class Meta:
         name = "identType"
 
-    value: str = field(
-        default="",
-        metadata={
-            "required": True,
-        },
-    )
-    system: str | None = field(
-        default=None,
+    value: str = field(default="")
+    system: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
     other_attributes: dict[str, str] = field(
         default_factory=dict,
@@ -356,9 +345,11 @@ class IdentType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class IdentityType:
-    """Type for an &lt;xccdf:identity&gt; element in an &lt;xccdf:TestResult&gt;.
+    """
+    Type for an &lt;xccdf:identity&gt; element in an
+    &lt;xccdf:TestResult&gt;.
 
     It contains information about the system identity or user employed
     during application of the &lt;xccdf:Benchmark&gt;. If used, shall
@@ -375,32 +366,24 @@ class IdentityType:
     class Meta:
         name = "identityType"
 
-    value: str = field(
-        default="",
-        metadata={
-            "required": True,
-        },
-    )
-    authenticated: bool | None = field(
-        default=None,
+    value: str = field(default="")
+    authenticated: bool = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
-    privileged: bool | None = field(
-        default=None,
+    privileged: bool = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class IdrefListType:
     """
-    Data type for elements contain list of references to other XCCDF elements.
+    Data type for elements contain list of references to other XCCDF
+    elements.
 
     :ivar idref: A space-separated list of id values from other XCCDF
         elements
@@ -418,10 +401,11 @@ class IdrefListType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class IdrefType:
     """
-    Data type for elements that contain a reference to another XCCDF element.
+    Data type for elements that contain a reference to another XCCDF
+    element.
 
     :ivar idref: The id value of another XCCDF element
     """
@@ -429,23 +413,22 @@ class IdrefType:
     class Meta:
         name = "idrefType"
 
-    idref: str | None = field(
-        default=None,
+    idref: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class InstanceFixType:
-    """Type for an &lt;xccdf:instance&gt; element which may appear in an
+    """
+    Type for an &lt;xccdf:instance&gt; element which may appear in an
     &lt;xccdf:fix&gt; element.
 
-    The &lt;xccdf:instance&gt; element inside an &lt;xccdf:fix&gt;
-    element designates a spot where the name of the instance should be
-    substituted into the fix template to generate the final fix data.
+    The &lt;xccdf:instance&gt; element inside an &lt;xccdf:fix&gt; element
+    designates a spot where the name of the instance should be substituted
+    into the fix template to generate the final fix data.
 
     :ivar context: Describes the scope or significance of the instance
         content. The context attribute is intended to be informative and
@@ -463,15 +446,17 @@ class InstanceFixType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class InstanceResultType:
-    """Type for an &lt;xccdf:instance&gt; element in an &lt;xccdf:rule-result&gt;.
+    """
+    Type for an &lt;xccdf:instance&gt; element in an
+    &lt;xccdf:rule-result&gt;.
 
-    The content is a string, but the element may also have
-    two attributes: @context and @parentContext. Both attributes are intended to provide
-    hints as to the nature of the substituted content. This body of this type records
-    the details of the target system instance for multiply instantiated
-    &lt;xccdf:Rule&gt; elements.
+    The content is a string, but the element may also have two attributes:
+    @context and @parentContext. Both attributes are intended to provide
+    hints as to the nature of the substituted content. This body of this
+    type records the details of the target system instance for multiply
+    instantiated &lt;xccdf:Rule&gt; elements.
 
     :ivar value:
     :ivar context: Describes the scope or significance of the instance
@@ -483,19 +468,14 @@ class InstanceResultType:
     class Meta:
         name = "instanceResultType"
 
-    value: str = field(
-        default="",
-        metadata={
-            "required": True,
-        },
-    )
+    value: str = field(default="")
     context: str = field(
         default="undefined",
         metadata={
             "type": "Attribute",
         },
     )
-    parent_context: str | None = field(
+    parent_context: None | str = field(
         default=None,
         metadata={
             "name": "parentContext",
@@ -505,12 +485,12 @@ class InstanceResultType:
 
 
 class InterfaceHintType(Enum):
-    """Allowed interface hint values.
+    """
+    Allowed interface hint values. &lt;xccdf:Value&gt; elements may contain
+    a hint or recommendation to a benchmark consumer or producer about how
+    the user might select or adjust the &lt;xccdf:Value&gt;.
 
-    &lt;xccdf:Value&gt; elements may contain a hint or recommendation to
-    a benchmark consumer or producer about how the user might select or
-    adjust the &lt;xccdf:Value&gt;. This type enumerates the possible
-    values of this hint.
+    This type enumerates the possible values of this hint.
 
     :cvar CHOICE: Multiple choice
     :cvar TEXTLINE: Multiple lines of text
@@ -526,19 +506,21 @@ class InterfaceHintType(Enum):
     DATETIME = "datetime"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class MetadataType:
-    """Data type that supports inclusion of metadata about a document or element.
+    """
+    Data type that supports inclusion of metadata about a document or
+    element.
 
     This is particularly useful for facilitating the discovery and
-    retrieval of XCCDF checklists from public repositories. When used,
-    the contents of the &lt;xccdf:metadata&gt; element are expressed in
-    XML. The &lt;xccdf:Benchmark&gt; element's metadata should contain
-    information formatted using the Dublin Core Metadata Initiative
-    (DCMI) Simple DC Element specification, as described in [DCES] and
-    [DCXML]. Benchmark consumers should be prepared to process Dublin
-    Core metadata in the &lt;xccdf:metadata&gt; element. Other metadata
-    schemes, including ad-hoc elements, are also allowed, both in the
+    retrieval of XCCDF checklists from public repositories. When used, the
+    contents of the &lt;xccdf:metadata&gt; element are expressed in XML.
+    The &lt;xccdf:Benchmark&gt; element's metadata should contain
+    information formatted using the Dublin Core Metadata Initiative (DCMI)
+    Simple DC Element specification, as described in [DCES] and [DCXML].
+    Benchmark consumers should be prepared to process Dublin Core metadata
+    in the &lt;xccdf:metadata&gt; element. Other metadata schemes,
+    including ad-hoc elements, are also allowed, both in the
     &lt;xccdf:Benchmark&gt; and in other elements.
     """
 
@@ -555,13 +537,13 @@ class MetadataType:
 
 
 class MsgSevEnumType(Enum):
-    """Allowed values to indicate the severity of messages from the checking
+    """
+    Allowed values to indicate the severity of messages from the checking
     engine.
 
-    These values don't affect scoring themselves but are present merely
-    to convey diagnostic information from the checking engine. Benchmark
-    consumers may choose to log these messages or display them to the
-    user.
+    These values don't affect scoring themselves but are present merely to
+    convey diagnostic information from the checking engine. Benchmark
+    consumers may choose to log these messages or display them to the user.
 
     :cvar ERROR: Denotes a serious problem identified; test did not run.
     :cvar WARNING: Denotes a possible issue; test may not have run.
@@ -573,16 +555,17 @@ class MsgSevEnumType(Enum):
     INFO = "info"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ParamType:
-    """Type for a parameter used in the &lt;xccdf:model&gt; element, which records
-    scoring model information.
+    """
+    Type for a parameter used in the &lt;xccdf:model&gt; element, which
+    records scoring model information.
 
-    The contents of this type represent a name-value pair, where the
-    name is recorded in the @name attribute and the value appears in the
-    element body. &lt;xccdf:param&gt; elements with equal values for the
-    @name attribute may not appear as children of the same
-    &lt;xccdf:model&gt; element.
+    The contents of this type represent a name-value pair, where the name
+    is recorded in the @name attribute and the value appears in the element
+    body. &lt;xccdf:param&gt; elements with equal values for the @name
+    attribute may not appear as children of the same &lt;xccdf:model&gt;
+    element.
 
     :ivar value:
     :ivar name: The name associated with the contained value.
@@ -591,25 +574,19 @@ class ParamType:
     class Meta:
         name = "paramType"
 
-    value: str = field(
-        default="",
-        metadata={
-            "required": True,
-        },
-    )
-    name: str | None = field(
-        default=None,
+    value: str = field(default="")
+    name: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class PlainTextType:
-    """The data type for an &lt;xccdf:plain-text&gt; element, which is a reusable
-    text block for reference by the &lt;xccdf:sub&gt; element.
+    """
+    The data type for an &lt;xccdf:plain-text&gt; element, which is a
+    reusable text block for reference by the &lt;xccdf:sub&gt; element.
 
     This allows text to be defined once and then reused multiple times.
     Each &lt;xccdf:plain-text&gt; element mush have a unique id.
@@ -622,24 +599,19 @@ class PlainTextType:
     class Meta:
         name = "plainTextType"
 
-    value: str = field(
-        default="",
-        metadata={
-            "required": True,
-        },
-    )
-    id: str | None = field(
-        default=None,
+    value: str = field(default="")
+    id: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ProfileSetValueType:
-    """Type for the &lt;xccdf:set-value&gt; element in an &lt;xccdf:Profile&gt;.
+    """
+    Type for the &lt;xccdf:set-value&gt; element in an
+    &lt;xccdf:Profile&gt;.
 
     This element upports the direct specification of simple value types
     such as numbers, strings, and boolean values. This overrides the
@@ -654,26 +626,19 @@ class ProfileSetValueType:
     class Meta:
         name = "profileSetValueType"
 
-    value: str = field(
-        default="",
-        metadata={
-            "required": True,
-        },
-    )
-    idref: str | None = field(
-        default=None,
+    value: str = field(default="")
+    idref: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
 
 
 class RatingEnumType(Enum):
     """
-    This type enumerates allowed rating values the disruption and complexity
-    properties of an &lt;xccdf:Rule&gt; element's &lt;xccdf:fix&gt; or
-    &lt;xccdf:fixtext&gt; elements.
+    This type enumerates allowed rating values the disruption and
+    complexity properties of an &lt;xccdf:Rule&gt; element's
+    &lt;xccdf:fix&gt; or &lt;xccdf:fixtext&gt; elements.
 
     :cvar UNKNOWN: Rating unknown or impossible to estimate (default)
     :cvar LOW: Little or no potential for disruption, very modest
@@ -689,16 +654,18 @@ class RatingEnumType(Enum):
     HIGH = "high"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ReferenceType:
-    """This element provides supplementary descriptive text for a XCCDF elements.
+    """
+    This element provides supplementary descriptive text for a XCCDF
+    elements.
 
-    When used, it has either a simple string value or a value consisting
-    of simple Dublin Core elements. If a bare string appears, then it is
-    taken to be the string content for a Dublin Core title element.
-    Multiple &lt;xccdf:reference&gt; elements may appear; a document
-    generation processing tool may concatenate them, or put them into a
-    reference list, and may choose to number them.
+    When used, it has either a simple string value or a value consisting of
+    simple Dublin Core elements. If a bare string appears, then it is taken
+    to be the string content for a Dublin Core title element. Multiple
+    &lt;xccdf:reference&gt; elements may appear; a document generation
+    processing tool may concatenate them, or put them into a reference
+    list, and may choose to number them.
 
     :ivar href: A URL pointing to the referenced resource.
     :ivar override: Used to manage inheritance processing.
@@ -708,13 +675,13 @@ class ReferenceType:
     class Meta:
         name = "referenceType"
 
-    href: str | None = field(
+    href: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    override: bool | None = field(
+    override: None | bool = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -802,7 +769,7 @@ class RoleEnumType(Enum):
     UNCHECKED = "unchecked"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ScoreType:
     """
     Type for a score value in an &lt;xccdf:TestResult&gt;.
@@ -817,19 +784,14 @@ class ScoreType:
     class Meta:
         name = "scoreType"
 
-    value: Decimal | None = field(
-        default=None,
-        metadata={
-            "required": True,
-        },
-    )
-    system: str | None = field(
+    value: Decimal = field()
+    system: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    maximum: Decimal | None = field(
+    maximum: None | Decimal = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -837,11 +799,11 @@ class ScoreType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class SelNumType:
     """
-    This type is for an element that has numeric content and a @selector attribute
-    for use during tailoring.
+    This type is for an element that has numeric content and a @selector
+    attribute for use during tailoring.
 
     :ivar value:
     :ivar selector: This may be referenced from &lt;xccdf:Profile&gt;
@@ -857,12 +819,7 @@ class SelNumType:
     class Meta:
         name = "selNumType"
 
-    value: Decimal | None = field(
-        default=None,
-        metadata={
-            "required": True,
-        },
-    )
+    value: Decimal = field()
     selector: str = field(
         default="",
         metadata={
@@ -871,11 +828,11 @@ class SelNumType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class SelStringType:
     """
-    This type is for an element that has string content and a @selector attribute
-    for use in tailoring.
+    This type is for an element that has string content and a @selector
+    attribute for use in tailoring.
 
     :ivar value:
     :ivar selector: This may be referenced from &lt;xccdf:Profile&gt;
@@ -902,12 +859,7 @@ class SelStringType:
     class Meta:
         name = "selStringType"
 
-    value: str = field(
-        default="",
-        metadata={
-            "required": True,
-        },
-    )
+    value: str = field(default="")
     selector: str = field(
         default="",
         metadata={
@@ -917,12 +869,13 @@ class SelStringType:
 
 
 class SeverityEnumType(Enum):
-    """Allowed severity values for the @severity attribute of an
+    """
+    Allowed severity values for the @severity attribute of an
     &lt;xccdf:Rule&gt;.
 
-    The value of this attribute provides an indication of the importance
-    of the &lt;xccdf:Rule&gt; element's recommendation. This information
-    is informative only and does not affect scoring.
+    The value of this attribute provides an indication of the importance of
+    the &lt;xccdf:Rule&gt; element's recommendation. This information is
+    informative only and does not affect scoring.
 
     :cvar UNKNOWN: Severity not defined (default).
     :cvar INFO: &lt;xccdf:Rule&gt; is informational and failure does not
@@ -939,19 +892,19 @@ class SeverityEnumType(Enum):
     HIGH = "high"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class SignatureType:
     """
-    The type of an &lt;XMLDSig:signature&gt; element, which holds an enveloped
-    digital signature asserting authorship and allowing verification of the
-    integrity of associated data (e.g., its parent element, other documents,
-    portions of other documents).
+    The type of an &lt;XMLDSig:signature&gt; element, which holds an
+    enveloped digital signature asserting authorship and allowing
+    verification of the integrity of associated data (e.g., its parent
+    element, other documents, portions of other documents).
     """
 
     class Meta:
         name = "signatureType"
 
-    w3_org_2000_09_xmldsig_element: object | None = field(
+    w3_org_2000_09_xmldsig_element: None | object = field(
         default=None,
         metadata={
             "type": "Wildcard",
@@ -963,8 +916,9 @@ class SignatureType:
 
 class StatusType(Enum):
     """
-    The statusType represents the possible levels of maturity or consensus level
-    for its parent element as recorded by an &lt;xccdf:status&gt; element.
+    The statusType represents the possible levels of maturity or consensus
+    level for its parent element as recorded by an &lt;xccdf:status&gt;
+    element.
 
     :cvar ACCEPTED: Released as final
     :cvar DEPRECATED: No longer needed
@@ -981,12 +935,12 @@ class StatusType(Enum):
 
 
 class SubUseEnumType(Enum):
-    """This holds the possible values of the @use attribute within an
+    """
+    This holds the possible values of the @use attribute within an
     &lt;xccdf:sub&gt; element.
 
     The @use attribute is only applicable with the subType's @idref
-    attribute holds the value of the @id of an &lt;xccdf:Value&gt;
-    element.
+    attribute holds the value of the @id of an &lt;xccdf:Value&gt; element.
 
     :cvar VALUE: Replace with the selected &lt;xccdf:value&gt; or
         &lt;xccdf:complex-value&gt; of an &lt;xccdf:Value&gt;.
@@ -1001,9 +955,10 @@ class SubUseEnumType(Enum):
     LEGACY = "legacy"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class TailoringReferenceType:
-    """Type for the &lt;xccdf:tailoring&gt; element within an
+    """
+    Type for the &lt;xccdf:tailoring&gt; element within an
     &lt;xccdf:TestResult&gt;.
 
     This element is used to indicate the identity and location of an
@@ -1022,37 +977,29 @@ class TailoringReferenceType:
     class Meta:
         name = "tailoringReferenceType"
 
-    href: str | None = field(
-        default=None,
+    href: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
-    id: str | None = field(
-        default=None,
+    id: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
-    version: str | None = field(
-        default=None,
+    version: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
-    time: XmlDateTime | None = field(
-        default=None,
+    time: XmlDateTime = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class TailoringVersionType:
     """
     Type for version information about an &lt;xccdf:Tailoring&gt; element.
@@ -1065,24 +1012,18 @@ class TailoringVersionType:
     class Meta:
         name = "tailoringVersionType"
 
-    value: str = field(
-        default="",
-        metadata={
-            "required": True,
-        },
-    )
-    time: XmlDateTime | None = field(
-        default=None,
+    value: str = field(default="")
+    time: XmlDateTime = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class TargetIdRefType:
-    """Type for an &lt;xccdf:target-id-ref&gt; element in an
+    """
+    Type for an &lt;xccdf:target-id-ref&gt; element in an
     &lt;xccdf:TestResult&gt; element.
 
     This element contains references to external structures with
@@ -1102,21 +1043,17 @@ class TargetIdRefType:
     class Meta:
         name = "targetIdRefType"
 
-    system: str | None = field(
-        default=None,
+    system: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
-    href: str | None = field(
-        default=None,
+    href: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
-    name: str | None = field(
+    name: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -1124,10 +1061,11 @@ class TargetIdRefType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class UriRefType:
     """
-    Data type for elements that have no content and a single @uri attribute.
+    Data type for elements that have no content and a single @uri
+    attribute.
 
     :ivar uri: A URI.
     """
@@ -1135,21 +1073,20 @@ class UriRefType:
     class Meta:
         name = "uriRefType"
 
-    uri: str | None = field(
-        default=None,
+    uri: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
 
 
 class ValueOperatorType(Enum):
-    """This type enumerates allowed values of the @operator property of
+    """
+    This type enumerates allowed values of the @operator property of
     &lt;xccdf:Value&gt; elements.
 
-    The specific interpretation of these operators depends on the
-    checking system used.
+    The specific interpretation of these operators depends on the checking
+    system used.
     """
 
     EQUALS = "equals"
@@ -1162,21 +1099,21 @@ class ValueOperatorType(Enum):
 
 
 class ValueTypeType(Enum):
-    """Allowed data types for &lt;xccdf:Value&gt; elements, string, numeric, and
-    boolean.
+    """
+    Allowed data types for &lt;xccdf:Value&gt; elements, string, numeric,
+    and boolean.
 
-    A tool may choose any convenient form to store an
-    &lt;xccdf:Value&gt; element’s &lt;xccdf:value&gt; element, but the
-    @type conveys how the value should be treated for user input
-    validation purposes during tailoring processing. The @type may also
-    be used to give additional guidance to the user or to validate the
-    user’s input. For example, if an &lt;xccdf:value&gt; element’s @type
-    attribute is “number”, then a tool might choose to reject user
-    tailoring input that is not composed of digits. In the case of a
-    list of values, the @type applies to all elements of the list
-    individually. Note that checking systems may have their own
-    understanding of data types that may not be identical to the typing
-    indicated in XCCDF
+    A tool may choose any convenient form to store an &lt;xccdf:Value&gt;
+    element’s &lt;xccdf:value&gt; element, but the @type conveys how the
+    value should be treated for user input validation purposes during
+    tailoring processing. The @type may also be used to give additional
+    guidance to the user or to validate the user’s input. For example, if
+    an &lt;xccdf:value&gt; element’s @type attribute is “number”, then a
+    tool might choose to reject user tailoring input that is not composed
+    of digits. In the case of a list of values, the @type applies to all
+    elements of the list individually. Note that checking systems may have
+    their own understanding of data types that may not be identical to the
+    typing indicated in XCCDF.
 
     :cvar NUMBER: A numeric value. This may be decimal or integer.
     :cvar STRING: Any character data
@@ -1188,7 +1125,7 @@ class ValueTypeType(Enum):
     BOOLEAN = "boolean"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class VersionType:
     """
     Type for most &lt;xccdf:version&gt; elements.
@@ -1203,19 +1140,14 @@ class VersionType:
     class Meta:
         name = "versionType"
 
-    value: str = field(
-        default="",
-        metadata={
-            "required": True,
-        },
-    )
-    time: XmlDateTime | None = field(
+    value: str = field(default="")
+    time: None | XmlDateTime = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    update: str | None = field(
+    update: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -1225,8 +1157,8 @@ class VersionType:
 
 class WarningCategoryEnumType(Enum):
     """
-    Allowed warning category keywords for the &lt;xccdf:warning&gt; element used in
-    &lt;xccdf:Rule&gt; elements.
+    Allowed warning category keywords for the &lt;xccdf:warning&gt; element
+    used in &lt;xccdf:Rule&gt; elements.
 
     :cvar GENERAL: Broad or general-purpose warning (default)
     :cvar FUNCTIONALITY: Warning about possible impacts to functionality
@@ -1256,13 +1188,14 @@ class WarningCategoryEnumType(Enum):
     DEPENDENCY = "dependency"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class CheckType:
-    """Data type for the &lt;xccdf:check&gt; element.
+    """
+    Data type for the &lt;xccdf:check&gt; element.
 
     The &lt;xccdf:check&gt; element identifies instructions for tests to
-    determine compliance with the &lt;xccdf:Rule&gt; as well as
-    parameters controlling the reporting of those test results. The
+    determine compliance with the &lt;xccdf:Rule&gt; as well as parameters
+    controlling the reporting of those test results. The
     &lt;xccdf:check&gt; element must have at least one child element.
 
     :ivar check_import: Identifies a value to be retrieved from the
@@ -1335,7 +1268,7 @@ class CheckType:
         metadata={
             "name": "check-import",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     check_export: list[CheckExportType] = field(
@@ -1343,7 +1276,7 @@ class CheckType:
         metadata={
             "name": "check-export",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     check_content_ref: list[CheckContentRefType] = field(
@@ -1351,23 +1284,21 @@ class CheckType:
         metadata={
             "name": "check-content-ref",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
-    check_content: CheckContentType | None = field(
+    check_content: None | CheckContentType = field(
         default=None,
         metadata={
             "name": "check-content",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
-    system: str | None = field(
-        default=None,
+    system: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
     negate: bool = field(
         default=False,
@@ -1375,7 +1306,7 @@ class CheckType:
             "type": "Attribute",
         },
     )
-    id: str | None = field(
+    id: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -1394,7 +1325,7 @@ class CheckType:
             "type": "Attribute",
         },
     )
-    base: str | None = field(
+    base: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -1403,14 +1334,17 @@ class CheckType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class FactType:
-    """Data type for an &lt;xccdf:fact&gt; element, which
-    holds information about a target system: a name-value pair with a type. The content
-    of the element is the value, and the @name attribute indicates the name. The @name
-    is in the form of a URI that indicates the nature of the fact. A table of defined
-    fact URIs appears in section 6.6.3 of the XCCDF specification. Additional URIs may
-    be defined by authors to indicate additional kinds of facts.
+    """
+    Data type for an &lt;xccdf:fact&gt; element, which holds information
+    about a target system: a name-value pair with a type.
+
+    The content of the element is the value, and the @name attribute
+    indicates the name. The @name is in the form of a URI that indicates
+    the nature of the fact. A table of defined fact URIs appears in section
+    6.6.3 of the XCCDF specification. Additional URIs may be defined by
+    authors to indicate additional kinds of facts.
 
     :ivar value:
     :ivar name: A URI that indicates the name of the fact.
@@ -1420,18 +1354,11 @@ class FactType:
     class Meta:
         name = "factType"
 
-    value: str = field(
-        default="",
-        metadata={
-            "required": True,
-        },
-    )
-    name: str | None = field(
-        default=None,
+    value: str = field(default="")
+    name: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
     type_value: ValueTypeType = field(
         default=ValueTypeType.BOOLEAN,
@@ -1442,10 +1369,11 @@ class FactType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class HtmlTextType:
     """
-    The type for a string with optional XHTML elements and an @xml:lang attribute.
+    The type for a string with optional XHTML elements and an @xml:lang
+    attribute.
 
     :ivar lang:
     :ivar override: Used to manage inheritance.
@@ -1455,7 +1383,7 @@ class HtmlTextType:
     class Meta:
         name = "htmlTextType"
 
-    lang: str | LangValue | None = field(
+    lang: None | str | LangValue = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -1478,13 +1406,13 @@ class HtmlTextType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class MessageType:
-    """Type for a message generated by the checking engine or XCCDF tool during
-    &lt;xccdf:Benchmark&gt; testing.
+    """
+    Type for a message generated by the checking engine or XCCDF tool
+    during &lt;xccdf:Benchmark&gt; testing.
 
-    The message is contained in string format in the body of the
-    element.
+    The message is contained in string format in the body of the element.
 
     :ivar value:
     :ivar severity: Denotes the seriousness of the message.
@@ -1493,33 +1421,27 @@ class MessageType:
     class Meta:
         name = "messageType"
 
-    value: str = field(
-        default="",
-        metadata={
-            "required": True,
-        },
-    )
-    severity: MsgSevEnumType | None = field(
-        default=None,
+    value: str = field(default="")
+    severity: MsgSevEnumType = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Model:
-    """A suggested scoring model for an &lt;xccdf:Benchmark&gt;, also encapsulating
-    any parameters needed by the model.
+    """
+    A suggested scoring model for an &lt;xccdf:Benchmark&gt;, also
+    encapsulating any parameters needed by the model.
 
-    Every model is designated with a URI, which appears here as the
-    system attribute. See the XCCDF specification for a list of standard
-    scoring models and their associated URIs. Vendors may define their
-    own scoring models and provide additional URIs to designate them.
-    Some models may need additional parameters; to support such a model,
-    zero or more &lt;xccdf:param&gt; elements may appear as children of
-    the &lt;xccdf:model&gt; element.
+    Every model is designated with a URI, which appears here as the system
+    attribute. See the XCCDF specification for a list of standard scoring
+    models and their associated URIs. Vendors may define their own scoring
+    models and provide additional URIs to designate them. Some models may
+    need additional parameters; to support such a model, zero or more
+    &lt;xccdf:param&gt; elements may appear as children of the
+    &lt;xccdf:model&gt; element.
 
     :ivar param: Parameters provided as input to the designated scoring
         model.
@@ -1534,28 +1456,26 @@ class Model:
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
         },
     )
-    system: str | None = field(
-        default=None,
+    system: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class NoticeType:
-    """Data type for an &lt;xccdf:notice&gt; element.
+    """
+    Data type for an &lt;xccdf:notice&gt; element. &lt;xccdf:notice&gt;
+    elements are used to include legal notices (licensing information,
+    terms of use, etc.), copyright statements, warnings, and other advisory
+    notices about this &lt;xccdf:Benchmark&gt; and its use.
 
-    &lt;xccdf:notice&gt; elements are used to include legal notices
-    (licensing information, terms of use, etc.), copyright statements,
-    warnings, and other advisory notices about this
-    &lt;xccdf:Benchmark&gt; and its use. This information may be
-    expressed using XHTML or may be a simply text expression. Each
-    &lt;xccdf:notice&gt; element must have a unique identifier.
+    This information may be expressed using XHTML or may be a simply text
+    expression. Each &lt;xccdf:notice&gt; element must have a unique
+    identifier.
 
     :ivar id: The unique identifier for this &lt;xccdf:notice&gt;.
     :ivar base:
@@ -1566,20 +1486,20 @@ class NoticeType:
     class Meta:
         name = "noticeType"
 
-    id: str | None = field(
+    id: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    base: str | None = field(
+    base: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
             "namespace": "http://www.w3.org/XML/1998/namespace",
         },
     )
-    lang: str | LangValue | None = field(
+    lang: None | str | LangValue = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -1596,12 +1516,14 @@ class NoticeType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class OverrideableCpe2IdrefType(Cpe2IdrefType):
-    """Data type for &lt;xccdf:platform&gt; elements that need
-    @override attributes. (I.e., &lt;xccdf:platform&gt; elements that are in structures
-    that can be extended, such as Items and &lt;xccdf:Profile&gt; elements.) This is
-    used to identify the applicable target platform for its respective parent elements.
+    """
+    Data type for &lt;xccdf:platform&gt; elements that need @override
+    attributes. (I.e., &lt;xccdf:platform&gt; elements that are in
+    structures that can be extended, such as Items and
+    &lt;xccdf:Profile&gt; elements.) This is used to identify the
+    applicable target platform for its respective parent elements.
 
     :ivar override: Used to manage inheritance.
     """
@@ -1617,15 +1539,16 @@ class OverrideableCpe2IdrefType(Cpe2IdrefType):
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ProfileSetComplexValueType(ComplexValueType):
-    """Type for the &lt;xccdf:set-complex-value&gt; element in an
+    """
+    Type for the &lt;xccdf:set-complex-value&gt; element in an
     &lt;xccdf:Profile&gt;.
 
-    This element supports the direct specification of complex value
-    types such as lists. Zero or more &lt;xccdf:item&gt; elements may
-    appear as children of this element; if no child elements are
-    present, this element represents an empty list. This overrides the
+    This element supports the direct specification of complex value types
+    such as lists. Zero or more &lt;xccdf:item&gt; elements may appear as
+    children of this element; if no child elements are present, this
+    element represents an empty list. This overrides the
     &lt;xccdf:value&gt; and &lt;xccdf:complex-value&gt; element(s) of an
     &lt;xccdf:Value&gt; element.
 
@@ -1636,20 +1559,18 @@ class ProfileSetComplexValueType(ComplexValueType):
     class Meta:
         name = "profileSetComplexValueType"
 
-    idref: str | None = field(
-        default=None,
+    idref: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class SelChoicesType:
     """
-    The type of the &lt;xccdf:choice&gt; element, which specifies a list of legal
-    or suggested choices for an &lt;xccdf:Value&gt; object.
+    The type of the &lt;xccdf:choice&gt; element, which specifies a list of
+    legal or suggested choices for an &lt;xccdf:Value&gt; object.
 
     :ivar choice: A single choice holding a simple type. (I.e., number,
         string, or boolean.)
@@ -1678,7 +1599,7 @@ class SelChoicesType:
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     complex_choice: list[ComplexValueType] = field(
@@ -1686,10 +1607,10 @@ class SelChoicesType:
         metadata={
             "name": "complex-choice",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
-    must_match: bool | None = field(
+    must_match: None | bool = field(
         default=None,
         metadata={
             "name": "mustMatch",
@@ -1704,7 +1625,7 @@ class SelChoicesType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class SelComplexValueType(ComplexValueType):
     """
     Data type that supports values that are lists of simple types with an
@@ -1742,17 +1663,18 @@ class SelComplexValueType(ComplexValueType):
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Status:
-    """The acceptance status of an element with an optional date attribute, which
-    signifies the date of the status change.
+    """
+    The acceptance status of an element with an optional date attribute,
+    which signifies the date of the status change.
 
-    If an element does not have its own &lt;xccdf:status&gt; element,
-    its status is that of its parent element. If there is more than one
-    &lt;xccdf:status&gt; for a single element, then every instance of
-    the &lt;xccdf:status&gt; element must have a @date attribute, and
-    the &lt;xccdf:status&gt; element with the latest date is considered
-    the current status.
+    If an element does not have its own &lt;xccdf:status&gt; element, its
+    status is that of its parent element. If there is more than one
+    &lt;xccdf:status&gt; for a single element, then every instance of the
+    &lt;xccdf:status&gt; element must have a @date attribute, and the
+    &lt;xccdf:status&gt; element with the latest date is considered the
+    current status.
 
     :ivar value:
     :ivar date: The date the parent element achieved the indicated
@@ -1763,13 +1685,8 @@ class Status:
         name = "status"
         namespace = "http://checklists.nist.gov/xccdf/1.2"
 
-    value: StatusType | None = field(
-        default=None,
-        metadata={
-            "required": True,
-        },
-    )
-    date: XmlDate | None = field(
+    value: StatusType = field()
+    date: None | XmlDate = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -1777,16 +1694,17 @@ class Status:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class SubType(IdrefType):
-    """The type used for &lt;xccdf:sub&gt; elements.
+    """
+    The type used for &lt;xccdf:sub&gt; elements.
 
     The &lt;xccdf:sub&gt; element identifies replacement content that
     should appear in place of the &lt;xccdf:sub&gt; element during text
     substitution. The subType consists of a regular idrefType with an
     additional @use attribute to dictate the behavior of the
-    &lt;xccdf:sub&gt; element under substitution. When the @idref is to
-    an &lt;xccdf:Value&gt;, the @use attribute indicates whether the
+    &lt;xccdf:sub&gt; element under substitution. When the @idref is to an
+    &lt;xccdf:Value&gt;, the @use attribute indicates whether the
     &lt;xccdf:Value&gt; element's title or value should replace the
     &lt;xccdf:sub&gt; element. The @use attribute is ignored when the
     @idref is to an &lt;xccdf:plain-text&gt; element; the body of the
@@ -1808,11 +1726,11 @@ class SubType(IdrefType):
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class TailoringBenchmarkReferenceType(BenchmarkReferenceType):
     """
-    Identifies the &lt;xccdf:Benchmark&gt; to which an &lt;xccdf:Tailoring&gt;
-    element applies.
+    Identifies the &lt;xccdf:Benchmark&gt; to which an
+    &lt;xccdf:Tailoring&gt; element applies.
 
     :ivar version: Identifies the version of the referenced
         &lt;xccdf:Benchmark&gt;.
@@ -1821,7 +1739,7 @@ class TailoringBenchmarkReferenceType(BenchmarkReferenceType):
     class Meta:
         name = "tailoringBenchmarkReferenceType"
 
-    version: str | None = field(
+    version: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -1829,11 +1747,11 @@ class TailoringBenchmarkReferenceType(BenchmarkReferenceType):
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class TextType:
     """
-    Type for a simple text string with an @override attribute for controlling
-    inheritance.
+    Type for a simple text string with an @override attribute for
+    controlling inheritance.
 
     :ivar value:
     :ivar lang:
@@ -1843,13 +1761,8 @@ class TextType:
     class Meta:
         name = "textType"
 
-    value: str = field(
-        default="",
-        metadata={
-            "required": True,
-        },
-    )
-    lang: str | LangValue | None = field(
+    value: str = field(default="")
+    lang: None | str | LangValue = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -1864,17 +1777,18 @@ class TextType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ComplexCheckType:
-    """The type for an element that contains a boolean combination of
+    """
+    The type for an element that contains a boolean combination of
     &lt;xccdf:checks&gt;.
 
     This element can have only &lt;xccdf:complex-check&gt; and
-    &lt;xccdf:check&gt; elements as children. Child elements may appear
-    in any order but at least one child element must be present. It has
-    two attributes, @operator and @negate, which dictate how
-    &lt;xccdf:check&gt; or &lt;xccdf:complex-check&gt; child elements
-    are to be combined. Truth tables for these operations appear below.
+    &lt;xccdf:check&gt; elements as children. Child elements may appear in
+    any order but at least one child element must be present. It has two
+    attributes, @operator and @negate, which dictate how
+    &lt;xccdf:check&gt; or &lt;xccdf:complex-check&gt; child elements are
+    to be combined. Truth tables for these operations appear below.
 
     :ivar check: Instructions for a single test.
     :ivar complex_check: A child &lt;xccdf:complex-check&gt;, allowing
@@ -1895,23 +1809,21 @@ class ComplexCheckType:
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
-    complex_check: list["ComplexCheckType"] = field(
+    complex_check: list[ComplexCheckType] = field(
         default_factory=list,
         metadata={
             "name": "complex-check",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
-    operator: CcOperatorEnumType | None = field(
-        default=None,
+    operator: CcOperatorEnumType = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
     negate: bool = field(
         default=False,
@@ -1921,14 +1833,15 @@ class ComplexCheckType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class FixType:
-    """Data type for the &lt;xccdf:fix&gt; element.
+    """
+    Data type for the &lt;xccdf:fix&gt; element.
 
     The body of this element contains a command string, script, or other
-    system modification statement that, if executed on the target
-    system, can bring it into full, or at least better, compliance with
-    this &lt;xccdf:Rule&gt;.
+    system modification statement that, if executed on the target system,
+    can bring it into full, or at least better, compliance with this
+    &lt;xccdf:Rule&gt;.
 
     :ivar id: A local identifier for the element. It is optional for the
         @id to be unique; multiple &lt;xccdf:fix&gt; elements may have
@@ -1962,7 +1875,7 @@ class FixType:
     class Meta:
         name = "fixType"
 
-    id: str | None = field(
+    id: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -1992,13 +1905,13 @@ class FixType:
             "type": "Attribute",
         },
     )
-    system: str | None = field(
+    system: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    platform: str | None = field(
+    platform: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -2014,22 +1927,23 @@ class FixType:
                 {
                     "name": "sub",
                     "type": SubType,
-                    "namespace": "",
+                    "namespace": "http://checklists.nist.gov/xccdf/1.2",
                 },
                 {
                     "name": "instance",
                     "type": InstanceFixType,
-                    "namespace": "",
+                    "namespace": "http://checklists.nist.gov/xccdf/1.2",
                 },
             ),
         },
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class HtmlTextWithSubType:
     """
-    The type for a string with optional XHTML elements, and an @xml:lang attribute.
+    The type for a string with optional XHTML elements, and an @xml:lang
+    attribute.
 
     :ivar lang:
     :ivar override: Used to manage inheritance.
@@ -2039,7 +1953,7 @@ class HtmlTextWithSubType:
     class Meta:
         name = "htmlTextWithSubType"
 
-    lang: str | LangValue | None = field(
+    lang: None | str | LangValue = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -2062,26 +1976,28 @@ class HtmlTextWithSubType:
                 {
                     "name": "sub",
                     "type": SubType,
-                    "namespace": "",
+                    "namespace": "http://checklists.nist.gov/xccdf/1.2",
                 },
             ),
         },
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class OverrideType:
-    """Type for an &lt;xccdf:override&gt; element in an &lt;xccdf:rule-result&gt;.
+    """
+    Type for an &lt;xccdf:override&gt; element in an
+    &lt;xccdf:rule-result&gt;.
 
-    This element is used to record manual modification or annotation of
-    a particular &lt;xccdf:rule-result&gt;. All attributes and child
-    elements are required. It will not always be the case that the
-    &lt;xccdf:new-result&gt; value will differ from the &lt;xccdf:old-
-    result&gt; value. They might match if an authority wished to make a
-    remark on the result without changing it. If &lt;xccdf:new-
-    result&gt; and &lt;xccdf:old-result&gt; differ, the
-    &lt;xccdf:result&gt; element of the enclosing &lt;xccdf:rule-
-    result&gt; must match the &lt;xccdf:new-result&gt; value.
+    This element is used to record manual modification or annotation of a
+    particular &lt;xccdf:rule-result&gt;. All attributes and child elements
+    are required. It will not always be the case that the
+    &lt;xccdf:new-result&gt; value will differ from the
+    &lt;xccdf:old-result&gt; value. They might match if an authority wished
+    to make a remark on the result without changing it. If
+    &lt;xccdf:new-result&gt; and &lt;xccdf:old-result&gt; differ, the
+    &lt;xccdf:result&gt; element of the enclosing &lt;xccdf:rule-result&gt;
+    must match the &lt;xccdf:new-result&gt; value.
 
     :ivar old_result: The &lt;xccdf:rule-result&gt; status before this
         override.
@@ -2097,51 +2013,42 @@ class OverrideType:
     class Meta:
         name = "overrideType"
 
-    old_result: ResultEnumType | None = field(
-        default=None,
+    old_result: ResultEnumType = field(
         metadata={
             "name": "old-result",
             "type": "Element",
-            "namespace": "",
-            "required": True,
-        },
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
+        }
     )
-    new_result: ResultEnumType | None = field(
-        default=None,
+    new_result: ResultEnumType = field(
         metadata={
             "name": "new-result",
             "type": "Element",
-            "namespace": "",
-            "required": True,
-        },
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
+        }
     )
-    remark: TextType | None = field(
-        default=None,
+    remark: TextType = field(
         metadata={
             "type": "Element",
-            "namespace": "",
-            "required": True,
-        },
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
+        }
     )
-    time: XmlDateTime | None = field(
-        default=None,
+    time: XmlDateTime = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
-    authority: str | None = field(
-        default=None,
+    authority: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ProfileNoteType:
-    """Type for an &lt;xccdf:profile-note&gt; within an &lt;xccdf:Rule&gt;.
+    """
+    Type for an &lt;xccdf:profile-note&gt; within an &lt;xccdf:Rule&gt;.
 
     This element contains text that describes special aspects of an
     &lt;xccdf:Rule&gt; relative to one or more &lt;xccdf:Profile&gt;
@@ -2160,19 +2067,17 @@ class ProfileNoteType:
     class Meta:
         name = "profileNoteType"
 
-    lang: str | LangValue | None = field(
+    lang: None | str | LangValue = field(
         default=None,
         metadata={
             "type": "Attribute",
             "namespace": "http://www.w3.org/XML/1998/namespace",
         },
     )
-    tag: str | None = field(
-        default=None,
+    tag: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
     content: list[object] = field(
         default_factory=list,
@@ -2184,24 +2089,26 @@ class ProfileNoteType:
                 {
                     "name": "sub",
                     "type": SubType,
-                    "namespace": "",
+                    "namespace": "http://checklists.nist.gov/xccdf/1.2",
                 },
             ),
         },
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ProfileRefineRuleType:
-    """Type for the &lt;xccdf:refine-rule&gt; element in an &lt;xccdf:Profile&gt;.
+    """
+    Type for the &lt;xccdf:refine-rule&gt; element in an
+    &lt;xccdf:Profile&gt;.
 
     A &lt;xccdf:refine-rule&gt; element allows the author to select
-    &lt;xccdf:check&gt; statements and override the @weight, @severity,
-    and @role of an &lt;xccdf:Rule&gt;, &lt;xccdf:Group&gt;, or cluster
-    of &lt;xccdf:Rule&gt; and &lt;xccdf:Group&gt; elements. Despite the
-    name, this selector does apply for &lt;xccdf:Group&gt; elements and
-    for clusters that include &lt;xccdf:Group&gt; elements, but it only
-    affects their @weight attribute.
+    &lt;xccdf:check&gt; statements and override the @weight, @severity, and
+    @role of an &lt;xccdf:Rule&gt;, &lt;xccdf:Group&gt;, or cluster of
+    &lt;xccdf:Rule&gt; and &lt;xccdf:Group&gt; elements. Despite the name,
+    this selector does apply for &lt;xccdf:Group&gt; elements and for
+    clusters that include &lt;xccdf:Group&gt; elements, but it only affects
+    their @weight attribute.
 
     :ivar remark: Explanatory material or other prose.
     :ivar idref: The @id value of an &lt;xccdf:Rule&gt; or
@@ -2231,17 +2138,15 @@ class ProfileRefineRuleType:
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
-    idref: str | None = field(
-        default=None,
+    idref: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
-    weight: Decimal | None = field(
+    weight: None | Decimal = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -2249,19 +2154,19 @@ class ProfileRefineRuleType:
             "total_digits": 3,
         },
     )
-    selector: str | None = field(
+    selector: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    severity: SeverityEnumType | None = field(
+    severity: None | SeverityEnumType = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    role: RoleEnumType | None = field(
+    role: None | RoleEnumType = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -2269,9 +2174,11 @@ class ProfileRefineRuleType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ProfileRefineValueType:
-    """Type for the &lt;xccdf:refine-value&gt; element in an &lt;xccdf:Profile&gt;.
+    """
+    Type for the &lt;xccdf:refine-value&gt; element in an
+    &lt;xccdf:Profile&gt;.
 
     This element designates the &lt;xccdf:Value&gt; constraints to be
     applied during tailoring for an &lt;xccdf:Value&gt; element or the
@@ -2309,23 +2216,21 @@ class ProfileRefineValueType:
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
-    idref: str | None = field(
+    idref: str = field(
+        metadata={
+            "type": "Attribute",
+        }
+    )
+    selector: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
-            "required": True,
         },
     )
-    selector: str | None = field(
-        default=None,
-        metadata={
-            "type": "Attribute",
-        },
-    )
-    operator: ValueOperatorType | None = field(
+    operator: None | ValueOperatorType = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -2333,15 +2238,16 @@ class ProfileRefineValueType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ProfileSelectType:
-    """Type for the &lt;xccdf:select&gt; element in an &lt;xccdf:Profile&gt;.
+    """
+    Type for the &lt;xccdf:select&gt; element in an &lt;xccdf:Profile&gt;.
 
-    This element designates an &lt;xccdf:Rule&gt;, &lt;xccdf:Group&gt;,
-    or cluster of &lt;xccdf:Rule&gt; and &lt;xccdf:Group&gt; elements
-    and overrides the @selected attribute on the designated items,
-    providing a means for including or excluding &lt;xccdf:Rule&gt;
-    elements from an assessment.
+    This element designates an &lt;xccdf:Rule&gt;, &lt;xccdf:Group&gt;, or
+    cluster of &lt;xccdf:Rule&gt; and &lt;xccdf:Group&gt; elements and
+    overrides the @selected attribute on the designated items, providing a
+    means for including or excluding &lt;xccdf:Rule&gt; elements from an
+    assessment.
 
     :ivar remark: Explanatory material or other prose.
     :ivar idref: The @id value of an &lt;xccdf:Rule&gt; or
@@ -2358,36 +2264,33 @@ class ProfileSelectType:
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
-    idref: str | None = field(
-        default=None,
+    idref: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
-    selected: bool | None = field(
-        default=None,
+    selected: bool = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class TargetFactsType:
-    """Data type for the &lt;xccdf:target-facts&gt; elements in
+    """
+    Data type for the &lt;xccdf:target-facts&gt; elements in
     &lt;xccdf:TestResult&gt; elements.
 
-    A &lt;xccdf:target-facts&gt; element holds a list of named facts
-    about the target system or platform. Each fact is an element of type
-    factType. Each &lt;xccdf:fact&gt; must have a name, but duplicate
-    names are allowed. (For example, if you had a fact about MAC
-    addresses, and the target system had three NICs, then you'd need
-    three instances of the "urn:xccdf:fact:ethernet:MAC" fact.)
+    A &lt;xccdf:target-facts&gt; element holds a list of named facts about
+    the target system or platform. Each fact is an element of type
+    factType. Each &lt;xccdf:fact&gt; must have a name, but duplicate names
+    are allowed. (For example, if you had a fact about MAC addresses, and
+    the target system had three NICs, then you'd need three instances of
+    the "urn:xccdf:fact:ethernet:MAC" fact.).
 
     :ivar fact: A named fact about the target system or platform.
     """
@@ -2399,16 +2302,16 @@ class TargetFactsType:
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class TextWithSubType:
     """
-    Type for a string with embedded &lt;xccdf:Value&gt; substitutions and an
-    @override attribute to help manage inheritance.
+    Type for a string with embedded &lt;xccdf:Value&gt; substitutions and
+    an @override attribute to help manage inheritance.
 
     :ivar lang:
     :ivar override: Used to manage inheritance.
@@ -2418,7 +2321,7 @@ class TextWithSubType:
     class Meta:
         name = "textWithSubType"
 
-    lang: str | LangValue | None = field(
+    lang: None | str | LangValue = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -2441,22 +2344,23 @@ class TextWithSubType:
                 {
                     "name": "sub",
                     "type": SubType,
-                    "namespace": "",
+                    "namespace": "http://checklists.nist.gov/xccdf/1.2",
                 },
             ),
         },
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class FixTextType(HtmlTextWithSubType):
-    """Data type for the &lt;xccdf:fixtext&gt; element, which contains data that
-    describes how to bring a target system into compliance with an
+    """
+    Data type for the &lt;xccdf:fixtext&gt; element, which contains data
+    that describes how to bring a target system into compliance with an
     &lt;xccdf:Rule&gt;.
 
-    Each &lt;xccdf:fixtext&gt; element may be associated with one or
-    more &lt;xccdf:fix&gt; elements through the @fixref attribute. The
-    body holds explanatory text about the fix procedures.
+    Each &lt;xccdf:fixtext&gt; element may be associated with one or more
+    &lt;xccdf:fix&gt; elements through the @fixref attribute. The body
+    holds explanatory text about the fix procedures.
 
     :ivar fixref: A reference to the @id of an &lt;xccdf:fix&gt;
         element.
@@ -2473,7 +2377,7 @@ class FixTextType(HtmlTextWithSubType):
     class Meta:
         name = "fixTextType"
 
-    fixref: str | None = field(
+    fixref: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -2505,16 +2409,17 @@ class FixTextType(HtmlTextWithSubType):
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ProfileType:
-    """Data type for the &lt;xccdf:Profile&gt; element, which holds a specific
+    """
+    Data type for the &lt;xccdf:Profile&gt; element, which holds a specific
     tailoring of the &lt;xccdf:Benchmark&gt;.
 
     The main part of an &lt;xccdf:Profile&gt; is the selectors:
-    &lt;xccdf:select&gt;, &lt;xccdf:set-value&gt;, &lt;xccdf:set-
-    complex-value&gt;, &lt;xccdf:refine-rule&gt;, and &lt;xccdf:refine-
-    value&gt;. An &lt;xccdf:Profile&gt; may also be signed with an XML-
-    Signature.
+    &lt;xccdf:select&gt;, &lt;xccdf:set-value&gt;,
+    &lt;xccdf:set-complex-value&gt;, &lt;xccdf:refine-rule&gt;, and
+    &lt;xccdf:refine-value&gt;. An &lt;xccdf:Profile&gt; may also be signed
+    with an XML-Signature.
 
     :ivar status: Status of the &lt;xccdf:Profile&gt; and date at which
         it attained that status. Authors may use this element to record
@@ -2574,21 +2479,21 @@ class ProfileType:
         metadata={
             "name": "dc-status",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
-    version: VersionType | None = field(
+    version: None | VersionType = field(
         default=None,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     title: list[TextWithSubType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
             "min_occurs": 1,
         },
     )
@@ -2596,28 +2501,28 @@ class ProfileType:
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     reference: list[ReferenceType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     platform: list[OverrideableCpe2IdrefType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     select: list[ProfileSelectType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     set_complex_value: list[ProfileSetComplexValueType] = field(
@@ -2625,7 +2530,7 @@ class ProfileType:
         metadata={
             "name": "set-complex-value",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     set_value: list[ProfileSetValueType] = field(
@@ -2633,7 +2538,7 @@ class ProfileType:
         metadata={
             "name": "set-value",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     refine_value: list[ProfileRefineValueType] = field(
@@ -2641,7 +2546,7 @@ class ProfileType:
         metadata={
             "name": "refine-value",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     refine_rule: list[ProfileRefineRuleType] = field(
@@ -2649,30 +2554,28 @@ class ProfileType:
         metadata={
             "name": "refine-rule",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     metadata: list[MetadataType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
-    signature: SignatureType | None = field(
+    signature: None | SignatureType = field(
         default=None,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
-    id: str | None = field(
-        default=None,
+    id: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
             "pattern": r"xccdf_[^_]+_profile_.+",
-        },
+        }
     )
     prohibit_changes: bool = field(
         default=False,
@@ -2687,27 +2590,27 @@ class ProfileType:
             "type": "Attribute",
         },
     )
-    note_tag: str | None = field(
+    note_tag: None | str = field(
         default=None,
         metadata={
             "name": "note-tag",
             "type": "Attribute",
         },
     )
-    extends: str | None = field(
+    extends: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    base: str | None = field(
+    base: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
             "namespace": "http://www.w3.org/XML/1998/namespace",
         },
     )
-    id_attribute: str | None = field(
+    id_attribute: None | str = field(
         default=None,
         metadata={
             "name": "Id",
@@ -2716,14 +2619,15 @@ class ProfileType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class RuleResultType:
-    """Type for the &lt;xccdf:rule-result&gt; element within an
+    """
+    Type for the &lt;xccdf:rule-result&gt; element within an
     &lt;xccdf:TestResult&gt;.
 
     An &lt;xccdf:rule-result&gt; holds the result of applying an
-    &lt;xccdf:Rule&gt; from the &lt;xccdf:Benchmark&gt; to a target
-    system or component of a target system.
+    &lt;xccdf:Rule&gt; from the &lt;xccdf:Benchmark&gt; to a target system
+    or component of a target system.
 
     :ivar result: Result of applying the referenced &lt;xccdf:Rule&gt;
         to a target or target component. (E.g., Pass, Fail, etc.)
@@ -2774,103 +2678,99 @@ class RuleResultType:
     class Meta:
         name = "ruleResultType"
 
-    result: ResultEnumType | None = field(
-        default=None,
+    result: ResultEnumType = field(
         metadata={
             "type": "Element",
-            "namespace": "",
-            "required": True,
-        },
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
+        }
     )
     override: list[OverrideType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     ident: list[IdentType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     metadata: list[MetadataType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     message: list[MessageType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     instance: list[InstanceResultType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     fix: list[FixType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     check: list[CheckType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
-    complex_check: ComplexCheckType | None = field(
+    complex_check: None | ComplexCheckType = field(
         default=None,
         metadata={
             "name": "complex-check",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
-    idref: str | None = field(
-        default=None,
+    idref: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
-    role: RoleEnumType | None = field(
-        default=None,
-        metadata={
-            "type": "Attribute",
-        },
-    )
-    severity: SeverityEnumType | None = field(
+    role: None | RoleEnumType = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    time: XmlDateTime | None = field(
+    severity: None | SeverityEnumType = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    version: str | None = field(
+    time: None | XmlDateTime = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    weight: Decimal | None = field(
+    version: None | str = field(
+        default=None,
+        metadata={
+            "type": "Attribute",
+        },
+    )
+    weight: None | Decimal = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -2880,14 +2780,14 @@ class RuleResultType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class WarningType(HtmlTextWithSubType):
-    """Data type for the &lt;xccdf:warning&gt; element under the &lt;xccdf:Rule&gt;
-    element.
+    """
+    Data type for the &lt;xccdf:warning&gt; element under the
+    &lt;xccdf:Rule&gt; element.
 
-    This element holds a note or caveat about the item intended to
-    convey important cautionary information for the
-    &lt;xccdf:Benchmark&gt; user.
+    This element holds a note or caveat about the item intended to convey
+    important cautionary information for the &lt;xccdf:Benchmark&gt; user.
 
     :ivar category: A hint as to the nature of the warning.
     """
@@ -2903,9 +2803,10 @@ class WarningType(HtmlTextWithSubType):
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Profile(ProfileType):
-    """The &lt;xccdf:Profile&gt; element is a named tailoring for an
+    """
+    The &lt;xccdf:Profile&gt; element is a named tailoring for an
     &lt;xccdf:Benchmark&gt;.
 
     While an &lt;xccdf:Benchmark&gt; can be tailored in place by setting
@@ -2918,14 +2819,16 @@ class Profile(ProfileType):
         namespace = "http://checklists.nist.gov/xccdf/1.2"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ItemType:
-    """This abstract itemType represents the basic data shared by all
-    &lt;xccdf:Group&gt;, &lt;xccdf:Rule&gt; and &lt;xccdf:Value&gt; elements.
+    """
+    This abstract itemType represents the basic data shared by all
+    &lt;xccdf:Group&gt;, &lt;xccdf:Rule&gt; and &lt;xccdf:Value&gt;
+    elements.
 
     All elements in an itemType are optional, although each element that
-    builds on the itemType may add its own elements, some of which will
-    be required for that element.
+    builds on the itemType may add its own elements, some of which will be
+    required for that element.
 
     :ivar status: Status of the item and date at which it attained that
         status. &lt;xccdf:Benchmark&gt; authors may use this element to
@@ -3003,56 +2906,56 @@ class ItemType:
         metadata={
             "name": "dc-status",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
-    version: VersionType | None = field(
+    version: None | VersionType = field(
         default=None,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     title: list[TextWithSubType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     description: list[HtmlTextWithSubType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     warning: list[WarningType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     question: list[TextType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     reference: list[ReferenceType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     metadata: list[MetadataType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     abstract: bool = field(
@@ -3061,14 +2964,14 @@ class ItemType:
             "type": "Attribute",
         },
     )
-    cluster_id: str | None = field(
+    cluster_id: None | str = field(
         default=None,
         metadata={
             "name": "cluster-id",
             "type": "Attribute",
         },
     )
-    extends: str | None = field(
+    extends: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -3087,21 +2990,21 @@ class ItemType:
             "type": "Attribute",
         },
     )
-    lang: str | LangValue | None = field(
+    lang: None | str | LangValue = field(
         default=None,
         metadata={
             "type": "Attribute",
             "namespace": "http://www.w3.org/XML/1998/namespace",
         },
     )
-    base: str | None = field(
+    base: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
             "namespace": "http://www.w3.org/XML/1998/namespace",
         },
     )
-    id: str | None = field(
+    id: None | str = field(
         default=None,
         metadata={
             "name": "Id",
@@ -3110,22 +3013,23 @@ class ItemType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class TestResultType:
-    """Data type for the &lt;xccdf:TestResult&gt; element, which holds the results
-    of one application of the &lt;xccdf:Benchmark&gt;.
+    """
+    Data type for the &lt;xccdf:TestResult&gt; element, which holds the
+    results of one application of the &lt;xccdf:Benchmark&gt;.
 
-    The &lt;xccdf:TestResult&gt; element normally appears as the child
-    of the &lt;xccdf:Benchmark&gt; element, although it may also appear
-    as the top-level element of an XCCDF results document. XCCDF is not
-    intended to be a database format for detailed results; the
-    &lt;xccdf:TestResult&gt; element offers a way to store the results
-    of individual tests in modest detail, with the ability to reference
+    The &lt;xccdf:TestResult&gt; element normally appears as the child of
+    the &lt;xccdf:Benchmark&gt; element, although it may also appear as the
+    top-level element of an XCCDF results document. XCCDF is not intended
+    to be a database format for detailed results; the
+    &lt;xccdf:TestResult&gt; element offers a way to store the results of
+    individual tests in modest detail, with the ability to reference
     lower-level testing data. Although several of the child elements of
     this type technically support the @override attribute, the
     &lt;xccdf:TestResult&gt; element cannot be extended. Therefore,
-    @override has no meaning within an &lt;xccdf:TestResult&gt; element
-    and its children, and should not be used for them.
+    @override has no meaning within an &lt;xccdf:TestResult&gt; element and
+    its children, and should not be used for them.
 
     :ivar benchmark: Reference to the &lt;xccdf:Benchmark&gt; for which
         the &lt;xccdf:TestResult&gt; records results. This property is
@@ -3212,61 +3116,61 @@ class TestResultType:
     class Meta:
         name = "testResultType"
 
-    benchmark: BenchmarkReferenceType | None = field(
+    benchmark: None | BenchmarkReferenceType = field(
         default=None,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
-    tailoring_file: TailoringReferenceType | None = field(
+    tailoring_file: None | TailoringReferenceType = field(
         default=None,
         metadata={
             "name": "tailoring-file",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     title: list[TextType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     remark: list[TextType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     organization: list[str] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
-    identity: IdentityType | None = field(
+    identity: None | IdentityType = field(
         default=None,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
-    profile: IdrefType | None = field(
+    profile: None | IdrefType = field(
         default=None,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     target: list[str] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
             "min_occurs": 1,
         },
     )
@@ -3275,15 +3179,15 @@ class TestResultType:
         metadata={
             "name": "target-address",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
-    target_facts: TargetFactsType | None = field(
+    target_facts: None | TargetFactsType = field(
         default=None,
         metadata={
             "name": "target-facts",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     target_id_ref: list[TargetIdRefType] = field(
@@ -3291,7 +3195,7 @@ class TestResultType:
         metadata={
             "name": "target-id-ref",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     other_element: list[object] = field(
@@ -3305,7 +3209,7 @@ class TestResultType:
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     set_value: list[ProfileSetValueType] = field(
@@ -3313,7 +3217,7 @@ class TestResultType:
         metadata={
             "name": "set-value",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     set_complex_value: list[ProfileSetComplexValueType] = field(
@@ -3321,7 +3225,7 @@ class TestResultType:
         metadata={
             "name": "set-complex-value",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     rule_result: list[RuleResultType] = field(
@@ -3329,14 +3233,14 @@ class TestResultType:
         metadata={
             "name": "rule-result",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     score: list[ScoreType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
             "min_occurs": 1,
         },
     )
@@ -3344,53 +3248,49 @@ class TestResultType:
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
-    signature: SignatureType | None = field(
+    signature: None | SignatureType = field(
         default=None,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
-    id: str | None = field(
-        default=None,
+    id: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
             "pattern": r"xccdf_[^_]+_testresult_.+",
-        },
+        }
     )
-    start_time: XmlDateTime | None = field(
+    start_time: None | XmlDateTime = field(
         default=None,
         metadata={
             "name": "start-time",
             "type": "Attribute",
         },
     )
-    end_time: XmlDateTime | None = field(
-        default=None,
+    end_time: XmlDateTime = field(
         metadata={
             "name": "end-time",
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
-    test_system: str | None = field(
+    test_system: None | str = field(
         default=None,
         metadata={
             "name": "test-system",
             "type": "Attribute",
         },
     )
-    version: str | None = field(
+    version: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    id_attribute: str | None = field(
+    id_attribute: None | str = field(
         default=None,
         metadata={
             "name": "Id",
@@ -3399,13 +3299,14 @@ class TestResultType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Item(ItemType):
-    """An item is a named constituent of an &lt;xccdf:Benchmark&gt;.
+    """
+    An item is a named constituent of an &lt;xccdf:Benchmark&gt;.
 
-    There are three types of items: &lt;xccdf:Group&gt;,
-    &lt;xccdf:Rule&gt; and &lt;xccdf:Value&gt;. The &lt;xccdf:Item&gt; element type
-    imposes constraints shared by all &lt;xccdf:Group&gt;, &lt;xccdf:Rule&gt; and
+    There are three types of items: &lt;xccdf:Group&gt;, &lt;xccdf:Rule&gt;
+    and &lt;xccdf:Value&gt;. The &lt;xccdf:Item&gt; element type imposes
+    constraints shared by all &lt;xccdf:Group&gt;, &lt;xccdf:Rule&gt; and
     &lt;xccdf:Value&gt; elements. The itemType is abstract, so the element
     &lt;xccdf:Item&gt; can never appear in a valid XCCDF document.
     """
@@ -3414,17 +3315,19 @@ class Item(ItemType):
         namespace = "http://checklists.nist.gov/xccdf/1.2"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class TestResult(TestResultType):
-    """The &lt;xccdf:TestResult&gt; element encapsulates the results of a single
-    application of an &lt;xccdf:Benchmark&gt; to a single target platform.
+    """
+    The &lt;xccdf:TestResult&gt; element encapsulates the results of a
+    single application of an &lt;xccdf:Benchmark&gt; to a single target
+    platform.
 
-    The &lt;xccdf:TestResult&gt; element normally appears as the child
-    of the &lt;xccdf:Benchmark&gt; element, although it may also appear
-    as the top-level element of an XCCDF results document. XCCDF is not
-    intended to be a database format for detailed results; the
-    &lt;xccdf:TestResult&gt; element offers a way to store the results
-    of individual tests in modest detail, with the ability to reference
+    The &lt;xccdf:TestResult&gt; element normally appears as the child of
+    the &lt;xccdf:Benchmark&gt; element, although it may also appear as the
+    top-level element of an XCCDF results document. XCCDF is not intended
+    to be a database format for detailed results; the
+    &lt;xccdf:TestResult&gt; element offers a way to store the results of
+    individual tests in modest detail, with the ability to reference
     lower-level testing data.
     """
 
@@ -3432,7 +3335,7 @@ class TestResult(TestResultType):
         namespace = "http://checklists.nist.gov/xccdf/1.2"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class SelectableItemType(ItemType):
     """
     This abstract item type represents the basic data shared by all
@@ -3483,28 +3386,28 @@ class SelectableItemType(ItemType):
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     platform: list[OverrideableCpe2IdrefType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     requires: list[IdrefListType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     conflicts: list[IdrefType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     selected: bool = field(
@@ -3523,20 +3426,21 @@ class SelectableItemType(ItemType):
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class TailoringType:
-    """Data type for the &lt;xccdf:Tailoring&gt; element.
+    """
+    Data type for the &lt;xccdf:Tailoring&gt; element.
 
     The &lt;xccdf:Tailoring&gt; element allows named tailorings (i.e.,
     &lt;xccdf:Profile&gt; elements) of an &lt;xccdf:Benchmark&gt; to be
     defined separately from the &lt;xccdf:Benchmark&gt; itself. The
     &lt;xccdf:Profile&gt; elements in an &lt;xccdf:Tailoring&gt; element
-    can be used in two ways: First, an organization might wish to pre-
-    define a set of tailoring actions to be applied on top of or instead
-    of the tailoring performed by an &lt;xccdf:Benchmark&gt; element's
-    &lt;xccdf:Profile&gt; elements. Second, an &lt;xccdf:Tailoring&gt;
-    element can be used to record manual tailoring actions performed
-    during the course of an assessment.
+    can be used in two ways: First, an organization might wish to
+    pre-define a set of tailoring actions to be applied on top of or
+    instead of the tailoring performed by an &lt;xccdf:Benchmark&gt;
+    element's &lt;xccdf:Profile&gt; elements. Second, an
+    &lt;xccdf:Tailoring&gt; element can be used to record manual tailoring
+    actions performed during the course of an assessment.
 
     :ivar benchmark: Identifies the &lt;xccdf:Benchmark&gt; to which
         this tailoring applies. A &lt;xccdf:Tailoring&gt; document is
@@ -3570,11 +3474,11 @@ class TailoringType:
     class Meta:
         name = "tailoringType"
 
-    benchmark: TailoringBenchmarkReferenceType | None = field(
+    benchmark: None | TailoringBenchmarkReferenceType = field(
         default=None,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     status: list[Status] = field(
@@ -3589,22 +3493,20 @@ class TailoringType:
         metadata={
             "name": "dc-status",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
-    version: TailoringVersionType | None = field(
-        default=None,
+    version: TailoringVersionType = field(
         metadata={
             "type": "Element",
-            "namespace": "",
-            "required": True,
-        },
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
+        }
     )
     metadata: list[MetadataType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     profile: list[Profile] = field(
@@ -3616,22 +3518,20 @@ class TailoringType:
             "min_occurs": 1,
         },
     )
-    signature: SignatureType | None = field(
+    signature: None | SignatureType = field(
         default=None,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
-    id: str | None = field(
-        default=None,
+    id: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
             "pattern": r"xccdf_[^_]+_tailoring_.+",
-        },
+        }
     )
-    id_attribute: str | None = field(
+    id_attribute: None | str = field(
         default=None,
         metadata={
             "name": "Id",
@@ -3640,13 +3540,13 @@ class TailoringType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ValueType(ItemType):
     """
-    Data type for the &lt;xccdf:Value&gt; element, which is a named parameter that
-    can be substituted into properties of other elements within the
-    &lt;xccdf:Benchmark&gt;, including the interior of structured check
-    specifications and fix scripts.
+    Data type for the &lt;xccdf:Value&gt; element, which is a named
+    parameter that can be substituted into properties of other elements
+    within the &lt;xccdf:Benchmark&gt;, including the interior of
+    structured check specifications and fix scripts.
 
     :ivar value: A simple (number, string, or boolean) value associated
         with this &lt;xccdf:Value&gt;. At any time an
@@ -3744,7 +3644,7 @@ class ValueType(ItemType):
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     complex_value: list[SelComplexValueType] = field(
@@ -3752,14 +3652,14 @@ class ValueType(ItemType):
         metadata={
             "name": "complex-value",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     default: list[SelStringType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     complex_default: list[SelComplexValueType] = field(
@@ -3767,14 +3667,14 @@ class ValueType(ItemType):
         metadata={
             "name": "complex-default",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     match: list[SelStringType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     lower_bound: list[SelNumType] = field(
@@ -3782,7 +3682,7 @@ class ValueType(ItemType):
         metadata={
             "name": "lower-bound",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     upper_bound: list[SelNumType] = field(
@@ -3790,37 +3690,35 @@ class ValueType(ItemType):
         metadata={
             "name": "upper-bound",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     choices: list[SelChoicesType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     source: list[UriRefType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
-    signature: SignatureType | None = field(
+    signature: None | SignatureType = field(
         default=None,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
-    id: str | None = field(
-        default=None,
+    id: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
             "pattern": r"xccdf_[^_]+_value_.+",
-        },
+        }
     )
     type_value: ValueTypeType = field(
         default=ValueTypeType.STRING,
@@ -3841,7 +3739,7 @@ class ValueType(ItemType):
             "type": "Attribute",
         },
     )
-    interface_hint: InterfaceHintType | None = field(
+    interface_hint: None | InterfaceHintType = field(
         default=None,
         metadata={
             "name": "interfaceHint",
@@ -3850,39 +3748,40 @@ class ValueType(ItemType):
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Tailoring(TailoringType):
-    """The &lt;xccdf:Tailoring&gt; element holds one or more &lt;xccdf:Profile&gt;
-    elements.
+    """
+    The &lt;xccdf:Tailoring&gt; element holds one or more
+    &lt;xccdf:Profile&gt; elements.
 
     These &lt;xccdf:Profile&gt; elements record additional tailoring
     activities that apply to a given &lt;xccdf:Benchmark&gt;.
     &lt;xccdf:Tailoring&gt; elements are separate from
     &lt;xccdf:Benchmark&gt; documents, but each &lt;xccdf:Tailoring&gt;
-    element is associated with a specific &lt;xccdf:Benchmark&gt;
-    document. By defining these tailoring actions separately from the
-    &lt;xccdf:Benchmark&gt; document to which they apply, these actions
-    can be recorded without affecting the integrity of the source
-    itself.
+    element is associated with a specific &lt;xccdf:Benchmark&gt; document.
+    By defining these tailoring actions separately from the
+    &lt;xccdf:Benchmark&gt; document to which they apply, these actions can
+    be recorded without affecting the integrity of the source itself.
     """
 
     class Meta:
         namespace = "http://checklists.nist.gov/xccdf/1.2"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Value(ValueType):
     """
-    The &lt;xccdf:Value&gt; element is a named parameter that can be substituted
-    into properties of other elements within the &lt;xccdf:Benchmark&gt;, including
-    the interior of structured check specifications and fix scripts.
+    The &lt;xccdf:Value&gt; element is a named parameter that can be
+    substituted into properties of other elements within the
+    &lt;xccdf:Benchmark&gt;, including the interior of structured check
+    specifications and fix scripts.
     """
 
     class Meta:
         namespace = "http://checklists.nist.gov/xccdf/1.2"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class RuleType(SelectableItemType):
     """
     Data type for the &lt;xccdf:Rule&gt; element that represents a specific
@@ -3949,15 +3848,15 @@ class RuleType(SelectableItemType):
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
-    impact_metric: str | None = field(
+    impact_metric: None | str = field(
         default=None,
         metadata={
             "name": "impact-metric",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     profile_note: list[ProfileNoteType] = field(
@@ -3965,52 +3864,50 @@ class RuleType(SelectableItemType):
         metadata={
             "name": "profile-note",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     fixtext: list[FixTextType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     fix: list[FixType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
     check: list[CheckType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
-    complex_check: ComplexCheckType | None = field(
+    complex_check: None | ComplexCheckType = field(
         default=None,
         metadata={
             "name": "complex-check",
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
-    signature: SignatureType | None = field(
+    signature: None | SignatureType = field(
         default=None,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
-    id: str | None = field(
-        default=None,
+    id: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
             "pattern": r"xccdf_[^_]+_rule_.+",
-        },
+        }
     )
     role: RoleEnumType = field(
         default=RoleEnumType.FULL,
@@ -4032,29 +3929,28 @@ class RuleType(SelectableItemType):
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Rule(RuleType):
-    """The &lt;xccdf:Rule&gt; element contains the description for a single item of
-    guidance or constraint.
-
-    &lt;xccdf:Rule&gt; elements form the basis for testing a target
-    platform for compliance with an &lt;xccdf:Benchmark&gt;, for
-    scoring, and for conveying descriptive prose, identifiers,
-    references, and remediation information.
+    """
+    The &lt;xccdf:Rule&gt; element contains the description for a single
+    item of guidance or constraint. &lt;xccdf:Rule&gt; elements form the
+    basis for testing a target platform for compliance with an
+    &lt;xccdf:Benchmark&gt;, for scoring, and for conveying descriptive
+    prose, identifiers, references, and remediation information.
     """
 
     class Meta:
         namespace = "http://checklists.nist.gov/xccdf/1.2"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class GroupType(SelectableItemType):
-    """Data type for the &lt;xccdf:Group&gt; element.
+    """
+    Data type for the &lt;xccdf:Group&gt; element.
 
-    A &lt;xccdf:Group&gt; element contains descriptive information about
-    a portion of an &lt;xccdf:Benchmark&gt;, as well as
-    &lt;xccdf:Rule&gt;, &lt;xccdf:Value&gt;, and/or other
-    &lt;xccdf:Group&gt; elements
+    A &lt;xccdf:Group&gt; element contains descriptive information about a
+    portion of an &lt;xccdf:Benchmark&gt;, as well as &lt;xccdf:Rule&gt;,
+    &lt;xccdf:Value&gt;, and/or other &lt;xccdf:Group&gt; elements.
 
     :ivar value: &lt;xccdf:Value&gt; elements that belong to this
         &lt;xccdf:Group&gt;.
@@ -4080,7 +3976,7 @@ class GroupType(SelectableItemType):
             "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
-    group: list["Group"] = field(
+    group: list[Group] = field(
         default_factory=list,
         metadata={
             "name": "Group",
@@ -4096,26 +3992,25 @@ class GroupType(SelectableItemType):
             "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
-    signature: SignatureType | None = field(
+    signature: None | SignatureType = field(
         default=None,
         metadata={
             "type": "Element",
-            "namespace": "",
+            "namespace": "http://checklists.nist.gov/xccdf/1.2",
         },
     )
-    id: str | None = field(
-        default=None,
+    id: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
             "pattern": r"xccdf_[^_]+_group_.+",
-        },
+        }
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Group(GroupType):
-    """An item that can hold other items.
+    """
+    An item that can hold other items.
 
     It allows an author to collect related items into a common structure
     and provide descriptive text and references about them.
@@ -4125,17 +4020,19 @@ class Group(GroupType):
         namespace = "http://checklists.nist.gov/xccdf/1.2"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Benchmark:
-    """This is the root element of the XCCDF document; it must appear exactly once.
+    """
+    This is the root element of the XCCDF document; it must appear exactly
+    once.
 
     It encloses the entire benchmark, and contains both descriptive
     information and structural information. Note that the order of
     &lt;xccdf:Group&gt; and &lt;xccdf:Rule&gt; child elements may matter
     for the appearance of a generated document. &lt;xccdf:Group&gt; and
-    &lt;xccdf:Rule&gt; children may be freely intermingled, but they
-    must appear after any &lt;xccdf:Value&gt; children. All the other
-    children must appear in the order shown.
+    &lt;xccdf:Rule&gt; children may be freely intermingled, but they must
+    appear after any &lt;xccdf:Value&gt; children. All the other children
+    must appear in the order shown.
 
     :ivar status: Status of the &lt;xccdf:Benchmark&gt; indicating its
         level of maturity or consensus. If more than one
@@ -4224,28 +4121,24 @@ class Benchmark:
         metadata={
             "name": "dc-status",
             "type": "Element",
-            "namespace": "",
         },
     )
     title: list[TextType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
         },
     )
     description: list[HtmlTextWithSubType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
         },
     )
     notice: list[NoticeType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
         },
     )
     front_matter: list[HtmlTextWithSubType] = field(
@@ -4253,7 +4146,6 @@ class Benchmark:
         metadata={
             "name": "front-matter",
             "type": "Element",
-            "namespace": "",
         },
     )
     rear_matter: list[HtmlTextWithSubType] = field(
@@ -4261,14 +4153,12 @@ class Benchmark:
         metadata={
             "name": "rear-matter",
             "type": "Element",
-            "namespace": "",
         },
     )
     reference: list[ReferenceType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
         },
     )
     plain_text: list[PlainTextType] = field(
@@ -4276,10 +4166,9 @@ class Benchmark:
         metadata={
             "name": "plain-text",
             "type": "Element",
-            "namespace": "",
         },
     )
-    platform_specification: str | None = field(
+    platform_specification: None | str = field(
         default=None,
         metadata={
             "name": "platform-specification",
@@ -4291,22 +4180,17 @@ class Benchmark:
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
         },
     )
-    version: VersionType | None = field(
-        default=None,
+    version: VersionType = field(
         metadata={
             "type": "Element",
-            "namespace": "",
-            "required": True,
-        },
+        }
     )
     metadata: list[MetadataType] = field(
         default_factory=list,
         metadata={
             "type": "Element",
-            "namespace": "",
         },
     )
     model: list[Model] = field(
@@ -4350,22 +4234,19 @@ class Benchmark:
             "type": "Element",
         },
     )
-    signature: SignatureType | None = field(
+    signature: None | SignatureType = field(
         default=None,
         metadata={
             "type": "Element",
-            "namespace": "",
         },
     )
-    id: str | None = field(
-        default=None,
+    id: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
             "pattern": r"xccdf_[^_]+_benchmark_.+",
-        },
+        }
     )
-    id_attribute: str | None = field(
+    id_attribute: None | str = field(
         default=None,
         metadata={
             "name": "Id",
@@ -4378,20 +4259,20 @@ class Benchmark:
             "type": "Attribute",
         },
     )
-    style: str | None = field(
+    style: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    style_href: str | None = field(
+    style_href: None | str = field(
         default=None,
         metadata={
             "name": "style-href",
             "type": "Attribute",
         },
     )
-    lang: str | LangValue | None = field(
+    lang: None | str | LangValue = field(
         default=None,
         metadata={
             "type": "Attribute",

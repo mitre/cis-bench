@@ -1,14 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Config xmlns="http://pypi.org/project/xsdata" version="25.7">
-  <Output maxLineLength="79" genericCollections="false" unionType="false">
+<Config xmlns="http://pypi.org/project/xsdata" version="26.10">
+  <Output maxLineLength="79" genericCollections="false">
     <Package>generated</Package>
-    <Format repr="true" eq="true" order="false" unsafeHash="false" frozen="false" slots="false" kwOnly="false">dataclasses</Format>
+    <Format repr="true" eq="true" order="false" unsafeHash="false" frozen="false" slots="false">dataclasses</Format>
     <Structure>filenames</Structure>
     <DocstringStyle>reStructuredText</DocstringStyle>
     <RelativeImports>false</RelativeImports>
     <CompoundFields defaultName="choice" useSubstitutionGroups="false" forceDefaultName="false" maxNameParts="3">false</CompoundFields>
     <WrapperFields>false</WrapperFields>
-    <PostponedAnnotations>false</PostponedAnnotations>
     <UnnestClasses>false</UnnestClasses>
     <IgnorePatterns>false</IgnorePatterns>
     <IncludeHeader>false</IncludeHeader>

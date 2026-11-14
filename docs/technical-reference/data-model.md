@@ -15,7 +15,7 @@ This document defines our **canonical data format** for CIS benchmarks. All data
 ```mermaid
 flowchart LR
     subgraph Input["Input Sources"]
-        WB["CIS WorkBench<br/>(HTML)"]
+        WB["CIS WorkBench<br/>(text as Markdown)"]
         API["CIS API<br/>(JSON navtree)"]
         SCAP["Future: SCAP"]
         EXCEL["Future: Excel"]
@@ -53,7 +53,7 @@ flowchart LR
     style Output fill:#FFF4E6,stroke:#CC6600
 ```
 
-**KEY PRINCIPLE:** All data MUST validate against our JSON Schema before it can be exported to any format.
+**KEY PRINCIPLE:** Every exporter takes a `Benchmark` object, so every benchmark is validated by the `Benchmark` model before it is exported to any format. The JSON Schema is generated from that model (see [Validation](#validation)).
 
 ## Why JSON Schema as Canonical Format?
 
@@ -83,11 +83,10 @@ flowchart LR
 - Backward compatibility tracking
 - Migration paths
 
-**Code Generation**
+**Generated from the model**
 
-- Can generate Python dataclasses from schema
-- Type hints from schema
-- Validation code auto-generated
+- The `Benchmark` pydantic model is the source; the schema is generated from it at docs build
+- Types and required fields in the schema are the model's
 
 **Testing**
 
@@ -98,167 +97,38 @@ flowchart LR
 ## Our JSON Schema
 
 ### Location
-`cis_bench/models/schema.json`
+
+The schema is generated from the `Benchmark` model when the docs are built, and published with them: [schemas/benchmark.json](../schemas/benchmark.json) (`https://mitre.github.io/cis-bench/schemas/benchmark.json`). It is JSON Schema Draft 2020-12 and names that draft in its `$schema` keyword. The model is its only source, so there is no copy to keep up to date. To print it from an installed cis-bench (without the `$schema` keyword the published file adds):
+
+```bash
+python -c "import json; from cis_bench.models.benchmark import Benchmark; print(json.dumps(Benchmark.model_json_schema(), indent=2))"
+```
 
 ### Structure
 
-```json
-{
-"$schema": "http://json-schema.org/draft-07/schema#",
-"$id": "https://github.com/yourusername/cis-benchmark-cli/schemas/benchmark-v1.0.json",
-"title": "CIS Benchmark",
-"description": "Canonical data format for CIS Benchmark downloaded from CIS WorkBench",
-"type": "object",
-"required": ["title", "benchmark_id", "url", "version", "recommendations"],
-"properties": {
-"title": {
-"type": "string",
-"description": "Full benchmark title (e.g., 'CIS Amazon EKS Benchmark v1.8.0')",
-"examples": ["CIS Amazon EKS Benchmark v1.8.0", "CIS NGINX Benchmark vNEXT"]
-},
-"benchmark_id": {
-"type": "string",
-"description": "CIS WorkBench benchmark ID",
-"pattern": "^[0-9]+$",
-"examples": ["22605", "18528"]
-},
-"url": {
-"type": "string",
-"format": "uri",
-"description": "Source URL of the benchmark"
-},
-"version": {
-"type": "string",
-"description": "Benchmark version (extracted from title or metadata)",
-"examples": ["v1.8.0", "vNEXT", "v1.0.0"]
-},
-"downloaded_at": {
-"type": "string",
-"format": "date-time",
-"description": "ISO 8601 timestamp when benchmark was downloaded"
-},
-"scraper_version": {
-"type": "string",
-"description": "Scraper strategy version used",
-"examples": ["v1_2025_10"]
-},
-"total_recommendations": {
-"type": "integer",
-"minimum": 0,
-"description": "Total number of recommendations in benchmark"
-},
-"recommendations": {
-"type": "array",
-"description": "Array of benchmark recommendations",
-"items": {
-"$ref": "#/$defs/recommendation"
-}
-}
-},
-
-"$defs": {
-"recommendation": {
-"type": "object",
-"required": ["ref", "title", "url"],
-"properties": {
-"ref": {
-"type": "string",
-"description": "Recommendation reference number",
-"pattern": "^[0-9]+(\\.[0-9]+)*$",
-"examples": ["3.1.1", "5.2.3"]
-},
-"title": {
-"type": "string",
-"description": "Recommendation title",
-"minLength": 1
-},
-"url": {
-"type": "string",
-"format": "uri",
-"description": "Direct URL to recommendation page"
-},
-"assessment": {
-"type": ["string", "null"],
-"description": "Automated scoring/assessment information (may contain HTML)"
-},
-"description": {
-"type": ["string", "null"],
-"description": "Detailed description of the recommendation (may contain HTML)"
-},
-"rationale": {
-"type": ["string", "null"],
-"description": "Rationale/justification for the recommendation (may contain HTML)"
-},
-"impact": {
-"type": ["string", "null"],
-"description": "Impact statement (may contain HTML)"
-},
-"audit": {
-"type": ["string", "null"],
-"description": "Audit procedure to verify compliance (may contain HTML)"
-},
-"remediation": {
-"type": ["string", "null"],
-"description": "Remediation steps to achieve compliance (may contain HTML)"
-},
-"default_value": {
-"type": ["string", "null"],
-"description": "Default configuration value (may contain HTML)"
-},
-"artifact_eq": {
-"type": ["string", "null"],
-"description": "Artifact equation (may contain HTML)"
-},
-"mitre_mapping": {
-"type": ["string", "null"],
-"description": "MITRE ATT&CK framework mappings (may contain HTML)"
-},
-"references": {
-"type": ["string", "null"],
-"description": "External references and citations (may contain HTML)"
-}
-},
-"additionalProperties": false
-}
-}
-}
-```
+A benchmark file is one object: the benchmark's fields (see [Field Definitions](#field-definitions)) and `recommendations`, an array of recommendation objects. A copy saved before `text_format` and `artifact_title_format` existed may leave them out: cis-bench works them out from `scraper_version` when it loads the copy, and the schema accepts such a copy.
 
 ## Using JSON Schema
 
 ### Validation
 
+cis-bench itself validates a benchmark with the `Benchmark` model when it builds or loads one; it does not read the JSON Schema. The schema checks a file's structure and types. The model also checks what a JSON Schema does not express:
+
+- `total_recommendations` equals the number of items in `recommendations`
+- each profile title is defined once in `profile_definitions`
+
+The schema is for other tools that read cis-bench's benchmark files, for example with `jsonschema`:
+
 ```python
 import json
-import jsonschema
 
-# Load schema
-with open('cis_bench/models/schema.json') as f:
-schema = json.load(f)
+from jsonschema import Draft202012Validator
 
-# Validate scraped data
-try:
-jsonschema.validate(instance=benchmark_data, schema=schema)
-print(" Data is valid")
-except jsonschema.ValidationError as e:
-print(f" Validation failed: {e.message}")
-print(f" Path: {' '.join(str(p) for p in e.path)}")
+with open("benchmark-schema.json") as f:  # schemas/benchmark.json from the docs site
+    schema = json.load(f)
+with open("23598.json") as f:  # a benchmark file cis-bench wrote
+    Draft202012Validator(schema).validate(json.load(f))
 ```
-
-### Data Generation from Schema
-
-We can also use tools like `datamodel-code-generator` to create Python dataclasses from our schema:
-
-```bash
-pip install datamodel-code-generator
-
-datamodel-codegen \
---input cis_bench/models/schema.json \
---output cis_bench/models/benchmark.py \
---input-file-type jsonschema
-```
-
-This generates type-safe Python classes that match our schema exactly!
 
 ## Exporter Mapping
 
@@ -321,7 +191,7 @@ for rec in data['recommendations']:
 rule = Rule(
 id=f"rule_{rec['ref'].replace('.', '_')}",
 title=rec['title'],
-description=strip_html(rec['description']),
+description=rec['description'], # Markdown, written as stored
 # ... map other fields per XCCDF spec
 )
 xccdf_benchmark.rule.append(rule)
@@ -342,34 +212,73 @@ f.write(xml_output)
 | `benchmark_id` | string | | CIS WorkBench ID |
 | `url` | string (URI) | | Source URL |
 | `version` | string | | Benchmark version |
-| `downloaded_at` | string (ISO 8601) | | Download timestamp |
+| `published_date` | string (ISO 8601 date) or null | | The date WorkBench shows the release as published, read from the benchmark's page |
+| `description` | string or null | | The benchmark's overview, as the Markdown its page gives |
+| `profile_definitions` | array | | The benchmark's profiles as its page defines them: `title`, `description` (Markdown; the page gives it as HTML and it is converted as the page is read), `parent` (the title of the profile it extends, or null); each title once; empty for copies saved before they were read |
+| `release_type` | string or null | | The kind of release, as the page names it (e.g. `Planned Update`) |
+| `contributors` | array of string | | The contributors, in the order the page lists them; a name the page lists twice is kept twice |
+| `parent_benchmark_url` | string (URI) or null | | The WorkBench page of the benchmark this one was based on |
+| `parent_benchmark_title` | string or null | | The title of the benchmark this one was based on |
+| `community_url` | string (URI) or null | | The WorkBench page of the community that maintains the benchmark |
+| `milestone_name` | string or null | | The release milestone's name |
+| `milestone_url` | string (URI) or null | | The WorkBench page of the release milestone |
+| `intended_audience` | string or null | | Who the benchmark is for, as Markdown |
+| `acknowledgements` | string or null | | The page's acknowledgements, as Markdown |
+| `assets` | array | | The products the benchmark applies to: `title` and `cpe_id` (a CPE 2.3 name) |
+| `revision_history` | array | | The page's revision history, newest first: `revised_at` (the time the page shows, with no zone: the page names none), `author`, `modification_count`; each may be null |
+| `downloaded_at` | string (ISO 8601) | | When it was downloaded, in UTC with its offset (`Z`); files from earlier versions carry no offset |
 | `scraper_version` | string | | Strategy version used |
+| `text_format` | `"html"` or `"markdown"` | | The form of the recommendation text fields as written. Every loaded copy holds `markdown`; a copy saved without this field is `html` when its `scraper_version` is `v1_2025_10` (the strategy that saved rendered HTML) and `markdown` otherwise |
+| `artifact_title_format` | `"html"` or `"markdown"` | | The form of the artifact titles as written. Every loaded copy holds `markdown`; a copy saved without this field holds the titles as the artifact payload gave them, HTML for some, and is `html` |
 | `total_recommendations` | integer | | Count of recommendations |
 | `recommendations` | array | | Array of recommendation objects |
 
+The fields from `release_type` to `revision_history` hold what the benchmark's WorkBench page says beyond its recommendations. cis-bench does not read them from the page yet, so every copy has them null or as an empty array; a copy saved before they existed loads the same way. When they are read, a field the page does not give stays null or empty: nothing is filled in.
+
 ### Recommendation Level
 
-| Field | Type | Required | Description | HTML Allowed |
-|-------|------|----------|-------------|--------------|
+| Field | Type | Required | Description | Markdown text |
+|-------|------|----------|-------------|---------------|
 | `ref` | string | | Reference number (e.g., "3.1.1") | No |
 | `title` | string | | Recommendation title | No |
 | `url` | string (URI) | | Direct link to recommendation | No |
-| `assessment` | string/null | | Automated scoring info | Yes |
+| `assessment_status` | string | | "Automated" or "Manual" | No |
+| `profiles` | array of string | | Profiles the rule belongs to | No |
+| `cis_controls` | array of object | | CIS Controls v7/v8 mappings with Implementation Groups | No |
+| `mitre_mapping` | object/null | | MITRE ATT&CK techniques, tactics, mitigations (lists of IDs) | No |
+| `nist_controls` | array of string | | NIST SP 800-53 control IDs | No |
+| `parent` | object/null | | Parent recommendation (url, title) | No |
+| `artifacts` | array of object | | Test artifacts: `id`, `view_level`, `title` (Markdown: the payload gives some titles as HTML, converted as the payload is read; a copy saved before that is converted once as it loads, by `artifact_title_format`), `status`, `artifact_type` | No |
 | `description` | string/null | | Detailed description | Yes |
 | `rationale` | string/null | | Justification | Yes |
 | `impact` | string/null | | Impact statement | Yes |
 | `audit` | string/null | | Audit procedure | Yes |
 | `remediation` | string/null | | Remediation steps | Yes |
+| `additional_info` | string/null | | Additional information and notes | Yes |
 | `default_value` | string/null | | Default config value | Yes |
-| `artifact_eq` | string/null | | Artifact equation | Yes |
-| `mitre_mapping` | string/null | | MITRE ATT&CK mappings | Yes |
+| `artifact_equation` | string/null | | Artifact equation logic | Yes |
 | `references` | string/null | | External references | Yes |
 
-**HTML Allowed**: Fields may contain HTML markup that should be:
+**Markdown text**: these fields hold the Markdown WorkBench gives, with `\n` line breaks,
+whichever scraper saved the copy. A copy saved by the v1 scraper (`scraper_version`
+`v1_2025_10`) holds the page's rendered HTML instead; `Benchmark` converts it to Markdown as
+the copy loads (`cis_bench.utils.markdown_text`, on markdownify), keeping the words,
+paragraphs, code blocks, lists, tables, links and placeholders such as `<user>`. The stored
+copy is left as it was. Which form a copy holds is read from `text_format` (or, for a copy
+saved without that field, from `scraper_version`), never from the text itself: a placeholder
+looks like a tag. Artifact titles follow the same rule with `artifact_title_format`: the
+payload gives some titles as HTML and the parser converts them as it reads the payload; a
+copy saved before that is converted once as it loads. In exports the text is:
 
 - Preserved in JSON/YAML export
-- Stripped for CSV export
-- Converted to XCCDF-safe format for XCCDF export
+- Written as the cell text in CSV export
+- Written as it is in Markdown export, with two document-level adjustments: a placeholder in
+  prose (outside code) is written `&lt;user>` so a renderer with raw HTML on (GitHub, MkDocs)
+  shows it as text instead of reading it as a tag, and a fence a field leaves open is closed
+  at the field's end so it cannot swallow the fields after it; both decided by the CommonMark
+  parser (markdown-it-py), never by matching the text
+
+- Written as the stored Markdown in the CIS and DISA XCCDF exports (see the style configs)
 
 ## Validation Strategy
 
@@ -415,21 +324,7 @@ f.write(xml_output)
 
 ## Tools and Libraries
 
-**JSON Schema Validation**:
-```bash
-pip install jsonschema
-```
-
-**Code Generation from Schema**:
-```bash
-pip install datamodel-code-generator
-```
-
-**Schema Documentation**:
-```bash
-pip install json-schema-for-humans
-json-schema-for-humans cis_bench/models/schema.json docs/schema.html
-```
+**JSON Schema validation** (for tools that read cis-bench's files): `pip install jsonschema`
 
 ## Example: Complete Benchmark
 
@@ -439,6 +334,8 @@ json-schema-for-humans cis_bench/models/schema.json docs/schema.html
 "benchmark_id": "22605",
 "url": "https://workbench.cisecurity.org/benchmarks/22605",
 "version": "v1.8.0",
+"published_date": "2025-08-28",
+"description": "This document provides prescriptive guidance for establishing a secure configuration posture for Amazon EKS.",
 "downloaded_at": "2025-10-17T21:48:00Z",
 "scraper_version": "v1_2025_10",
 "total_recommendations": 50,
@@ -474,7 +371,7 @@ def export(self, data: dict, output_path: str) -> str:
 """Export benchmark data.
 
 Args:
-data: Dictionary matching cis_bench/models/schema.json
+data: Dictionary matching the benchmark JSON Schema
 output_path: Where to write output
 
 Returns:
@@ -499,10 +396,11 @@ self._validate_input(data)
 |------------|---------------|-------|
 | `ref` | `Rule/@id` | Convert "3.1.1" "rule_3_1_1" |
 | `title` | `Rule/title` | Direct mapping |
-| `description` | `Rule/description` | Strip HTML tags |
-| `rationale` | `Rule/rationale` | Strip HTML tags |
-| `audit` | `Rule/check/check-content` | Strip HTML, wrap in check |
-| `remediation` | `Rule/fixtext` | Strip HTML tags |
+| `description` | `Rule/description` | The stored Markdown, written as it is; in the CIS style the default value and the additional information follow it as labelled sections |
+| `rationale` | `Rule/rationale` | The stored Markdown, written as it is |
+| `audit` | `Rule/check/check-content` | The stored Markdown, inside the check element |
+| `remediation` | `Rule/fixtext` | The stored Markdown, written as it is |
+| `references` | `Rule/ident[@system="URL"]` | CIS style: one ident per non-empty line, as stored |
 | `mitre_mapping` | `Rule/reference` | Parse and map to reference elements |
 
 **JSON Schema Field CSV Column**
@@ -515,63 +413,7 @@ benchmark_title,benchmark_id,ref,title,description,audit,...
 
 ## Validation Implementation
 
-### In WorkbenchScraper
-
-```python
-import jsonschema
-
-class WorkbenchScraper:
-def __init__(self, session, schema_path='cis_bench/models/schema.json'):
-self.session = session
-
-# Load schema
-with open(schema_path) as f:
-self.schema = json.load(f)
-
-def download_benchmark(self, benchmark_url):
-# ... scraping logic ...
-
-benchmark_data = {
-'title': title,
-'benchmark_id': benchmark_id,
-'recommendations': recommendations,
-# ...
-}
-
-# VALIDATE before returning
-try:
-jsonschema.validate(instance=benchmark_data, schema=self.schema)
-except jsonschema.ValidationError as e:
-raise ValueError(f"Scraped data validation failed: {e.message}")
-
-return benchmark_data
-```
-
-### In Exporters
-
-```python
-class BaseExporter(ABC):
-def _validate_input(self, data: dict):
-"""Validate input data against schema."""
-with open('cis_bench/models/schema.json') as f:
-schema = json.load(f)
-
-jsonschema.validate(instance=data, schema=schema)
-```
-
-## Schema Files
-
-We'll maintain multiple schema versions:
-
-```
-cis_bench/models/
-├── schema.json # Current schema (symlink to v1.0.0)
-├── schemas/
-│ ├── v1.0.0.json # Version 1.0.0
-│ ├── v1.1.0.json # Version 1.1.0 (future)
-│ └── v2.0.0.json # Version 2.0.0 (future)
-└── schema_validator.py # Validation utilities
-```
+The scraper builds a `Benchmark`, so pydantic validates every field as the benchmark is made; `deserialize_benchmark_json` validates a stored copy the same way when it loads. Exporters receive a validated `Benchmark`. The JSON Schema is generated from that same model and is not used at runtime.
 
 ## Benefits in Practice
 

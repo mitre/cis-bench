@@ -160,6 +160,11 @@ SESSION_PLAN.md
 /archive/
 tools/
 # Note: /archive/ only ignores top-level, allows research/archive/ tracking
-# Beads task tracker - runtime artifacts (issues.jsonl IS tracked)
+# Beads task tracker - local files (the board itself lives in Dolt)
 .beads/recovery-context.md
 .beads/last-touched
+.beads/proxieddb/
+.beads-credential-key
+.dolt/
+*.db
+*.gate.lock*

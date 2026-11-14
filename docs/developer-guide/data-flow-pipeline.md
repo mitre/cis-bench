@@ -45,7 +45,7 @@ Each stage performs specific transformations, validates data, and handles errors
 
 When you run `cis-bench download 23598`, the system:
 
-1. **Authenticates** using saved [session](../about/glossary.md#session) from `~/.cis-bench/session.cookies`
+1. **Authenticates** using saved [session](../about/glossary.md#session) from `~/.local/state/cis-bench/session.cookies`
 2. **Fetches HTML** from `https://workbench.cisecurity.org/benchmarks/23598`
 3. **Detects HTML version** using `StrategyDetector`
 4. **Applies [strategy](../about/glossary.md#strategy)** (currently `v1_current.py`) to parse HTML
@@ -70,6 +70,7 @@ return {
 
 **Why Strategy Pattern?**
 CIS WorkBench updates HTML structure periodically. When this happens:
+
 1. Create new strategy class (e.g., `v2_january2026.py`)
 2. Detector auto-selects based on HTML structure
 3. Old benchmarks still work with old strategy
@@ -115,16 +116,16 @@ return controls
 | Field | Source | Transformation |
 |-------|--------|----------------|
 | ref | Title heading | Extract number |
-| title | Title heading | Strip HTML, clean |
+| title | Title heading | As written (Markdown) |
 | url | Recommendation URL | Construct from ID |
-| description | Description section | Parse HTML, preserve structure |
-| rationale | Rationale section | Parse HTML |
-| impact | Impact statement | Parse HTML |
-| audit | Audit procedure | Parse code blocks |
-| remediation | Remediation section | Parse code blocks |
-| default_value | Default value section | Parse text |
-| additional_info | Additional info | Parse HTML |
-| references | External references | Extract links |
+| description | Description section | As written (Markdown) |
+| rationale | Rationale section | As written (Markdown) |
+| impact | Impact statement | As written (Markdown) |
+| audit | Audit procedure | As written (Markdown, code blocks included) |
+| remediation | Remediation section | As written (Markdown, code blocks included) |
+| default_value | Default value section | As written (Markdown) |
+| additional_info | Additional info | As written (Markdown) |
+| references | External references | As written (Markdown) |
 | assessment_status | Assessment badge | Extract text (Automated/Manual) |
 | profiles | Profile tags | Parse badges (Level 1/2, Server/Workstation) |
 | cis_controls | CIS Controls v8 section | Parse list structured data |
@@ -246,7 +247,7 @@ field_mappings:
 title:
 target_element: "title"
 source_field: "title"
-transform: "strip_html"
+transform: "none"
 xccdf_type: "TextType"
 
 # Composite field mapping
@@ -259,17 +260,12 @@ components:
 sources:
 
 - field: "description"
-transform: "strip_html"
+separator: "\n\n" # follows the description when the rationale has text
 
 - field: "rationale"
-transform: "strip_html"
-separator: "\n\n"
 
 - tag: "FalsePositives"
-sources:
-
-- field: "additional_info"
-transform: "strip_html"
+content: ""
 xccdf_type: "HtmlTextWithSubType"
 
 # List field with CCI lookup
@@ -300,13 +296,9 @@ xccdf_rule[field_name] = value
 
 **Step 3: Apply Transformations**
 ```python
-# Transform: "strip_html"
-input: "<p>Disable <code>cramfs</code> filesystem</p>"
-output: "Disable cramfs filesystem"
-
-# Transform: "strip_html_keep_code"
-input: "<p>Run: <code>modprobe -n -v cramfs</code></p>"
-output: "Run: `modprobe -n -v cramfs`"
+# Transform: "none" (the stored text is Markdown; the DISA and CIS styles write it as it is)
+input: "Run:\n\n```\n# modprobe -n -v cramfs\n```"
+output: "Run:\n\n```\n# modprobe -n -v cramfs\n```"
 
 # Transform: "safe_field"
 input: recommendation.get('rationale') # Might be None
@@ -336,9 +328,9 @@ fix=FixText(value=remediation_text, fixref=f"F-{ref}")
 Recommendation(
 ref="1.1.1",
 title="Ensure mounting of cramfs filesystems is disabled",
-description="<p>The <code>cramfs</code> filesystem type is...</p>",
-rationale="<p>Removing support for unneeded filesystem types...</p>",
-remediation="<pre>modprobe -n -v cramfs</pre>",
+description="The `cramfs` filesystem type is...",
+rationale="Removing support for unneeded filesystem types...",
+remediation="```\nmodprobe -n -v cramfs\n```",
 nist_controls=["CM-7", "CM-7(1)"],
 cis_controls=[
 {"id": "4.8", "title": "Uninstall or Disable...", "ig": "IG2"}
@@ -378,11 +370,14 @@ content_parts = []
 for source in component['sources']:
 field = source['field'] # "description"
 value = getattr(recommendation, field)
-transformed = apply_transform(value, source.get('transform'))
-content_parts.append(transformed)
+text = apply_transform(value, source.get('transform', 'none'))
+if text:
+content_parts.append((text, source.get('separator', '')))
 
-content = separator.join(content_parts)
-xml_content += f"<{tag}>{content}</{tag}>"
+# each source's separator follows its text when another text comes after it
+content = ''.join(text + (sep if i < len(content_parts) - 1 else '') for i, (text, sep) in enumerate(content_parts))
+element = etree.Element(tag); element.text = content # lxml escapes the text; "" keeps <Tag></Tag>
+xml_content += etree.tostring(element, encoding="unicode")
 
 # 5. Create xsdata object
 description = HtmlTextWithSubType(value=xml_content)
@@ -409,6 +404,7 @@ value="<VulnDiscussion>The cramfs filesystem type is a compressed "
 
 Removing support for unneeded filesystem types reduces the attack surface...</VulnDiscussion>
 </description>
+<!-- in the file the description's text is escaped once by the serializer: &lt;VulnDiscussion&gt;... -->
 <ident system="http://cyber.mil/cci">CCI-000366</ident>
 <ident system="http://cyber.mil/cci">CCI-000778</ident>
 <fix fixref="F-1_1_1">modprobe -n -v cramfs</fix>
@@ -497,16 +493,15 @@ extract: "primary" # Only primary CCI per NIST control
 
 ### What is xsdata?
 
-xsdata generates Python classes from XSD schemas. For XCCDF:
+xsdata generates Python classes from XSD schemas. `scripts/generate_xccdf_models.py` runs it for both XCCDF versions (see [Regenerating the XCCDF Models](contributing.md#regenerating-the-xccdf-models)):
 
 ```bash
-# Generate models from NIST XCCDF schema
-xsdata schemas/xccdf_1.2.xsd --package models.xccdf
+uv run python scripts/generate_xccdf_models.py
 ```
 
-**Result:**
+**Result (abridged):**
 ```python
-# src/cis_bench/models/xccdf/__init__.py (auto-generated)
+# src/cis_bench/models/xccdf/xccdf_1_2.py (generated)
 
 class Benchmark:
 id: str
@@ -594,74 +589,56 @@ Benchmark
 ## Stage 6: XML Serialization
 
 **Input:** xsdata `Benchmark` object
-**Component:** xsdata XML serializer
-**Output:** Valid NIST XCCDF XML
+**Component:** xsdata tree serializer (`XCCDFExporter._render`, `XCCDFSerializer.serialize_to_tree`)
+**Output:** XCCDF XML with the style's namespaces declared on the root, written once
 
 ### Serialization Process
 
+The exporter passes the style's `benchmark.namespaces` to xsdata as its namespace map, with
+`default` as the default namespace:
+
 ```python
-from xsdata.formats.dataclass.serializers import XmlSerializer
-from xsdata.formats.dataclass.serializers.config import SerializerConfig
-
-# Configure serializer
-config = SerializerConfig(
-pretty_print=True,
-xml_declaration=True,
-encoding="UTF-8"
-)
-
-serializer = XmlSerializer(config=config)
-
-# Serialize Benchmark object to XML
-xml_string = serializer.render(
-benchmark,
-ns_map={
-None: "http://checklists.nist.gov/xccdf/1.2",
-"dc": "http://purl.org/dc/elements/1.1/",
-"xhtml": "http://www.w3.org/1999/xhtml"
+# src/cis_bench/exporters/xccdf_unified_exporter.py (XCCDFExporter._render)
+ns_map = {
+    (None if prefix == "default" else prefix): uri
+    for prefix, uri in self.config.namespaces.items()
 }
-)
+return XCCDFSerializer.serialize_to_tree(xccdf_benchmark, ns_map)
 ```
+
+`XCCDFSerializer.serialize_to_tree` renders the object with xsdata's `TreeSerializer` to an
+lxml tree. The exporter applies the style's post-processing to that tree
+(`XCCDFPostProcessor.process`) and writes it once with `XCCDFSerializer.tree_to_string`
+(lxml, indented, with the XML declaration). No step parses text the export itself wrote.
 
 ### Namespace Handling
 
-**XCCDF requires multiple namespaces:**
-```xml
-<Benchmark
-xmlns="http://checklists.nist.gov/xccdf/1.2"
-xmlns:dc="http://purl.org/dc/elements/1.1/"
-xmlns:xhtml="http://www.w3.org/1999/xhtml"
-xmlns:controls="http://cisecurity.org/xccdf/controls/1.0"
-xmlns:mitre="http://cisecurity.org/xccdf/mitre/1.0">
-```
+The generated XCCDF models put every element in its XCCDF version's namespace (or the one
+the schema gives it, such as Dublin Core); see
+[Regenerating the XCCDF Models](contributing.md#regenerating-the-xccdf-models). xsdata names
+each element with the prefix the namespace map gives its namespace and declares the whole
+map on the root. It makes up a prefix (`ns0`, ...) only for a namespace the map does not
+hold. It writes `xsi:type` values as QNames with the prefix in scope, so they resolve.
 
-**Namespace Purpose:**
+Each style declares in `benchmark.namespaces` exactly the namespaces its documents use:
 
-- `xccdf` (default) - Core XCCDF elements
-- `dc` - Dublin Core metadata (title, publisher, source)
-- `xhtml` - HTML content in descriptions
-- `controls` - CIS Controls v8 (custom namespace)
-- `mitre` - MITRE ATT&CK (custom namespace)
+| Style | Declared on the root |
+|-------|----------------------|
+| DISA | XCCDF 1.1 (default), `dc` |
+| CIS | XCCDF 1.2 (default), `xhtml`, `controls`, `cc6`, `cc7`, `cc8`, `dc`, `enhanced`, `xsi` |
+
+A namespace URI is listed once per style. xsdata keeps one binding per URI and drops the
+default namespace when a prefix has the same URI (`xsdata.utils.namespaces.clean_prefixes`),
+so a second prefix for the XCCDF namespace would put an `xccdf:` prefix on every element.
 
 ### Post-Processing
 
-xsdata sometimes generates incorrect namespace prefixes. We fix this:
-
-```python
-# src/cis_bench/utils/xml_utils.py
-
-def fix_xccdf_namespaces(xml_string):
-"""Fix namespace issues in xsdata output."""
-
-# Problem: xsdata adds ns0: prefix to custom namespaces
-# <ns0:cis_control>4.8</ns0:cis_control>
-
-# Fix: Replace with proper prefix
-xml_string = xml_string.replace('ns0:cis_', 'controls:')
-xml_string = xml_string.replace('ns0:mitre_', 'mitre:')
-
-return xml_string
-```
+After rendering, the exporter removes `override` attributes from the tree's XCCDF elements
+(`remove_override_attr`, default true); content of another namespace keeps its attributes. It renames no element and changes no namespace
+declaration. A Rule's CIS Controls metadata is not added here: the mapping engine builds it
+as model content (`metadata_from_config`), so xsdata writes it in schema order with the
+prefixes the root declares. Prefixes are chosen once, when xsdata renders the document,
+never rewritten afterwards (see the W3C TAG finding [QNames as identifiers in content](https://www.w3.org/2001/tag/doc/qnameids.html)).
 
 ---
 
@@ -697,8 +674,8 @@ attack surface of the system.</p>
 {
 'ref': '1.1.1',
 'title': 'Ensure mounting of cramfs filesystems is disabled',
-'description': '<p>The <code>cramfs</code> filesystem type is...</p>',
-'rationale': '<p>Removing support for unneeded filesystem types...</p>',
+'description': 'The `cramfs` filesystem type is...',
+'rationale': 'Removing support for unneeded filesystem types...',
 'assessment_status': 'Automated',
 'nist_controls': ['CM-7', 'CM-7(1)']
 }
@@ -710,8 +687,8 @@ attack surface of the system.</p>
 Recommendation(
 ref='1.1.1',
 title='Ensure mounting of cramfs filesystems is disabled',
-description='<p>The <code>cramfs</code> filesystem type is...</p>',
-rationale='<p>Removing support for unneeded filesystem types...</p>',
+description='The `cramfs` filesystem type is...',
+rationale='Removing support for unneeded filesystem types...',
 assessment_status='Automated',
 nist_controls=['CM-7', 'CM-7(1)']
 )
@@ -721,7 +698,7 @@ nist_controls=['CM-7', 'CM-7(1)']
 
 ```python
 # MappingEngine applies transformations
-title_value = "Ensure mounting of cramfs filesystems is disabled" # strip_html
+title_value = "Ensure mounting of cramfs filesystems is disabled" # none: the stored title
 
 description_html = """<VulnDiscussion>The cramfs filesystem type is a compressed read-only Linux filesystem...
 
@@ -758,6 +735,7 @@ weight=Decimal("10.0")
 
 Removing support for unneeded filesystem types reduces the local attack surface of the system.</VulnDiscussion>
 </description>
+<!-- in the file the description's text is escaped once by the serializer: &lt;VulnDiscussion&gt;... -->
 <ident system="http://cyber.mil/cci">CCI-000381</ident>
 <ident system="http://cyber.mil/cci">CCI-000366</ident>
 <fix fixref="F-1_1_1">
@@ -808,11 +786,11 @@ TypeError: Rule.title expects TextType, got str
 
 ### Stage 5: XML Serialization
 
-**Error:** Namespace issue
+**Error:** A prefix the style does not declare
 ```
-Namespace prefix 'ns0' not declared
- Post-processing fixes namespace prefixes
- Check xml_utils.fix_xccdf_namespaces()
+ValueError: namespace prefix 'cc9' is not declared in the style's namespaces
+ A mapping names a prefix (ident attribute namespace_prefix, dc_elements)
+ Fix: declare it in the style's benchmark.namespaces
 ```
 
 ---
@@ -840,7 +818,7 @@ Namespace prefix 'ns0' not declared
 **Base Configuration (`base_style.yaml`):**
 
 - Common namespaces
-- Shared transformations
+- Common rule defaults
 - Reusable field mappings
 - Both styles extend this
 
@@ -863,17 +841,7 @@ source_field: "title"
 transform: "uppercase" # Custom transform
 xccdf_type: "TextType"
 
-# Add custom metadata
-metadata:
-target_element: "metadata"
-custom_fields:
-
-- name: "organization"
-value: "My Company"
-
-- name: "custom_id"
-source_field: "ref"
-transform: "prefix_org"
+# Rule metadata: a metadata_from_config mapping (see the XCCDF mapping design)
 ```
 
 Register in exporter:
@@ -910,13 +878,12 @@ SUPPORTED_STYLES = {
 
 ### Parallel Processing
 
-Only catalog scraping uses parallelism:
+Catalog refresh and benchmark download both fetch in batches with `utils/parallel.py`, and every request goes through the session's adapter from `fetcher/http.py`:
 
-- 10 pages per batch
-- 5 concurrent threads
-- ~2 minutes for 1,300+ benchmarks
-
-Individual benchmark processing is sequential (fast enough).
+- Pages per batch and concurrent threads from the `CIS_BENCH_BATCH_SIZE` and `CIS_BENCH_MAX_CONCURRENT_REQUESTS` settings, passed to the scrapers by `cli/helpers/services.py`
+- At most `CIS_BENCH_REQUESTS_PER_SECOND` requests per second per WorkBench host, enforced by requests-ratelimiter across all threads
+- Retries by urllib3's `Retry` from the `RequestPolicy` the session was built with (`CIS_BENCH_REQUEST_RETRIES`, backoff factor, jitter); the retryable statuses and the `Retry-After` cap are constants in `config.py`
+- Full catalog (about 80 pages): under a minute; one benchmark's recommendation pages (for example 322): about two minutes
 
 ---
 
@@ -927,8 +894,8 @@ Individual benchmark processing is sequential (fast enough).
 1. **HTML Structure** - StrategyDetector validates
 2. **Field Extraction** - Pydantic validates
 3. **XCCDF Structure** - xsdata validates
-4. **XML Schema** - Optional xmllint validation
-5. **DISA Conventions** - DisaValidator checks STIG requirements
+4. **XML Schema** - `cis-bench validate` against the NIST schema
+5. **DISA Conventions** - `DISAConventionsValidator` (`cis_bench.validators.disa_conventions`) checks STIG requirements on the same parsed document
 
 ### Quality Checks
 
@@ -936,11 +903,15 @@ Individual benchmark processing is sequential (fast enough).
 # After export, validate
 cis-bench export 23598 --format xccdf --style disa -o output.xml
 
-# Validate with xmllint (if installed)
-xmllint --schema schemas/xccdf-1.1.4.xsd output.xml
+# Validate against the XCCDF schema
+cis-bench validate output.xml
 
-# Check DISA conventions
-python -c "from cis_bench.validators.disa_conventions import validate; validate('output.xml')"
+# Check DISA conventions (prints each error and warning; exits 1 on an error)
+python -c "
+import sys
+from cis_bench.validators.disa_conventions import validate_disa_conventions
+sys.exit(0 if validate_disa_conventions('output.xml') else 1)
+"
 ```
 
 ---
@@ -1018,6 +989,7 @@ cis-bench --verbose export 23598 --format xccdf --style cis
 ```
 
 **Logs show:**
+
 1. Loading configuration
 2. Applying field mappings
 3. Transformation applied to each field
@@ -1042,11 +1014,11 @@ ERROR: Rule.title expects TextType, got str
  Fix: Ensure MappingEngine wraps in correct type
 ```
 
-**"Namespace prefix not found"**
+**"... is not a setting the exporter reads"**
 ```
-ERROR: Namespace prefix 'ns0' not declared
- Check: xml_utils.fix_xccdf_namespaces() ran?
- Fix: Update namespace fixing regex
+ValueError: style.yaml: post_processing.preserve_namespaces is not a setting the exporter reads
+ Check: the style's post_processing section (the one setting is remove_override_attr)
+ Fix: declare the namespaces the style's documents use in benchmark.namespaces
 ```
 
 ---

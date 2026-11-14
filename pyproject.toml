@@ -33,24 +33,32 @@ dependencies = [
     "requests>=2.31.0",
     "beautifulsoup4>=4.12.2",
     "urllib3>=2.0.6",
+    # HTML to Markdown, for copies the v1 scraper saved with rendered HTML in their text
+    "markdownify>=1.2,<2",
+    # CommonMark parser: tells prose from code in the stored Markdown (the Markdown export)
+    "markdown-it-py>=4,<5",
     # Data modeling
     "pydantic>=2.0.0",
     "sqlmodel>=0.0.16",
     "alembic>=1.13.0",
     # CLI
-    "click>=8.1.0",
+    "click>=8.1.0,<9",  # cli/app.py reads Click's option parser, slated for removal in 9.0
     "rich>=13.7.0",
     "questionary>=2.0.0",
     # Authentication
     "browser-cookie3>=0.19.0",
     # SSL/TLS - Use system certificate stores
     "truststore>=0.8.0",
-    # Configuration
-    "python-dotenv>=1.0.0",
+    # Configuration (reads the environment and config.toml; brings python-dotenv, but .env
+    # files are not read)
+    "pydantic-settings>=2.16.0",
     # Export formats
     "PyYAML>=6.0.0",
-    "xsdata[cli,lxml]>=24.0.0",
+    "xsdata[lxml]>=26.10",
     "lxml>=5.0.0",
+    "requests-ratelimiter>=0.10.0",
+    # Comparing two benchmark versions (cis-bench diff)
+    "deepdiff>=9.1.0",
 ]
 
 [project.optional-dependencies]
@@ -59,6 +67,10 @@ dev = [
     "pytest>=7.4.0",
     "pytest-mock>=3.12.0",
     "pytest-cov>=4.1.0",
+    # Validates benchmark files against the JSON Schema the docs build publishes
+    "jsonschema>=4.26.0",
+    # Generates the XCCDF models from the XCCDF schemas
+    "xsdata[cli]>=26.10",
     # Linting and formatting
     "ruff>=0.8.0",
     # Security
@@ -74,6 +86,7 @@ dev = [
     "twine>=5.0.0",
     # Documentation
     "mkdocs-material>=9.5.0",
+    "mkdocs-autorefs>=1.0.0",
 ]
 
 [project.urls]
@@ -102,6 +115,11 @@ packages = {find = {where = ["src"]}}
 cis_bench = [
     "exporters/configs/**/*.yaml",
     "data/*.json",
+    # cis-bench validate: the XCCDF schemas and what they import (OpenSCAP's tree; the
+    # rest of schemas/ is repository-only)
+    "schemas/xccdf/**/*.xsd",
+    "schemas/common/*.xsd",
+    "schemas/cpe/**/*.xsd",
 ]
 
 [tool.semantic_release]
@@ -121,6 +139,12 @@ patch_tags = ["fix", "perf"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# An unclosed connection or file is a defect: ResourceWarning is an error, and so is the
+# form pytest gives a warning raised at garbage collection (an "unraisable" exception).
+filterwarnings = [
+    "error::ResourceWarning",
+    "error::pytest.PytestUnraisableExceptionWarning",
+]
 python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
@@ -129,11 +153,13 @@ python_functions = "test_*"
 # Run script tests explicitly with: uv run pytest tests/scripts/
 norecursedirs = [".git", "__pycache__", ".venv", "scripts"]
 
-# Markers for organizing tests
+# Markers for organizing tests. Each folder under tests/ is marked with its own name by
+# pytest_collection_modifyitems in tests/conftest.py; architecture is set per module.
 markers = [
     "unit: Unit tests (fast, isolated)",
     "integration: Integration tests (moderate speed, some I/O)",
     "e2e: End-to-end tests (slow, full pipeline)",
+    "regression: Regression tests (guards against reintroducing fixed problems)",
     "architecture: Architecture compliance tests",
     "scripts: Tests for project utility scripts (not part of cis-bench package)",
 ]
@@ -187,19 +213,27 @@ select = [
     "C4",  # flake8-comprehensions
     "UP",  # pyupgrade
     "S",   # flake8-bandit (security)
+    "TID251",  # banned APIs: settings are read only through cis_bench.config
 ]
 ignore = [
     "E501",  # line too long (handled by formatter)
     "S101",  # Allow assert in tests
 ]
 
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"os.getenv".msg = "Read settings from cis_bench.config.Settings; only config.py reads the environment."
+"os.environ".msg = "Read settings from cis_bench.config.Settings; only config.py reads the environment."
+"dotenv".msg = "cis-bench reads no .env file; settings come from the environment and config.toml through cis_bench.config.Settings."
+
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["S101", "S105", "S603", "S607", "B023", "F841"]  # Allow test-specific patterns
+"tests/**/*.py" = ["S101", "S105", "S603", "S607", "B023", "F841", "TID251"]  # Allow test-specific patterns; tests set the environment
+"src/cis_bench/config.py" = ["TID251"]  # the one module that reads the environment
 "src/cis_bench/models/xccdf/*.py" = ["S105"]  # PASS/FAIL are test result enums, not passwords
 "src/cis_bench/models/xccdf_v1_1/*.py" = ["S105"]  # PASS/FAIL are test result enums, not passwords
 "fetch.py" = ["B023"]  # Legacy script - not fixing
 "src/cis_bench/cli/commands/download.py" = ["B023"]  # Loop variable in callback is intentional
 "src/cis_bench/cli/app.py" = ["E402"]  # Imports after function to avoid circular imports with Click
+"scripts/generate_xccdf_models.py" = ["S603"]  # runs xsdata and ruff with fixed argument lists, no user input
 "src/cis_bench/cli/commands/auth.py" = ["S603"]  # subprocess calls secured: URL validated, full paths via shutil.which(), no shell=True
 
 [tool.mypy]
@@ -208,15 +242,17 @@ warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false  # Gradually enable
 
+[[tool.mypy.overrides]]
+module = ["browser_cookie3", "lxml", "lxml.*"]
+ignore_missing_imports = true
+
 [tool.bandit]
 # Bandit security scanner configuration
 exclude_dirs = ["/tests", "/venv", "/.venv", "/build", "/dist"]
 skips = [
     "B101",  # Skip assert_used (allowed in tests)
     "B105",  # Skip hardcoded_password_string (false positives in XCCDF enums: PASS/FAIL)
-    "B320",  # Skip lxml.etree.fromstring warnings (we parse XML we generate ourselves)
     "B404",  # Skip subprocess import (used in tests for xmllint validation)
-    "B410",  # Skip lxml import warnings (required for XCCDF processing)
     "B602",  # Skip shell=True (needed for Windows 'start' command - URL is trusted)
     "B603",  # Skip subprocess without shell (we use hardcoded commands)
     "B607",  # Skip partial executable path (xmllint is in PATH)

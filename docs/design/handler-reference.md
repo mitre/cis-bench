@@ -65,7 +65,8 @@ field_name:
 
 ### metadata_from_config
 
-Build any nested XML structure from YAML specification.
+Build a Rule's metadata content (nested elements in another namespace) from YAML. The
+content is xsdata model content on `Rule.metadata`; nothing is inserted after serialization.
 
 **Supports:** CIS Controls metadata, PCI-DSS hierarchies, ISO 27001 families
 
@@ -75,14 +76,12 @@ field_name:
   target_element: "metadata"
   structure: "metadata_from_config"
   source_field: "cis_controls"
-  requires_post_processing: true  # lxml injection after xsdata
   metadata_spec:
     root_element: "cis_controls"
-    namespace: "http://cisecurity.org/controls"
-    namespace_prefix: "controls"
+    namespace_prefix: "controls"  # declared in benchmark.namespaces
     allow_empty: true
 
-    group_by: "item.version"  # Optional grouping
+    group_by: "item.version"  # Required: items are written inside group elements
 
     group_element:
       element: "framework"
@@ -109,11 +108,15 @@ field_name:
 
 **Features:**
 
-- **Grouping:** Group items by field value
+- **Grouping:** Groups in key order, items in source order
 - **Nesting:** Unlimited depth via recursive children
-- **Attributes:** Template-based substitution
+- **Attributes:** Template-based substitution; booleans lowercase
 - **Content:** Static or template-based
-- **Empty handling:** Optional empty element generation
+- **Empty handling:** Optional empty root element (`allow_empty`)
+- **Checked when the style loads:** the prefix must be declared and not the XCCDF namespace;
+  the XCCDF version's Rule must have a metadata element (1.1.4 has none); names must be XML
+  names without a prefix; `group_by` is required. See
+  [XCCDF mapping design](xccdf-mapping-design.md#checked-when-the-style-loads)
 
 **Output:**
 ```xml
@@ -132,9 +135,8 @@ field_name:
 **Implementation:**
 
 - `MappingEngine.generate_metadata_from_config()`
-- `MappingEngine._build_config_item()`
-- `MappingEngine._build_config_child()`
-- `XCCDFUnifiedExporter._inject_metadata_from_config()`
+- `MappingEngine._build_config_element()`
+- `MappingEngine._refuse_unwritable_metadata_mappings()` (when the style loads)
 
 ---
 
@@ -149,24 +151,24 @@ Generate Benchmark-level `<Profile>` elements from rule applicability.
 benchmark:
   profiles:
     generate_from_rules: true
+    id_template: "{profile.title|slug:-}"  # every Profile id, from its title
     profile_mappings:
 
       - match: "Level 1 - Server"
-        id: "level-1-server"
         title: "Level 1 - Server"
         description: "CIS Level 1 for server environments"
 
       - match: "Level 2 - Server"
-        id: "level-2-server"
         title: "Level 2 - Server"
+        includes: ["Level 1 - Server"]  # Level 2 extends Level 1
 ```
 
 **How It Works:**
 
-1. Scans all recommendations
-2. For each profile mapping, finds rules where `match` is in `recommendation.profiles`
-3. Creates Profile element with select list of matching rule IDs
-4. Adds to Benchmark (not Rules)
+1. With the benchmark's profile definitions (read from its WorkBench page on download): one Profile per definition, selecting the rules that name it or any ancestor (`parent`); a definition that selects no rule is left out, with a warning naming it
+2. Without them (a copy saved earlier): one Profile per profile name the rules use, selecting the rules that name it or a profile it `includes`; a mapping for that name gives its title, description and `includes`
+3. Each Profile id comes from `id_template`; title and description from the definition (description through `description_transform`) or the mapping; two profiles that get one id, or two mappings for one name, stop the export
+4. Adds the Profiles to the Benchmark (not Rules), with an explicit select per rule
 
 **Output:**
 ```xml
@@ -210,7 +212,14 @@ reference:
 
 ### embedded_xml_tags
 
-DISA VulnDiscussion embedded XML tags.
+Tags inside an element's text: a STIG rule description's VulnDiscussion and the tags after it.
+Every component is one tag, written in the order given, always present (empty when the rule
+has no text for it): its text is the component's `content`, or its `sources` joined (each
+source names a `field`, a `transform`, default `none`, and the `separator` that follows its
+text when another source's text comes after it). Each tag is built and written by the XML
+library (lxml), which escapes its text, so a reader that unescapes the element's text once and
+parses the tags gets the text as stored, a placeholder such as `<user>` included; a tag name
+that is no XML name is refused when the style loads.
 
 **Config:**
 ```yaml
@@ -222,8 +231,9 @@ description:
       sources:
 
         - field: "description"
+          separator: "\n\n"   # follows the description when the rationale has text
+
         - field: "rationale"
-      separator: "\n\n"
 
     - tag: "FalsePositives"
       content: ""
@@ -238,6 +248,9 @@ Rationale text...</VulnDiscussion>
   <FalsePositives></FalsePositives>
 </description>
 ```
+
+(In the file the serializer escapes the description's text once, so the tags appear as `&lt;VulnDiscussion&gt;...`; shown unescaped here.)
+
 
 ---
 
@@ -255,7 +268,7 @@ check:
 
     - element: "check-content"
       source_field: "audit"
-      transform: "strip_html_keep_code"
+      transform: "none"
 ```
 
 **Output:**
@@ -275,7 +288,7 @@ check:
 | Hierarchical/grouped data | `metadata_from_config` | CIS Controls structure |
 | Rule applicability | `generate_profiles_from_rules` | Level 1/2 profiles |
 | W3C Dublin Core | `dublin_core` | NIST references |
-| DISA embedded tags | `embedded_xml_tags` | VulnDiscussion |
+| Tags inside an element's text | `embedded_xml_tags` | a STIG description's VulnDiscussion |
 | Simple nesting | `nested` | check/check-content |
 
 ---

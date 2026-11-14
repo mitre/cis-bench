@@ -1,10 +1,21 @@
-"""Unit tests for parallel catalog scraping with retry logic."""
+"""Unit tests for parallel catalog scraping."""
 
-from unittest.mock import Mock, patch
+import re
+import threading
+import time
+from unittest.mock import patch
 
 import pytest
+import requests
 
 from cis_bench.catalog.scraper import CatalogScraper
+from cis_bench.exceptions import AuthenticationError
+from tests.conftest import StubReply
+
+BASE = "https://workbench.cisecurity.org"
+TIMEOUT = (10.0, 30.0)
+WORKERS = 5
+BATCH = 10
 
 
 @pytest.fixture
@@ -15,13 +26,22 @@ def temp_db(tmp_path):
     db_path = tmp_path / "test_catalog.db"
     db = CatalogDatabase(db_path)
     db.initialize_schema()
-    return db
+    yield db
+    db.close()
 
 
 def get_sample_html(max_page=100):
     """Generate sample HTML with pagination."""
     return f"""
     <table>
+        <tr>
+            <th>Title</th>
+            <th>Version</th>
+            <th>Status</th>
+            <th>Community</th>
+            <th>Collections</th>
+            <th>Owner</th>
+        </tr>
         <tr>
             <td><a href="/benchmarks/12345">CIS Test Benchmark</a></td>
             <td>v1.0.0</td>
@@ -44,78 +64,40 @@ def sample_html():
 
 
 # ============================================================================
-# Tests: Retry Logic
-# ============================================================================
-
-
-class TestRetryLogic:
-    """Test retry logic for failed pages."""
-
-    def test_fetch_and_parse_page_retries_on_failure(self, temp_db):
-        """_fetch_and_parse_page retries failed requests."""
-        session = Mock()
-        scraper = CatalogScraper(temp_db, session)
-
-        call_count = 0
-
-        def side_effect(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            if call_count < 3:
-                raise Exception("Temporary network error")
-            # Succeed on 3rd attempt
-            response = Mock()
-            response.text = "<table></table>"
-            return response
-
-        scraper._fetch_page = Mock(side_effect=side_effect)
-
-        with patch(
-            "cis_bench.catalog.parser.WorkBenchCatalogParser.parse_catalog_page"
-        ) as mock_parse:
-            mock_parse.return_value = []
-
-            # Should succeed after retries
-            result = scraper._fetch_and_parse_page(2, max_retries=3)
-
-            assert call_count == 3  # Failed twice, succeeded third time
-            assert result == []
-
-    def test_fetch_and_parse_page_fails_after_max_retries(self, temp_db):
-        """_fetch_and_parse_page raises exception after max retries."""
-        session = Mock()
-        scraper = CatalogScraper(temp_db, session)
-
-        scraper._fetch_page = Mock(side_effect=Exception("Permanent error"))
-
-        with pytest.raises(Exception) as exc_info:
-            scraper._fetch_and_parse_page(2, max_retries=3)
-
-        assert "Permanent error" in str(exc_info.value)
-
-
-# ============================================================================
 # Tests: Parallel Scraping
 # ============================================================================
+
+
+class TestWorkersAndBatchSizeComeFromTheCaller:
+    def test_the_page_fetch_runs_with_the_given_workers_and_batch_size(
+        self, temp_db, sample_html, stub_session
+    ):
+        from cis_bench.catalog import scraper as scraper_module
+
+        session, _ = stub_session(lambda url: sample_html)
+        scraper = CatalogScraper(
+            temp_db, session, base_url=BASE, timeout=TIMEOUT, max_workers=2, batch_size=3
+        )
+        with patch.object(scraper_module, "iter_batches", wraps=scraper_module.iter_batches) as run:
+            scraper.scrape_full_catalog(max_pages=5)
+
+        assert run.call_args.kwargs["max_workers"] == 2
+        assert run.call_args.kwargs["batch_size"] == 3
 
 
 class TestMultiPageScraping:
     """Test scraping behavior with multiple pages."""
 
-    def test_scrape_multiple_pages_successfully(self, temp_db, sample_html):
+    def test_scrape_multiple_pages_successfully(self, temp_db, sample_html, stub_session):
         """Scraping successfully processes all requested pages."""
-        session = Mock()
+        session, _ = stub_session(lambda url: sample_html)
 
-        response = Mock()
-        response.text = sample_html
-        response.status_code = 200
-        response.raise_for_status = Mock()
-        session.get = Mock(return_value=response)
-
-        scraper = CatalogScraper(temp_db, session)
+        scraper = CatalogScraper(
+            temp_db, session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         # Scrape multiple pages - should complete successfully
-        stats = scraper.scrape_full_catalog(max_pages=5, rate_limit_seconds=0)
+        stats = scraper.scrape_full_catalog(max_pages=5)
 
         # Behavior: completes scraping
         assert "pages_scraped" in stats
@@ -123,20 +105,16 @@ class TestMultiPageScraping:
         assert stats["pages_scraped"] > 0
         assert stats["total_benchmarks"] >= 0
 
-    def test_scrape_large_catalog_completes(self, temp_db, sample_html):
+    def test_scrape_large_catalog_completes(self, temp_db, sample_html, stub_session):
         """Scraping can handle large catalogs."""
-        session = Mock()
+        session, _ = stub_session(lambda url: sample_html)
 
-        response = Mock()
-        response.text = sample_html
-        response.status_code = 200
-        response.raise_for_status = Mock()
-        session.get = Mock(return_value=response)
-
-        scraper = CatalogScraper(temp_db, session)
+        scraper = CatalogScraper(
+            temp_db, session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         # Behavior: handles large number of pages without crashing
-        stats = scraper.scrape_full_catalog(max_pages=20, rate_limit_seconds=0)
+        stats = scraper.scrape_full_catalog(max_pages=20)
 
         assert stats["pages_scraped"] > 0
         assert "failed_pages" in stats
@@ -150,113 +128,59 @@ class TestMultiPageScraping:
 class TestFailureThreshold:
     """Test failure threshold abort logic."""
 
-    def test_scraping_aborts_when_failure_rate_exceeds_10_percent(self, temp_db, sample_html):
+    def test_scraping_aborts_when_failure_rate_exceeds_10_percent(
+        self, temp_db, sample_html, monkeypatch, stub_session
+    ):
         """Scraping aborts when >10% of pages fail."""
-        session = Mock()
 
-        call_count = 0
+        def handler(url):
+            page_num = _page_number(url)
+            # Fail every even page (pages 2, 4, 6, 8, 10 -> 5/11 > 10%)
+            if page_num % 2 == 0:
+                raise requests.ConnectionError(f"Network error on page {page_num}")
+            return sample_html
 
-        def side_effect(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
+        session, _ = stub_session(handler)
 
-            # Fail 50% of pages (way over 10% threshold)
-            if call_count % 2 == 0:
-                raise Exception("Network error")
-
-            response = Mock()
-            response.text = sample_html
-            response.status_code = 200
-            response.raise_for_status = Mock()
-            return response
-
-        session.get = Mock(side_effect=side_effect)
-
-        scraper = CatalogScraper(temp_db, session)
+        scraper = CatalogScraper(
+            temp_db, session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         # Should abort due to high failure rate
         with pytest.raises(Exception) as exc_info:
-            scraper.scrape_full_catalog(max_pages=20, rate_limit_seconds=0)
+            scraper.scrape_full_catalog(max_pages=20)
 
         assert "Scraping aborted" in str(exc_info.value)
         assert "pages failed" in str(exc_info.value)
-
-    def test_scraping_handles_transient_failures_with_retry(self, temp_db, sample_html):
-        """Scraping handles transient failures via retry logic."""
-        session = Mock()
-
-        call_count = 0
-
-        def side_effect(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
-
-            # Fail first attempt on every 5th call, succeed on retry
-            if call_count % 10 == 5:
-                # This will fail first attempt, but retry will get next call which succeeds
-                if call_count <= 5:
-                    raise Exception(f"Transient error on call {call_count}")
-
-            response = Mock()
-            response.text = sample_html
-            response.status_code = 200
-            response.raise_for_status = Mock()
-            return response
-
-        session.get = Mock(side_effect=side_effect)
-
-        scraper = CatalogScraper(temp_db, session)
-
-        # Behavior: completes scraping, retry logic handles transient failures
-        stats = scraper.scrape_full_catalog(max_pages=10, rate_limit_seconds=0)
-
-        # Should complete successfully
-        assert stats["pages_scraped"] > 0
-        assert "failed_pages" in stats
-        # Retry should fix transient failures
-        assert stats["total_benchmarks"] >= 0
-
-
-# ============================================================================
-# Tests: Scraping Behavior
-# ============================================================================
 
 
 class TestScrapingBehavior:
     """Test overall scraping behavior (not implementation details)."""
 
-    def test_scraping_respects_max_pages_limit(self, temp_db, sample_html):
+    def test_scraping_respects_max_pages_limit(self, temp_db, sample_html, stub_session):
         """Scraping stops at max_pages limit."""
-        session = Mock()
+        session, _ = stub_session(lambda url: sample_html)
 
-        response = Mock()
-        response.text = sample_html
-        response.status_code = 200
-        response.raise_for_status = Mock()
-        session.get = Mock(return_value=response)
-
-        scraper = CatalogScraper(temp_db, session)
+        scraper = CatalogScraper(
+            temp_db, session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
         # Behavior: respects the max_pages parameter
-        stats = scraper.scrape_full_catalog(max_pages=10, rate_limit_seconds=0)
+        stats = scraper.scrape_full_catalog(max_pages=10)
 
         # Should not exceed requested pages
         assert stats["pages_scraped"] <= 10
         assert stats["pages_scraped"] > 0
 
-    def test_scraping_returns_statistics(self, temp_db, sample_html):
+    def test_scraping_returns_statistics(self, temp_db, sample_html, stub_session):
         """Scraping returns useful statistics."""
-        session = Mock()
+        session, _ = stub_session(lambda url: sample_html)
 
-        response = Mock()
-        response.text = sample_html
-        response.status_code = 200
-        response.raise_for_status = Mock()
-        session.get = Mock(return_value=response)
+        scraper = CatalogScraper(
+            temp_db, session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
 
-        scraper = CatalogScraper(temp_db, session)
-
-        stats = scraper.scrape_full_catalog(max_pages=5, rate_limit_seconds=0)
+        stats = scraper.scrape_full_catalog(max_pages=5)
 
         # Behavior: returns complete statistics
         assert "pages_scraped" in stats
@@ -265,3 +189,203 @@ class TestScrapingBehavior:
         assert isinstance(stats["pages_scraped"], int)
         assert isinstance(stats["total_benchmarks"], int)
         assert isinstance(stats["failed_pages"], list)
+
+
+# ============================================================================
+# Tests: Shared fetch, per-thread sessions and request policy
+# ============================================================================
+
+_LOGIN_PAGE = (
+    '<html><body><div class="index-signin-wrapper"><form action="/login">'
+    '<input name="login"><input name="password"></form></div></body></html>'
+)
+
+
+def _catalog_page(page: int, total_pages: int) -> str:
+    """A listing page whose one row is a benchmark unique to that page."""
+    return f"""
+    <table>
+        <tr><th>Title</th><th>Version</th><th>Status</th><th>Community</th>
+            <th>Collections</th><th>Owner</th></tr>
+        <tr>
+            <td><a href="/benchmarks/{10000 + page}">CIS Page {page} Benchmark</a></td>
+            <td>v1.0.0</td><td>Published</td><td>Test Community</td>
+            <td>Test Collection</td><td>testuser</td>
+        </tr>
+    </table>
+    <nav><a>1</a><a>2</a><a>3</a><a>{total_pages}</a></nav>
+    """
+
+
+def _page_number(url: str) -> int:
+    match = re.search(r"[?&]page=(\d+)", url)
+    assert match, url
+    return int(match.group(1))
+
+
+class TestCatalogRefreshSharedFetch:
+    """Catalog refresh uses the shared paced fetch, per-thread sessions and request policy."""
+
+    PAGES = 25
+
+    def _rotating_pages(self, overrides=None, delay=0.01):
+        """Handler for a PAGES-page catalog that rotates the session cookie on every response."""
+        counter = iter(range(1, 10_000))
+        lock = threading.Lock()
+        overrides = overrides or {}
+
+        def handler(url):
+            page = _page_number(url)
+            if page in overrides:
+                return overrides[page](page)
+            time.sleep(delay)
+            with lock:
+                rotation = next(counter)
+            return StubReply(
+                body=_catalog_page(page, self.PAGES),
+                set_cookies=(
+                    f"workbench_session=rotated-{rotation}; Path=/",
+                    f"XSRF-TOKEN=xsrf-{rotation}; Path=/",
+                ),
+            )
+
+        return handler
+
+    @staticmethod
+    def _logged_in(session):
+        session.verify = "/etc/ssl/corporate-ca.pem"
+        for name, value in (("auth0", "saved-auth"), ("workbench_session", "saved-session")):
+            session.cookies.set(name, value, domain="workbench.cisecurity.org", path="/")
+        return session
+
+    def test_catalog_pages_are_fetched_with_per_thread_sessions(self, temp_db, stub_session):
+        session, transport = stub_session(self._rotating_pages())
+        self._logged_in(session)
+        scraper = CatalogScraper(
+            temp_db, session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
+
+        stats = scraper.scrape_full_catalog(max_pages=self.PAGES)
+
+        assert stats["failed_pages"] == []
+        assert sorted(_page_number(u) for u in transport.urls) == list(range(1, self.PAGES + 1))
+        for headers in transport.headers:
+            assert "auth0=saved-auth" in headers.get("Cookie", "")
+        assert {s["verify"] for s in transport.settings} == {session.verify}
+        assert 2 <= transport.peak_in_flight <= 5
+        # Page one ran on the caller's session; the 24 worker responses rotated only the
+        # workers' own copies.
+        assert session.cookies.get("workbench_session") == "rotated-1"
+
+    def test_every_catalog_request_uses_the_timeout_the_scraper_is_given(
+        self, temp_db, stub_session
+    ):
+        temp_db.insert_benchmark(
+            {
+                "benchmark_id": "401",
+                "title": "CIS Benchmark 401",
+                "version": "v1.0.0",
+                "url": "https://workbench.cisecurity.org/benchmarks/401",
+                "status": "Published",
+            }
+        )
+        temp_db.save_downloaded("401", "{}", "h", 1, version="v1.0.0")
+        detail = "<html><body><span>Published 2 months ago on Aug 28th 2025</span></body></html>"
+        listing = self._rotating_pages(delay=0)
+
+        def handler(url):
+            return detail if "/benchmarks/401" in url else listing(url)
+
+        session, transport = stub_session(handler)
+        scraper = CatalogScraper(
+            temp_db,
+            session,
+            base_url=BASE,
+            timeout=(10.0, 45.0),
+            max_workers=WORKERS,
+            batch_size=BATCH,
+        )
+
+        scraper.scrape_full_catalog(max_pages=3)
+        scraper.scrape_page_one_update()
+        scraper.refresh_downloaded_pages()
+
+        assert len(transport.settings) == 5
+        assert {s["timeout"] for s in transport.settings} == {(10.0, 45.0)}
+
+    def test_a_page_that_keeps_timing_out_is_counted_failed(self, temp_db, stub_session):
+        def stalled(page):
+            raise requests.Timeout("Read timed out")
+
+        session, transport = stub_session(self._rotating_pages(overrides={3: stalled}, delay=0))
+        scraper = CatalogScraper(
+            temp_db, session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
+
+        stats = scraper.scrape_full_catalog(max_pages=self.PAGES)
+
+        assert stats["failed_pages"] == [3]
+
+    def test_a_missing_page_is_counted_failed(self, temp_db, stub_session):
+        session, transport = stub_session(
+            self._rotating_pages(overrides={4: lambda page: StubReply("gone", status=404)}, delay=0)
+        )
+        scraper = CatalogScraper(
+            temp_db, session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
+
+        stats = scraper.scrape_full_catalog(max_pages=self.PAGES)
+
+        assert stats["failed_pages"] == [4]
+
+    def test_a_login_page_stops_the_refresh_after_its_batch(self, temp_db, stub_session):
+        session, transport = stub_session(
+            self._rotating_pages(overrides={3: lambda page: _LOGIN_PAGE}, delay=0)
+        )
+        scraper = CatalogScraper(
+            temp_db, session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
+
+        with pytest.raises(AuthenticationError):
+            scraper.scrape_full_catalog(max_pages=self.PAGES)
+
+        fetched = {_page_number(u) for u in transport.urls}
+        assert fetched.isdisjoint(range(12, self.PAGES + 1))  # nothing from a later batch
+
+    def test_every_page_is_saved_and_counted_in_the_progress_bar(self, temp_db, stub_session):
+        session, _ = stub_session(self._rotating_pages())
+        scraper = CatalogScraper(
+            temp_db, session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
+
+        with (
+            patch("cis_bench.catalog.scraper.Progress") as progress_class,
+        ):
+            stats = scraper.scrape_full_catalog(max_pages=self.PAGES)
+
+        assert stats["total_benchmarks"] == self.PAGES
+        for page in range(1, self.PAGES + 1):
+            assert temp_db.get_benchmark(str(10000 + page)) is not None, page
+        bar = progress_class.return_value.__enter__.return_value
+        advanced = sum(c.kwargs.get("advance", 0) for c in bar.update.call_args_list)
+        assert advanced == self.PAGES
+        last_description = [
+            c.kwargs["description"] for c in bar.update.call_args_list if "description" in c.kwargs
+        ][-1]
+        assert f"{self.PAGES} benchmarks found" in last_description
+
+
+class TestCatalogRefreshAsksForPageOneOnce:
+    def test_refresh_requests_each_page_once(self, cli_runner, stub_session, tmp_path, monkeypatch):
+        from cis_bench.cli.app import cli
+
+        monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path))
+        session, transport = stub_session(lambda url: _catalog_page(_page_number(url), 3))
+
+        with patch(
+            "cis_bench.fetcher.auth.AuthManager.get_or_create_session", return_value=session
+        ):
+            result = cli_runner.invoke(cli, ["catalog", "refresh"])
+
+        assert result.exit_code == 0, result.output
+        assert sorted(_page_number(url) for url in transport.urls) == [1, 2, 3]

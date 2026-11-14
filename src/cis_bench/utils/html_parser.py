@@ -1,68 +1,34 @@
-"""HTML parsing and cleaning utilities for CIS benchmark data."""
+"""Parsers for the HTML tables and references WorkBench pages carry, and attribute access.
+
+Benchmark text itself is Markdown and is stored and written as it is; nothing here converts
+or strips it."""
 
 import logging
 import re
 from typing import Any
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 
 logger = logging.getLogger(__name__)
 
 
+def attribute_text(tag: Tag, name: str) -> str | None:
+    """The value of one attribute of tag as text, or None when the tag does not have it.
+
+    bs4 stores multi-valued attributes such as class as a list of words; those are joined
+    with single spaces, the way bs4 writes them back out.
+    """
+    value = tag.get(name)
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    return " ".join(value)
+
+
 class HTMLCleaner:
-    """Utilities for cleaning and parsing HTML content from CIS benchmarks."""
-
-    @staticmethod
-    def strip_html(html: str | None) -> str:
-        """Remove all HTML tags, return plain text.
-
-        Args:
-            html: HTML content or None
-
-        Returns:
-            Plain text with HTML tags removed
-        """
-        if not html:
-            return ""
-
-        # If no HTML tags present, return as-is (defensive programming)
-        # Avoids BeautifulSoup warning when text contains paths like /var/lib/...
-        if "<" not in html and ">" not in html:
-            return html.strip()
-
-        logger.debug(f"Stripping HTML tags from content (length: {len(html)})")
-        soup = BeautifulSoup(html, "html.parser")
-        result = soup.get_text(separator=" ", strip=True)
-        logger.debug(f"Stripped result length: {len(result)}")
-        return result
-
-    @staticmethod
-    def html_to_markdown(html: str | None) -> str:
-        """Convert HTML to Markdown format.
-
-        Args:
-            html: HTML content
-
-        Returns:
-            Markdown formatted text
-        """
-        if not html:
-            return ""
-
-        # Simple HTML → Markdown conversion
-        # For production, consider using html2text library
-        text = html
-        text = re.sub(r"<p>(.*?)</p>", r"\1\n\n", text)
-        text = re.sub(r"<code>(.*?)</code>", r"`\1`", text)
-        text = re.sub(r"<pre>(.*?)</pre>", r"```\n\1\n```", text, flags=re.DOTALL)
-        text = re.sub(r"<li>(.*?)</li>", r"- \1", text)
-        text = re.sub(r"<ul>(.*?)</ul>", r"\1", text, flags=re.DOTALL)
-        text = re.sub(r"<strong>(.*?)</strong>", r"**\1**", text)
-        text = re.sub(r"<em>(.*?)</em>", r"*\1*", text)
-
-        # Remove remaining tags
-        soup = BeautifulSoup(text, "html.parser")
-        return soup.get_text(separator="\n", strip=True)
+    """Parsers for the HTML tables (MITRE ATT&CK, CIS Controls) and references on WorkBench
+    pages."""
 
     @staticmethod
     def parse_mitre_table(html: str | None) -> dict[str, list[str]] | None:
@@ -86,7 +52,7 @@ class HTMLCleaner:
             logger.debug("No MITRE table found in HTML")
             return None
 
-        result = {"techniques": [], "tactics": [], "mitigations": []}
+        result: dict[str, list[str]] = {"techniques": [], "tactics": [], "mitigations": []}
 
         # Parse table rows
         rows = table.find_all("tr")
@@ -118,7 +84,8 @@ class HTMLCleaner:
         has_data = any(result.values())
         if has_data:
             logger.debug(
-                f"Parsed MITRE data: {len(result['techniques'])} techniques, {len(result['tactics'])} tactics, {len(result['mitigations'])} mitigations"
+                f"Parsed MITRE data: techniques={len(result['techniques'])}, "
+                f"tactics={len(result['tactics'])}, mitigations={len(result['mitigations'])}"
             )
         return result if has_data else None
 
@@ -250,4 +217,4 @@ class HTMLValidator:
             List of element IDs found
         """
         soup = BeautifulSoup(html, "html.parser")
-        return [elem.get("id") for elem in soup.find_all(id=True)]
+        return [attribute_text(elem, "id") or "" for elem in soup.find_all(id=True)]

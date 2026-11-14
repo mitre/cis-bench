@@ -10,6 +10,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.architecture
+
 
 class TestArchitectureCompliance:
     """Ensure implementation follows config-driven loop architecture."""
@@ -115,7 +117,7 @@ class TestArchitectureCompliance:
                 f"Use config attributes (structure, multiple) instead!"
             )
 
-    def test_config_driven_field_addition(self, disa_config_path, almalinux_complete_file):
+    def test_config_driven_field_addition(self, disa_config_path, synthetic_complete_file):
         """Config changes control output - can modify existing element behavior.
 
         Tests that we can CHANGE which source field maps to an element
@@ -151,9 +153,9 @@ class TestArchitectureCompliance:
             engine = MappingEngine(Path(temp_config))
 
             # Load test data
-            benchmark = Benchmark.from_json_file(str(almalinux_complete_file))
+            benchmark = Benchmark.from_json_file(str(synthetic_complete_file))
             rec = benchmark.recommendations[0]
-            context = {"platform": "test", "benchmark": benchmark}
+            context = {"benchmark": benchmark}
 
             # Map rule
             rule = engine.map_rule(rec, context)
@@ -197,7 +199,7 @@ class TestArchitectureCompliance:
 
         assert hasattr(engine, "_build_field_value"), "Missing DRY helper: _build_field_value"
 
-    def test_new_methods_exist_and_work(self, disa_config_path, almalinux_complete_benchmark):
+    def test_new_methods_exist_and_work(self, disa_config_path, synthetic_complete_benchmark):
         """Verify new loop-driven methods exist and are functional."""
         from cis_bench.exporters.mapping_engine import MappingEngine
 
@@ -209,9 +211,9 @@ class TestArchitectureCompliance:
         assert hasattr(engine, "map_benchmark"), "Missing map_benchmark() method"
 
         # Check they work
-        benchmark = almalinux_complete_benchmark
+        benchmark = synthetic_complete_benchmark
         rec = benchmark.recommendations[0]
-        context = {"platform": "test", "benchmark": benchmark}
+        context = {"benchmark": benchmark}
 
         # Test map_rule
         rule = engine.map_rule(rec, context)
@@ -225,3 +227,65 @@ class TestArchitectureCompliance:
         # Test map_benchmark
         xccdf_bench = engine.map_benchmark(benchmark, [group], context)
         assert xccdf_bench.id, "map_benchmark() didn't create benchmark with ID"
+
+
+class TestRuleChildOrderComesFromTheSchema:
+    """Injected metadata lands where the XCCDF schema places it, for every Rule.
+
+    Expected positions come from src/cis_bench/schemas/xccdf/1.2/xccdf_1.2.xsd, not from the
+    exporter: itemType ends with metadata (after reference), selectableItemType
+    and ruleType follow (rationale ... signature).
+    """
+
+    ITEM_ELEMENTS_BEFORE_METADATA = {
+        "status",
+        "dc-status",
+        "version",
+        "title",
+        "description",
+        "warning",
+        "question",
+        "reference",
+    }
+    ELEMENTS_AFTER_METADATA = {
+        "rationale",
+        "platform",
+        "requires",
+        "conflicts",
+        "ident",
+        "impact-metric",
+        "profile-note",
+        "fixtext",
+        "fix",
+        "check",
+        "complex-check",
+        "signature",
+    }
+
+    def test_cis_export_places_metadata_between_item_and_rule_elements(
+        self, synthetic_complete_benchmark, tmp_path
+    ):
+        from lxml import etree
+
+        from cis_bench.exporters import ExporterFactory
+
+        output = tmp_path / "cis.xml"
+        ExporterFactory.create("xccdf", style="cis").export(
+            synthetic_complete_benchmark, str(output)
+        )
+        rules = etree.parse(str(output)).getroot().xpath(".//*[local-name()='Rule']")
+        assert len(rules) == len(synthetic_complete_benchmark.recommendations)
+
+        rules_with_metadata = 0
+        for rule in rules:
+            names = [etree.QName(child).localname for child in rule]
+            if "metadata" not in names:
+                continue
+            rules_with_metadata += 1
+            first_meta = names.index("metadata")
+            last_meta = len(names) - 1 - names[::-1].index("metadata")
+            before, after = names[:first_meta], names[last_meta + 1 :]
+            assert set(names[first_meta : last_meta + 1]) == {"metadata"}, (rule.get("id"), names)
+            assert set(before) <= self.ITEM_ELEMENTS_BEFORE_METADATA, (rule.get("id"), before)
+            assert set(after) <= self.ELEMENTS_AFTER_METADATA, (rule.get("id"), after)
+        assert rules_with_metadata == len(rules), "every fixture Rule carries CIS Controls metadata"

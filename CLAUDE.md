@@ -57,11 +57,15 @@ cis-bench get "ubuntu 22" --format xccdf
 ```
 
 ### Test Markers
+Each folder under tests/ marks its tests with its own name (tests/conftest.py); a new
+folder needs its marker declared in pyproject.toml.
 ```bash
-pytest -m unit           # Fast, isolated tests
-pytest -m integration    # Component integration
-pytest -m e2e            # Full CLI workflows
-pytest -m architecture   # Architecture compliance
+pytest tests -m unit           # tests/unit: fast, isolated
+pytest tests -m integration    # tests/integration: component integration
+pytest tests -m e2e            # tests/e2e: full CLI workflows
+pytest tests -m regression     # tests/regression: guards against fixed problems
+pytest tests -m architecture   # architecture compliance modules (unit and regression)
+pytest tests/scripts           # project utility scripts (left out of `pytest tests`)
 ```
 
 ## Architecture
@@ -106,10 +110,9 @@ XCCDF 1.2/1.1.4 Output
 ## Testing
 
 ### Test Isolation
-Tests automatically use isolated environment (`CIS_BENCH_ENV=test`):
-- Test database: `/tmp/cis-bench-test/catalog.db`
-- Production: `~/.cis-bench/catalog.db`
-- Development: `~/.cis-bench-dev/catalog.db` (set `CIS_BENCH_ENV=dev`)
+Tests automatically use an isolated folder (`tests/conftest.py` sets `CIS_BENCH_HOME` to a temporary folder per run):
+- Default folders: XDG (`~/.config/cis-bench/config.toml`, `~/.local/share/cis-bench/` for catalog.db and benchmarks/, `~/.local/state/cis-bench/session.cookies`)
+- Development: set `CIS_BENCH_HOME=~/cis-bench-dev` for one folder
 
 ### Test Fixtures
 All test data via fixtures in `tests/conftest.py`. NO hardcoded paths.
@@ -117,17 +120,21 @@ All test data via fixtures in `tests/conftest.py`. NO hardcoded paths.
 - `fixtures_dir`, `benchmark_fixtures`, `xccdf_fixtures` - Test data paths
 - `sample_recommendation_minimal/complete` - Test data objects
 - `cli_runner` - Click test runner
+- `working_dir` - Empty current directory for commands that read or write relative paths
 
 ## Configuration
 
 ### Environment Variables
-- `CIS_BENCH_ENV` - Environment (test/dev/production)
-- `CIS_BENCH_BROWSER` - Default browser for auth
+- One pydantic-settings `Settings` class in `src/cis_bench/config.py`; precedence: CLI flag > environment > `<config folder>/config.toml` > default
+- `CIS_BENCH_HOME` - One flat folder for everything; `CIS_BENCH_CONFIG_DIR` - the config folder alone (both environment only; `CIS_BENCH_DATA_DIR` and `CIS_BENCH_ENV` are refused)
+- `CIS_BENCH_BROWSER` - Browser whose cookies log in when `--browser` is not given
+- Request tunables: `CIS_BENCH_REQUESTS_PER_SECOND`, `CIS_BENCH_MAX_CONCURRENT_REQUESTS`, `CIS_BENCH_BATCH_SIZE`, `CIS_BENCH_REQUEST_RETRIES`, `CIS_BENCH_RETRY_BACKOFF_FACTOR`, `CIS_BENCH_RETRY_JITTER_SECONDS`; every setting's type, default and accepted values are in the table `docs/user-guide/configuration.md` renders from `Settings` at docs build (`scripts/mkdocs_settings_table.py`)
 
 ### Config Paths
-- Session storage: `~/.cis-bench/session.json`
-- Catalog database: `~/.cis-bench/catalog.db`
-- Downloaded benchmarks: `~/.cis-bench/benchmarks/`
+- Session storage: `~/.local/state/cis-bench/session.cookies`
+- Catalog database: `~/.local/share/cis-bench/catalog.db`
+- Downloaded benchmarks: inside `catalog.db`; their files go to `~/.local/share/cis-bench/benchmarks/` (`<data folder>/benchmarks`, unless `--output-dir` says otherwise)
+- `cis-bench config migrate` moves an earlier version's `~/.cis-bench` into these folders
 
 ## Key Files
 
@@ -149,6 +156,8 @@ All test data via fixtures in `tests/conftest.py`. NO hardcoded paths.
 - Use `MappingEngine.get_xccdf_class()` instead of direct model imports
 - No version-specific imports (xccdf_1_2, xccdf_v1_1) in exporters
 - If design doc exists, follow it exactly; update design first if wrong
+- For parsing, conversion or format work, an established, tested library comes before code of our own: the rule and its check are in `docs/design/design-principles.md`
+- Benchmark text is stored as WorkBench gives it (Markdown, `\n` line breaks; the fetcher stores a blank-only recommendation field or overview as absent): no trim, strip or rewrite at ingest, HTML converted once by markdownify where it enters with the form recorded on the copy, presentation changes only at export by a library or a transform the style names, and any transform of stored text checked over the real cache first: the rule and its record are in `docs/design/design-principles.md`
 
 ### Red Flags (Stop and Reconsider)
 - Hard-coded type names in Python code
@@ -180,7 +189,7 @@ Do NOT push multiple separate commits to main in quick succession. This causes r
 ## Dependencies
 
 ### Core
-- **xsdata** - XCCDF model generation from NIST XSD schemas
+- **xsdata** - XCCDF models (generated from the NIST XSD schemas) and their XML serialization; the generator, `xsdata[cli]`, is in the dev extra and runs through `scripts/generate_xccdf_models.py` (never edit the generated models by hand)
 - **Click** - CLI framework
 - **Rich** - Terminal styling and progress
 - **Pydantic** - Data validation

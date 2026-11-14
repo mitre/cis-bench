@@ -25,10 +25,10 @@ benchmark:
 
   profiles:
     generate_from_rules: true
+    id_template: "{profile.title|slug:-}"  # every Profile id, from its title
     profile_mappings:
 
       - match: "SAQ A"
-        id: "saq-a"
         title: "Self-Assessment Questionnaire A"
 
 field_mappings:

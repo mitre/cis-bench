@@ -164,7 +164,7 @@ cis-bench export-bundle --platform almalinux --output cis_bundle.tar.gz
 
 # On air-gapped system
 cis-bench import-bundle cis_bundle.tar.gz
-cis-bench list-available --offline # Works from bundle
+cis-bench --offline search almalinux # Works from the bundle
 cis-bench export benchmark.json --format xccdf # No network needed
 ```
 
@@ -230,7 +230,7 @@ cis-bench export benchmark.json \
 ### High Value + Medium (v1.2)
 
 - Interactive multi-select
-- `get` command with fuzzy matching
+- `get` command with word-prefix matching
 - Benchmark diff/comparison
 - Framework mapping analysis
 
@@ -260,9 +260,9 @@ cis-bench export benchmark.json \
 3. Downloaded benchmarks (permanent, user manages)
 
 Cache locations:
-~/.cis-bench/cache/catalog.json
-~/.cis-bench/cache/http_cache.sqlite
-~/.cis-bench/cache/benchmark_metadata.json
+~/.cache/cis-bench/catalog.json
+~/.cache/cis-bench/http_cache.sqlite
+~/.cache/cis-bench/benchmark_metadata.json
 ```
 
 ### Platform Detection
@@ -334,8 +334,8 @@ cis-bench export-bundle --platform all --output cis_bundle_2025_q4.tar.gz
 
 # Air-gapped system
 cis-bench import-bundle cis_bundle_2025_q4.tar.gz
-cis-bench list-available --offline
-cis-bench get 23598 --offline --format xccdf
+cis-bench --offline search ubuntu
+cis-bench --offline get 23598 --format xccdf
 ```
 
 ---

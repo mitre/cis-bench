@@ -6,7 +6,8 @@ Tests cover:
 3. Serialization/deserialization (JSON round-trips)
 4. Nested models and relationships
 5. Edge cases and error handling
-6. DISAConventionsValidator functionality
+
+The DISA conventions validator is tested in test_disa_validators.py.
 """
 
 import json
@@ -16,6 +17,8 @@ from pathlib import Path
 
 import pytest
 from pydantic import HttpUrl, ValidationError
+
+from cis_bench.catalog.database import deserialize_benchmark_json
 
 # Import models
 from cis_bench.models.benchmark import (
@@ -27,20 +30,13 @@ from cis_bench.models.benchmark import (
     Recommendation,
 )
 
-# Import validator
-from cis_bench.validators.disa_conventions import (
-    DISAConventionsValidator,
-    validate_disa_conventions,
-)
-
 # ============================================================================
 # FIXTURES
 # ============================================================================
 
 # Using shared fixtures from tests/conftest.py:
 #   - project_root
-#   - almalinux_complete_file (points to tests/fixtures/benchmarks/almalinux_complete.json)
-#   - valid_disa_xccdf_file (points to tests/fixtures/xccdf/valid_disa_full.xml)
+#   - synthetic_complete_file (points to tests/fixtures/benchmarks/synthetic_complete.json)
 
 
 @pytest.fixture
@@ -59,8 +55,8 @@ def complete_recommendation_data():
     """Complete recommendation with all fields."""
     return {
         "ref": "6.1.1",
-        "title": "Ensure AIDE is installed",
-        "url": "https://workbench.cisecurity.org/sections/3680740/recommendations/6083840",
+        "title": "Ensure filesystem integrity verification agent is active",
+        "url": "https://workbench.cisecurity.org/sections/900010/recommendations/900611",
         "assessment_status": "Automated",
         "profiles": ["Level 1 - Server", "Level 1 - Workstation"],
         "cis_controls": [
@@ -79,11 +75,11 @@ def complete_recommendation_data():
             "mitigations": ["M1022"],
         },
         "nist_controls": ["AU-2", "SI-3"],
-        "description": "<p>AIDE is an intrusion detection tool</p>",
+        "description": "<p>Periodic cryptographic checksum verification detects tampering.</p>",
         "rationale": "<p>Security rationale here</p>",
         "impact": "<p>Impact statement</p>",
-        "audit": "<p>Run: <code>rpm -q aide</code></p>",
-        "remediation": "<p>Run: <code>dnf install aide</code></p>",
+        "audit": "<p>Run: <code>integrity-agent --status</code></p>",
+        "remediation": "<p>Run: <code>service-ctl enable --now integrity-agent</code></p>",
     }
 
 
@@ -277,6 +273,63 @@ class TestRecommendation:
         assert len(rec.mitre_mapping.techniques) == 2
         assert rec.description is not None
 
+    def test_profiles_joined_by_a_line_break_are_one_entry_each(self, minimal_recommendation_data):
+        # WorkBench gives a rule's profiles as one text with a Markdown line break between them.
+        rec = Recommendation(
+            **minimal_recommendation_data,
+            profiles=["Level 1 - Server  \nLevel 1 - Workstation"],
+        )
+        assert rec.profiles == ["Level 1 - Server", "Level 1 - Workstation"]
+
+    def test_profiles_are_stripped_kept_in_order_and_listed_once(self, minimal_recommendation_data):
+        rec = Recommendation(
+            **minimal_recommendation_data,
+            profiles=[
+                "  Level 2 - Server  ",
+                "",
+                "Level 1 - Server\r\nLevel 2 - Server",
+                "\n",
+                "Level 2 - Workstation",
+            ],
+        )
+        assert rec.profiles == ["Level 2 - Server", "Level 1 - Server", "Level 2 - Workstation"]
+
+    def test_a_cached_copy_with_joined_profiles_loads_one_entry_per_profile(
+        self, minimal_benchmark_data, minimal_recommendation_data
+    ):
+        stored = json.dumps(
+            {
+                **minimal_benchmark_data,
+                "total_recommendations": 1,
+                "recommendations": [
+                    {
+                        **minimal_recommendation_data,
+                        "profiles": ["Level 2 - Server  \nLevel 2 - Workstation"],
+                    }
+                ],
+            }
+        )
+
+        benchmark = deserialize_benchmark_json(stored)
+
+        assert benchmark.recommendations[0].profiles == [
+            "Level 2 - Server",
+            "Level 2 - Workstation",
+        ]
+
+    def test_a_copy_saved_before_profile_definitions_loads_with_none(self, minimal_benchmark_data):
+        stored = json.dumps(minimal_benchmark_data)  # no profile_definitions key
+
+        assert deserialize_benchmark_json(stored).profile_definitions == []
+
+    def test_a_benchmark_defines_each_profile_title_once(self, minimal_benchmark_data):
+        # Profile titles are what rules name; two definitions of one title are ambiguous.
+        definition = {"title": "Level 1 - Alpha"}
+        stored = json.dumps({**minimal_benchmark_data, "profile_definitions": [definition] * 2})
+
+        with pytest.raises(ValidationError, match="'Level 1 - Alpha'"):
+            deserialize_benchmark_json(stored)
+
     def test_recommendation_requires_ref(self):
         """Test ref field is required."""
         with pytest.raises(ValidationError) as exc:
@@ -445,6 +498,27 @@ class TestBenchmark:
         minimal_benchmark_data.pop("downloaded_at", None)
         benchmark = Benchmark(**minimal_benchmark_data)
         assert isinstance(benchmark.downloaded_at, datetime)
+        assert benchmark.downloaded_at.tzinfo is not None
+        assert benchmark.downloaded_at.utcoffset().total_seconds() == 0
+
+    def test_benchmark_downloaded_at_is_written_with_its_offset(self, minimal_benchmark_data):
+        minimal_benchmark_data.pop("downloaded_at", None)
+        benchmark = Benchmark(**minimal_benchmark_data)
+
+        written = json.loads(benchmark.model_dump_json())["downloaded_at"]
+
+        assert datetime.fromisoformat(written) == benchmark.downloaded_at
+        assert datetime.fromisoformat(written).tzinfo is not None
+
+    def test_a_zoneless_downloaded_at_from_an_earlier_file_is_kept_as_it_is(
+        self, minimal_benchmark_data
+    ):
+        minimal_benchmark_data["downloaded_at"] = "2026-11-06T20:05:58.615168"
+
+        benchmark = Benchmark(**minimal_benchmark_data)
+
+        assert benchmark.downloaded_at == datetime(2026, 11, 6, 20, 5, 58, 615168)
+        assert benchmark.downloaded_at.tzinfo is None
 
     def test_benchmark_with_recommendations(self, minimal_recommendation_data):
         """Test benchmark with actual recommendations."""
@@ -462,6 +536,85 @@ class TestBenchmark:
         )
         assert len(benchmark.recommendations) == 2
         assert all(isinstance(r, Recommendation) for r in benchmark.recommendations)
+
+
+# What a benchmark's WorkBench page says about it beyond its recommendations, in our own
+# words: release type, contributors, the benchmark it came from, community, milestone,
+# audience, acknowledgements, assets (CPE names) and revision history.
+PAGE_METADATA = {
+    "release_type": "Planned Update",
+    "contributors": ["Alex Example", "Sam Sample", "Alex Example"],
+    "parent_benchmark_url": "https://workbench.cisecurity.org/benchmarks/11111",
+    "parent_benchmark_title": "CIS Example Platform Benchmark v1.0.0",
+    "community_url": "https://workbench.cisecurity.org/communities/42",
+    "milestone_name": "Example Platform v2.0.0",
+    "milestone_url": "https://workbench.cisecurity.org/community/42/milestones/7",
+    "intended_audience": "Administrators who install and run the example platform.",
+    "acknowledgements": "The example platform community.",
+    "assets": [
+        {"title": "Example OS 9", "cpe_id": "cpe:2.3:o:example:example_os:9:*:*:*:*:*:*:*"},
+        {"title": "Example OS 10", "cpe_id": "cpe:2.3:o:example:example_os:10:*:*:*:*:*:*:*"},
+    ],
+    "revision_history": [
+        {"revised_at": "2025-09-23T14:54:00", "author": "Alex", "modification_count": 1},
+        {"revised_at": "2025-09-23T14:53:00", "author": "Sam", "modification_count": 2},
+    ],
+}
+
+
+class TestBenchmarkPageMetadata:
+    """The page metadata a Benchmark carries is kept through the stored JSON."""
+
+    def test_the_page_metadata_round_trips_through_the_stored_json(self, minimal_benchmark_data):
+        from cis_bench.catalog.database import serialize_benchmark_json
+
+        benchmark = Benchmark(**minimal_benchmark_data, **PAGE_METADATA)
+
+        content_json, _ = serialize_benchmark_json(benchmark)
+        stored = json.loads(content_json)
+        loaded = deserialize_benchmark_json(content_json)
+
+        for name, value in PAGE_METADATA.items():
+            assert stored[name] == value, name
+        assert loaded == benchmark
+
+    def test_the_page_metadata_round_trips_through_a_json_file(
+        self, minimal_benchmark_data, tmp_path
+    ):
+        benchmark = Benchmark(**minimal_benchmark_data, **PAGE_METADATA)
+        path = tmp_path / "benchmark.json"
+
+        benchmark.to_json_file(str(path))
+        loaded = Benchmark.from_json_file(str(path)).model_dump(mode="json")
+
+        for name, value in PAGE_METADATA.items():
+            assert loaded.get(name) == value, name
+
+    def test_a_copy_saved_before_the_page_metadata_loads_with_none_and_empty_lists(
+        self, minimal_benchmark_data
+    ):
+        loaded = deserialize_benchmark_json(json.dumps(minimal_benchmark_data))
+
+        dumped = loaded.model_dump()
+        for name in PAGE_METADATA:
+            assert name in dumped, name
+            expected = [] if isinstance(PAGE_METADATA[name], list) else None
+            assert dumped[name] == expected, name
+
+    def test_an_asset_needs_its_cpe_name(self, minimal_benchmark_data):
+        with pytest.raises(ValidationError, match="cpe_id"):
+            Benchmark(**minimal_benchmark_data, assets=[{"title": "Example OS 9"}])
+
+    def test_the_page_metadata_is_part_of_the_content_hash(self, minimal_benchmark_data):
+        # A copy whose page metadata changed is different content.
+        from cis_bench.catalog.database import serialize_benchmark_json
+
+        _, before = serialize_benchmark_json(Benchmark(**minimal_benchmark_data))
+        _, after = serialize_benchmark_json(
+            Benchmark(**minimal_benchmark_data, release_type="Planned Update")
+        )
+
+        assert before != after
 
 
 # ============================================================================
@@ -491,13 +644,13 @@ class TestSerialization:
         finally:
             Path(temp_path).unlink(missing_ok=True)
 
-    def test_benchmark_from_json_file(self, almalinux_complete_file):
+    def test_benchmark_from_json_file(self, synthetic_complete_file):
         """Test loading benchmark from JSON file."""
-        benchmark = Benchmark.from_json_file(str(almalinux_complete_file))
+        benchmark = Benchmark.from_json_file(str(synthetic_complete_file))
 
-        assert benchmark.title
-        assert benchmark.benchmark_id
-        assert len(benchmark.recommendations) > 0
+        assert benchmark.title == "CIS Synthetic Enterprise Platform Benchmark v1.0.0"
+        assert benchmark.benchmark_id == "90001"
+        assert len(benchmark.recommendations) == 20
         assert benchmark.total_recommendations == len(benchmark.recommendations)
 
     def test_benchmark_round_trip_json(self, minimal_benchmark_data):
@@ -549,165 +702,123 @@ class TestSerialization:
 
 
 # ============================================================================
-# REAL DATA TESTS
+# SYNTHETIC FIXTURE DATA TESTS
 # ============================================================================
 
 
-class TestRealBenchmarkData:
-    """Test with real benchmark data from test files."""
+class TestSyntheticBenchmarkData:
+    """Test deterministic platform-agnostic synthetic benchmark fixture."""
 
-    def test_load_complete_benchmark(self, almalinux_complete_file):
-        """Test loading complete test benchmark (322 recommendations)."""
-        benchmark = Benchmark.from_json_file(str(almalinux_complete_file))
+    def test_load_synthetic_complete_benchmark(self, synthetic_complete_file):
+        """Test loading complete synthetic benchmark and verifying full domain coverage."""
+        import re
 
-        assert benchmark.title == "CIS AlmaLinux OS 8 Benchmark v4.0.0"
-        assert benchmark.benchmark_id == "23598"
-        assert benchmark.version == "v4.0.0"
-        assert benchmark.total_recommendations == 322
-        assert len(benchmark.recommendations) == 322
+        from cis_bench.utils.cci_lookup import get_cci_service
 
-    def test_complete_benchmark_all_recommendations_valid(self, almalinux_complete_file):
-        """Test all recommendations in complete benchmark are valid."""
-        benchmark = Benchmark.from_json_file(str(almalinux_complete_file))
+        benchmark = Benchmark.from_json_file(str(synthetic_complete_file))
+
+        assert benchmark.title == "CIS Synthetic Enterprise Platform Benchmark v1.0.0"
+        assert benchmark.benchmark_id == "90001"
+        assert benchmark.version == "v1.0.0"
+        assert benchmark.total_recommendations == 20
+        assert len(benchmark.recommendations) == 20
+
+        refs = [r.ref for r in benchmark.recommendations]
+        assert refs[0] == "1.1.1"
+        assert refs[-1] == "6.2.1"
+        assert len({ref.split(".")[0] for ref in refs}) == 6
+
+        profiles_seen = {p for r in benchmark.recommendations for p in r.profiles}
+        assert profiles_seen == {
+            "Level 1 - Server",
+            "Level 1 - Workstation",
+            "Level 2 - Server",
+            "Level 2 - Workstation",
+        }
+
+        statuses_seen = {r.assessment_status for r in benchmark.recommendations}
+        assert statuses_seen == {"Automated", "Manual"}
+
+        recs_with_parent = [r for r in benchmark.recommendations if r.parent is not None]
+        recs_with_artifacts = [r for r in benchmark.recommendations if r.artifacts]
+        assert len(recs_with_parent) >= 4
+        assert len(recs_with_artifacts) >= 4
+
+        cci_service = get_cci_service()
+        resolved_ccis: list[str] = []
+        for rec in benchmark.recommendations:
+            if rec.cis_controls:
+                ccis, _ = cci_service.deduplicate_nist_controls(
+                    [c.control for c in rec.cis_controls],
+                    rec.nist_controls,
+                )
+                resolved_ccis.extend(ccis)
+        assert len(resolved_ccis) >= 40
+        assert all(re.fullmatch(r"CCI-\d{6}", cci) for cci in resolved_ccis)
+
+        # The fixture was saved by the v1 scraper, so its text loads as Markdown holding
+        # the shapes exports have to carry: inline code, fences, lists, tables, and the
+        # characters XML has to escape
+        combined_text = "\n".join(
+            field
+            for r in benchmark.recommendations
+            for field in (
+                r.description,
+                r.rationale,
+                r.impact,
+                r.audit,
+                r.remediation,
+                r.additional_info,
+                r.default_value,
+            )
+            if field
+        )
+        for token in ("`", "```\n", "\n- ", "| --- |", "&", "<", ">", '"', "'"):
+            assert token in combined_text, f"Expected Markdown token {token!r} in synthetic fixture"
+
+    def test_complete_benchmark_all_recommendations_valid(self, synthetic_complete_file):
+        """Test all recommendations in complete synthetic benchmark are valid."""
+        benchmark = Benchmark.from_json_file(str(synthetic_complete_file))
 
         for rec in benchmark.recommendations:
             assert isinstance(rec, Recommendation)
             assert rec.ref
             assert rec.title
             assert rec.url
-            assert rec.assessment_status
+            assert rec.assessment_status in {"Automated", "Manual"}
 
-    def test_complete_benchmark_has_cis_controls(self, almalinux_complete_file):
-        """Test complete benchmark has CIS controls."""
-        benchmark = Benchmark.from_json_file(str(almalinux_complete_file))
+    def test_complete_benchmark_has_cis_controls(self, synthetic_complete_file):
+        """Test synthetic benchmark has dual v7 + v8 CIS controls and IG combinations."""
+        benchmark = Benchmark.from_json_file(str(synthetic_complete_file))
 
-        # At least some recommendations should have CIS controls
         recs_with_controls = [r for r in benchmark.recommendations if r.cis_controls]
-        assert len(recs_with_controls) > 0
+        assert len(recs_with_controls) == 19
 
-        # Verify control structure
+        ig_tuples: set[tuple[bool, bool, bool]] = set()
         for rec in recs_with_controls:
+            versions = {c.version for c in rec.cis_controls}
+            assert versions == {7, 8}
             for control in rec.cis_controls:
                 assert isinstance(control, CISControl)
-                assert control.version in [7, 8]
                 assert control.control
+                ig_tuples.add((control.ig1, control.ig2, control.ig3))
 
-    def test_complete_benchmark_has_mitre_mappings(self, almalinux_complete_file):
-        """Test complete benchmark has MITRE mappings."""
-        benchmark = Benchmark.from_json_file(str(almalinux_complete_file))
+        assert (True, True, True) in ig_tuples
+        assert (False, True, True) in ig_tuples
+        assert (False, False, True) in ig_tuples
 
-        # At least some recommendations should have MITRE mappings
+    def test_complete_benchmark_has_mitre_mappings(self, synthetic_complete_file):
+        """Test synthetic benchmark has MITRE techniques, tactics, and mitigations."""
+        benchmark = Benchmark.from_json_file(str(synthetic_complete_file))
+
         recs_with_mitre = [r for r in benchmark.recommendations if r.mitre_mapping]
-        assert len(recs_with_mitre) > 0
+        assert len(recs_with_mitre) == 18
 
-        # Verify mapping structure
         for rec in recs_with_mitre:
             assert isinstance(rec.mitre_mapping, MITREMapping)
-
-
-# ============================================================================
-# VALIDATOR TESTS - DISAConventionsValidator
-# ============================================================================
-
-
-class TestDISAConventionsValidator:
-    """Test DISA conventions validator."""
-
-    def test_validator_accepts_valid_xccdf(self, valid_disa_xccdf_file):
-        """Test validator passes valid DISA XCCDF."""
-        validator = DISAConventionsValidator(str(valid_disa_xccdf_file))
-        is_valid, errors, warnings = validator.validate()
-
-        # Should be valid (or at least have no errors)
-        assert is_valid or len(errors) == 0
-
-    def test_validator_checks_required_elements(self, valid_disa_xccdf_file):
-        """Test validator checks for required benchmark elements."""
-        validator = DISAConventionsValidator(str(valid_disa_xccdf_file))
-        validator._check_required_benchmark_elements()
-
-        # Should not have errors for missing required elements
-        required_errors = [e for e in validator.errors if "Missing required element" in e]
-        assert len(required_errors) == 0
-
-    def test_validator_checks_plain_text_elements(self, valid_disa_xccdf_file):
-        """Test validator checks plain-text elements."""
-        validator = DISAConventionsValidator(str(valid_disa_xccdf_file))
-        validator._check_plain_text_elements()
-
-        # Should have all required plain-text IDs
-        required_ids = ["release-info", "generator", "conventionsVersion"]
-        for req_id in required_ids:
-            errors = [e for e in validator.errors if req_id in e]
-            assert len(errors) == 0, f"Missing plain-text id='{req_id}'"
-
-    def test_validator_checks_reference_element(self, valid_disa_xccdf_file):
-        """Test validator checks reference has DC elements."""
-        validator = DISAConventionsValidator(str(valid_disa_xccdf_file))
-        validator._check_reference_element()
-
-        # Should have dc:publisher and dc:source
-        ref_errors = [e for e in validator.errors if "reference missing" in e]
-        assert len(ref_errors) == 0
-
-    def test_validator_checks_groups(self, valid_disa_xccdf_file):
-        """Test validator checks Group elements."""
-        validator = DISAConventionsValidator(str(valid_disa_xccdf_file))
-        validator._check_groups()
-
-        # Should have groups (DISA STIGs use Groups)
-        no_groups_warning = [w for w in validator.warnings if "No Group elements" in w]
-        assert len(no_groups_warning) == 0
-
-    def test_validator_checks_rules(self, valid_disa_xccdf_file):
-        """Test validator checks Rule elements."""
-        validator = DISAConventionsValidator(str(valid_disa_xccdf_file))
-        validator._check_rules()
-
-        # Rules should have required attributes
-        severity_errors = [e for e in validator.errors if "severity" in e]
-        # Some warnings are OK, but no critical errors
-        assert len([e for e in severity_errors if "missing severity" in e]) == 0
-
-    def test_validator_detects_invalid_cci_format(self):
-        """Test validator detects invalid CCI format."""
-        # This test would need a fixture with invalid CCI
-        # For now, just verify the regex pattern works
-        import re
-
-        valid_ccis = ["CCI-000001", "CCI-123456", "CCI-999999"]
-        invalid_ccis = ["CCI-1", "CCI-12345", "CCI-1234567", "CCE-12345"]
-
-        cci_pattern = r"^CCI-\d{6}$"  # Anchors for exact match
-
-        for cci in valid_ccis:
-            assert re.match(cci_pattern, cci), f"{cci} should be valid"
-
-        for cci in invalid_ccis:
-            assert not re.match(cci_pattern, cci), f"{cci} should be invalid"
-
-    def test_validator_returns_tuple(self, valid_disa_xccdf_file):
-        """Test validator returns (is_valid, errors, warnings) tuple."""
-        validator = DISAConventionsValidator(str(valid_disa_xccdf_file))
-        result = validator.validate()
-
-        assert isinstance(result, tuple)
-        assert len(result) == 3
-        is_valid, errors, warnings = result
-        assert isinstance(is_valid, bool)
-        assert isinstance(errors, list)
-        assert isinstance(warnings, list)
-
-    def test_validator_helper_function(self, valid_disa_xccdf_file, capsys):
-        """Test validate_disa_conventions helper function."""
-        is_valid = validate_disa_conventions(str(valid_disa_xccdf_file))
-
-        assert isinstance(is_valid, bool)
-
-        # Check output was printed
-        captured = capsys.readouterr()
-        # Should print either errors, warnings, or success message
-        assert len(captured.out) > 0
+            assert rec.mitre_mapping.techniques
+            assert rec.mitre_mapping.tactics
+            assert rec.mitre_mapping.mitigations
 
 
 # ============================================================================
@@ -830,10 +941,10 @@ class TestEdgeCases:
 class TestIntegration:
     """Integration tests combining multiple components."""
 
-    def test_load_benchmark_export_and_reload(self, almalinux_complete_file):
+    def test_load_benchmark_export_and_reload(self, synthetic_complete_file):
         """Test full round-trip: load → export → reload → compare."""
         # Load original
-        original = Benchmark.from_json_file(str(almalinux_complete_file))
+        original = Benchmark.from_json_file(str(synthetic_complete_file))
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             temp_path = f.name
@@ -872,3 +983,301 @@ class TestIntegration:
         assert reconstructed.title == original.title
         assert reconstructed.benchmark_id == original.benchmark_id
         assert reconstructed.version == original.version
+
+
+# ============================================================================
+# LOADED TEXT IS MARKDOWN WITH \n LINE BREAKS
+# ============================================================================
+
+
+def _copy(minimal_benchmark_data, scraper_version, **text_fields):
+    """A stored copy with one recommendation whose text fields are the given ones."""
+    recommendation = {
+        "ref": "5.4.1.2",
+        "title": "Ensure minimum password days is configured",
+        "url": "https://workbench.cisecurity.org/sections/1/recommendations/2",
+        "assessment_status": "Automated",
+        **text_fields,
+    }
+    return {
+        **minimal_benchmark_data,
+        "scraper_version": scraper_version,
+        "total_recommendations": 1,
+        "recommendations": [recommendation],
+    }
+
+
+class TestLoadedTextIsMarkdown:
+    """A loaded copy holds Markdown with \\n line breaks whatever scraper saved it.
+
+    The v1 scraper (v1_2025_10) saved the page's rendered HTML, with placeholders such as
+    <user> escaped as entities; the v2 scraper saves the Markdown WorkBench gives, where a
+    placeholder is bare angle brackets, and often with Windows line breaks.
+    """
+
+    def test_a_copy_saved_by_the_v1_scraper_loads_with_a_fenced_code_block(
+        self, minimal_benchmark_data
+    ):
+        data = _copy(
+            minimal_benchmark_data,
+            "v1_2025_10",
+            remediation="<p>Run:</p><pre><code># chage --mindays &lt;N&gt; &lt;user&gt;</code></pre>",
+        )
+
+        remediation = Benchmark(**data).recommendations[0].remediation
+
+        assert remediation == "Run:\n\n```\n# chage --mindays <N> <user>\n```"
+
+    def test_a_v1_copy_keeps_words_structure_and_placeholders(self, minimal_benchmark_data):
+        data = _copy(
+            minimal_benchmark_data,
+            "v1_2025_10",
+            audit=(
+                "<p>Run the following for each <code>&lt;user&gt;</code> and check "
+                "<strong>net.ipv4.ip_forward</strong>:</p>"
+                "<ul><li>one</li><li>two</li></ul>"
+                "<ol><li>first</li><li>second</li></ol>"
+            ),
+        )
+
+        audit = Benchmark(**data).recommendations[0].audit
+
+        assert audit == (
+            "Run the following for each `<user>` and check **net.ipv4.ip_forward**:\n\n"
+            "- one\n- two\n\n1. first\n2. second"
+        )
+
+    def test_every_text_field_of_a_v1_copy_is_converted(self, minimal_benchmark_data):
+        fields = {
+            name: f"<p>{name} with <code>&lt;path&gt;</code></p>"
+            for name in (
+                "description",
+                "rationale",
+                "impact",
+                "audit",
+                "remediation",
+                "additional_info",
+                "default_value",
+                "artifact_equation",
+                "references",
+            )
+        }
+
+        recommendation = Benchmark(**_copy(minimal_benchmark_data, "v1_2025_10", **fields))
+        loaded = recommendation.recommendations[0]
+
+        assert {name: getattr(loaded, name) for name in fields} == {
+            name: f"{name} with `<path>`" for name in fields
+        }
+
+    def test_a_v1_copy_with_a_field_left_empty_keeps_it_empty(self, minimal_benchmark_data):
+        data = _copy(minimal_benchmark_data, "v1_2025_10", impact=None, default_value="")
+
+        loaded = Benchmark(**data).recommendations[0]
+
+        assert (loaded.impact, loaded.default_value) == (None, "")
+
+    def test_a_v2_copy_is_not_converted_so_its_placeholders_survive(self, minimal_benchmark_data):
+        remediation = "Run:\n\n```\n# chage --mindays <N> <user>\n```\n\n# A heading\n\n- item"
+        data = _copy(minimal_benchmark_data, "v2_2026_01", remediation=remediation)
+
+        assert Benchmark(**data).recommendations[0].remediation == remediation
+
+    def test_a_v2_copy_with_windows_line_breaks_loads_with_unix_ones_and_nothing_else_changed(
+        self, minimal_benchmark_data
+    ):
+        downloaded = {**minimal_benchmark_data, "downloaded_at": "2026-04-18T12:00:00Z"}
+        windows = _copy(
+            downloaded,
+            "v2_2026_01",
+            description="First line\r\nSecond line\r\n\r\nThird\rFourth",
+            audit="```\r\n# stat <path>\r\n```",
+            remediation="unchanged",
+        )
+        unix = _copy(
+            downloaded,
+            "v2_2026_01",
+            description="First line\nSecond line\n\nThird\nFourth",
+            audit="```\n# stat <path>\n```",
+            remediation="unchanged",
+        )
+
+        assert Benchmark(**windows).model_dump() == Benchmark(**unix).model_dump()
+
+    def test_a_v1_copy_written_out_and_loaded_again_holds_the_same_text(
+        self, minimal_benchmark_data, tmp_path
+    ):
+        data = _copy(
+            minimal_benchmark_data,
+            "v1_2025_10",
+            remediation="<p>Run:</p><pre><code># chage --mindays &lt;N&gt; &lt;user&gt;</code></pre>",
+        )
+        loaded = Benchmark(**data)
+        path = tmp_path / "copy.json"
+        loaded.to_json_file(str(path))
+
+        reloaded = Benchmark.from_json_file(str(path))
+
+        assert reloaded.model_dump() == loaded.model_dump()
+
+    def test_the_html_era_versions_are_the_v1_strategy_and_not_the_v2_one(self):
+        from cis_bench.fetcher.strategies.v1_current import WorkbenchV1Strategy
+        from cis_bench.fetcher.strategies.v2_2026 import WorkbenchV2Strategy
+        from cis_bench.models.benchmark import HTML_ERA_SCRAPER_VERSIONS
+
+        assert WorkbenchV1Strategy().version in HTML_ERA_SCRAPER_VERSIONS
+        assert WorkbenchV2Strategy().version not in HTML_ERA_SCRAPER_VERSIONS
+
+    def test_a_v1_copy_built_twice_from_the_same_recommendation_objects_converts_each_time_once(
+        self, minimal_benchmark_data
+    ):
+        html = "<p>Run <code>chage --mindays &lt;N&gt; &lt;user&gt;</code></p>"
+        recommendation = Recommendation(
+            ref="5.4.1.2",
+            title="Ensure minimum password days is configured",
+            url="https://workbench.cisecurity.org/sections/1/recommendations/2",
+            assessment_status="Automated",
+            remediation=html,
+        )
+        data = {
+            **minimal_benchmark_data,
+            "scraper_version": "v1_2025_10",
+            "total_recommendations": 1,
+            "recommendations": [recommendation],
+        }
+
+        first = Benchmark(**data)
+        second = Benchmark(**data)
+
+        assert recommendation.remediation == html
+        assert first.recommendations[0].remediation == "Run `chage --mindays <N> <user>`"
+        assert second.recommendations[0].remediation == first.recommendations[0].remediation
+
+    def test_a_line_break_the_v1_html_spelled_as_an_entity_loads_as_a_newline(
+        self, minimal_benchmark_data
+    ):
+        data = _copy(
+            minimal_benchmark_data,
+            "v1_2025_10",
+            audit="<pre><code>line one&#13;\nline two&#13;</code></pre>",
+        )
+
+        audit = Benchmark(**data).recommendations[0].audit
+
+        assert audit == "```\nline one\nline two\n```"
+
+    def test_a_loaded_v1_copy_dumped_without_its_defaults_loads_again_unchanged(
+        self, minimal_benchmark_data
+    ):
+        data = _copy(
+            minimal_benchmark_data,
+            "v1_2025_10",
+            remediation="<p>Run:</p><pre><code># chage --mindays &lt;N&gt; &lt;user&gt;</code></pre>",
+        )
+        loaded = Benchmark(**data)
+
+        reloaded = Benchmark.model_validate_json(loaded.model_dump_json(exclude_defaults=True))
+
+        assert reloaded.model_dump() == loaded.model_dump()
+
+
+class TestArtifactTitlesAreMarkdown:
+    """A loaded copy's artifact titles are Markdown, converted once.
+
+    WorkBench's artifact payload gives some titles as HTML (``<p>...</p>``); the parser
+    converts them as the payload is read, and a copy saved before that holds them as the
+    payload gave them. artifact_title_format says which form a copy holds: a copy saved
+    without it is html and is converted once as it loads. The form is never read from the
+    text itself: a placeholder such as <user> looks like a tag.
+    """
+
+    def _copy_with_an_artifact(self, minimal_benchmark_data, title, **fields):
+        data = _copy(minimal_benchmark_data, "v2_2026_01")
+        data["recommendations"][0]["artifacts"] = [
+            {
+                "id": 7,
+                "view_level": "5.4.1.2.1",
+                "title": title,
+                "status": "accepted",
+                "artifact_type": {},
+            }
+        ]
+        return {**data, **fields}
+
+    def test_a_copy_saved_without_the_marker_loads_with_the_title_as_markdown(
+        self, minimal_benchmark_data
+    ):
+        data = self._copy_with_an_artifact(
+            minimal_benchmark_data, "<p>Ensure the agent is <em>active</em></p>"
+        )
+
+        loaded = Benchmark(**data)
+
+        assert loaded.recommendations[0].artifacts[0].title == "Ensure the agent is *active*"
+        assert loaded.artifact_title_format == "markdown"
+
+    def test_a_copy_marked_markdown_keeps_a_title_with_a_placeholder(self, minimal_benchmark_data):
+        title = "Ensure <user> owns the file"
+        data = self._copy_with_an_artifact(
+            minimal_benchmark_data, title, artifact_title_format="markdown"
+        )
+
+        assert Benchmark(**data).recommendations[0].artifacts[0].title == title
+
+    def test_a_loaded_copy_dumped_and_loaded_again_keeps_the_placeholder_its_html_title_held(
+        self, minimal_benchmark_data
+    ):
+        data = self._copy_with_an_artifact(
+            minimal_benchmark_data, "<p>Ensure &lt;user&gt; owns the file</p>"
+        )
+        loaded = Benchmark(**data)
+
+        reloaded = Benchmark.model_validate_json(loaded.model_dump_json(exclude_defaults=True))
+
+        assert reloaded.recommendations[0].artifacts[0].title == "Ensure <user> owns the file"
+        assert reloaded.model_dump() == loaded.model_dump()
+
+    def test_a_v1_copy_converts_its_text_fields_and_its_artifact_titles_once(
+        self, minimal_benchmark_data
+    ):
+        data = _copy(
+            minimal_benchmark_data, "v1_2025_10", remediation="<p>Run <code>&lt;cmd&gt;</code></p>"
+        )
+        data["recommendations"][0]["artifacts"] = [
+            {
+                "id": 7,
+                "view_level": "5.4.1.2.1",
+                "title": "<p>Ensure &lt;user&gt; owns the file</p>",
+                "status": "accepted",
+                "artifact_type": {},
+            }
+        ]
+
+        recommendation = Benchmark(**data).recommendations[0]
+
+        assert (recommendation.remediation, recommendation.artifacts[0].title) == (
+            "Run `<cmd>`",
+            "Ensure <user> owns the file",
+        )
+
+
+class TestRecommendationCountMismatchCountsTheItems:
+    @pytest.mark.parametrize(("kept", "noun"), [(1, "item"), (2, "items")])
+    def test_the_message_agrees_with_the_number(self, sample_recommendation_complete, kept, noun):
+        from datetime import UTC, datetime
+
+        from pydantic import ValidationError
+
+        from cis_bench.models.benchmark import Benchmark
+
+        with pytest.raises(ValidationError, match=rf"recommendations list has {kept} {noun}(?!s)"):
+            Benchmark(
+                title="Synthetic",
+                benchmark_id="90001",
+                url="https://workbench.cisecurity.org/benchmarks/90001",
+                version="v1.0.0",
+                downloaded_at=datetime(2026, 11, 1, tzinfo=UTC),
+                scraper_version="v1_2025_10",
+                total_recommendations=5,
+                recommendations=[sample_recommendation_complete] * kept,
+            )

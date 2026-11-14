@@ -45,6 +45,11 @@ cis-bench export benchmark.json --format xccdf
 - Includes CCI (Control Correlation Identifiers) for NIST 800-53 mapping
 - Follows STIG element structure and naming
 
+The DISA conventions check (`cis_bench.validators.disa_conventions`) checks a DISA-style document against these conventions. Among its errors:
+
+- The Benchmark's own children must include `notice`, `front-matter`, `rear-matter`, `reference` (with `dc:publisher` and `dc:source`), `plain-text` with the ids `release-info`, `generator` and `conventionsVersion`, and `version`. An element of the same name inside a Group or Rule does not count.
+- Every `ident` with the system `http://cyber.mil/cci` is `CCI-` followed by exactly six digits 0-9, nothing more.
+
 ### Target Tools
 
 - DISA SCAP Compliance Checker (SCC)
@@ -55,82 +60,61 @@ cis-bench export benchmark.json --format xccdf
 
 ### Complete Rule Structure
 
-```xml
-<Rule id="xccdf_cis_almalinux8_rule_3_1_1"
-severity="medium"
-weight="10.0">
+A Rule for a recommendation with ref 3.1.1, CIS Controls v8 4.8 and v7 9.2, and the NIST
+controls CM-7 and AC-3 (element text shortened):
 
-<!-- STIG ID (maps to CIS ref) -->
+```xml
+<Rule id="SV-030101r1_rule" severity="medium" weight="10.0">
+
+<!-- The recommendation's ref -->
 <version>3.1.1</version>
 
-<!-- Title -->
-<title>Ensure kubeconfig file permissions are set to 644 or more restrictive</title>
+<title>Ensure the example service is disabled</title>
 
-<!-- Description with DISA embedded XML tags -->
+<!-- DISA's embedded tags; empty ones are kept -->
 <description>
-&lt;VulnDiscussion&gt;
-If kubelet is running, and if it is configured by a kubeconfig file, ensure
-that the proxy kubeconfig file has permissions of 644 or more restrictive.
-
-Improper access permissions could allow unauthorized users to access
-sensitive configuration data.
-&lt;/VulnDiscussion&gt;
+&lt;VulnDiscussion&gt;The recommendation's description and rationale.&lt;/VulnDiscussion&gt;
 &lt;FalsePositives&gt;&lt;/FalsePositives&gt;
 &lt;FalseNegatives&gt;&lt;/FalseNegatives&gt;
 &lt;Documentable&gt;false&lt;/Documentable&gt;
-&lt;Mitigations&gt;Additional configuration notes if present&lt;/Mitigations&gt;
+&lt;Mitigations&gt;Additional information, when the recommendation has it&lt;/Mitigations&gt;
 &lt;SeverityOverrideGuidance&gt;&lt;/SeverityOverrideGuidance&gt;
-&lt;PotentialImpacts&gt;None expected&lt;/PotentialImpacts&gt;
+&lt;PotentialImpacts&gt;The recommendation's impact, when it has one&lt;/PotentialImpacts&gt;
 &lt;ThirdPartyTools&gt;&lt;/ThirdPartyTools&gt;
 &lt;MitigationControl&gt;&lt;/MitigationControl&gt;
 &lt;Responsibility&gt;&lt;/Responsibility&gt;
 &lt;IAControls&gt;&lt;/IAControls&gt;
 </description>
 
-<!-- CCIs (from cis-cci-mapping.json) - DoD standard for NIST mapping -->
-<ident system="http://cyber.mil/cci">CCI-000381</ident>
+<!-- NIST controls the authors cite that no CCI below restates: AC-3 (CM-7 is
+     restated by the CCIs under CM-7 a and CM-7 b) -->
+<reference href="https://csrc.nist.gov/Projects/risk-management/sp800-53-controls">
+<dc:title>NIST SP 800-53</dc:title>
+<dc:identifier>AC-3</dc:identifier>
+</reference>
+
+<!-- Every CCI the mapping (cis-cci-mapping.json) gives each CIS Controls v8
+     safeguard, primary first; CCI-000366 when none has one -->
+<ident system="http://cyber.mil/cci">CCI-001762</ident>
 <ident system="http://cyber.mil/cci">CCI-000382</ident>
-<ident system="http://cyber.mil/cci">CCI-000380</ident>
+<ident system="http://cyber.mil/cci">CCI-000381</ident>
+<ident system="http://cyber.mil/cci">CCI-000384</ident>
 
-<!-- NIST controls NOT covered by CCIs (after deduplication) -->
-<reference href="https://csrc.nist.gov/Projects/risk-management/sp800-53-controls">
-<dc:identifier>SI-3</dc:identifier>
-</reference>
-<reference href="https://csrc.nist.gov/Projects/risk-management/sp800-53-controls">
-<dc:identifier>MP-7</dc:identifier>
-</reference>
+<!-- CIS Controls and MITRE ATT&CK -->
+<ident system="https://www.cisecurity.org/controls/v7">7:9.2</ident>
+<ident system="https://www.cisecurity.org/controls/v8">8:4.8</ident>
+<ident system="https://attack.mitre.org/techniques">T1068</ident>
+<ident system="https://attack.mitre.org/tactics">TA0004</ident>
+<ident system="https://attack.mitre.org/mitigations">M1042</ident>
 
-<!-- Remediation (STIG convention) -->
-<fixtext fixref="F-3_1_1">
-Run the following command:
-chmod 644 /var/lib/kubelet/kubeconfig
-</fixtext>
+<!-- Remediation -->
+<fixtext fixref="F-3_1_1">The recommendation's remediation.</fixtext>
 <fix id="F-3_1_1"/>
 
-<!-- Check/Audit (STIG convention) -->
+<!-- Audit -->
 <check system="C-3_1_1">
-<check-content>
-Run the following command:
-stat -c %a /var/lib/kubelet/kubeconfig
-
-Verify permissions are 644 or more restrictive.
-</check-content>
+<check-content>The recommendation's audit procedure.</check-content>
 </check>
-
-<!-- Additional metadata (CIS-specific, standard XCCDF elements) -->
-<metadata>
-<cis-control version="8" id="4.8">
-Uninstall or Disable Unnecessary Services on Enterprise Assets and Software
-</cis-control>
-<cis-control version="7" id="9.2">
-Ensure Only Approved Ports, Protocols and Services Are Running
-</cis-control>
-<profile>Level 1 - Server</profile>
-<profile>Level 1 - Workstation</profile>
-<mitre-technique>T1068</mitre-technique>
-<mitre-tactic>TA0001</mitre-tactic>
-<mitre-mitigation>M1022</mitre-mitigation>
-</metadata>
 
 </Rule>
 ```
@@ -141,17 +125,17 @@ Ensure Only Approved Ports, Protocols and Services Are Running
 |-----------|--------------|----------|-------|
 | ref | `<version>` | Direct | CIS 3.1.1 STIG ID equivalent |
 | title | `<title>` | Direct | Unchanged |
-| description | `<description>` VulnDiscussion (first part) | Embedded | Strip HTML tags |
-| rationale | `<description>` VulnDiscussion (second part) | Embedded | Strip HTML tags, append to description |
-| impact | `<description>` PotentialImpacts | Embedded | Strip HTML tags |
+| description | `<description>` VulnDiscussion (first part) | Embedded | The stored Markdown, as it is |
+| rationale | `<description>` VulnDiscussion (second part) | Embedded | The stored Markdown, after the description |
+| impact | `<description>` PotentialImpacts | Embedded | The stored Markdown, as it is |
 | additional_info | `<description>` Mitigations | Embedded | If present |
-| remediation | `<fixtext>` | Direct | Strip HTML, preserve code blocks |
-| audit | `<check><check-content>` | Nested | Strip HTML, preserve code blocks |
-| cis_controls | `<metadata>` cis-control | Custom | CIS-specific metadata |
-| mitre_mapping | `<metadata>` mitre-* | Custom | Techniques, tactics, mitigations |
-| profiles | `<metadata>` profile | Custom | Level 1/2, Server/Workstation |
-| nist_controls (via CCI mapping) | `<ident system="http://cyber.mil/cci">` | Direct | Primary + supporting CCIs |
-| nist_controls (extras) | `<reference><dc:identifier>` | Direct | Only if NOT covered by CCIs |
+| remediation | `<fixtext>` | Direct | The stored Markdown, as it is |
+| audit | `<check><check-content>` | Nested | The stored Markdown, as it is |
+| cis_controls | `<ident>` per CIS Controls version | Direct | `system` names the version, value `8:4.8` |
+| mitre_mapping | `<ident>` per technique, tactic and mitigation | Direct | `system` under attack.mitre.org |
+| profiles | Benchmark `<Profile>` with a `<select>` per Rule | Benchmark | One Profile per profile, e.g. `level-1-server` |
+| cis_controls (v8, via CCI mapping) | `<ident system="http://cyber.mil/cci">` | Direct | Every CCI of each v8 safeguard, primary first (`cci_lookup.extract: all`) |
+| nist_controls | `<reference>` with `dc:title` and `dc:identifier` | Direct | Every cited control, except one a written CCI sits under exactly |
 
 ### Attributes
 
@@ -159,83 +143,57 @@ Ensure Only Approved Ports, Protocols and Services Are Running
 |-----------|-------|-----------|
 | Rule/@severity | "medium" | CIS has no severity concept, default to medium (CAT II equivalent) |
 | Rule/@weight | "10.0" | DISA standard weight |
-| Rule/@id | `xccdf_cis_{platform}_rule_{ref}` | Synthetic ID, CIS-prefixed |
-| fixtext/@fixref | `F-{ref}` | Links to fix element |
-| fix/@id | `F-{ref}` | Matches fixref |
-| check/@system | `C-{ref}` | Synthetic check ID |
+| Rule/@id | `SV-{stig_number}r1_rule` | STIG rule id from the ref (3.1.1 gives `SV-030101r1_rule`) |
+| Group/@id | `V-{stig_number}` | STIG group id from the ref |
+| fixtext/@fixref | `F-{ref_normalized}` | Links to fix element |
+| fix/@id | `F-{ref_normalized}` | Matches fixref |
+| check/@system | `C-{ref_normalized}` | Synthetic check ID |
 
 ### CCI + NIST Deduplication Algorithm
 
-**Goal**: Use CCIs (DoD standard) where available, add NIST references only for extras
+**Goal**: use CCIs (the DoD standard) where the mapping gives them, and add a NIST reference
+only for each cited NIST control no CCI on the rule covers. The full rules are in
+[CCI + NIST Deduplication Algorithm](#cci-nist-deduplication-algorithm-disa-style-only).
 
 **Input**:
 
-- CIS Control from recommendation: "4.8"
-- CIS nist_controls: ["CM-7", "SI-3", "MP-7"]
-- CCI mapping for 4.8:
+- The recommendation's CIS Controls: v8 "4.8" (and its v7 control, which is not looked up)
+- Its NIST controls: ["CM-7", "SI-3", "MP-7"]
+- The mapping entry for 4.8 in `cis-cci-mapping.json`:
 ```json
 {
-"primary_cci": {"cci": "CCI-000381", "nist": "CM-7.1"},
+"cis_id": "4.8",
+"primary_cci": {"cci": "CCI-001762", "nist_control": "CM-7 (1) (b)"},
 "supporting_ccis": [
-{"cci": "CCI-000382", "nist": "CM-7.3"},
-{"cci": "CCI-000380", "nist": "CM-7.2"}
-]
+{"cci": "CCI-000382", "nist_control": "CM-7 b"},
+{"cci": "CCI-000381", "nist_control": "CM-7 a"},
+{"cci": "CCI-000384", "nist_control": "CM-7 (1) (a)"}
+],
+"mapping_status": "OFFICIAL"
 }
 ```
 
-**Step 1**: Extract all CCIs from mapping
-```
-CCIs: [CCI-000381, CCI-000382, CCI-000380]
-```
+**Step 1**: the DISA style takes every CCI of the safeguard (`extract: "all"`), primary
+first: CCI-001762, CCI-000382, CCI-000381, CCI-000384.
 
-**Step 2**: Determine which NIST controls each CCI covers
-```
-CCI-000381 CM-7.1 covers "CM-7"
-CCI-000382 CM-7.3 covers "CM-7"
-CCI-000380 CM-7.2 covers "CM-7"
-```
+**Step 2**: they sit under the controls CM-7(1) (the "(1) (b)" and "(1) (a)" entries) and
+CM-7 (the "b" and "a" entries).
 
-**Step 3**: Check each CIS-cited NIST control
-```
-For "CM-7": Covered by CCIs (CCI-000381, 382, 380)
-For "SI-3": NOT in any CCI mapping
-For "MP-7": NOT in any CCI mapping
-```
+**Step 3**: the cited "CM-7" is restated by the CCIs under CM-7 and is not written again;
+"SI-3" and "MP-7" are written as references.
 
-**Step 4**: Build output
+**Step 4**: output
 ```xml
-<!-- Add ALL CCIs from mapping (they cover CM-7) -->
-<ident system="http://cyber.mil/cci">CCI-000381</ident>
+<ident system="http://cyber.mil/cci">CCI-001762</ident>
 <ident system="http://cyber.mil/cci">CCI-000382</ident>
-<ident system="http://cyber.mil/cci">CCI-000380</ident>
-
-<!-- Add extras as references (not covered by CCIs) -->
-<reference>
-<dc:identifier>SI-3</dc:identifier>
+<ident system="http://cyber.mil/cci">CCI-000381</ident>
+<ident system="http://cyber.mil/cci">CCI-000384</ident>
+<reference href="https://csrc.nist.gov/Projects/risk-management/sp800-53-controls">
+<dc:title>NIST SP 800-53</dc:title><dc:identifier>SI-3</dc:identifier>
 </reference>
-<reference>
-<dc:identifier>MP-7</dc:identifier>
+<reference href="https://csrc.nist.gov/Projects/risk-management/sp800-53-controls">
+<dc:title>NIST SP 800-53</dc:title><dc:identifier>MP-7</dc:identifier>
 </reference>
-```
-
-**Matching Logic for NIST Controls**:
-```python
-def nist_control_matches(cited, cci_mapped):
-"""Check if CCI-mapped control covers cited control.
-
-Examples:
-cited="CM-7", cci_mapped="CM-7.1" True
-cited="CM-7", cci_mapped="CM-7" True
-cited="CM-7.1", cci_mapped="CM-7" False (too broad)
-cited="CM-7(5)", cci_mapped="CM-7.1" False (different enhancement)
-
-Logic: Strip enhancement numbers, check if cci_mapped starts with cited
-"""
-cited_base = cited.split('(')[0] # "CM-7(5)" "CM-7"
-cci_base = cci_mapped.split('(')[0] # "CM-7(5)" "CM-7"
-
-# CM-7.1 covers CM-7, but not vice versa
-return cci_base.startswith(cited_base)
 ```
 
 ### Why This Normalization Is Correct
@@ -374,10 +332,12 @@ Verify the permissions are 644 or more restrictive.
 |-----------|-------------------|----------|-------|
 | ref | `<version>` | Direct | CIS reference number |
 | title | `<title>` | Direct | Unchanged |
-| description | `<description>` | Direct | Clean, no embedded tags |
+| description | `<description>` | Direct | The stored Markdown, then a "Default Value:" section and an "Additional Information:" section when those fields have text (CIS folds extra sections into its text elements the same way) |
 | rationale | `<rationale>` | Direct | Separate element |
 | impact | `<warning category="general">` | Direct | XCCDF standard for impacts |
-| additional_info | `<metadata>` additional-info | Custom | If present |
+| default_value | `<description>` | Folded | After the description, under "Default Value:" |
+| additional_info | `<description>` | Folded | After the default value, under "Additional Information:" |
+| references | `<ident system="URL">` | Direct | One ident per non-empty line, as stored, after the CIS Controls idents: the form CIS's own XCCDF uses |
 | remediation | `<fixtext>` | Direct | Same as DISA |
 | audit | `<check><check-content>` | Nested | Same as DISA |
 | profiles | `<metadata>` cis-profile | Custom | Level/workload tags |
@@ -393,8 +353,8 @@ Verify the permissions are 644 or more restrictive.
 |--------|------------|------------------|
 | **Description structure** | Embedded XML tags (VulnDiscussion, etc.) | Clean separate elements |
 | **NIST mapping** | Via CCIs (`<ident>`) | Direct references |
-| **CIS Controls** | In metadata only | In metadata |
-| **MITRE** | In metadata | In metadata |
+| **CIS Controls** | `<ident>` per version | `<metadata>` cis_controls and `<ident>` with controlURI |
+| **MITRE** | `<ident>` | `<ident>` |
 | **Rationale** | Embedded in VulnDiscussion | Separate `<rationale>` element |
 | **Impact** | Embedded as PotentialImpacts | `<warning>` element |
 | **Complexity** | Higher (DoD conventions) | Lower (clean structure) |
@@ -407,169 +367,56 @@ Verify the permissions are 644 or more restrictive.
 ### Purpose
 Avoid duplicating NIST control references when CCIs already provide that mapping.
 
+### The mapping file
+
+`src/cis_bench/data/cis-cci-mapping.json` maps each CIS Controls v8 safeguard (`cis_id`,
+"4.8") to DISA CCIs: a `primary_cci` and up to three `supporting_ccis`, each with its
+`cci`, `confidence`, `reasoning` and `nist_control` (the CCI's NIST SP 800-53 Rev 5 index
+in DISA's CCI list, such as "CM-7 (1) (b)"). `mapping_status` is:
+
+- `OFFICIAL`: the safeguard's NIST controls are CIS's own, and its CCIs are DISA's for those
+  controls. Only these entries give CCIs.
+
+- `INFERRED`: CCIs kept as research data; they give no CCIs and cover nothing.
+- `UNMAPPED`: no CCI fits; no `primary_cci`.
+
+`utils/cci_lookup.py` reads every entry through one reader and refuses an OFFICIAL entry
+whose primary CCI is missing or any of whose CCIs lacks `cci` or `nist_control`.
+
 ### Algorithm
 
-**Input**:
+For each recommendation, once:
 
-- `cis_controls`: List of CIS Control objects from recommendation
-- `nist_controls`: List of NIST control IDs cited by CIS authors (e.g., ["CM-7", "SI-3"])
-- `cis_cci_mapping`: Loaded from cis-cci-mapping.json
-
-**Process**:
-
-**Step 1**: For each CIS Control, look up CCI mapping
-```python
-for cis_ctrl in recommendation.cis_controls:
-cis_id = f"{cis_ctrl.version}.{cis_ctrl.control}" # "8.4.8" or "7.9.2"
-
-mapping = cis_cci_mapping.get(cis_id)
-if mapping:
-# Collect CCIs
-all_ccis.append(mapping['primary_cci']['cci'])
-all_ccis.extend([s['cci'] for s in mapping['supporting_ccis']])
-```
-
-**Step 2**: Build CCI NIST reverse map
-```python
-cci_to_nist = {}
-for mapping in cis_cci_mapping.values():
-# From primary
-cci_to_nist[mapping['primary_cci']['cci']] = extract_nist(mapping['primary_cci'])
-
-# From supporting
-for supp in mapping['supporting_ccis']:
-cci_to_nist[supp['cci']] = extract_nist(supp)
-
-# Extract NIST from CCI mapping entry
-def extract_nist(cci_entry):
-# Could be in 'nist' field or need to parse from reasoning
-# Return base control: "CM-7.1" "CM-7"
-```
-
-**Step 3**: Check which cited NIST controls are covered by CCIs
-```python
-covered_nist = set()
-for cci in all_ccis:
-nist_ctrl = cci_to_nist.get(cci)
-if nist_ctrl:
-base = nist_ctrl.split('(')[0].split('.')[0] # "CM-7(5)" "CM-7"
-covered_nist.add(base)
-```
-
-**Step 4**: Find NIST controls NOT covered by CCIs
-```python
-extra_nist = []
-for cited in recommendation.nist_controls:
-cited_base = cited.split('(')[0].split('.')[0]
-if cited_base not in covered_nist:
-extra_nist.append(cited)
-```
-
-**Output**:
-```xml
-<!-- All CCIs (cover CM-7) -->
-<ident>CCI-000381</ident>
-<ident>CCI-000382</ident>
-<ident>CCI-000380</ident>
-
-<!-- Extras not covered by CCIs -->
-<reference><dc:identifier>SI-3</dc:identifier></reference>
-<reference><dc:identifier>MP-7</dc:identifier></reference>
-```
+1. Look up only the CIS Controls of the version the mapping file is keyed by
+   (`cci_lookup.cis_controls_version: 8` in `disa.yaml`); v7 numbers name unrelated v8
+   safeguards.
+2. Collect every CCI of each safeguard, primary first, each CCI once (`extract: "all"` in
+   the DISA style; `"primary"` would keep only the first). The export is a transform: what
+   the mapping gives a safeguard, the rule carries.
+3. A CCI restates the control and enhancement of its `nist_control`, without sub-parts:
+   "CM-7 (1) (b)" restates CM-7(1), "CM-7 b" restates CM-7, "SC-7 (4) (b)" restates SC-7(4).
+4. Every NIST control the recommendation's authors cite becomes a `<reference>`
+   (`source_logic: "nist_after_cci_deduplication"`, with the `dc_elements` the field names),
+   except one a written CCI restates exactly.
+5. A recommendation with no CCI gets `fallback_cci` (CCI-000366, CM-6 b), and all its NIST
+   controls become references.
 
 ### NIST Control Matching Rules
 
-**Matching is hierarchical**:
-
-- CCI maps to "CM-7.1" **covers** citation of "CM-7"
-- CCI maps to "CM-7" does **NOT cover** citation of "CM-7.1" (too specific)
-- CCI maps to "CM-7(5)" **covers** "CM-7" but not "CM-7(4)" (different enhancement)
-
-**Base matching**:
-```python
-def cci_covers_citation(cci_nist_control: str, cited_nist_control: str) -> bool:
-"""Check if CCI-mapped control covers the cited control.
-
-Examples:
-("CM-7.1", "CM-7") True
-("CM-7", "CM-7") True
-("CM-7", "CM-7.1") False (CCI too broad)
-("CM-7.1", "CM-7.1") True
-("CM-7.1", "CM-7.2") False (different sub-control)
-"""
-# Normalize: remove enhancements
-cited_base = cited_nist_control.split('(')[0]
-cci_base = cci_nist_control.split('(')[0]
-
-# Check if CCI control starts with cited
-# "CM-7.1".startswith("CM-7") True
-return cci_base.startswith(cited_base)
-```
+A cited control is left out only when a written CCI sits under exactly that control and
+enhancement: a CCI for "CM-7 (1) (b)" restates a citation of "CM-7(1)" or "CM-7 (1)"; it
+does not stand for "CM-7" (the base control is a broader requirement) or for "CM-7(2)" (a
+different enhancement), so those are written. Spacing, sub-parts ("a 1", "(b)") and the
+assessment suffix ("CM-7.1" is CM-7) do not matter. Nothing the authors cite is dropped
+for being "close" to a CCI.
 
 ### Edge Cases
 
-**Case 1**: CIS cites "CM-7" but CCI maps to "CM-7(5)"
+- **A recommendation with no CIS Controls** (older benchmarks): the fallback CCI, and every
+  NIST control as a reference.
 
-- Match: CM-7(5) covers CM-7? **YES** (enhancement of CM-7)
-- Action: Use CCI
-
-**Case 2**: CIS cites "CM-7.1" but CCI maps to "CM-7"
-
-- Match: CM-7 covers CM-7.1? **NO** (too general)
-- Action: Add CM-7.1 as reference (CCI doesn't cover specific sub-control)
-
-**Case 3**: CIS has no CIS Controls (old benchmark)
-
-- No CCI mapping available
-- Action: Add all NIST controls as references
-
-**Case 4**: CCI mapping not found for CIS Control
-
-- Mapping incomplete
-- Action: Add all NIST controls as references, log warning
-
-### Implementation Notes
-
-**CCI Mapping File**: Bundle cis-cci-mapping.json with tool
-```python
-# Load once at module import
-import json
-from pathlib import Path
-
-CCI_MAPPING_FILE = Path(__file__).parent / 'data' / 'cis-cci-mapping.json'
-
-with open(CCI_MAPPING_FILE) as f:
-CIS_CCI_MAPPING = json.load(f)
-```
-
-**Lookup function**:
-```python
-def get_ccis_for_cis_control(cis_version: int, cis_control_id: str) -> List[str]:
-"""Get all CCIs for a CIS control.
-
-Args:
-cis_version: 7 or 8
-cis_control_id: "4.8", "10.3", etc.
-
-Returns:
-List of CCI identifiers ["CCI-000381", "CCI-000382", ...]
-"""
-# CCI mapping uses just control number, not version-prefixed
-# Both v7 and v8 might map to same CCIs (NIST doesn't change)
-
-mapping = CIS_CCI_MAPPING.get(cis_control_id)
-if not mapping:
-return []
-
-ccis = []
-if mapping.get('primary_cci'):
-ccis.append(mapping['primary_cci']['cci'])
-
-for supp in mapping.get('supporting_ccis', []):
-ccis.append(supp.get('cci') or supp.get('cci_id'))
-
-return ccis
-```
+- **A safeguard that is INFERRED, UNMAPPED or not in the file**: it adds no CCI; if no other
+  safeguard of the recommendation does, the fallback CCI applies.
 
 ---
 
@@ -580,9 +427,9 @@ return ccis
 | **Use case** | DoD compliance, STIG viewers | General compliance, analysis |
 | **NIST mapping** | CCIs (DoD standard) | Direct references |
 | **Description** | VulnDiscussion + legacy tags | Clean description + rationale |
-| **CIS Controls** | Metadata only | Metadata (primary) |
-| **MITRE** | Metadata | Metadata |
-| **Profiles** | Metadata | Metadata |
+| **CIS Controls** | `<ident>` | `<metadata>` and `<ident>` |
+| **MITRE** | `<ident>` | `<ident>` |
+| **Profiles** | Benchmark `<Profile>` | Benchmark `<Profile>` |
 | **Validation** | DISA STIG tools | Generic XCCDF tools |
 | **File size** | Smaller (no duplicated NIST) | Slightly larger |
 | **Complexity** | Higher | Lower |
@@ -592,6 +439,7 @@ return ccis
 ## Implementation Plan
 
 ### Phase 1: DISA Style Exporter
+
 1. Add `cci_mappings: List[str]` to Pydantic Recommendation model
 2. Create `cis_bench/utils/cci_lookup.py` - Load and query cis-cci-mapping.json
 3. Enhance `cis_bench/exporters/xccdf_exporter.py`:
@@ -605,6 +453,7 @@ return ccis
 4. Test with DISA tools
 
 ### Phase 2: CIS Native Exporter
+
 1. Create `cis_bench/exporters/xccdf_cis_exporter.py`
 2. Clean structure (no embedded tags)
 3. Separate rationale element
@@ -613,6 +462,7 @@ return ccis
 6. Test validation
 
 ### Phase 3: CLI Integration
+
 1. Add `--style disa|cis` flag to export command
 2. Default to DISA (broader compatibility)
 3. Document both in README
@@ -630,8 +480,7 @@ cis-bench export benchmark.json --format xccdf --style disa -o disa_output.xml
 python -c "from stig_parser import convert_xccdf; ..."
 
 # Validate structure
-cd schemas
-XML_CATALOG_FILES=catalog.xml xmllint --schema xccdf_1.2.xsd ../disa_output.xml --noout
+cis-bench validate disa_output.xml
 ```
 
 ### CIS Style Validation
@@ -640,7 +489,7 @@ XML_CATALOG_FILES=catalog.xml xmllint --schema xccdf_1.2.xsd ../disa_output.xml 
 cis-bench export benchmark.json --format xccdf --style cis -o cis_output.xml
 
 # Validate
-xmllint --schema xccdf_1.2.xsd cis_output.xml --noout
+cis-bench validate cis_output.xml
 
 # Check for CIS metadata
 grep -o '<cis-control' cis_output.xml | wc -l # Should find CIS controls

@@ -5,8 +5,11 @@ Validates that XCCDF output follows DISA STIG conventions v1.10.0
 
 import logging
 import re
+from gettext import ngettext
+from pathlib import Path
 
-from lxml import etree
+from cis_bench.utils.xccdf_versions import DUBLIN_CORE_NAMESPACE
+from cis_bench.validators.xccdf_schema import XccdfDocument, read_xccdf
 
 logger = logging.getLogger(__name__)
 
@@ -14,20 +17,15 @@ logger = logging.getLogger(__name__)
 class DISAConventionsValidator:
     """Validates XCCDF against DISA conventions v1.10.0."""
 
-    def __init__(self, xccdf_file: str):
-        """Initialize validator with XCCDF file."""
-        logger.info(f"Initializing DISA conventions validator for: {xccdf_file}")
-        self.tree = etree.parse(xccdf_file)
-        self.root = self.tree.getroot()
-
-        # Auto-detect XCCDF namespace from root element
-        root_ns = self.root.tag.split("}")[0].strip("{") if "}" in self.root.tag else None
-        self.xccdf_ns = root_ns if root_ns else "http://checklists.nist.gov/xccdf/1.1"
-        logger.debug(f"Detected XCCDF namespace: {self.xccdf_ns}")
-
-        self.dc_ns = "http://purl.org/dc/elements/1.1/"
-        self.errors = []
-        self.warnings = []
+    def __init__(self, document: XccdfDocument):
+        """Initialize the validator with a document the shared XCCDF check parsed."""
+        logger.info(f"Initializing DISA conventions validator for: {document.source}")
+        self.tree = document.tree
+        self.root = document.root
+        self.xccdf_ns = document.version.namespace
+        self.dc_ns = DUBLIN_CORE_NAMESPACE
+        self.errors: list[str] = []
+        self.warnings: list[str] = []
 
     def validate(self) -> tuple[bool, list[str], list[str]]:
         """Run all validation checks.
@@ -62,13 +60,13 @@ class DISAConventionsValidator:
         required = ["notice", "front-matter", "rear-matter", "reference", "plain-text", "version"]
 
         for elem_name in required:
-            elem = self.root.find(f".//{{{self.xccdf_ns}}}{elem_name}")
+            elem = self.root.find(f"{{{self.xccdf_ns}}}{elem_name}")
             if elem is None:
                 self.errors.append(f"Missing required element: {elem_name}")
 
     def _check_plain_text_elements(self):
         """Check plain-text elements follow DISA conventions."""
-        plain_texts = self.root.findall(f".//{{{self.xccdf_ns}}}plain-text")
+        plain_texts = self.root.findall(f"{{{self.xccdf_ns}}}plain-text")
 
         required_ids = ["release-info", "generator", "conventionsVersion"]
         found_ids = [pt.get("id") for pt in plain_texts if pt.get("id")]
@@ -91,7 +89,7 @@ class DISAConventionsValidator:
 
     def _check_reference_element(self):
         """Check reference has Dublin Core elements."""
-        ref = self.root.find(f".//{{{self.xccdf_ns}}}reference")
+        ref = self.root.find(f"{{{self.xccdf_ns}}}reference")
 
         if ref is None:
             self.errors.append("Missing required reference element")
@@ -110,7 +108,11 @@ class DISAConventionsValidator:
     def _check_groups(self):
         """Check Group elements follow conventions."""
         groups = self.root.findall(f".//{{{self.xccdf_ns}}}Group")
-        logger.debug(f"Found {len(groups)} Group elements")
+        logger.debug(
+            ngettext(
+                "Found {count} Group element", "Found {count} Group elements", len(groups)
+            ).format(count=len(groups))
+        )
 
         if not groups:
             self.warnings.append("No Group elements found (DISA STIGs use Groups)")
@@ -126,13 +128,21 @@ class DISAConventionsValidator:
             rules = group.findall(f"{{{self.xccdf_ns}}}Rule")
             if len(rules) != 1:
                 self.warnings.append(
-                    f"Group {group.get('id')} has {len(rules)} Rules (DISA convention: exactly 1)"
+                    ngettext(
+                        "Group {group} has {count} Rule (DISA convention: exactly 1)",
+                        "Group {group} has {count} Rules (DISA convention: exactly 1)",
+                        len(rules),
+                    ).format(group=group.get("id"), count=len(rules))
                 )
 
     def _check_rules(self):
         """Check Rule elements follow conventions."""
         rules = self.root.findall(f".//{{{self.xccdf_ns}}}Rule")
-        logger.debug(f"Found {len(rules)} Rule elements")
+        logger.debug(
+            ngettext(
+                "Found {count} Rule element", "Found {count} Rule elements", len(rules)
+            ).format(count=len(rules))
+        )
 
         for rule in rules:
             rule_id = rule.get("id", "unknown")
@@ -176,11 +186,11 @@ class DISAConventionsValidator:
             idents = rule.findall(f"{{{self.xccdf_ns}}}ident")
             for ident in idents:
                 if ident.get("system") == "http://cyber.mil/cci":
-                    if not re.match(r"CCI-\d{6}", ident.text or ""):
+                    if not re.fullmatch(r"CCI-[0-9]{6}", ident.text or ""):
                         self.errors.append(f"Rule {rule_id} invalid CCI format: {ident.text}")
 
 
-def validate_disa_conventions(xccdf_file: str) -> bool:
+def validate_disa_conventions(xccdf_file: str | Path) -> bool:
     """Validate XCCDF file against DISA conventions.
 
     Args:
@@ -188,20 +198,33 @@ def validate_disa_conventions(xccdf_file: str) -> bool:
 
     Returns:
         True if valid, False otherwise (prints errors/warnings)
+
+    Raises:
+        NotXccdfError: the file cannot be read or is not an XCCDF document
     """
     logger.info(f"Validating DISA conventions for: {xccdf_file}")
-    validator = DISAConventionsValidator(xccdf_file)
+    validator = DISAConventionsValidator(read_xccdf(xccdf_file))
     is_valid, errors, warnings = validator.validate()
 
     if errors:
-        logger.warning(f"Validation found {len(errors)} errors")
+        logger.warning(
+            ngettext(
+                "Validation found {count} error", "Validation found {count} errors", len(errors)
+            ).format(count=len(errors))
+        )
         print("ERRORS:")
         for error in errors:
             print(f"  ✗ {error}")
         print()
 
     if warnings:
-        logger.info(f"Validation found {len(warnings)} warnings")
+        logger.info(
+            ngettext(
+                "Validation found {count} warning",
+                "Validation found {count} warnings",
+                len(warnings),
+            ).format(count=len(warnings))
+        )
         print("WARNINGS:")
         for warning in warnings:
             print(f"  ⚠ {warning}")

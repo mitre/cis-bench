@@ -4,7 +4,6 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
 
 jobs:
   test:
@@ -67,6 +66,26 @@ jobs:
 
       - name: Run Bandit
         run: uv run --frozen --all-extras --with bandit[toml] -- bandit -c pyproject.toml -r src/cis_bench/
+
+  models:
+    name: Generated XCCDF Models
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      - name: Test the generation script
+        run: uv run --frozen --all-extras pytest tests/scripts/test_generate_xccdf_models.py -v
+
+      # Generating reads dc.xsd from dublincore.org.
+      - name: Check the committed models match the generator
+        run: uv run --frozen --all-extras python scripts/generate_xccdf_models.py --check
 
   packaging:
     name: Verify CLI Packaging

@@ -48,10 +48,15 @@ Q --> S[SQLite + FTS5]
 
 ```mermaid
 graph LR
-A[cis-bench] --> B[download]
+A[cis-bench] --> G[auth]
+A --> B[download]
+A --> H[get]
 A --> C[export]
 A --> D[list]
 A --> E[info]
+A --> I[search]
+A --> J[remove]
+A --> K[config]
 A --> F[catalog]
 
 F --> F1[refresh]
@@ -62,11 +67,29 @@ F --> F4[update]
 
 **Commands:**
 
+- `auth` - Log in with browser cookies, show or clear the saved session
 - `download` - Fetch benchmarks from WorkBench
+- `get` - Search the catalog, download and export in one step
 - `export` - Convert to formats (JSON, YAML, CSV, MD, XCCDF)
 - `list` - Show downloaded benchmarks
 - `info` - Display benchmark details
-- `catalog` - Manage catalog (8 subcommands)
+- `search` - Search the local catalog
+- `remove` - Delete a downloaded benchmark from the local cache
+- `config` - Settings and folders (`config migrate`)
+- `catalog` - Manage catalog (9 subcommands)
+
+**Command loading:** `cli` is a `LazyGroup` (`src/cis_bench/cli/lazy_group.py`), Click's
+documented pattern for CLIs with slow imports. `app.py` maps each command name to an import
+path in `LAZY_SUBCOMMANDS`; the command module is imported when the command is invoked,
+when root `--help` renders its one-line description, or on shell completion. Running one
+command never imports another command's dependencies, and `cis-bench --version` or
+`export --help` never load the scraper, catalog or exporter stacks. To add a command, add
+its import path to `LAZY_SUBCOMMANDS`; the structure tests run `--help` on every command so
+a wrong path fails fast. Inside `catalog`, the scraper, downloader and auth modules are
+imported by the subcommands that need them (`refresh`, `update`, `download`), so
+database-only subcommands such as `search` and `stats` stay light. The package root
+`cis_bench/__init__.py` resolves its public re-exports on first access (PEP 562
+`__getattr__`) for the same reason.
 
 ---
 
@@ -95,9 +118,15 @@ J --> L[Recommendation]
 **Components:**
 
 - `WorkbenchScraper` - Main scraper class
-- `AuthManager` - Cookie extraction
+- `AuthManager` - Cookie extraction and the saved session. Built with the WorkBench URL, the TLS setting, the session file and an optional `requests_per_second`; every session it makes is paced at that rate from the session check on (`catalog refresh --rate-limit` uses it)
+- `fetcher/http.py` - the request mechanism: `new_workbench_session` (every WorkBench session; mounts one `WorkBenchAdapter`, a requests-ratelimiter `LimiterAdapter` carrying a urllib3 `Retry` subclass at the configured or given rate, whose limit also covers the retries urllib3 makes inside a send, and sets the User-Agent), `ThreadSessions` (per-thread copies that share that adapter, so one limiter covers all threads) and `get_with_retry` (timeout; turns a failure left after the retries into `FetchError`)
+- `config.py` - the fixed request policy (retryable statuses, `Retry-After` cap, User-Agent, SSO hosts) and `RequestPolicy`, the tunable part (rate, retries, backoff, jitter) that `Settings.request_policy` builds and every session is created with (it raises `ValueError` when built with a value outside the bounds of the matching Settings fields); concurrency and batch size are Settings fields the scrapers take as arguments
+- `utils/workbench_urls.py` - every WorkBench URL (benchmark page, catalog listing, navtree, recommendation page), on the origin the caller passes as `base_url`, with numeric ids only
+- `utils/parallel.py` - `parallel_execute_batched` runs the recommendation fetches in batches with the given worker count and batch size, results returned in input (navtree) order, and `stop_on` to end the run after a batch that hit an expired session; `iter_batches` yields each batch to the caller before the next one starts. It does no pacing.
 - `Strategy Pattern` - Adapts to HTML changes
 - `HTMLParser` - Extract data from HTML
+
+**Concurrent fetch:** `download_benchmark` fetches recommendation pages from worker threads. `requests.Session` is not documented as thread-safe, and WorkBench re-issues its `XSRF-TOKEN` and `workbench_session` cookies on every response, so the thread that created the scraper keeps the session it was given and every other thread gets its own copy (same cookies, headers, auth and TLS settings; shared mounted adapters, so one urllib3 connection pool). Strategy detection is locked so it runs once. Progress messages (`[n/N] Fetching ...`) are sent from the calling thread as each page finishes.
 
 **Output:** Validated Pydantic models (19 fields per recommendation)
 
@@ -169,7 +198,7 @@ field_mappings:
 new_field:
 target_element: "custom-element"
 source_field: "my_data"
-transform: "html_to_markdown"
+transform: "none"
 ```
 
 **No Python code changes needed!**
@@ -198,7 +227,7 @@ F --> G[Extract Metadata]
 
 G --> H[CatalogDatabase]
 H --> I[SQLite]
-I --> J[8 Tables - 3NF]
+I --> J[Normalized tables - 3NF]
 I --> K[FTS5 Search]
 
 B --> H
@@ -211,17 +240,21 @@ M --> H
 **Database Schema (3NF):**
 
 - `platforms` - Operating System, Cloud, Database
-- `benchmark_statuses` - Published, Draft, Archived
+- `benchmark_statuses` - Published, Accepted, Draft, Archived, Rejected, Final Update, Withdrawn (set by a complete catalog refresh, not by WorkBench), plus dynamically registered WorkBench statuses
 - `communities` - Development communities
 - `collections` - Categories/tags
 - `owners` - Authors
 - `catalog_benchmarks` - Main table with FKs
+- `benchmark_contributors`, `benchmark_assets`, `revision_history` - The lists on a benchmark's page, one row per entry at its place in the list (`sort_order`)
 - `downloaded_benchmarks` - Cached content
+- `recommendations_fts` - Search index over the downloaded benchmarks' recommendations
 - `scrape_metadata` - Tracking
+
+**Refresh fetch:** `CatalogScraper.scrape_full_catalog` fetches page 1 on the calling thread, then pages 2..N through `utils/parallel.py` `iter_batches`. Each batch is yielded back to the calling thread, which writes it to SQLite (one writer), updates the progress count and checks the >10% failure threshold before the next batch starts; a login page ends the run after its batch. Requests go through the session's adapter from `fetcher/http.py` (rate limit and retries) and `get_with_retry` (timeout), the same plumbing `WorkbenchScraper` uses.
 
 **FTS5 Search:**
 
-- Fuzzy matching ("ubunt" finds "ubuntu")
+- Word-prefix matching ("ubunt" finds "ubuntu"); no typo tolerance
 - Multi-word search
 - Ranked results (BM25)
 - Fast (<1ms for 1000+ records)
@@ -280,7 +313,7 @@ CatalogScraper->>Parser: parse_catalog_page()
 Parser-->>CatalogScraper: List[benchmark_data]
 CatalogScraper->>Database: insert_benchmark()
 Database->>SQLite: INSERT + FTS5 update
-Note over CatalogScraper,SQLite: Repeat for 68 pages
+Note over CatalogScraper,SQLite: Remaining pages in batches of 10 at most 3 requests/s, saved after each batch
 CatalogScraper-->>CLI: Stats
 
 User->>CLI: cis-bench catalog search "ubuntu"
@@ -315,6 +348,7 @@ return strategy
 ```
 
 **Adding new HTML format:**
+
 1. Create new strategy class
 2. Register with detector
 3. Old benchmarks still work
@@ -334,6 +368,7 @@ exporter = ExporterFactory.create("xccdf", style="cis")
 ```
 
 **Adding new format:**
+
 1. Create exporter class
 2. Register with factory
 3. Available in CLI
@@ -350,14 +385,14 @@ field_mappings:
 title:
 target_element: "title"
 source_field: "title"
-transform: "strip_html"
+transform: "none"
 
 cis_controls_metadata:
 structure: "metadata_from_config"
-requires_post_processing: true
 ```
 
 **Adding new XCCDF style:**
+
 1. Create `style_name_style.yaml`
 2. Define field mappings
 3. Use: `--format xccdf --style style_name`
@@ -417,6 +452,7 @@ src/cis_bench/
 │ └── commands/ # Command modules
 ├── fetcher/ # WorkBench scraper
 │ ├── workbench.py # Main scraper
+│ ├── http.py # WorkBench sessions: rate limit, retries, per-thread copies
 │ ├── auth.py # Authentication
 │ └── strategies/ # HTML strategies
 ├── exporters/ # Format exporters
@@ -436,48 +472,47 @@ src/cis_bench/
 │ ├── benchmark.py # Pydantic models
 │ ├── cis_controls_official.py
 │ ├── enhanced_metadata.py
-│ └── xccdf/ # xsdata generated
+│ ├── xccdf/ # XCCDF 1.2 models, generated from schemas/xccdf_1.2.xsd
+│ └── xccdf_v1_1/ # XCCDF 1.1.4 models, generated from schemas/xccdf-1.1.4.xsd
 ├── utils/ # Utilities
 │ ├── xml_utils.py # XCCDF processing
-│ ├── html_parser.py # HTML cleaning
+│ ├── html_parser.py # HTML table and reference parsers
 │ ├── logging_config.py # Logging setup
+│ ├── parallel.py # Paced thread-pool execution
 │ └── ...
 ├── validators/ # XCCDF validators
 └── config.py # Environment config
 ```
 
+The two XCCDF model packages are written by `scripts/generate_xccdf_models.py` (xsdata with `.xsdata.xml`, then ruff) from the schema copies named above, and are never edited by hand. CI checks that the committed packages match the generator's output. See [Regenerating the XCCDF Models](contributing.md#regenerating-the-xccdf-models).
+
 ---
 
 ## Configuration System
 
-### Environment-Based Config
+### One Settings Class
+
+`src/cis_bench/config.py` declares every setting once in `Settings` (pydantic-settings): its
+type, default and accepted values. `load_settings()` builds it from, highest first:
 
 ```mermaid
 graph TD
-A[Config.py] --> B{Environment?}
-B -->|test| C[/tmp/cis-bench-test/]
-B -->|dev| D[~/.cis-bench-dev/]
-B -->|production| E[~/.cis-bench/]
-
-F[pytest] --> G[Set CIS_BENCH_ENV=test]
-H[Developer] --> I[export CIS_BENCH_ENV=dev]
-J[User] --> K[Default production]
+A[CLI flag, passed in] --> B[Environment CIS_BENCH_*]
+B --> D[config folder/config.toml]
+D --> E[Default in Settings]
 ```
 
-**Environment variable:** `CIS_BENCH_ENV`
+- **Folders:** `xdg_folders()` in `config.py` is a pure function of the environment, the home folder and the platform, resolving config, data and state the way the GitHub CLI does (`CIS_BENCH_CONFIG_DIR` > `CIS_BENCH_HOME` > `XDG_*_HOME` > AppData on Windows > `~/.config`, `~/.local/share`, `~/.local/state`). `resolve_folders()` applies it to the real environment and keeps an earlier version's `~/.cis-bench` in use, reported through `Folders.legacy`, until `config migrate` moves it. The folders ride on `Settings.folders`, fed only through the init source: the environment source skips the field and `config.toml` may not set it. `CIS_BENCH_DATA_DIR` and `CIS_BENCH_ENV` are refused.
+- **Startup check:** the root command (`cli/app.py`) builds the settings once per run and keeps them on the Click context (`ctx.obj["settings"]`). An invalid value prints one Configuration Error and exits 1 before any command runs; `--help` still works.
+- **Settings stay at the edge:** only the CLI reads `Settings`. `cli/helpers/services.py` turns them into the objects commands use (`auth_manager`, `workbench_scraper`, `catalog_scraper`); library code takes plain values (`base_url`, `timeout`, `verify_ssl`, `session_file`, `limit`) and never loads settings itself.
+- **Nothing else reads the environment:** ruff's banned-API rule (TID251) refuses `os.getenv`, `os.environ` and `dotenv` outside `config.py`. `config.toml` never reaches `os.environ`; there is no `.env` source.
+- **Not cis-bench settings:** `HTTPS_PROXY`, `NO_PROXY`, `REQUESTS_CA_BUNDLE`, `SSL_CERT_FILE` stay with requests.
 
-- `test` - Pytest (automatic)
-- `dev` - Development work
-- `production` - Default
-
-**Optional .env file:**
-```bash
-# ~/.cis-bench/.env
-CIS_BENCH_ENV=dev
-CIS_BENCH_SSL_VERIFY=false
+**Optional file:**
+```toml
+# ~/.config/cis-bench/config.toml
+verify_ssl = false
 ```
-
-Loaded automatically via python-dotenv.
 
 ---
 
@@ -518,13 +553,12 @@ field_mappings:
 title:
 target_element: "title"
 source_field: "title"
-transform: "strip_html"
+transform: "none"
 
 # Complex nested structure
 cis_controls_metadata:
 target_element: "metadata"
 structure: "metadata_from_config"
-requires_post_processing: true
 
 # Multiple values
 reference:
@@ -532,14 +566,6 @@ target_element: "reference"
 multiple: true
 structure: "dublin_core"
 source_field: "nist_controls"
-
-# Transformations
-transformations:
-strip_html:
-function: "HTMLCleaner.strip_html"
-
-html_to_markdown:
-function: "HTMLCleaner.html_to_markdown"
 ```
 
 ### Structure Types
@@ -551,9 +577,10 @@ function: "HTMLCleaner.html_to_markdown"
 - `dublin_core` - Reference with DC metadata
 - `metadata_from_config` - Generic nested XML (CIS Controls, hierarchies)
 - `ident_from_list` - Generic ident generation (CCIs, MITRE, PCI-DSS)
-- `embedded_xml_tags` - VulnDiscussion style
+- `embedded_xml_tags` - Tags inside an element's text, from config (a STIG description's VulnDiscussion and the tags after it)
 
 **Adding new structure:**
+
 1. Define in YAML with `structure: "new_type"`
 2. Add handler in MappingEngine
 3. OR use existing structure types
@@ -572,6 +599,9 @@ catalog_benchmarks }o--|| benchmark_statuses : has
 catalog_benchmarks }o--|| communities : belongs_to
 catalog_benchmarks }o--|| owners : owned_by
 catalog_benchmarks }o--o{ collections : has
+catalog_benchmarks ||--o{ benchmark_contributors : lists
+catalog_benchmarks ||--o{ benchmark_assets : applies_to
+catalog_benchmarks ||--o{ revision_history : records
 
 catalog_benchmarks {
 string benchmark_id PK
@@ -582,7 +612,36 @@ int platform_id FK
 int community_id FK
 int owner_id FK
 date published_date
+string description
+string release_type
+string parent_benchmark_id
+string parent_benchmark_url
+string intended_audience
+string acknowledgements
+string milestone_name
+string milestone_url
 bool is_latest
+}
+
+benchmark_contributors {
+string benchmark_id PK
+int sort_order PK
+string name
+}
+
+benchmark_assets {
+string benchmark_id PK
+int sort_order PK
+string title
+string cpe_id
+}
+
+revision_history {
+string benchmark_id PK
+int sort_order PK
+datetime revised_at
+string author
+int modification_count
 }
 
 downloaded_benchmarks {
@@ -611,6 +670,8 @@ bool is_active
 - Referential integrity via FKs
 - Fast queries with indexes
 
+The page fields on `catalog_benchmarks` and the three list tables hold what a release's own WorkBench page says; the catalog listing carries none of it, so a refresh never changes them. `record_page` writes `published_date` and `description` when a command reads the page; the other page columns and the three tables are not filled yet. A catalog an earlier version wrote gains the columns and tables when it is opened (`CatalogDatabase._upgrade_schema`, in the same write transaction as its other upgrades), so a command that reads a release works before any refresh.
+
 **FTS5 Virtual Table:**
 ```sql
 CREATE VIRTUAL TABLE benchmarks_fts USING fts5(
@@ -618,12 +679,34 @@ benchmark_id UNINDEXED,
 title,
 platform,
 community,
-description,
+version,
 tokenize='porter unicode61'
 );
 ```
 
-Provides fuzzy full-text search.
+Provides word-prefix full-text search. `version` holds the benchmark's version without its leading "v" (`2.1.0`). Every term is looked up in the three text columns as a word prefix; a word is also matched as a whole word of `version` (`vNext`); a term shaped like a version (`v2.1.0`, `2.1`, `v18`) is also matched against `version` from its start, number by number; a plain number is never matched against `version` (`catalog/fts.py`). A catalog whose index predates the `version` column has the index rebuilt when the database is opened (`CatalogDatabase._upgrade_schema`, one write transaction; a database that cannot be written is left as it is with a warning).
+
+**Recommendation index:**
+```sql
+CREATE VIRTUAL TABLE recommendations_fts USING fts5(
+benchmark_id UNINDEXED,
+ref UNINDEXED,
+title,
+description,
+rationale,
+audit,
+remediation,
+tokenize='porter unicode61'
+);
+CREATE VIRTUAL TABLE recommendation_profiles_fts USING fts5(
+benchmark_id UNINDEXED,
+ref UNINDEXED,
+profile,
+tokenize='porter unicode61'
+);
+```
+
+One row per recommendation of every downloaded benchmark, and one row per profile of each in `recommendation_profiles_fts`. `CatalogDatabase.save_downloaded` writes a benchmark's rows in the same transaction as the cached copy, replacing any it had, and `delete_downloaded` removes them with it, so the index holds exactly the downloaded benchmarks. The rows hold the text the copy loads as: the Markdown, whatever scraper saved it. `search_recommendations(query, benchmark_id=None, profile=None, limit=50)` looks each word of the query up as a word prefix in the five text columns (every word must match; a dotted number such as `22.04` matches its numbers side by side, the last as a word prefix, so `1.2` also finds `1.20` and `1.2.3`); a profile is only a filter, matching a recommendation with a profile whose name holds the given words side by side (each profile is its own row, so the words never span two names). Queries are user text: `catalog/fts.py` quotes every term, so punctuation and FTS5 keywords (`AND`, `NEAR`) are search words. Each result names the benchmark, the recommendation's ref and title, and the text fields a word was found in (asked of the index one column at a time for the rows found). A catalog from before this index, or with it in another column layout, gains it in the current layout when the database is opened, filled from the benchmarks already downloaded (`CatalogDatabase._upgrade_schema`, in its one write transaction).
 
 ---
 
@@ -705,24 +788,21 @@ tests/
 ```mermaid
 graph TD
 A[pytest] --> B[test_environment fixture]
-B --> C[Set CIS_BENCH_ENV=test]
-C --> D[Config.get_data_dir]
-D --> E[/tmp/cis-bench-test/]
+B --> C[Set CIS_BENCH_HOME to a temporary folder]
+C --> D[Settings.folders]
 
-F[Developer] --> G[export CIS_BENCH_ENV=dev]
+F[Developer] --> G[export CIS_BENCH_HOME=~/cis-bench-dev]
 G --> D
-D --> H[~/.cis-bench-dev/]
 
-I[Production] --> J[No env var]
+I[User] --> J[Not set]
 J --> D
-D --> K[~/.cis-bench/]
+D --> K[XDG folders by default]
 ```
 
 **Automatic isolation:**
 
-- pytest sets `CIS_BENCH_ENV=test`
-- All tests use `/tmp/cis-bench-test/`
-- Production data never touched
+- pytest sets `CIS_BENCH_HOME` to a new temporary folder per run
+- the developer's own folders are never touched by tests
 
 **405 tests** across all layers, all properly isolated.
 

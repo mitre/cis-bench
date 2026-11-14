@@ -40,7 +40,7 @@ When you add a new XCCDF style:
 
 - Loading and parsing your YAML config
 - Applying field mappings you define
-- Executing transformations (strip_html, html_to_markdown, etc.)
+- Executing the transforms a mapping names (`none` for text, `strip_version_prefix`, filters)
 - Generating XCCDF models using xsdata
 - XML serialization with proper namespaces
 
@@ -68,16 +68,18 @@ metadata:
     - "PCI Compliance Tools"
     - "OpenSCAP"
 
-# Namespaces (required for XCCDF)
-namespaces:
-  default: "http://checklists.nist.gov/xccdf/1.2"
-  xccdf: "http://checklists.nist.gov/xccdf/1.2"
-  dc: "http://purl.org/dc/elements/1.1/"
-  pci: "http://pci-dss.org/xccdf/1.0"  # Your custom namespace
-
 # Benchmark-level configuration
 benchmark:
-  id_template: "xccdf_pci_dss_{platform}"
+  id_template: "xccdf_org.pcisecuritystandards_benchmark_{version}_{title_slug}"
+  # The namespaces this style's documents use (prefix -> URI). The serializer declares all
+  # of them on the root; "default" is the default namespace. List each URI once: a second
+  # prefix for the XCCDF namespace would replace the default namespace with that prefix.
+  # A style that extends another inherits its parent's and cannot drop one.
+  namespaces:
+    default: "http://checklists.nist.gov/xccdf/1.2"
+    dc: "http://purl.org/dc/elements/1.1/"
+    pci: "http://pci-dss.org/xccdf/1.0"  # Your custom namespace
+    controls: "http://cisecurity.org/controls"  # the prefix the metadata mapping below names
   title:
     source: "title"
     transform: "none"
@@ -96,23 +98,30 @@ field_mappings:
   title:
     target_element: "title"
     source_field: "title"
-    transform: "strip_html"
+    transform: "none"
 
   description:
     target_element: "description"
     source_field: "description"
-    transform: "html_to_markdown"
+    transform: "none"
 
   # Use generic metadata handler for CIS Controls
   cis_controls_metadata:
+    target_element: "metadata"
     structure: "metadata_from_config"
-    requires_post_processing: true
     source_field: "cis_controls"
     metadata_spec:
       root_element: "cis_controls"
-      namespace: "http://cisecurity.org/controls"
+      namespace_prefix: "controls"  # declared in benchmark.namespaces
       group_by: "item.version"
-      # ... (see cis_style.yaml for full spec)
+      group_element:
+        element: "framework"
+        attributes:
+          urn: "urn:cisecurity.org:controls:{group_key}"
+        item_element:
+          element: "safeguard"
+          attributes:
+            title: "{item.title}"
 ```
 
 **The configuration is the implementation.** The MappingEngine reads this YAML and executes the transformations automatically.
@@ -154,30 +163,23 @@ ls -lh output.xml
 
 **Always validate your XCCDF output against the official NIST schema.**
 
-### For XCCDF 1.2 (Modern Standard)
+### Validate the Output
 
 ```bash
-# Validate against XCCDF 1.2 schema
-xmllint --schema schemas/xccdf_1.2.xsd --noout output.xml
+cis-bench validate output.xml
 ```
+
+The command picks the schema (XCCDF 1.1 or 1.2) from the document's root namespace and uses the schemas shipped with cis-bench; no xmllint, no network.
 
 **Success looks like:**
 ```
-output.xml validates
+✓ output.xml: valid XCCDF 1.2
 ```
 
-**Failure looks like:**
+**Failure looks like (exit code 2):**
 ```
-output.xml:42: element description: Schemas validity error : Element
-'{http://checklists.nist.gov/xccdf/1.2}description': This element is
-not expected. Expected is ( {http://checklists.nist.gov/xccdf/1.2}title ).
-```
-
-### For XCCDF 1.1.4 (DISA/DoD Compatibility)
-
-```bash
-# Validate against XCCDF 1.1.4 schema
-xmllint --schema schemas/xccdf-1.1.4.xsd --noout output.xml
+✗ output.xml: invalid XCCDF 1.2 (1 error)
+    line 42: Element '{http://checklists.nist.gov/xccdf/1.2}description': This element is not expected. Expected is ( {http://checklists.nist.gov/xccdf/1.2}title ).
 ```
 
 ### When to Use Which Schema
@@ -193,22 +195,35 @@ xmllint --schema schemas/xccdf-1.1.4.xsd --noout output.xml
 ### Add XSD Validation to Tests
 
 ```python
-import subprocess
+from cis_bench.validators.xccdf_schema import validate_xccdf
 
 def test_pci_dss_xsd_validation(sample_benchmark, tmp_path):
-    """Verify output validates against XCCDF 1.2 schema."""
+    """Verify output validates against the XCCDF 1.2 schema."""
     output_file = tmp_path / "pci_dss_validation.xml"
     exporter = ExporterFactory.create("xccdf", style="pci-dss")
     exporter.export(sample_benchmark, output_file)
 
-    # Run xmllint validation
-    result = subprocess.run(
-        ["xmllint", "--schema", "schemas/xccdf_1.2.xsd", "--noout", str(output_file)],
-        capture_output=True,
-        text=True
-    )
+    result = validate_xccdf(output_file)
 
-    assert result.returncode == 0, f"XSD validation failed:\n{result.stderr}"
+    assert result.version == "1.2"
+    assert result.is_valid, result.errors
+```
+
+`validate_xccdf` reads a file. For a document still in memory, `check_xccdf(content, source)` takes the serialized bytes and returns the same result; `source` names the document in messages.
+
+A style built on the DISA style also has to pass the DISA conventions check, which runs on the document the shared check parsed:
+
+```python
+from cis_bench.validators.disa_conventions import DISAConventionsValidator
+from cis_bench.validators.xccdf_schema import read_xccdf
+
+def test_my_disa_style_follows_the_conventions(sample_benchmark, tmp_path):
+    output_file = tmp_path / "my_disa_style.xml"
+    ExporterFactory.create("xccdf", style="my-disa-style").export(sample_benchmark, output_file)
+
+    is_valid, errors, warnings = DISAConventionsValidator(read_xccdf(output_file)).validate()
+
+    assert is_valid, errors
 ```
 
 **XSD validation is mandatory before releasing a new style.**
@@ -240,7 +255,7 @@ Add fields one at a time:
 ```bash
 # Add title field, test
 cis-bench export benchmark.json --format xccdf --style pci-dss
-xmllint --schema schemas/xccdf_1.2.xsd --noout output.xml
+cis-bench validate output.xml
 
 # Add description, test again
 # Add metadata, test again
@@ -261,11 +276,17 @@ framework_controls:
 
 # For nested hierarchies (CIS Controls, PCI-DSS requirements)
 framework_metadata:
+  target_element: "metadata"
   structure: "metadata_from_config"
-  requires_post_processing: true
-  source_field: "controls"
+  source_field: "cis_controls"
   metadata_spec:
-    # Define structure in YAML
+    root_element: "cis_controls"
+    namespace_prefix: "controls"  # declared in benchmark.namespaces
+    group_by: "item.version"
+    group_element:
+      element: "framework"
+      item_element:
+        element: "safeguard"
 ```
 
 ### 4. Always Validate Output
@@ -274,7 +295,7 @@ Before committing:
 
 ```bash
 # XSD validation (must pass)
-xmllint --schema schemas/xccdf_1.2.xsd --noout output.xml
+cis-bench validate output.xml
 
 # Visual inspection
 xmllint --format output.xml | less
@@ -330,7 +351,7 @@ Before considering your new style complete:
 - [ ] Config follows naming convention: `{style}_style.yaml`
 - [ ] CLI option added to `export.py`
 - [ ] Manual test: `cis-bench export --format xccdf --style {name}`
-- [ ] **XSD validation passes:** `xmllint --schema schemas/xccdf_*.xsd --noout output.xml`
+- [ ] **XSD validation passes:** `cis-bench validate output.xml`
 - [ ] Unit tests written and passing
 - [ ] XSD validation in automated tests
 - [ ] Documentation added to `XCCDF_STYLES.md`

@@ -1,20 +1,90 @@
 """Download command for CIS Benchmark CLI."""
 
+from __future__ import annotations
+
 import logging
 import os
 import re
 import sys
+from contextlib import closing
+from gettext import ngettext
+from typing import TYPE_CHECKING
 
 import click
 from rich.console import Console
+from rich.markup import escape
 
-from cis_bench.config import Config
+from cis_bench.cli.helpers.errors import (
+    DOWNLOAD_ERRORS,
+    cache_failure,
+    report_download_error,
+    report_expired_session,
+)
+from cis_bench.cli.helpers.offline import OfflineError
+from cis_bench.cli.helpers.output import display_time
+from cis_bench.cli.helpers.services import settings_from, workbench_scraper, workbench_session
+from cis_bench.config import Settings
+from cis_bench.exceptions import AuthenticationError
 from cis_bench.exporters import ExporterFactory
-from cis_bench.fetcher.auth import AuthManager
-from cis_bench.fetcher.workbench import WorkbenchScraper
+from cis_bench.utils.workbench_urls import resolve_benchmark_reference
+
+if TYPE_CHECKING:
+    from cis_bench.fetcher.workbench import WorkbenchScraper
 
 console = Console()
 logger = logging.getLogger(__name__)
+
+
+def _collect_targets(
+    benchmark_ids: tuple[str, ...], urls_file: str | None, base_url: str
+) -> list[tuple[str, str]]:
+    """Turn CLI arguments or an input file into validated (benchmark_id, canonical_url) pairs.
+
+    Blank lines and ``#`` comments in the file are skipped. The first invalid reference
+    aborts the whole run with its location, so nothing is downloaded from a bad list.
+    """
+    if urls_file:
+        targets = []
+        with open(urls_file) as f:
+            for line_no, raw in enumerate(f, 1):
+                line = raw.strip()
+                if not line or line.startswith("#"):
+                    continue
+                try:
+                    targets.append(resolve_benchmark_reference(line, base_url=base_url))
+                except ValueError as e:
+                    raise ValueError(f"line {line_no} of {urls_file}: {e}") from e
+        return targets
+    if benchmark_ids:
+        return [resolve_benchmark_reference(item, base_url=base_url) for item in benchmark_ids]
+    console.print("[red]Error: Must specify benchmark IDs or --file[/red]")
+    sys.exit(1)
+
+
+def _open_workbench(settings: Settings, benchmark_id: str) -> WorkbenchScraper:
+    """Log in to WorkBench for the first benchmark that must be fetched.
+
+    A failed login ends the run (every later download would fail the same way).
+
+    Raises:
+        OfflineError: Offline mode is on; the caller fails this benchmark and goes on.
+    """
+    try:
+        logger.debug("Getting authenticated session")
+        with console.status("[bold green]Authenticating..."):
+            session = workbench_session(settings, needs=f"download benchmark {benchmark_id}")
+    except OfflineError:
+        raise
+    except DOWNLOAD_ERRORS as e:
+        report_download_error(console, e)
+        sys.exit(1)
+    except Exception as e:
+        logger.debug("Authentication failed", exc_info=True)
+        report_expired_session(console, e)
+        sys.exit(1)
+    console.print("[green]✓[/green] Authenticated successfully\n")
+    logger.debug("Authentication successful")
+    return workbench_scraper(settings, session)
 
 
 @click.command(name="download")
@@ -27,7 +97,9 @@ logger = logging.getLogger(__name__)
     help="File containing benchmark URLs or IDs (one per line)",
 )
 @click.option(
-    "--output-dir", "-o", default="./benchmarks", help="Output directory for downloaded benchmarks"
+    "--output-dir",
+    "-o",
+    help="Output directory for downloaded benchmarks (default: <data dir>/benchmarks)",
 )
 @click.option(
     "--format",
@@ -61,6 +133,7 @@ def download(
         # First, authenticate (one time)
         cis-bench auth login --browser chrome
 
+    \b
         # Then download
         cis-bench download 23598
         cis-bench download 23598 22605 --format json --format xccdf
@@ -74,91 +147,60 @@ def download(
 
     logger.debug(f"Starting download command: output_dir={output_dir}, formats={export_formats}")
 
-    # Get authenticated session (uses saved session only)
+    # Resolve and validate every benchmark reference before touching the network, so a bad
+    # ID, an off-origin URL or a cleartext URL can never be sent with the session cookies.
+    settings = settings_from()
+    if output_dir is None:
+        output_dir = settings.benchmarks_dir
     try:
-        logger.debug("Getting authenticated session")
-        with console.status("[bold green]Authenticating..."):
-            session = AuthManager.get_or_create_session()
-
-        console.print("[green]✓[/green] Authenticated successfully\n")
-        logger.debug("Authentication successful")
-
-    except ValueError:
-        # No saved session
-        console.print("\n[bold red]Authentication Required[/bold red]\n")
-        console.print("[bold cyan]Please log in first:[/bold cyan]")
-        console.print("  cis-bench auth login --browser chrome")
-        console.print("\n[dim]This saves your session for future commands.[/dim]")
-        console.print(
-            "\n[dim]Windows users: If Chrome fails, try Firefox or --cookies option.[/dim]"
-        )
-        sys.exit(1)
-    except Exception as e:
-        logger.error(f"Authentication failed: {e}", exc_info=True)
-        console.print("\n[bold red]Authentication Failed[/bold red]\n")
-        console.print(f"[yellow]Error: {e}[/yellow]\n")
-        console.print("[bold cyan]Your session may have expired. To refresh:[/bold cyan]")
-        console.print("  cis-bench auth login --browser chrome")
+        targets = _collect_targets(benchmark_ids, urls_file, settings.workbench_url)
+    except ValueError as e:
+        console.print(f"[red]✗ {escape(str(e))}[/red]")
         sys.exit(1)
 
-    # Create scraper
-    scraper = WorkbenchScraper(session)
-
-    # Collect URLs to download
-    urls = []
-
-    if urls_file:
-        # Read from file
-        with open(urls_file) as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#"):
-                    if line.startswith("http"):
-                        urls.append(line)
-                    else:
-                        urls.append(f"https://workbench.cisecurity.org/benchmarks/{line}")
-
-    elif benchmark_ids:
-        # Convert IDs or URLs to full URLs
-        for item in benchmark_ids:
-            if item.startswith("http"):
-                urls.append(item)
-            else:
-                urls.append(f"https://workbench.cisecurity.org/benchmarks/{item}")
-    else:
-        console.print("[red]Error: Must specify benchmark IDs or --file[/red]")
-        sys.exit(1)
-
-    if not urls:
+    if not targets:
         console.print("[red]Error: No benchmarks to download[/red]")
         sys.exit(1)
 
+    # The session is opened at the first benchmark that is not cached, so cached ones need
+    # no login (and work offline).
+    scraper: WorkbenchScraper | None = None
+
     # Download benchmarks
-    logger.debug(f"Starting download of {len(urls)} benchmark(s)")
-    console.print(f"[bold]Downloading {len(urls)} benchmark(s)...[/bold]\n")
+    downloading = ngettext(
+        "Downloading {count} benchmark...", "Downloading {count} benchmarks...", len(targets)
+    ).format(count=len(targets))
+    logger.debug(
+        ngettext(
+            "Starting download of {count} benchmark",
+            "Starting download of {count} benchmarks",
+            len(targets),
+        ).format(count=len(targets))
+    )
+    console.print(f"[bold]{downloading}[/bold]\n")
 
-    for idx, url in enumerate(urls, 1):
-        prefix = f"[{idx}/{len(urls)}]"
-        logger.debug(f"Processing benchmark {idx}/{len(urls)}: {url}")
-
-        # Extract benchmark ID from URL
-        benchmark_id = url.split("/")[-1]
+    failed: list[str] = []
+    for idx, (benchmark_id, url) in enumerate(targets, 1):
+        prefix = f"[{idx}/{len(targets)}]"
+        logger.debug(f"Processing benchmark {idx}/{len(targets)}: {url}")
 
         # Check if already cached (unless --force)
         if not force:
-            catalog_db_path = Config.get_catalog_db_path()
+            catalog_db_path = settings.catalog_db_path
             if catalog_db_path.exists():
                 try:
                     from cis_bench.catalog.database import CatalogDatabase
 
-                    db = CatalogDatabase(catalog_db_path)
-                    existing = db.get_downloaded(benchmark_id)
+                    with closing(CatalogDatabase(catalog_db_path)) as db:
+                        existing = db.get_downloaded(benchmark_id)
 
                     if existing:
                         console.print(
                             f"{prefix} [yellow]Benchmark {benchmark_id} already cached[/yellow]"
                         )
-                        console.print(f"      Downloaded: {existing['downloaded_at']}")
+                        console.print(
+                            f"      Downloaded: {display_time(existing['downloaded_at'])}"
+                        )
                         console.print(f"      Recommendations: {existing['recommendation_count']}")
                         console.print("\n[dim]Use --force to re-download[/dim]\n")
                         logger.debug(f"Skipping {benchmark_id} - already cached")
@@ -167,16 +209,24 @@ def download(
                 except Exception as e:
                     logger.debug(f"Cache check failed: {e}, will download anyway")
 
+        if scraper is None:
+            try:
+                scraper = _open_workbench(settings, benchmark_id)
+            except OfflineError as e:
+                console.print(f"{prefix} [red]✗[/red] {escape(e.format_message())}\n")
+                failed.append(benchmark_id)
+                continue
+
         try:
-            # Download with progress bar (using helper)
             from cis_bench.cli.helpers.download_helper import download_with_progress
 
             console.print(f"{prefix} [cyan]Starting download...[/cyan]")
-
             benchmark = download_with_progress(scraper, url, prefix=prefix)
 
             logger.debug(f"Successfully downloaded benchmark: {benchmark.title}")
-            console.print(f"{prefix} [green]✓[/green] Downloaded: [bold]{benchmark.title}[/bold]")
+            console.print(
+                f"{prefix} [green]✓[/green] Downloaded: [bold]{escape(benchmark.title)}[/bold]"
+            )
             console.print(f"      Recommendations: {benchmark.total_recommendations}")
             console.print(
                 f"      CIS Controls: {sum(len(r.cis_controls) for r in benchmark.recommendations)}"
@@ -188,31 +238,23 @@ def download(
                 f"      NIST Controls: {sum(len(r.nist_controls) for r in benchmark.recommendations)}"
             )
 
-            # Save to catalog database if it exists
-            catalog_db_path = Config.get_catalog_db_path()
+            # Into the cache when there is one (catalog.db). A failed cache write fails this
+            # benchmark, but the download is kept: the exports below are still written.
+            catalog_db_path = settings.catalog_db_path
             if catalog_db_path.exists():
+                from sqlalchemy.exc import SQLAlchemyError
+
+                from cis_bench.catalog.database import CatalogDatabase
+                from cis_bench.catalog.downloader import CatalogDownloader
+
                 try:
-                    import hashlib
-
-                    from cis_bench.catalog.database import CatalogDatabase
-
-                    # Prepare data for database
-                    content_json = benchmark.model_dump_json()
-                    content_hash = hashlib.sha256(content_json.encode()).hexdigest()
-                    recommendation_count = len(benchmark.recommendations)
-
-                    db = CatalogDatabase(catalog_db_path)
-                    db.save_downloaded(
-                        benchmark_id=benchmark_id,
-                        content_json=content_json,
-                        content_hash=content_hash,
-                        recommendation_count=recommendation_count,
-                    )
-                    logger.debug(f"Saved benchmark {benchmark_id} to catalog database")
+                    with closing(CatalogDatabase(catalog_db_path)) as db:
+                        CatalogDownloader(db).cache(benchmark_id, benchmark)
                     console.print(f"      [green]✓[/green] Cached in database (ID: {benchmark_id})")
-                except Exception as e:
-                    logger.warning(f"Failed to save to catalog database: {e}", exc_info=True)
-                    console.print(f"      [yellow]⚠[/yellow] Could not cache in database: {e}")
+                except (SQLAlchemyError, OSError) as e:
+                    logger.debug("Failed to cache the benchmark", exc_info=True)
+                    console.print(f"      [red]✗[/red] {escape(cache_failure(benchmark_id, e))}")
+                    failed.append(benchmark_id)
 
             # Export to requested formats
             for fmt in export_formats:
@@ -235,22 +277,37 @@ def download(
                     file_size = os.path.getsize(output_file) / 1024
                     logger.debug(f"Exported {fmt} format: {output_file} ({file_size:.1f} KB)")
                     console.print(
-                        f"      [green]✓[/green] Exported {exporter.format_name()}: {output_file} ({file_size:.1f} KB)"
+                        f"      [green]✓[/green] Exported {exporter.format_name()}: {escape(output_file)} ({file_size:.1f} KB)"
                     )
 
                 except Exception as e:
-                    logger.error(f"Export failed for format {fmt}: {e}", exc_info=True)
-                    console.print(f"      [red]✗[/red] {fmt} export failed: {e}")
+                    logger.debug(f"Export failed for format {fmt}", exc_info=True)
+                    console.print(f"      [red]✗[/red] {fmt} export failed: {escape(str(e))}")
+                    if benchmark_id not in failed:
+                        failed.append(benchmark_id)
 
             console.print()
 
+        except AuthenticationError as e:
+            # Every further request would get the login page too: stop, do not try the rest.
+            logger.debug(f"Session expired while downloading {url}: {e}")
+            report_expired_session(console, e)
+            sys.exit(1)
         except Exception as e:
-            logger.error(f"Benchmark download failed: {e}", exc_info=True)
-            console.print(f"{prefix} [red]✗ Error:[/red] {e}\n")
-            import traceback
-
-            traceback.print_exc()
+            logger.debug(f"Benchmark download failed: {url}", exc_info=True)
+            console.print(f"{prefix} [red]✗ Error:[/red] {escape(str(e))}\n")
+            failed.append(benchmark_id)
             continue
 
     logger.debug("Download command completed")
+    if failed:
+        console.print(
+            "[bold red]Download finished with errors:[/bold red] "
+            + ngettext(
+                "{failed} of {total} benchmark failed ({ids}).",
+                "{failed} of {total} benchmarks failed ({ids}).",
+                len(targets),
+            ).format(failed=len(failed), total=len(targets), ids=", ".join(failed))
+        )
+        sys.exit(1)
     console.print("[bold green]Download complete![/bold green]")

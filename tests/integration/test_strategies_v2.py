@@ -11,30 +11,23 @@ CIS WorkBench Vue migration:
    capitalized singular/plural keys (``Technique``/``Tactics``/``Mitigations``).
 """
 
+import json
+
 import pytest
 
+from cis_bench.fetcher.strategies.base import ExtractedRecommendation
 from cis_bench.fetcher.strategies.detector import StrategyDetector
 from cis_bench.fetcher.strategies.v1_current import WorkbenchV1Strategy
-from cis_bench.fetcher.strategies.v2_2026 import WorkbenchV2Strategy, _decode_vue_payload
+from cis_bench.fetcher.strategies.v2_2026 import WorkbenchV2Strategy
 from cis_bench.models.benchmark import CISControl, MITREMapping, Recommendation
-
-
-def _js_escape(s: str) -> str:
-    """Encode a string the way Vue does when serializing to an attribute value."""
-    return "".join(f"\\u{ord(c):04x}" if c in ('"', "\\", "'") else c for c in s)
-
-
-def _vue_json_attr(value: object) -> str:
-    """Build a ``JSON.parse('...')`` wrapper with ``\\uXXXX``-escaped quotes."""
-    import json as _json
-
-    return f"JSON.parse('{_js_escape(_json.dumps(value))}')"
+from cis_bench.utils.vue_payload import decode_vue_payload
+from tests.conftest import vue_json_attr
 
 
 @pytest.fixture
 def v2_full_html():
     """Complete V2 HTML with every field the scraper reads populated."""
-    controls_payload = _vue_json_attr(
+    controls_payload = vue_json_attr(
         {
             "0": {
                 "title": "Collect Detailed Audit Logs",
@@ -55,7 +48,7 @@ def v2_full_html():
             },
         }
     )
-    mitre_payload = _vue_json_attr(
+    mitre_payload = vue_json_attr(
         {
             "Technique": ["T1078.004"],
             "Tactics": ["TA0001", "TA0004"],
@@ -118,7 +111,7 @@ def v2_minimal_html():
 @pytest.fixture
 def v2_controls_as_list_html():
     """V2 HTML where :controls is serialized as a list (not a dict)."""
-    payload = _vue_json_attr(
+    payload = vue_json_attr(
         [
             {
                 "title": "Only Control",
@@ -175,22 +168,44 @@ class TestV2IsCompatible:
 class TestDecodeVuePayload:
     def test_unwraps_json_parse_and_decodes_escapes(self):
         raw = r"""JSON.parse('[{\u0022a\u0022:1}]')"""
-        assert _decode_vue_payload(raw) == '[{"a":1}]'
+        assert decode_vue_payload(raw) == '[{"a":1}]'
+
+    def test_json_escapes_inside_the_literal_survive_its_own_escaping(self):
+        # WorkBench writes the JSON text's own escapes (< for "<") with an escaped
+        # backslash inside the JS literal, and "/" as \/.
+        raw = r"""JSON.parse('[{"d":"\\u003Cp\\u003Ea\\u0026b\\u003C\/p\\u003E"}]')"""
+
+        assert json.loads(decode_vue_payload(raw)) == [{"d": "<p>a&b</p>"}]
+
+    def test_an_escaped_quote_in_a_value_survives(self):
+        raw = r"""JSON.parse('[{"t":"say \\"hi\\" it's"}]')"""
+
+        assert json.loads(decode_vue_payload(raw)) == [{"t": 'say "hi" it\'s'}]
 
     def test_returns_input_when_no_wrapper(self):
-        assert _decode_vue_payload('{"a":1}') == '{"a":1}'
+        assert decode_vue_payload('{"a":1}') == '{"a":1}'
 
     def test_none_passthrough(self):
-        assert _decode_vue_payload(None) is None
+        assert decode_vue_payload(None) is None
 
-    def test_empty_string(self):
-        assert _decode_vue_payload("") is None
+    @pytest.mark.parametrize("raw", ["", "  \n "])
+    def test_empty_or_blank_is_none(self, raw):
+        assert decode_vue_payload(raw) is None
+
+    def test_an_empty_literal_is_unwrapped_to_empty_text(self):
+        assert decode_vue_payload("JSON.parse('')") == ""
 
 
 # ============ Field Extraction ============
 
 
 class TestV2ExtractRecommendation:
+    def test_extracts_exactly_the_contract_keys(self, v2_full_html):
+        data = WorkbenchV2Strategy().extract_recommendation(v2_full_html)
+
+        assert set(data) == set(ExtractedRecommendation.__required_keys__)
+        Recommendation(ref="1.1", title="t", url="https://workbench.cisecurity.org/x", **data)
+
     def test_extracts_all_text_fields(self, v2_full_html):
         data = WorkbenchV2Strategy().extract_recommendation(v2_full_html)
 
@@ -224,6 +239,53 @@ class TestV2ExtractRecommendation:
         assert data["remediation"] is None
         assert data["assessment_status"] == "Unknown"
         assert data["profiles"] == []
+
+
+def _page(**attributes):
+    """A recommendation page holding the given wb-recommendation-data attributes (our own text,
+    in WorkBench's form: attribute text with entities and &#13; line breaks)."""
+    components = "".join(
+        f'<wb-recommendation-data attribute="{attribute}" text="{text}"></wb-recommendation-data>'
+        for attribute, text in attributes.items()
+    )
+    return f"<html><body>{components}</body></html>"
+
+
+class TestV2TextFieldsAreStoredAsWritten:
+    """WorkBench writes each text attribute without whitespace around the text (checked on
+    386 live pages), so a field is kept exactly as written, every line break as \n; nothing
+    is trimmed, and a field of only spaces, tabs and line breaks is None."""
+
+    def test_the_indentation_of_a_first_line_is_kept(self):
+        data = WorkbenchV2Strategy().extract_recommendation(
+            _page(description="    echo &lt;path&gt;&#13;\n    done")
+        )
+
+        assert data["description"] == "    echo <path>\n    done"
+
+    def test_a_field_ending_inside_an_open_fence_keeps_its_blank_line_and_line_break(self):
+        data = WorkbenchV2Strategy().extract_recommendation(
+            _page(audit_procedure="Run:&#13;\n&#13;\n~~~&#13;\necho &lt;path&gt;&#13;\n \t&#13;\n")
+        )
+
+        assert data["audit"] == "Run:\n\n~~~\necho <path>\n \t\n"
+
+    def test_a_line_of_other_whitespace_is_text(self):
+        data = WorkbenchV2Strategy().extract_recommendation(
+            _page(rationale_statement="&nbsp;\nThe reason.")
+        )
+
+        assert data["rationale"] == "\u00a0\nThe reason."
+
+    def test_a_field_of_only_spaces_tabs_and_line_breaks_is_none(self):
+        data = WorkbenchV2Strategy().extract_recommendation(_page(notes=" \t&#13;\n\n"))
+
+        assert data["additional_info"] is None
+
+    def test_an_empty_attribute_is_none(self):
+        data = WorkbenchV2Strategy().extract_recommendation(_page(default_value=""))
+
+        assert data["default_value"] is None
 
 
 # ============ CIS Controls Normalization ============
@@ -270,7 +332,7 @@ class TestV2ExtractMitre:
         assert data["mitre_mapping"] is None
 
     def test_empty_mitre_returns_none(self):
-        empty = _vue_json_attr({"Technique": [], "Tactics": [], "Mitigations": []})
+        empty = vue_json_attr({"Technique": [], "Tactics": [], "Mitigations": []})
         html = f"""
         <wb-recommendation-data attribute="description" text="x"></wb-recommendation-data>
         <wb-recommendation-mitre-mappings :mappings="{empty}">
@@ -297,6 +359,24 @@ class TestV2RecommendationModelValidation:
         assert rec.assessment_status == "Automated"
         assert len(rec.cis_controls) == 2
         assert rec.mitre_mapping is not None
+
+    def test_a_page_with_two_profiles_gives_one_entry_each(self, v2_full_html):
+        # The page's profiles text holds both names with a Markdown line break between them.
+        html = v2_full_html.replace(
+            'text="Level 2 - Docker - Linux"',
+            'text="Level 1 - Server  \nLevel 1 - Workstation"',
+        )
+        assert html != v2_full_html
+        data = WorkbenchV2Strategy().extract_recommendation(html)
+
+        rec = Recommendation(
+            ref="1.1.15",
+            title="Ensure auditing is configured for containerd-shim",
+            url="https://workbench.cisecurity.org/sections/1/recommendations/2",
+            **data,
+        )
+
+        assert rec.profiles == ["Level 1 - Server", "Level 1 - Workstation"]
 
 
 # ============ Detector Integration ============

@@ -1,17 +1,20 @@
 """Export command for CIS Benchmark CLI."""
 
-import json
 import logging
 import os
 import sys
+from contextlib import closing
+from gettext import ngettext
 
 import click
 from rich.console import Console
+from rich.markup import escape
 
-from cis_bench.config import Config
+from cis_bench.cli.helpers.services import settings_from
 from cis_bench.exporters import ExporterFactory
 from cis_bench.exporters.xccdf_unified_exporter import XCCDFExporter
 from cis_bench.models.benchmark import Benchmark
+from cis_bench.utils.workbench_urls import is_benchmark_id
 
 console = Console()
 logger = logging.getLogger(__name__)
@@ -40,17 +43,16 @@ def _load_benchmark_from_db(identifier, catalog_db_path):
     Returns:
         tuple: (Benchmark, benchmark_id) or (None, error_message)
     """
-    from cis_bench.catalog.database import CatalogDatabase
+    from cis_bench.catalog.database import CatalogDatabase, deserialize_benchmark_json
 
-    db = CatalogDatabase(catalog_db_path)
-    downloaded = db.get_downloaded(identifier)
+    with closing(CatalogDatabase(catalog_db_path)) as db:
+        downloaded = db.get_downloaded(identifier)
 
-    if not downloaded:
-        return None, f"Benchmark {identifier} not downloaded"
+        if not downloaded:
+            return None, f"Benchmark {identifier} not downloaded"
 
-    benchmark_data = json.loads(downloaded["content_json"])
-    benchmark = Benchmark(**benchmark_data)
-    return benchmark, identifier
+        benchmark = deserialize_benchmark_json(downloaded["content_json"])
+        return benchmark, identifier
 
 
 def _load_benchmark_from_file(identifier, input_dir):
@@ -103,10 +105,11 @@ def _export_single_benchmark(
     benchmark_id_for_filename = None
 
     # Check if identifier is a benchmark ID (numeric)
-    if identifier.isdigit():
-        logger.info(f"Loading benchmark {identifier} from database")
+    if is_benchmark_id(identifier):
+        identifier = identifier.strip()
+        logger.debug(f"Loading benchmark {identifier} from database")
 
-        catalog_db_path = Config.get_catalog_db_path()
+        catalog_db_path = settings_from().catalog_db_path
 
         if not catalog_db_path.exists():
             console.print(f"{prefix} [red]Error: Catalog database not found[/red]")
@@ -118,35 +121,35 @@ def _export_single_benchmark(
         try:
             benchmark, result = _load_benchmark_from_db(identifier, catalog_db_path)
             if benchmark is None:
-                console.print(f"{prefix} [red]Error: {result}[/red]")
+                console.print(f"{prefix} [red]Error: {escape(str(result))}[/red]")
                 console.print(
                     f"[yellow]Hint: Run 'cis-bench download {identifier}' to download it first[/yellow]"
                 )
                 return False, None
 
             benchmark_id_for_filename = result
-            console.print(f"{prefix} [green]✓[/green] Loaded from cache: {benchmark.title}")
+            console.print(f"{prefix} [green]✓[/green] Loaded from cache: {escape(benchmark.title)}")
 
         except Exception as e:
-            logger.error(f"Failed to load benchmark from database: {e}", exc_info=True)
-            console.print(f"{prefix} [red]Error loading from database: {e}[/red]")
+            logger.debug("Failed to load benchmark from database", exc_info=True)
+            console.print(f"{prefix} [red]Error loading from database: {escape(str(e))}[/red]")
             return False, None
 
     else:
         # Treat as file path
-        logger.info(f"Loading benchmark from file: {identifier}")
+        logger.debug(f"Loading benchmark from file: {identifier}")
 
         try:
             benchmark, error = _load_benchmark_from_file(identifier, input_dir)
             if benchmark is None:
-                console.print(f"{prefix} [red]Error: {error}[/red]")
+                console.print(f"{prefix} [red]Error: {escape(str(error))}[/red]")
                 return False, None
 
-            console.print(f"{prefix} [green]✓[/green] Loaded: {benchmark.title}")
+            console.print(f"{prefix} [green]✓[/green] Loaded: {escape(benchmark.title)}")
 
         except Exception as e:
-            logger.error(f"Failed to load benchmark: {e}", exc_info=True)
-            console.print(f"{prefix} [red]Error loading benchmark: {e}[/red]")
+            logger.debug("Failed to load benchmark", exc_info=True)
+            console.print(f"{prefix} [red]Error loading benchmark: {escape(str(e))}[/red]")
             return False, None
 
     # Determine exporter parameters
@@ -178,20 +181,22 @@ def _export_single_benchmark(
         exporter.export(benchmark, actual_output_file)
 
         file_size = os.path.getsize(actual_output_file) / 1024
-        logger.info(f"Export successful: {actual_output_file} ({file_size:.1f} KB)")
+        logger.debug(f"Export successful: {actual_output_file} ({file_size:.1f} KB)")
 
-        console.print(
-            f"{prefix} [green]✓[/green] Exported {len(benchmark.recommendations)} "
-            f"recommendations to [bold]{actual_output_file}[/bold]"
-        )
+        exported = ngettext(
+            "Exported {count} recommendation to [bold]{path}[/bold]",
+            "Exported {count} recommendations to [bold]{path}[/bold]",
+            len(benchmark.recommendations),
+        ).format(count=len(benchmark.recommendations), path=escape(str(actual_output_file)))
+        console.print(f"{prefix} [green]✓[/green] {exported}")
         console.print(f"      Format: [cyan]{exporter.format_name()}[/cyan]")
         console.print(f"      Size: [yellow]{file_size:.1f} KB[/yellow]")
 
         return True, actual_output_file
 
     except Exception as e:
-        logger.error(f"Export failed: {e}", exc_info=True)
-        console.print(f"{prefix} [red]✗ Export failed: {e}[/red]")
+        logger.debug("Export failed", exc_info=True)
+        console.print(f"{prefix} [red]✗ Export failed: {escape(str(e))}[/red]")
         return False, None
 
 
@@ -215,7 +220,8 @@ def _export_single_benchmark(
     "--output",
     "-o",
     "output_file",
-    help="Output file (only valid for single benchmark export)",
+    type=click.Path(dir_okay=False),
+    help="Output file (only for a single benchmark; for a folder use --output-dir)",
 )
 @click.option(
     "--output-dir",
@@ -224,12 +230,12 @@ def _export_single_benchmark(
 )
 @click.option(
     "--input-dir",
-    default="./benchmarks",
-    help="Input directory where benchmark JSON files are stored",
+    help="Input directory where benchmark JSON files are stored (default: <data dir>/benchmarks)",
 )
 def export_cmd(identifiers, export_format, style, output_file, output_dir, input_dir):
     """Export benchmarks to different formats.
 
+    \b
     IDENTIFIERS can be one or more of:
     - Benchmark IDs (e.g., 23598) - loads from catalog database
     - File paths (e.g., benchmark.json) - loads from file
@@ -240,10 +246,12 @@ def export_cmd(identifiers, export_format, style, output_file, output_dir, input
         cis-bench export 23598 --format xccdf --style cis
         cis-bench export benchmark.json --format yaml
 
+    \b
         # Batch export multiple benchmarks
         cis-bench export 23598 22605 18208 --format yaml
         cis-bench export 23598 22605 --format xccdf --style disa
 
+    \b
         # Export to specific directory
         cis-bench export 23598 22605 --format xccdf --output-dir ./stig_exports
     """
@@ -256,6 +264,9 @@ def export_cmd(identifiers, export_format, style, output_file, output_dir, input
         console.print("[red]Error: --output cannot be used with multiple identifiers[/red]")
         console.print("[yellow]Hint: Use --output-dir for batch exports[/yellow]")
         sys.exit(1)
+
+    if input_dir is None:
+        input_dir = settings_from().benchmarks_dir
 
     total = len(identifiers)
     success_count = 0
@@ -291,21 +302,25 @@ def export_cmd(identifiers, export_format, style, output_file, output_dir, input
     if total > 1:
         console.print()
         if failed_count == 0:
-            console.print(
-                f"[bold green]Export complete![/bold green] {success_count} benchmarks exported."
-            )
+            exported = ngettext(
+                "{count} benchmark exported.", "{count} benchmarks exported.", success_count
+            ).format(count=success_count)
+            console.print(f"[bold green]Export complete![/bold green] {exported}")
         else:
             console.print(
                 f"[bold yellow]Export complete with errors.[/bold yellow] "
                 f"{success_count} succeeded, {failed_count} failed."
             )
 
-    # Show XCCDF note for single successful export
+    # Say how to check a single XCCDF export against the NIST schema
     if total == 1 and success_count == 1 and export_format in ["xccdf", "xml"]:
         console.print()
-        console.print("[dim]Note: XCCDF output validates against NIST XCCDF 1.2 schema[/dim]")
-        console.print("[dim]Compatible with OpenSCAP, SCC, and other SCAP tools[/dim]")
+        console.print(
+            f"[dim]Check it against the NIST schema: "
+            f"cis-bench validate {escape(str(exported_files[0]))}[/dim]",
+            soft_wrap=True,
+        )
 
-    # Exit with error if all failed
-    if success_count == 0:
+    # A command exits 0 only when everything it was asked to do succeeded
+    if failed_count:
         sys.exit(1)

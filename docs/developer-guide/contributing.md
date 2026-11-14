@@ -146,7 +146,7 @@ tests/unit/test_catalog_database.py
 **All tests must use isolated databases:**
 
 - Unit tests: `tmp_path` fixtures
-- E2E tests: `CIS_BENCH_ENV=test` (automatic)
+- All tests: `CIS_BENCH_HOME` points at a temporary folder (automatic, `tests/conftest.py`)
 - NO touching production data
 
 **See:** [Testing Guide](testing.md)
@@ -252,9 +252,35 @@ cis-bench export benchmark.json --format pdf
 See: [How to Add XCCDF Style](how-to-add-xccdf-style.md)
 
 **Summary:**
+
 1. Create `{style}_style.yaml` in configs/
 2. Define field mappings
 3. No code changes needed!
+
+### Regenerating the XCCDF Models
+
+The XCCDF model packages are generated, never edited by hand:
+
+| Package | Generated from |
+|---|---|
+| `src/cis_bench/models/xccdf_v1_1/` (XCCDF 1.1.4, DISA style) | `src/cis_bench/schemas/xccdf-1.1.4.xsd`, which also reads `cpe-1.0.xsd`, `platform-0.2.3.xsd` and `xccdfp-1.1.xsd` from the same folder |
+| `src/cis_bench/models/xccdf/` (XCCDF 1.2, CIS style) | `src/cis_bench/schemas/xccdf_1.2.xsd` |
+
+These schema copies are the generation inputs. `cis-bench validate` checks documents against other copies, under `src/cis_bench/schemas/xccdf/`.
+
+```bash
+uv run python scripts/generate_xccdf_models.py           # regenerate both packages
+uv run python scripts/generate_xccdf_models.py --check   # exit 1 if the committed models differ
+```
+
+- The script runs `xsdata generate` with `.xsdata.xml`, then `ruff check --fix` and `ruff format` with the project's settings. It replaces every module in the two packages and removes any module the generator no longer writes.
+- xsdata comes from the `dev` extra.
+- Generating needs the network: `xccdf-1.1.4.xsd` imports `dc.xsd` from `http://dublincore.org`. For the XML namespace schema (`xml.xsd`), xsdata uses its own bundled copy.
+- Some imports name schemas that do not exist: the CPE language schemas at `/schema/cpe/...`, and `../../common/xml.xsd` in the 1.1.4 copy's sibling schemas. xsdata warns about them and generates the fields that use the CPE types as plain strings. The script lists these imports for each model and stops with an error if xsdata cannot read any other schema or import. xsdata itself carries on, still exiting 0, in that case.
+- CI runs `--check`, so a hand edit or a changed schema copy without regenerated models fails the build.
+- **xsdata bug workaround:** both XCCDF schemas hold `<schema>XCCDF Language</schema>` inside `xsd:appinfo`. xsdata ([tefra/xsdata#1079](https://github.com/tefra/xsdata/issues/1079), not fixed in 26.10) treats that element as a schema of its own and writes `"namespace": ""` on the element fields after it. The models would then render those elements outside any namespace.
+    - The script runs xsdata on a temporary copy of the schema folder with that element renamed; the schema files are not changed.
+    - A test in `tests/scripts/test_generate_xccdf_models.py` shows the installed xsdata still has the bug. When it fails after an xsdata upgrade, remove the rename and regenerate.
 
 ---
 
@@ -383,11 +409,10 @@ Include:
 ### Recommended Setup
 
 ```bash
-# Use dev environment
-export CIS_BENCH_ENV=dev
+# Keep development data in its own folder
+export CIS_BENCH_HOME=~/cis-bench-dev
 
-# Your work goes to ~/.cis-bench-dev/
-# Production stays clean
+# Your work goes to ~/cis-bench-dev/; your own XDG folders stay clean
 ```
 
 ### Running Tests

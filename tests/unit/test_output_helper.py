@@ -1,11 +1,19 @@
 """Unit tests for output formatting helper."""
 
 import json
+from io import StringIO
 
 import pytest
 import yaml
+from rich.console import Console
 
-from cis_bench.cli.helpers.output import output_csv, output_data, output_json, output_yaml
+from cis_bench.cli.helpers.output import (
+    benchmark_table,
+    output_csv,
+    output_data,
+    output_json,
+    output_yaml,
+)
 
 # ============================================================================
 # Tests: JSON Output
@@ -198,3 +206,148 @@ class TestOutputData:
         captured = capsys.readouterr()
         assert "name,id" in captured.out
         assert "test,1" in captured.out
+
+
+# ============================================================================
+# Tests: Benchmark results table
+# ============================================================================
+
+LONG_TITLE = (
+    "CIS Microsoft Windows Server 2022 Benchmark for Domain Controllers "
+    "and Member Servers in Hybrid Azure Environments"
+)
+
+
+# The Title column width a run uses when CIS_BENCH_TABLE_TITLE_WIDTH is not set.
+TITLE_WIDTH = 90
+
+
+def _render(table, width):
+    buffer = StringIO()
+    Console(file=buffer, width=width).print(table)
+    return buffer.getvalue()
+
+
+class TestBenchmarkTable:
+    """The search/get results table fits the terminal without cutting short columns."""
+
+    def test_short_columns_stay_whole_and_the_title_wraps_at_80_columns(self):
+        rows = [
+            {
+                "benchmark_id": "23598",
+                "title": LONG_TITLE,
+                "version": "v4.0.0",
+                "status": "Published",
+            }
+        ]
+
+        output = _render(benchmark_table(rows, title_width=TITLE_WIDTH), width=80)
+
+        assert "23598" in output
+        assert "v4.0.0" in output
+        assert "Published" in output
+        assert "…" not in output
+        for word in LONG_TITLE.split():
+            assert word in output
+
+    @pytest.mark.parametrize(
+        ("benchmark_id", "version", "status"),
+        [
+            ("2359823598", "v1", "P"),
+            ("1", "v4.0.0-draft1", "P"),
+            ("1", "v1", "Published Archive"),
+        ],
+        ids=["widest-id", "widest-version", "widest-status"],
+    )
+    def test_in_a_narrow_pane_only_the_title_gives_up_width(self, benchmark_id, version, status):
+        rows = [
+            {
+                "benchmark_id": benchmark_id,
+                "title": LONG_TITLE,
+                "version": version,
+                "status": status,
+            }
+        ]
+
+        output = _render(benchmark_table(rows, title_width=TITLE_WIDTH), width=40)
+
+        assert benchmark_id in output
+        assert version in output
+        assert status in output
+        assert "…" not in output  # a word wider than the title column folds, it is not cut
+
+    def test_title_width_is_the_widest_the_title_column_grows(self):
+        rows = [{"benchmark_id": "1", "title": LONG_TITLE, "version": "v1", "status": "Published"}]
+
+        output = _render(benchmark_table(rows, title_width=30), width=200)
+
+        title_lines = [
+            line for line in output.splitlines() if "Hybrid" in line or "Windows" in line
+        ]
+        assert title_lines
+        assert all(len(line.split("│")[2].strip()) <= 30 for line in title_lines)
+
+    def test_cells_from_the_catalog_are_shown_verbatim(self):
+        rows = [
+            {"benchmark_id": "1", "title": "CIS T [/t]", "version": "v1 [/v]", "status": "P [/s]"}
+        ]
+
+        output = _render(benchmark_table(rows, title_width=TITLE_WIDTH), width=120)
+
+        assert "CIS T [/t]" in output
+        assert "v1 [/v]" in output
+        assert "P [/s]" in output
+
+
+# ============================================================================
+# Tests: Times in tables
+# ============================================================================
+
+
+class TestDisplayTime:
+    """A table shows a time in the viewer's zone and names it; a time with no zone says so."""
+
+    def test_an_aware_time_is_shown_in_the_local_zone_with_its_name(self, new_york_clock):
+        from datetime import UTC, datetime
+
+        from cis_bench.cli.helpers.output import display_time
+
+        assert (
+            display_time(datetime(2026, 11, 7, 2, 5, 58, tzinfo=UTC)) == "2026-11-06 21:05:58 EST"
+        )
+
+    def test_a_summer_time_gets_the_summer_name(self, new_york_clock):
+        from datetime import UTC, datetime
+
+        from cis_bench.cli.helpers.output import display_time
+
+        assert display_time(datetime(2026, 7, 1, 12, 0, 0, tzinfo=UTC)) == "2026-07-01 08:00:00 EDT"
+
+    def test_a_time_without_a_zone_is_shown_as_it_is_and_marked(self, new_york_clock):
+        from datetime import datetime
+
+        from cis_bench.cli.helpers.output import display_time
+
+        assert (
+            display_time(datetime(2026, 11, 6, 20, 5, 58))
+            == "2026-11-06 20:05:58 (zone not recorded)"
+        )
+
+
+class TestShowingLine:
+    """The count line under a limited list; its noun agrees with the total."""
+
+    @pytest.mark.parametrize(
+        ("shown", "total", "expected"),
+        [
+            (1, 1, "Showing 1 of 1 result"),
+            (0, 0, "Showing 0 of 0 results"),
+            (5, 5, "Showing 5 of 5 results"),
+            (2, 5, "Showing 2 of 5 results; use --limit to see more"),
+            (1, 5, "Showing 1 of 5 results; use --limit to see more"),
+        ],
+    )
+    def test_the_noun_agrees_with_the_total(self, shown, total, expected):
+        from cis_bench.cli.helpers.output import showing_line
+
+        assert showing_line(shown, total) == expected

@@ -1,96 +1,32 @@
 """Tests for XML and HTML utility modules.
 
 Tests for:
-- cis_bench.utils.xml_utils: XCCDF namespace handling, serialization, post-processing
+- cis_bench.utils.xml_utils: XCCDF serialization with a namespace map, post-processing
 - cis_bench.utils.html_parser: HTML cleaning, parsing, and validation
 """
 
+import pytest
+from lxml import etree
 
 # ============================================================================
 # XML Utils Tests
 # ============================================================================
 
 
-class TestXCCDFNamespaceFixer:
-    """Tests for XCCDFNamespaceFixer.fix_namespaces."""
-
-    def test_fix_namespaces_basic(self):
-        """Should add XCCDF namespace to unnamespaced elements."""
-        from cis_bench.utils.xml_utils import XCCDFNamespaceFixer
-
-        xml_input = "<Benchmark><title>Test</title></Benchmark>"
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.1"
-
-        result = XCCDFNamespaceFixer.fix_namespaces(xml_input, xccdf_ns)
-
-        # Namespace should be added to both root and child elements
-        assert xccdf_ns in result
-        assert "Test" in result
-
-    def test_fix_namespaces_already_namespaced(self):
-        """Should not modify elements that already have namespaces."""
-        from cis_bench.utils.xml_utils import XCCDFNamespaceFixer
-
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.1"
-        xml_input = f'<Benchmark xmlns="{xccdf_ns}"><title>Test</title></Benchmark>'
-
-        result = XCCDFNamespaceFixer.fix_namespaces(xml_input, xccdf_ns)
-
-        # Should still have the namespace
-        assert xccdf_ns in result
-        assert "Test" in result
-
-
 class TestXCCDFSerializer:
     """Tests for XCCDFSerializer."""
 
-    def test_serialize_to_string_basic(self):
-        """Should serialize xsdata objects to XML string (lines 66-77)."""
-        from dataclasses import dataclass
-
+    def test_an_object_is_rendered_to_a_tree_declaring_the_namespace_map(self):
+        from cis_bench.models.xccdf.xccdf_1_2 import Rule
         from cis_bench.utils.xml_utils import XCCDFSerializer
 
-        # Create a simple dataclass that xsdata can serialize
-        @dataclass
-        class SimpleElement:
-            value: str = "test"
+        ns_map = {None: XCCDF_1_2, "dc": "http://purl.org/dc/elements/1.1/"}
 
-        obj = SimpleElement(value="hello")
-        result = XCCDFSerializer.serialize_to_string(obj)
+        root = XCCDFSerializer.serialize_to_tree(Rule(id="xccdf_org.example_rule_r"), ns_map)
 
-        assert "<?xml" in result
-        assert "hello" in result
-
-    def test_serialize_to_string_no_pretty(self):
-        """Should serialize without indentation when pretty=False."""
-        from dataclasses import dataclass
-
-        from cis_bench.utils.xml_utils import XCCDFSerializer
-
-        @dataclass
-        class SimpleElement:
-            value: str = "test"
-
-        obj = SimpleElement(value="compact")
-        result = XCCDFSerializer.serialize_to_string(obj, pretty=False)
-
-        assert "<?xml" in result
-        assert "compact" in result
-
-    def test_serialize_to_string_custom_indent(self):
-        """Should use custom indent string."""
-        from dataclasses import dataclass
-
-        from cis_bench.utils.xml_utils import XCCDFSerializer
-
-        @dataclass
-        class SimpleElement:
-            value: str = "test"
-
-        obj = SimpleElement(value="indented")
-        result = XCCDFSerializer.serialize_to_string(obj, indent="    ")  # 4 spaces
-
-        assert "indented" in result
+        assert root.tag == f"{{{XCCDF_1_2}}}Rule"
+        assert root.get("id") == "xccdf_org.example_rule_r"
+        assert root.nsmap == ns_map
 
     def test_tree_to_string_basic(self):
         """Should convert lxml Element to string."""
@@ -123,298 +59,90 @@ class TestXCCDFSerializer:
         assert "<root>" in result
 
 
-class TestDublinCoreInjector:
-    """Tests for DublinCoreInjector."""
+XCCDF_1_2 = "http://checklists.nist.gov/xccdf/1.2"
 
-    def test_inject_dc_elements_basic(self):
-        """Should inject DC elements into reference element."""
-        from cis_bench.utils.xml_utils import DublinCoreInjector
 
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.1"
-        dc_ns = "http://purl.org/dc/elements/1.1/"
+def _resolve(element, qname: str) -> str:
+    """A QName value (prefix:local or local) resolved with the namespaces in scope."""
+    prefix, _, local = qname.rpartition(":")
+    return f"{{{element.nsmap[prefix or None]}}}{local}"
 
-        xml_input = f"""<?xml version="1.0"?>
-        <Benchmark xmlns="{xccdf_ns}">
-            <reference/>
-        </Benchmark>"""
 
-        dc_elements = {"dc:publisher": "CIS Security", "dc:source": "https://cis.org"}
+class TestXsiTypeValues:
+    """An xsi:type value is a QName in the document: its prefix must be one in scope."""
 
-        result = DublinCoreInjector.inject_dc_elements(xml_input, dc_elements, xccdf_ns, dc_ns)
+    @pytest.mark.parametrize(
+        "ns_map", [{None: XCCDF_1_2}, {"xccdf": XCCDF_1_2}], ids=["unprefixed", "prefixed"]
+    )
+    def test_an_xsi_type_value_resolves_to_its_type(self, ns_map):
+        from xsdata.formats.dataclass.context import XmlContext
 
-        assert "CIS Security" in result
-        assert "https://cis.org" in result
+        from cis_bench.models.xccdf.xccdf_1_2 import Rule, WarningType
+        from cis_bench.utils.xml_utils import XCCDFPostProcessor, XCCDFSerializer
 
-    def test_inject_dc_elements_no_reference(self):
-        """Should handle XML without reference element."""
-        from cis_bench.utils.xml_utils import DublinCoreInjector
+        # A Rule description given a subtype: xsdata names the subtype in xsi:type
+        rule = Rule(id="xccdf_org.example_rule_r", description=[WarningType(content=["d"])])
 
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.1"
+        # As the exporter writes it: rendered to a tree, post-processed, written once
+        tree = XCCDFSerializer.serialize_to_tree(rule, ns_map)
+        XCCDFPostProcessor.process(tree)
+        root = etree.fromstring(XCCDFSerializer.tree_to_string(tree).encode())
+        description = root.find(f"{{{XCCDF_1_2}}}description")
+        xsi_type = description.get("{http://www.w3.org/2001/XMLSchema-instance}type")
 
-        xml_input = f"""<?xml version="1.0"?>
-        <Benchmark xmlns="{xccdf_ns}">
-            <title>Test</title>
-        </Benchmark>"""
-
-        dc_elements = {"dc:publisher": "CIS"}
-
-        result = DublinCoreInjector.inject_dc_elements(xml_input, dc_elements, xccdf_ns)
-
-        # Should not crash, just return XML without DC elements
-        assert "Test" in result
-
-    def test_inject_dc_into_all_references_with_markers(self):
-        """Should parse DC markers and convert to proper DC elements (lines 227-283)."""
-        from cis_bench.utils.xml_utils import DublinCoreInjector
-
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.1"
-
-        # XML with DC markers in reference text
-        xml_input = f"""<?xml version="1.0"?>
-        <Benchmark xmlns="{xccdf_ns}">
-            <reference>DC:dc:title:NIST SP 800-53||DC:dc:identifier:CM-7</reference>
-        </Benchmark>"""
-
-        result = DublinCoreInjector.inject_dc_into_all_references(xml_input, xccdf_ns)
-
-        # DC elements should be created
-        assert "NIST SP 800-53" in result
-        assert "CM-7" in result
-        # Original marker text should be gone
-        assert "DC:dc:" not in result
-
-    def test_inject_dc_into_all_references_clears_existing_children(self):
-        """Should clear existing children from reference element (line 185)."""
-        from cis_bench.utils.xml_utils import DublinCoreInjector
-
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.1"
-
-        # XML with DC markers AND existing child elements
-        xml_input = f"""<?xml version="1.0"?>
-        <Benchmark xmlns="{xccdf_ns}">
-            <reference>DC:dc:title:New Title<existingChild>old</existingChild></reference>
-        </Benchmark>"""
-
-        result = DublinCoreInjector.inject_dc_into_all_references(xml_input, xccdf_ns)
-
-        # New DC element should be created
-        assert "New Title" in result
-        # Existing child should be removed
-        assert "existingChild" not in result
-        assert "old" not in result
-
-    def test_inject_dc_into_all_references_no_markers(self):
-        """Should not modify references without DC markers."""
-        from cis_bench.utils.xml_utils import DublinCoreInjector
-
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.1"
-
-        xml_input = f"""<?xml version="1.0"?>
-        <Benchmark xmlns="{xccdf_ns}">
-            <reference>https://www.cisecurity.org/controls</reference>
-        </Benchmark>"""
-
-        result = DublinCoreInjector.inject_dc_into_all_references(xml_input, xccdf_ns)
-
-        # Original content preserved
-        assert "https://www.cisecurity.org/controls" in result
-
-    def test_inject_cis_metadata_simple_element(self):
-        """Should inject simple CIS metadata elements (lines 276-281)."""
-        from cis_bench.utils.xml_utils import DublinCoreInjector
-
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.1"
-
-        xml_input = f"""<?xml version="1.0"?>
-        <Benchmark xmlns="{xccdf_ns}">
-            <metadata>META:cis-profile:Level 1</metadata>
-        </Benchmark>"""
-
-        result = DublinCoreInjector.inject_cis_metadata(xml_input, xccdf_ns)
-
-        assert "Level 1" in result
-        assert "META:" not in result
-
-    def test_inject_cis_metadata_nested_structure(self):
-        """Should inject nested CIS metadata with key=value pairs (lines 260-275)."""
-        from cis_bench.utils.xml_utils import DublinCoreInjector
-
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.1"
-
-        xml_input = f"""<?xml version="1.0"?>
-        <Benchmark xmlns="{xccdf_ns}">
-            <metadata>META:cis-control:version=8:control-id=4.8:title=Uninstall Unnecessary Services</metadata>
-        </Benchmark>"""
-
-        result = DublinCoreInjector.inject_cis_metadata(xml_input, xccdf_ns)
-
-        # Nested structure should be created
-        assert "8" in result  # version
-        assert "4.8" in result  # control-id
-        assert "Uninstall Unnecessary Services" in result
-        assert "META:" not in result
-
-    def test_inject_cis_metadata_no_metadata_element(self):
-        """Should handle XML without metadata elements."""
-        from cis_bench.utils.xml_utils import DublinCoreInjector
-
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.1"
-
-        xml_input = f"""<?xml version="1.0"?>
-        <Benchmark xmlns="{xccdf_ns}">
-            <title>Test</title>
-        </Benchmark>"""
-
-        result = DublinCoreInjector.inject_cis_metadata(xml_input, xccdf_ns)
-
-        # Should not crash
-        assert "Test" in result
-
-    def test_inject_cis_metadata_clears_existing_children(self):
-        """Should clear existing children from metadata element (line 241)."""
-        from cis_bench.utils.xml_utils import DublinCoreInjector
-
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.1"
-
-        # XML with META markers AND existing child elements
-        xml_input = f"""<?xml version="1.0"?>
-        <Benchmark xmlns="{xccdf_ns}">
-            <metadata>META:cis-profile:Level 2<existingChild>old data</existingChild></metadata>
-        </Benchmark>"""
-
-        result = DublinCoreInjector.inject_cis_metadata(xml_input, xccdf_ns)
-
-        # New CIS element should be created
-        assert "Level 2" in result
-        # Existing child should be removed
-        assert "existingChild" not in result
-        assert "old data" not in result
+        assert _resolve(description, xsi_type) == XmlContext().build(WarningType).target_qname
 
 
 class TestXCCDFPostProcessor:
-    """Tests for XCCDFPostProcessor.process."""
+    """XCCDFPostProcessor.process changes the rendered tree in place: attributes only,
+    namespaces left as written."""
 
-    def test_process_default_config(self):
-        """Should use default config when none provided (line 323)."""
+    DOCUMENT = (
+        f'<Benchmark xmlns="{XCCDF_1_2}" xmlns:dc="http://purl.org/dc/elements/1.1/"'
+        ' xmlns:controls="http://cisecurity.org/controls">'
+        '<Rule id="r" override="true"><dc:title>T</dc:title>'
+        '<metadata><controls:cis_controls override="kept"/></metadata></Rule></Benchmark>'
+    )
+
+    def test_override_attributes_are_removed_by_default(self):
         from cis_bench.utils.xml_utils import XCCDFPostProcessor
 
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.1"
-        xml_input = f'<Benchmark xmlns="{xccdf_ns}"><title>Test</title></Benchmark>'
+        root = etree.fromstring(self.DOCUMENT)
 
-        # Call with post_processing_config=None (triggers line 323)
-        result = XCCDFPostProcessor.process(xml_input, xccdf_ns)
+        XCCDFPostProcessor.process(root)
 
-        assert "Test" in result
-        assert "<?xml" in result
+        assert root.find(f"{{{XCCDF_1_2}}}Rule").get("override") is None
 
-    def test_process_removes_override_attr(self):
-        """Should remove override attribute by default."""
+    def test_an_override_attribute_of_another_namespaces_element_is_kept(self):
         from cis_bench.utils.xml_utils import XCCDFPostProcessor
 
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.1"
-        xml_input = f'<Benchmark xmlns="{xccdf_ns}"><Rule override="true">Test</Rule></Benchmark>'
+        root = etree.fromstring(self.DOCUMENT)
 
-        result = XCCDFPostProcessor.process(xml_input, xccdf_ns)
+        XCCDFPostProcessor.process(root)
 
-        assert 'override="true"' not in result
-        assert "Test" in result
+        (controls,) = root.iter("{http://cisecurity.org/controls}cis_controls")
+        assert controls.get("override") == "kept"
 
-    def test_process_preserve_namespaces_default_key(self):
-        """Should handle 'default' key in preserve_namespaces (lines 371-372)."""
+    def test_override_attributes_stay_when_the_style_keeps_them(self):
         from cis_bench.utils.xml_utils import XCCDFPostProcessor
 
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.1"
-        dc_ns = "http://purl.org/dc/elements/1.1/"
+        root = etree.fromstring(self.DOCUMENT)
 
-        xml_input = f'<Benchmark xmlns="{xccdf_ns}"><title>Test</title></Benchmark>'
+        XCCDFPostProcessor.process(root, {"remove_override_attr": False})
 
-        # Use namespace_map with None key (lxml convention)
-        namespace_map = {None: xccdf_ns, "dc": dc_ns}
+        assert root.find(f"{{{XCCDF_1_2}}}Rule").get("override") == "true"
 
-        config = {"preserve_namespaces": ["default", "dc"]}
-
-        result = XCCDFPostProcessor.process(
-            xml_input, xccdf_ns, namespace_map=namespace_map, post_processing_config=config
-        )
-
-        assert "Test" in result
-        assert xccdf_ns in result
-
-    def test_process_preserve_namespaces_from_default_string(self):
-        """Should handle 'default' in namespace_map directly (line 372 branch)."""
+    def test_every_element_name_and_namespace_declaration_is_kept(self):
         from cis_bench.utils.xml_utils import XCCDFPostProcessor
 
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.1"
+        before = etree.fromstring(self.DOCUMENT)
+        after = etree.fromstring(self.DOCUMENT)
 
-        xml_input = f'<Benchmark xmlns="{xccdf_ns}"><title>Test</title></Benchmark>'
+        XCCDFPostProcessor.process(after)
 
-        # Use namespace_map with 'default' string key instead of None
-        namespace_map = {"default": xccdf_ns}
-
-        config = {"preserve_namespaces": ["default"]}
-
-        result = XCCDFPostProcessor.process(
-            xml_input, xccdf_ns, namespace_map=namespace_map, post_processing_config=config
-        )
-
-        assert "Test" in result
-
-    def test_process_with_dc_elements(self):
-        """Should inject DC elements when provided."""
-        from cis_bench.utils.xml_utils import XCCDFPostProcessor
-
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.1"
-
-        xml_input = f"""<?xml version="1.0"?>
-        <Benchmark xmlns="{xccdf_ns}">
-            <reference/>
-        </Benchmark>"""
-
-        dc_elements = {"dc:publisher": "Test Publisher"}
-
-        result = XCCDFPostProcessor.process(xml_input, xccdf_ns, dc_elements=dc_elements)
-
-        assert "Test Publisher" in result
-
-    def test_process_strip_namespace_prefixes(self):
-        """Should strip namespace prefixes when configured."""
-        from cis_bench.utils.xml_utils import XCCDFPostProcessor
-
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.1"
-
-        xml_input = f'<Benchmark xmlns="{xccdf_ns}"><title>Test</title></Benchmark>'
-
-        config = {"strip_namespace_prefixes": True}
-
-        result = XCCDFPostProcessor.process(xml_input, xccdf_ns, post_processing_config=config)
-
-        # Still valid XML
-        assert "Test" in result
-        assert "<?xml" in result
-
-    def test_process_use_all_namespaces(self):
-        """Should use all namespaces when preserve_namespaces not specified (lines 378-379)."""
-        from cis_bench.utils.xml_utils import XCCDFPostProcessor
-
-        xccdf_ns = "http://checklists.nist.gov/xccdf/1.1"
-        dc_ns = "http://purl.org/dc/elements/1.1/"
-        cis_ns = "http://cisecurity.org/xccdf/metadata/1.0"
-
-        xml_input = f'<Benchmark xmlns="{xccdf_ns}"><title>Test</title></Benchmark>'
-
-        # Provide namespace_map but NO preserve_namespaces config
-        namespace_map = {None: xccdf_ns, "dc": dc_ns, "cis": cis_ns}
-
-        # Empty config - preserve_namespaces will be None, triggering lines 378-379
-        config = {}
-
-        result = XCCDFPostProcessor.process(
-            xml_input, xccdf_ns, namespace_map=namespace_map, post_processing_config=config
-        )
-
-        # All namespaces should be included
-        assert xccdf_ns in result
-        assert "Test" in result
+        assert [(e.tag, e.prefix, e.nsmap) for e in after.iter("*")] == [
+            (e.tag, e.prefix, e.nsmap) for e in before.iter("*")
+        ]
 
 
 # ============================================================================
@@ -422,90 +150,40 @@ class TestXCCDFPostProcessor:
 # ============================================================================
 
 
-class TestHTMLCleanerStripHtml:
-    """Tests for HTMLCleaner.strip_html."""
+class TestNCNameSlug:
+    """Tests for ncname_slug: text to an XML NCName-safe identifier segment."""
 
-    def test_strip_html_basic(self):
-        """Should remove HTML tags and return plain text."""
-        from cis_bench.utils.html_parser import HTMLCleaner
+    def test_cis_title_becomes_underscored_segment(self):
+        from cis_bench.utils.xml_utils import ncname_slug
 
-        html = "<p>Hello <strong>world</strong></p>"
-        result = HTMLCleaner.strip_html(html)
+        assert (
+            ncname_slug("CIS Ubuntu Linux 22.04 LTS Benchmark")
+            == "CIS_Ubuntu_Linux_22.04_LTS_Benchmark"
+        )
 
-        assert result == "Hello world"
+    def test_ncname_safe_text_is_unchanged(self):
+        from cis_bench.utils.xml_utils import ncname_slug
 
-    def test_strip_html_none_input(self):
-        """Should return empty string for None (already covered but verify)."""
-        from cis_bench.utils.html_parser import HTMLCleaner
+        assert ncname_slug("v1.0.0") == "v1.0.0"
+        assert ncname_slug("Release-2_final") == "Release-2_final"
 
-        assert HTMLCleaner.strip_html(None) == ""
+    def test_runs_of_unsafe_characters_collapse_to_one_underscore(self):
+        from cis_bench.utils.xml_utils import ncname_slug
 
-    def test_strip_html_no_tags(self):
-        """Should handle text without HTML tags."""
-        from cis_bench.utils.html_parser import HTMLCleaner
+        assert ncname_slug("a  b\t/c:d") == "a_b_c_d"
+        assert ncname_slug("v7.1.0 (vNext)") == "v7.1.0_vNext"
 
-        text = "Plain text without any tags"
-        result = HTMLCleaner.strip_html(text)
+    def test_leading_and_trailing_separators_are_dropped(self):
+        from cis_bench.utils.xml_utils import ncname_slug
 
-        assert result == text
+        assert ncname_slug("  Title  ") == "Title"
+        assert ncname_slug("(draft)") == "draft"
 
+    def test_empty_text_gives_empty_slug(self):
+        from cis_bench.utils.xml_utils import ncname_slug
 
-class TestHTMLCleanerHtmlToMarkdown:
-    """Tests for HTMLCleaner.html_to_markdown."""
-
-    def test_html_to_markdown_none(self):
-        """Should return empty string for None (line 50)."""
-        from cis_bench.utils.html_parser import HTMLCleaner
-
-        result = HTMLCleaner.html_to_markdown(None)
-        assert result == ""
-
-    def test_html_to_markdown_paragraph(self):
-        """Should convert <p> tags to newlines."""
-        from cis_bench.utils.html_parser import HTMLCleaner
-
-        html = "<p>First paragraph</p><p>Second paragraph</p>"
-        result = HTMLCleaner.html_to_markdown(html)
-
-        assert "First paragraph" in result
-        assert "Second paragraph" in result
-
-    def test_html_to_markdown_code(self):
-        """Should convert <code> to backticks."""
-        from cis_bench.utils.html_parser import HTMLCleaner
-
-        html = "Run <code>ls -la</code> command"
-        result = HTMLCleaner.html_to_markdown(html)
-
-        assert "`ls -la`" in result
-
-    def test_html_to_markdown_list(self):
-        """Should convert <li> to markdown list items."""
-        from cis_bench.utils.html_parser import HTMLCleaner
-
-        html = "<ul><li>Item 1</li><li>Item 2</li></ul>"
-        result = HTMLCleaner.html_to_markdown(html)
-
-        assert "- Item 1" in result
-        assert "- Item 2" in result
-
-    def test_html_to_markdown_strong(self):
-        """Should convert <strong> to bold markdown."""
-        from cis_bench.utils.html_parser import HTMLCleaner
-
-        html = "<strong>Important</strong>"
-        result = HTMLCleaner.html_to_markdown(html)
-
-        assert "**Important**" in result
-
-    def test_html_to_markdown_emphasis(self):
-        """Should convert <em> to italic markdown."""
-        from cis_bench.utils.html_parser import HTMLCleaner
-
-        html = "<em>Emphasized</em>"
-        result = HTMLCleaner.html_to_markdown(html)
-
-        assert "*Emphasized*" in result
+        assert ncname_slug("") == ""
+        assert ncname_slug(" / ") == ""
 
 
 class TestHTMLCleanerParseMitreTable:
@@ -833,3 +511,35 @@ class TestHTMLValidatorExtractAllIds:
         result = HTMLValidator.extract_all_ids(html)
 
         assert "deeply-nested" in result
+
+
+class TestAttributeText:
+    """attribute_text reads one attribute of a tag as text, whatever bs4 stored it as."""
+
+    @staticmethod
+    def _tag(html):
+        from bs4 import BeautifulSoup
+
+        return BeautifulSoup(html, "html.parser").find("wb-x")
+
+    def test_a_single_valued_attribute_is_returned_as_written(self):
+        from cis_bench.utils.html_parser import attribute_text
+
+        assert attribute_text(self._tag("<wb-x profiles='[{\"a\": 1}]'></wb-x>"), "profiles") == (
+            '[{"a": 1}]'
+        )
+
+    def test_a_missing_attribute_is_none(self):
+        from cis_bench.utils.html_parser import attribute_text
+
+        assert attribute_text(self._tag("<wb-x></wb-x>"), "profiles") is None
+
+    def test_an_empty_attribute_is_an_empty_string(self):
+        from cis_bench.utils.html_parser import attribute_text
+
+        assert attribute_text(self._tag('<wb-x id=""></wb-x>'), "id") == ""
+
+    def test_a_multi_valued_attribute_is_joined_as_it_was_written(self):
+        from cis_bench.utils.html_parser import attribute_text
+
+        assert attribute_text(self._tag('<wb-x class="one  two"></wb-x>'), "class") == "one two"

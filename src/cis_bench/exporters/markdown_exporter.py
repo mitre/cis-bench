@@ -1,6 +1,7 @@
 """Markdown exporter for documentation."""
 
 import logging
+from gettext import ngettext
 
 from cis_bench.models.benchmark import Benchmark
 from cis_bench.utils.field_transformers import (
@@ -8,6 +9,7 @@ from cis_bench.utils.field_transformers import (
     RecommendationFieldTransformer,
     SafeFieldAccessor,
 )
+from cis_bench.utils.markdown_text import closed_fences, prose_angle_brackets_as_text
 
 from .base import BaseExporter, ExporterFactory
 
@@ -18,7 +20,7 @@ class MarkdownExporter(BaseExporter):
     """Export benchmark to Markdown format for documentation."""
 
     def export(self, benchmark: Benchmark, output_path: str) -> str:
-        """Export to Markdown with HTML converted to Markdown.
+        """Export to Markdown: the stored text written as it is, in one document.
 
         Args:
             benchmark: Validated Benchmark (Pydantic model)
@@ -27,7 +29,7 @@ class MarkdownExporter(BaseExporter):
         Returns:
             Path to created file
         """
-        logger.info(f"Exporting benchmark to Markdown: {output_path}")
+        logger.debug(f"Exporting benchmark to Markdown: {output_path}")
         logger.debug(
             f"Benchmark: {benchmark.title}, Recommendations: {benchmark.total_recommendations}"
         )
@@ -38,23 +40,30 @@ class MarkdownExporter(BaseExporter):
             f.write(f"**Version:** {benchmark.version}  \n")
             f.write(f"**Benchmark ID:** {benchmark.benchmark_id}  \n")
             f.write(f"**Total Recommendations:** {benchmark.total_recommendations}  \n")
-            f.write(f"**Downloaded:** {benchmark.downloaded_at.strftime('%Y-%m-%d %H:%M:%S')}  \n")
+            f.write(f"**Downloaded:** {benchmark.downloaded_at.isoformat()}  \n")
             f.write(f"**Source:** {benchmark.url}\n\n")
             f.write("---\n\n")
 
             # Table of Contents
             f.write("## Table of Contents\n\n")
             for rec in benchmark.recommendations:
-                f.write(f"- [{rec.ref} - {rec.title}](#{rec.ref.replace('.', '')})\n")
+                title = prose_angle_brackets_as_text(rec.title)
+                f.write(f"- [{rec.ref} - {title}](#{rec.ref.replace('.', '')})\n")
             f.write("\n---\n\n")
 
             # Each recommendation
             for rec in benchmark.recommendations:
                 anchor = rec.ref.replace(".", "")
-                f.write(f"## {rec.ref} - {rec.title} {{#{anchor}}}\n\n")
+                title = prose_angle_brackets_as_text(rec.title)
+                f.write(f"## {rec.ref} - {title} {{#{anchor}}}\n\n")
 
-                # Use DRY helpers
-                markdown_fields = RecommendationFieldTransformer.markdown_all(rec)
+                # The text fields as stored (Markdown). A fence a field leaves open is closed
+                # so it cannot swallow the fields after it, and a placeholder in prose is
+                # written so a renderer with raw HTML on shows it as text.
+                markdown_fields = {
+                    name: prose_angle_brackets_as_text(closed_fences(text))
+                    for name, text in RecommendationFieldTransformer.stored_text(rec).items()
+                }
 
                 # Metadata table
                 f.write("| Property | Value |\n")
@@ -84,9 +93,10 @@ class MarkdownExporter(BaseExporter):
                 # Parent - using DRY helper
                 parent_link = SafeFieldAccessor.format_parent_link(rec, format="markdown")
                 if parent_link:
-                    f.write(f"**Parent:** {parent_link}\n\n")
+                    # the parent's title may hold a placeholder too
+                    f.write(f"**Parent:** {prose_angle_brackets_as_text(parent_link)}\n\n")
 
-                # Content sections - using DRY helper (already markdown converted)
+                # Content sections, as stored
                 if markdown_fields["description"]:
                     f.write("### Description\n\n")
                     f.write(markdown_fields["description"])
@@ -126,8 +136,12 @@ class MarkdownExporter(BaseExporter):
 
                 f.write("---\n\n")
 
-        logger.info(
-            f"Successfully exported Markdown with {len(benchmark.recommendations)} recommendations to {output_path}"
+        logger.debug(
+            ngettext(
+                "Successfully exported Markdown with {count} recommendation to {path}",
+                "Successfully exported Markdown with {count} recommendations to {path}",
+                len(benchmark.recommendations),
+            ).format(count=len(benchmark.recommendations), path=output_path)
         )
         return output_path
 

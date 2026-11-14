@@ -1,0 +1,462 @@
+{
+  "title": "CIS Synthetic Cloud Foundations Benchmark",
+  "benchmark_id": "90004",
+  "url": "https://workbench.cisecurity.org/benchmarks/90004",
+  "version": "v3.0.0",
+  "published_date": "2026-04-15",
+  "description": "Account-level settings for the Synthetic Cloud platform.",
+  "profile_definitions": [
+    {
+      "title": "Level 1",
+      "description": "Settings every account can take without changing how it is used.",
+      "parent": null
+    },
+    {
+      "title": "Level 2",
+      "description": "Settings for accounts holding sensitive data; they may cost more or need tools changed. Includes Level 1.",
+      "parent": "Level 1"
+    }
+  ],
+  "downloaded_at": "2026-11-10T15:00:00Z",
+  "scraper_version": "v2_2026_01",
+  "text_format": "markdown",
+  "artifact_title_format": "markdown",
+  "total_recommendations": 11,
+  "recommendations": [
+    {
+      "ref": "1.1",
+      "title": "Keep the account's security contact reachable",
+      "url": "https://workbench.cisecurity.org/sections/9000401/recommendations/90004001",
+      "assessment_status": "Manual",
+      "profiles": [
+        "Level 1"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "17.2",
+          "title": "Keep a list of who to call in an incident",
+          "ig1": true,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": null,
+      "nist_controls": [],
+      "parent": null,
+      "artifacts": [],
+      "description": "The provider sends breach warnings and abuse complaints to the security contact on file.",
+      "rationale": "A warning that lands in an unread mailbox changes nothing.",
+      "impact": "None.",
+      "audit": "In the console:\n\n1. Sign in with an administrator identity.\n2. Go to **Settings** > **Who we contact**.\n3. Check that the address and number reach a team rather than one person.\n\nOr from a terminal:\n\n```\nsynthcloud account contact show --account <account-number>\n```",
+      "remediation": "1. Go to **Settings** > **Who we contact** and choose **Change**.\n2. Enter a shared team mailbox.\n\n```\nsynthcloud account contact set --account <account-number> --mail <team-mailbox> --phone <team-number>\n```",
+      "additional_info": null,
+      "default_value": "Whoever opened the account.",
+      "artifact_equation": null,
+      "references": "1. [https://docs.example.com/synthetic-cloud/account/contact](https://docs.example.com/synthetic-cloud/account/contact)"
+    },
+    {
+      "ref": "1.2",
+      "title": "Require a second sign-in factor for the account owner",
+      "url": "https://workbench.cisecurity.org/sections/9000402/recommendations/90004002",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Level 1"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "6.5",
+          "title": "Use a second factor for administrators",
+          "ig1": true,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": {
+        "techniques": [
+          "T1078.004"
+        ],
+        "tactics": [
+          "TA0001",
+          "TA0004"
+        ],
+        "mitigations": [
+          "M1032"
+        ]
+      },
+      "nist_controls": [],
+      "parent": null,
+      "artifacts": [],
+      "description": "The owner can do anything to the account, closing it included.",
+      "rationale": "If a password is all that protects it, one convincing phishing mail loses the account.",
+      "impact": "Losing the device means going through the provider's account recovery.",
+      "audit": "```\nsynthcloud identity summary --field owner_second_factor\nenabled\n```",
+      "remediation": "1. Sign in as the owner.\n2. Under **Sign-in** > **Second factor**, register a security key.\n3. Register a spare key and lock it away.\n\nSee [https://docs.example.com/synthetic-cloud/identity/second-factor](https://docs.example.com/synthetic-cloud/identity/second-factor).",
+      "additional_info": null,
+      "default_value": "Not set up.",
+      "artifact_equation": null,
+      "references": "1. [https://docs.example.com/synthetic-cloud/reference](https://docs.example.com/synthetic-cloud/reference)"
+    },
+    {
+      "ref": "1.3",
+      "title": "Replace programmatic credentials at least every 90 days",
+      "url": "https://workbench.cisecurity.org/sections/9000403/recommendations/90004003",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Level 1"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "5.2",
+          "title": "Give every account its own password",
+          "ig1": true,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": {
+        "techniques": [
+          "T1552"
+        ],
+        "tactics": [
+          "TA0006"
+        ],
+        "mitigations": [
+          "M1027"
+        ]
+      },
+      "nist_controls": [],
+      "parent": null,
+      "artifacts": [],
+      "description": "Scripts and tools sign their calls with an API credential instead of a password.",
+      "rationale": "An old credential has had time to end up in scripts, laptops and chat logs.",
+      "impact": null,
+      "audit": "```\nsynthcloud credentials list --all-identities --older-than 90d --format table\n```\n\nThe table is empty.",
+      "remediation": "For each `<identity>` the audit lists:\n\n```\nsynthcloud credentials issue --identity <identity>\nsynthcloud credentials retire --identity <identity> --credential <old-credential>\n```\n\nMove every tool to the new credential before retiring the old one.",
+      "additional_info": "Unused keys are better deleted than rotated.",
+      "default_value": "Credentials do not expire.",
+      "artifact_equation": null,
+      "references": "1. [https://docs.example.com/synthetic-cloud/reference](https://docs.example.com/synthetic-cloud/reference)"
+    },
+    {
+      "ref": "1.4",
+      "title": "Grant no identity unrestricted permissions on everything",
+      "url": "https://workbench.cisecurity.org/sections/9000404/recommendations/90004004",
+      "assessment_status": "Manual",
+      "profiles": [
+        "Level 1"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "3.3",
+          "title": "Grant data access by need",
+          "ig1": true,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": null,
+      "nist_controls": [],
+      "parent": null,
+      "artifacts": [],
+      "description": "A grant of `\"do\": \"*\"` on `\"on\": \"*\"` makes its holder an administrator of the whole account.",
+      "rationale": "Least privilege begins with nobody holding everything by default.",
+      "impact": "Identities that relied on the grant lose access until narrower grants replace it.",
+      "audit": "```\nsynthcloud grants list --attached --format json\n```\n\nLook for an entry with `\"effect\": \"allow\"`, `\"do\": \"*\"` and `\"on\": \"*\"`.",
+      "remediation": "```\nsynthcloud grants detach --grant <grant-name> --identity <identity>\n```",
+      "additional_info": null,
+      "default_value": null,
+      "artifact_equation": null,
+      "references": "1. [https://docs.example.com/synthetic-cloud/reference](https://docs.example.com/synthetic-cloud/reference)"
+    },
+    {
+      "ref": "2.1.1",
+      "title": "Reject bucket requests made without TLS",
+      "url": "https://workbench.cisecurity.org/sections/9000405/recommendations/90004005",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Level 2"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "3.10",
+          "title": "Encrypt sensitive data on the wire",
+          "ig1": false,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": {
+        "techniques": [
+          "T1040"
+        ],
+        "tactics": [
+          "TA0006",
+          "TA0007"
+        ],
+        "mitigations": [
+          "M1041"
+        ]
+      },
+      "nist_controls": [],
+      "parent": {
+        "url": "https://workbench.cisecurity.org/sections/7000405/recommendations/70004005",
+        "title": "Require TLS for storage requests"
+      },
+      "artifacts": [],
+      "description": "A bucket rule can turn away every request that did not arrive over TLS.",
+      "rationale": "Anyone on the path can read data sent in the clear.",
+      "impact": "Clients too old for TLS are refused.",
+      "audit": "```\nsynthcloud bucket rules show --bucket <bucket>\n```\n\nOne rule refuses requests when `\"tls\": false`.",
+      "remediation": "```\nsynthcloud bucket rules add --bucket <bucket> --rule \"{\\\"effect\\\": \\\"refuse\\\", \\\"when\\\": {\\\"tls\\\": false}}\"\n```",
+      "additional_info": null,
+      "default_value": "Plain HTTP is accepted.",
+      "artifact_equation": null,
+      "references": "1. [https://docs.example.com/synthetic-cloud/reference](https://docs.example.com/synthetic-cloud/reference)"
+    },
+    {
+      "ref": "2.1.2",
+      "title": "Keep earlier object versions in buckets",
+      "url": "https://workbench.cisecurity.org/sections/9000406/recommendations/90004006",
+      "assessment_status": "Manual",
+      "profiles": [
+        "Level 2"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "11.3",
+          "title": "Protect backup copies",
+          "ig1": false,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": null,
+      "nist_controls": [],
+      "parent": {
+        "url": "https://workbench.cisecurity.org/sections/7000406/recommendations/70004006",
+        "title": "Turn on object versioning"
+      },
+      "artifacts": [],
+      "description": "With history on, a bucket keeps each object's earlier versions.",
+      "rationale": "An object that was overwritten or deleted by mistake can be restored.",
+      "impact": "Every version takes space. Add an expiry rule for old ones.",
+      "audit": "```\nsynthcloud bucket history show --bucket <bucket>\n```",
+      "remediation": "```\nsynthcloud bucket history on --bucket <bucket>\n```",
+      "additional_info": null,
+      "default_value": "Off.",
+      "artifact_equation": null,
+      "references": "1. [https://docs.example.com/synthetic-cloud/reference](https://docs.example.com/synthetic-cloud/reference)"
+    },
+    {
+      "ref": "3.1",
+      "title": "Record API activity in every region",
+      "url": "https://workbench.cisecurity.org/sections/9000407/recommendations/90004007",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Level 1"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "8.2",
+          "title": "Collect event logs",
+          "ig1": true,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": {
+        "techniques": [
+          "T1562.008"
+        ],
+        "tactics": [
+          "TA0005"
+        ],
+        "mitigations": [
+          "M1047"
+        ]
+      },
+      "nist_controls": [],
+      "parent": {
+        "url": "https://workbench.cisecurity.org/sections/7000407/recommendations/70004007",
+        "title": "Record API activity"
+      },
+      "artifacts": [],
+      "description": "The activity record lists every call made to the account's API.",
+      "rationale": "An attacker who finds a region nobody records can work there unnoticed.",
+      "impact": null,
+      "audit": "```\nsynthcloud activity recorders list --format table\n```\n\nOne recorder shows `all regions: yes`.",
+      "remediation": "```\nsynthcloud activity recorders add --name <recorder> --bucket <bucket> --all-regions\n```",
+      "additional_info": "A trail in each region costs more than one trail that records every region.",
+      "default_value": "No recorder.",
+      "artifact_equation": null,
+      "references": "1. [https://docs.example.com/synthetic-cloud/reference](https://docs.example.com/synthetic-cloud/reference)"
+    },
+    {
+      "ref": "3.2",
+      "title": "Sign the activity record's log files",
+      "url": "https://workbench.cisecurity.org/sections/9000408/recommendations/90004008",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Level 2"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "8.11",
+          "title": "Look through event logs",
+          "ig1": false,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": null,
+      "nist_controls": [],
+      "parent": {
+        "url": "https://workbench.cisecurity.org/sections/7000408/recommendations/70004008",
+        "title": "Validate activity log files"
+      },
+      "artifacts": [],
+      "description": "Each hour the recorder can write a signed summary of the files it wrote.",
+      "rationale": "An altered or removed file then shows up when the summaries are checked.",
+      "impact": "None.",
+      "audit": "```\nsynthcloud activity recorders show --name <recorder> --field signed_summaries\nyes\n```",
+      "remediation": "```\nsynthcloud activity recorders change --name <recorder> --signed-summaries yes\n```",
+      "additional_info": null,
+      "default_value": null,
+      "artifact_equation": null,
+      "references": "1. [https://docs.example.com/synthetic-cloud/reference](https://docs.example.com/synthetic-cloud/reference)"
+    },
+    {
+      "ref": "4.1",
+      "title": "Close SSH (port 22) to the whole internet",
+      "url": "https://workbench.cisecurity.org/sections/9000409/recommendations/90004009",
+      "assessment_status": "Automated",
+      "profiles": [
+        "Level 1"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "4.4",
+          "title": "Filter traffic at each server",
+          "ig1": false,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": {
+        "techniques": [
+          "T1021.004"
+        ],
+        "tactics": [
+          "TA0008"
+        ],
+        "mitigations": [
+          "M1035"
+        ]
+      },
+      "nist_controls": [],
+      "parent": {
+        "url": "https://workbench.cisecurity.org/sections/7000409/recommendations/70004009",
+        "title": "Restrict remote administration ports"
+      },
+      "artifacts": [],
+      "description": "A group rule that opens port 22 to `0.0.0.0/0` or `::/0` invites SSH sign-in attempts from anywhere.",
+      "rationale": "Scanners find an open SSH port within minutes of an address coming up.",
+      "impact": "Administrators connect through a jump host or the provider's console sessions instead.",
+      "audit": "```\nsynthcloud firewall rules list --port 22 --from-anywhere\n```\n\nThe list is empty.",
+      "remediation": "```\nsynthcloud firewall rules remove --group <group> --port 22 --from 0.0.0.0/0\n```",
+      "additional_info": "The same check applies to port 3389 (remote desktop); see 4.2 for the default group.",
+      "default_value": "A new group lets nothing in.",
+      "artifact_equation": null,
+      "references": "1. [https://docs.example.com/synthetic-cloud/reference](https://docs.example.com/synthetic-cloud/reference)"
+    },
+    {
+      "ref": "4.2",
+      "title": "Leave the default firewall group empty",
+      "url": "https://workbench.cisecurity.org/sections/9000410/recommendations/90004010",
+      "assessment_status": "Manual",
+      "profiles": [
+        "Level 2"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "4.4",
+          "title": "Filter traffic at each server",
+          "ig1": false,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": null,
+      "nist_controls": [],
+      "parent": {
+        "url": "https://workbench.cisecurity.org/sections/7000410/recommendations/70004010",
+        "title": "Restrict the default firewall group"
+      },
+      "artifacts": [],
+      "description": "Resources created without a group are put in their network's default group.",
+      "rationale": "If the default group allows nothing, a forgotten resource is cut off rather than exposed.",
+      "impact": "Resources in the default group lose their connections until they get a group of their own.",
+      "audit": "```\nsynthcloud firewall groups show --group default\n```\n\nThe group has no rules in either direction.",
+      "remediation": "1. Make a group for each resource that is in the default group.\n2. Move each resource to its new group.\n3. Delete every rule in the default group.\n\n```\nsynthcloud firewall rules remove --group default --all\n```",
+      "additional_info": null,
+      "default_value": "Members may talk to each other freely.",
+      "artifact_equation": null,
+      "references": "1. [https://docs.example.com/synthetic-cloud/reference](https://docs.example.com/synthetic-cloud/reference)"
+    },
+    {
+      "ref": "5.1",
+      "title": "Accept only TLS 1.2 or newer on load balancers",
+      "url": "https://workbench.cisecurity.org/sections/9000411/recommendations/90004011",
+      "assessment_status": "Manual",
+      "profiles": [
+        "Level 1"
+      ],
+      "cis_controls": [
+        {
+          "version": 8,
+          "control": "3.10",
+          "title": "Encrypt sensitive data on the wire",
+          "ig1": false,
+          "ig2": true,
+          "ig3": true
+        }
+      ],
+      "mitre_mapping": {
+        "techniques": [
+          "T1557"
+        ],
+        "tactics": [
+          "TA0006"
+        ],
+        "mitigations": [
+          "M1041"
+        ]
+      },
+      "nist_controls": [],
+      "parent": {
+        "url": "https://workbench.cisecurity.org/sections/7000411/recommendations/70004011",
+        "title": "Require modern TLS on listeners"
+      },
+      "artifacts": [],
+      "description": "Each listener has a profile that lists the TLS versions it will speak.",
+      "rationale": "TLS 1.0 and 1.1 have weaknesses that later versions fixed.",
+      "impact": "Very old clients can no longer connect.",
+      "audit": "```\nsynthcloud balancer listeners list --balancer <balancer> --field tls_profile\n```",
+      "remediation": "```\nsynthcloud balancer listeners change --listener <listener> --tls-profile modern-2024\n```",
+      "additional_info": null,
+      "default_value": "`compatible-2016`",
+      "artifact_equation": null,
+      "references": "1. [https://docs.example.com/synthetic-cloud/reference](https://docs.example.com/synthetic-cloud/reference)"
+    }
+  ]
+}

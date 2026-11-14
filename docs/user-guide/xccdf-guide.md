@@ -88,12 +88,11 @@ Rationale: By monitoring filesystem state...
 ### Features
 
 - Official CIS Controls structure (nested framework/safeguard)
-- cc7/cc8 controlURI attributes on ident elements
-- MITRE ATT&CK mappings (techniques, tactics, mitigations)
+- One ident per CIS Controls mapping, in the form CIS-CAT benchmark XCCDF uses: `system` names the Controls version (`http://cisecurity.org/20-cc/v8.0`) and a `cc7:`/`cc8:controlURI` attribute names the safeguard (`.../control/3/subcontrol/14`), or the whole control when the mapping has no safeguard (`.../control/13`)
+- MITRE ATT&CK mappings (techniques, tactics, mitigations) as ident elements
 - CIS Profiles (Level 1/2, Server/Workstation)
 - NIST SP 800-53 references with Dublin Core
 - Separate rationale element
-- Enhanced metadata in custom namespace
 
 ### Output Example
 
@@ -104,25 +103,24 @@ Rationale: By monitoring filesystem state...
 
 <metadata>
 <controls:cis_controls>
-<controls:framework urn="urn:cisecurity.org:controls:8.0">
+<controls:framework urn="urn:cisecurity.org:controls:8">
 <controls:safeguard title="Log Sensitive Data Access"
-urn="urn:cisecurity.org:controls:8.0:3.14">
+urn="urn:cisecurity.org:controls:8:3.14">
 <controls:implementation_groups ig1="false" ig2="false" ig3="true"/>
 <controls:asset_type>Unknown</controls:asset_type>
 <controls:security_function>Protect</controls:security_function>
 </controls:safeguard>
 </controls:framework>
 </controls:cis_controls>
-
-<enhanced:mitre>
-<enhanced:technique id="T1565.001">T1565.001</enhanced:technique>
-<enhanced:tactic id="TA0001">TA0001</enhanced:tactic>
-<enhanced:mitigation id="M1022">M1022</enhanced:mitigation>
-</enhanced:mitre>
 </metadata>
 
 <ident system="http://cisecurity.org/20-cc/v8.0"
 cc8:controlURI="http://cisecurity.org/20-cc/v8.0/control/3/subcontrol/14"/>
+<ident system="http://cisecurity.org/20-cc/v7.0"
+cc7:controlURI="http://cisecurity.org/20-cc/v7.0/control/8/subcontrol/11"/>
+<ident system="https://attack.mitre.org/techniques">T1565.001</ident>
+<ident system="https://attack.mitre.org/tactics">TA0001</ident>
+<ident system="https://attack.mitre.org/mitigations">M1022</ident>
 
 <rationale>By monitoring filesystem state...</rationale>
 <fixtext>Run the following command...</fixtext>
@@ -171,7 +169,7 @@ cis-bench export benchmark.json --format xccdf --style cis -o custom-name.xml
 
 ```bash
 # Export all downloaded benchmarks
-for file in benchmarks/*.json; do
+for file in ~/.local/share/cis-bench/benchmarks/*.json; do
 cis-bench export "$file" --format xccdf --style cis
 done
 ```
@@ -183,10 +181,12 @@ The exported XCCDF validates against:
 - NIST XCCDF 1.2 schema (CIS style)
 - NIST XCCDF 1.1.4 schema (DISA style)
 
-Validate with xmllint:
+Validate with the schemas shipped in cis-bench:
 ```bash
-xmllint --noout --schema xccdf_1.2.xsd output.xml
+cis-bench validate output.xml
 ```
+
+The command picks the schema from the document's XCCDF version and exits `0` when it is valid, `2` when it is not (each error with its line). See [`cis-bench validate`](commands-reference.md#cis-bench-validate).
 
 ---
 
@@ -259,6 +259,7 @@ XCCDF files are verbose (XML + metadata). This is normal.
 ### Validation Errors
 
 Both styles validate against NIST schemas. If you get errors:
+
 1. Check you're using correct schema version
 2. Report as bug with sample data
 

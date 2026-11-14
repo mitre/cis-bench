@@ -64,8 +64,9 @@ components:
 sources:
 
 - field: "description"
+separator: "\n\n" # follows the description when the rationale has text
+
 - field: "rationale"
-separator: "\n\n"
 
 - tag: "FalsePositives"
 content: ""
@@ -98,29 +99,29 @@ description: "My custom XCCDF format"
 
 # Benchmark-level settings
 benchmark:
-id_template: "xccdf_custom_benchmark_{benchmark_id}"
+id_template: "xccdf_custom_benchmark_{version}_{title_slug}"
 title:
 source: "title"
-transform: "strip_html"
+transform: "none"
 
 # Rule-level field mappings
 field_mappings:
 title:
 target_element: "title"
 source_field: "title"
-transform: "strip_html"
+transform: "none"
 
 description:
 target_element: "description"
 source_field: "description"
-transform: "strip_html_keep_code"
+transform: "none"
 
 ident:
 target_element: "ident"
 multiple: true
 cci_lookup:
 source_field: "cis_controls"
-extract: "primary"
+extract: "all"
 ```
 
 ### Configuration Sections
@@ -128,11 +129,38 @@ extract: "primary"
 | Section | Purpose | Required |
 |---------|---------|----------|
 | `metadata` | Style identification and XCCDF version | Yes |
-| `benchmark` | Benchmark-level elements and namespaces | Yes |
+| `benchmark` | Benchmark-level elements and namespaces (`benchmark.namespaces`) | Yes |
 | `field_mappings` | Rule-level field transformations | Yes |
 | `rule_defaults` | Default attributes for all rules | No |
-| `transformations` | Custom transformation definitions | No |
 | `validation` | Validation rules and constraints | No |
+| `post_processing` | `override` attribute removal on the rendered tree, XCCDF elements only (`remove_override_attr`) | No |
+
+### Benchmark ID
+
+`benchmark.id_template` names the `<Benchmark>` element. It is required: a style
+without one fails with `ExportError` at export time. The engine substitutes three
+variables:
+
+| Variable | Value |
+|----------|-------|
+| `{benchmark_id}` | CIS WorkBench benchmark ID, as stored (e.g. `23598`) |
+| `{version}` | `benchmark.version` reduced to an NCName-safe segment (`v1.0.0` stays `v1.0.0`; `v7.1.0 (vNext)` becomes `v7.1.0_vNext`) |
+| `{title_slug}` | `benchmark.title` with every run of whitespace or other non-NCName characters replaced by one `_` (`CIS Ubuntu Linux 22.04 LTS Benchmark` becomes `CIS_Ubuntu_Linux_22.04_LTS_Benchmark`) |
+
+The two shipped styles:
+
+```yaml
+# cis.yaml — the form CIS publishes:
+# xccdf_org.cisecurity.benchmarks_benchmark_1.0.0_CIS_Ubuntu_Linux_22.04_LTS_Benchmark
+id_template: "xccdf_org.cisecurity.benchmarks_benchmark_{version}_{title_slug}"
+
+# disa.yaml — short form; Vulcan shows it in the STIG ID column
+id_template: "CIS_{benchmark_id}"
+```
+
+XCCDF 1.2 requires Benchmark ids to match `xccdf_<namespace>_benchmark_<name>` and
+to be an NCName, so a 1.2 style's template must start with `xccdf_`, contain
+`_benchmark_`, and use only the variables above after it.
 
 ---
 
@@ -148,56 +176,59 @@ The MappingEngine supports 4 field mapping strategies:
 title:
 target_element: "title" # XCCDF element name
 source_field: "title" # Pydantic model field
-transform: "strip_html" # Transformation to apply
+transform: "none" # Transformation to apply; the text is Markdown, written as it is
 xccdf_type: "TextType" # xsdata type (optional)
 ```
 
 **Example:**
 ```python
 # Input (Pydantic)
-recommendation.title = "<p>Ensure <code>cramfs</code> is disabled</p>"
+recommendation.title = "Ensure `cramfs` is disabled"
 
 # Config applies transform
-transform = "strip_html"
+transform = "none"
 
 # Output (xsdata)
-Rule.title = TextType(value="Ensure cramfs is disabled")
+Rule.title = TextType(value="Ensure `cramfs` is disabled")
 ```
 
 ### 2. Composite Field Mapping
 
-**Use when:** Combine multiple source fields into one XCCDF element
+**Use when:** Combine multiple source fields into one XCCDF element. Each source's text
+(after its transform, `none` by default) is joined by the separator (a blank line by
+default); a source with a `label` writes the label, the separator and the text; a source
+without text adds nothing, and an element with no text at all is left out. A source naming
+a field or transform that does not exist is refused when the style loads.
 
 ```yaml
-description:
-target_element: "description"
-structure: "composite"
-sources:
+field_mappings:
+  description:
+    target_element: "description"
+    structure: "composite"
+    separator: "\n\n" # Join with double newline
+    sources:
 
-- field: "description"
-transform: "strip_html"
+      - field: "description"
+      - field: "default_value"
+        label: "Default Value:"
 
-- field: "rationale"
-transform: "strip_html"
-
-- field: "impact"
-transform: "strip_html"
-separator: "\n\n" # Join with double newline
+      - field: "additional_info"
+        label: "Additional Information:"
 ```
 
 **Example:**
 ```python
 # Input (Pydantic)
-recommendation.description = "The cramfs filesystem..."
-recommendation.rationale = "Removing support reduces..."
-recommendation.impact = "Minimal impact expected..."
+recommendation.description = "The example filesystem is not needed."
+recommendation.default_value = "/etc/example: off"
+recommendation.additional_info = None  # an empty source adds nothing, label included
 
-# Output (xsdata)
-Rule.description = HtmlTextWithSubType(
-value="The cramfs filesystem...\n\n"
-"Removing support reduces...\n\n"
-"Minimal impact expected..."
-)
+# Output (the Rule's description element, its text escaped once by the serializer)
+<description>The example filesystem is not needed.
+
+Default Value:
+
+/etc/example: off</description>
 ```
 
 ### 3. Embedded XML Tags (DISA STIG Format)
@@ -214,8 +245,9 @@ components:
 sources:
 
 - field: "description"
+separator: "\n\n" # follows the description when the rationale has text
+
 - field: "rationale"
-separator: "\n\n"
 
 - tag: "FalsePositives"
 content: "" # Empty (DISA legacy)
@@ -224,8 +256,13 @@ content: "" # Empty (DISA legacy)
 sources:
 
 - field: "impact"
-optional: true # Only if field exists
 ```
+
+Every tag is written in the order given, empty when the rule has no text for it, as DISA
+writes them. Each tag is built and written by the XML library (lxml), which escapes its text,
+so a reader that unescapes the description once and parses the tags gets the stored text,
+placeholders such as `<user>` included (the serializer escapes the whole description once more
+on write); a tag name that is no XML name is refused when the style loads.
 
 **Example:**
 ```python
@@ -249,6 +286,8 @@ Removing support for unneeded filesystem types reduces attack surface.</VulnDisc
 </description>
 ```
 
+(In the file the serializer escapes the description's text once, so the tags appear as `&lt;VulnDiscussion&gt;...`; shown unescaped here.)
+
 ### 4. List Field Mapping
 
 **Use when:** Create multiple XCCDF elements from a list (like CCI identifiers)
@@ -260,7 +299,7 @@ multiple: true # Creates one <ident> per CCI
 cci_lookup:
 enabled: true
 source_field: "cis_controls"
-extract: "primary"
+extract: "all"
 deduplicate_nist: true
 attributes:
 system: "http://cyber.mil/cci"
@@ -270,22 +309,23 @@ system: "http://cyber.mil/cci"
 ```python
 # Input (Pydantic)
 recommendation.cis_controls = [
-{"id": "4.1", ...},
-{"id": "4.8", ...}
+CISControl(version=8, control="4.1", ...),
+CISControl(version=8, control="4.8", ...),
 ]
 
-# CCI lookup
-# 4.1 ["CCI-001234", "CCI-001235"]
-# 4.8 ["CCI-000381", "CCI-000382"]
+# CCI lookup (every CCI of each safeguard, primary first)
+# 4.1 ["CCI-003941", "CCI-000290", "CCI-003906", "CCI-003909"]
+# 4.8 ["CCI-001762", "CCI-000382", "CCI-000381", "CCI-000384"]
 
-# After deduplication
-ccis = ["CCI-001234", "CCI-000381", "CCI-000382"]
+# Each CCI once (two safeguards can share one)
+ccis = ["CCI-003941", "CCI-000290", "CCI-003906", "CCI-003909",
+"CCI-001762", "CCI-000382", "CCI-000381", "CCI-000384"]
 
 # Output (xsdata)
 Rule.ident = [
-IdentType(value="CCI-001234", system="http://cyber.mil/cci"),
-IdentType(value="CCI-000381", system="http://cyber.mil/cci"),
-IdentType(value="CCI-000382", system="http://cyber.mil/cci")
+IdentType(value="CCI-003941", system="http://cyber.mil/cci"),
+IdentType(value="CCI-000290", system="http://cyber.mil/cci"),
+# ... one IdentType per CCI above, in that order
 ]
 ```
 
@@ -300,49 +340,11 @@ IdentType(value="CCI-000382", system="http://cyber.mil/cci")
 
 ## Available Transformations
 
-Transformations are defined in `base_style.yaml` and can be used by any field:
-
-### strip_html
-Removes all HTML tags, returns plain text.
-
-```yaml
-title:
-source_field: "title"
-transform: "strip_html"
-```
-
-```python
-Input: "<p>Ensure <code>cramfs</code> is disabled</p>"
-Output: "Ensure cramfs is disabled"
-```
-
-### strip_html_keep_code
-Strips HTML but preserves code blocks and lists.
-
-```yaml
-audit:
-source_field: "audit"
-transform: "strip_html_keep_code"
-```
-
-```python
-Input: "<p>Run: <code>modprobe -n -v cramfs</code></p><pre>grep cramfs</pre>"
-Output: "Run: `modprobe -n -v cramfs`\n\n```\ngrep cramfs\n```"
-```
-
-### html_to_markdown
-Converts HTML to Markdown format.
-
-```yaml
-description:
-source_field: "description"
-transform: "html_to_markdown"
-```
-
-```python
-Input: "<p>The <code>cramfs</code> filesystem <strong>must</strong> be disabled.</p>"
-Output: "The `cramfs` filesystem **must** be disabled."
-```
+Transforms are registered in `mapping_engine.py` (`TransformRegistry.register`) and named
+by a mapping's `transform`. A benchmark's text fields hold Markdown (see the
+[data model](../technical-reference/data-model.md)) and every export writes it as it is, so
+the shipped styles name `none` for text; there is no HTML conversion (a text parsed as HTML
+would lose a placeholder such as `<user>`).
 
 ### none
 Pass through unchanged (no transformation).
@@ -361,12 +363,21 @@ Use `{variable}` syntax to insert dynamic values:
 
 ### Available Variables
 
-**From Recommendation:**
+**In rule templates** (the `rule_id` and `group_id` templates, and the attribute
+templates of a rule's field mappings such as `fixref` and `system`):
 
 - `{ref}` - Recommendation number (e.g., "1.1.1")
 - `{ref_normalized}` - Underscored version (e.g., "1_1_1")
-- `{title}` - Recommendation title
-- Any Pydantic field name
+- `{stig_number}` - Zero-padded form for DISA ids (e.g., "010101")
+- `{rec.<field>}` - Any field of the recommendation (e.g., `{rec.title}`); attribute
+  templates only, not the id templates, which see the ref's three values alone
+
+- `{benchmark.<field>}` - Any field of the benchmark; attribute templates only
+
+A rule's templates see exactly these values, not the engine's working state.
+
+A name the template's context does not have stops the export (one strict substituter
+fills every template), so a typo cannot write an empty part.
 
 **From Benchmark:**
 
@@ -375,10 +386,14 @@ Use `{variable}` syntax to insert dynamic values:
 - `{benchmark.url}` - Benchmark URL
 - `{benchmark_id}` - Numeric ID
 
+**Benchmark ID template only** (see [Benchmark ID](#benchmark-id)):
+
+- `{version}` - Benchmark version reduced to an NCName-safe segment
+- `{title_slug}` - Benchmark title reduced to an NCName-safe segment
+
 **Generated:**
 
 - `{download_date}` - Current date
-- `{platform}` - Inferred platform name
 
 ### Example: Dynamic Attributes
 
@@ -386,7 +401,7 @@ Use `{variable}` syntax to insert dynamic values:
 fixtext:
 target_element: "fixtext"
 source_field: "remediation"
-transform: "strip_html_keep_code"
+transform: "none"
 attributes:
 fixref: "F-{ref_normalized}" # F-1_1_1, F-1_1_2, etc.
 ```
@@ -413,56 +428,44 @@ cci_lookup:
 enabled: true
 mapping_file: "data/cis-cci-mapping.json"
 source_field: "cis_controls" # Look up CCIs from CIS Controls
-extract: "primary" # "primary" or "all"
-deduplicate_nist: true # Remove duplicate NIST mappings
+extract: "all" # "all" or "primary"
+deduplicate_nist: true # Write cited NIST controls as references unless a CCI restates them
 attributes:
 system: "http://cyber.mil/cci"
 ```
 
 ### Extract Options
 
-**`extract: "primary"`** (Recommended for DISA)
+**`extract: "all"`** (the DISA style's setting)
 
-- Returns only the primary CCI for each NIST control
-- Result: 1-3 CCIs per recommendation
-- Cleaner XCCDF output
+- Every CCI the mapping file gives the safeguard, primary first
+- The export is a transform: what the mapping has, the rule carries; a wrong CCI is fixed
+  in `cis-cci-mapping.json`, not filtered here
 
-**`extract: "all"`** (Comprehensive)
+**`extract: "primary"`**
 
-- Returns primary + all supporting CCIs
-- Result: 6-20 CCIs per recommendation
-- More complete but verbose
+- Only the first (primary) CCI of each safeguard
 
 ### Example: CCI Lookup Flow
 
 ```python
-# Input
-recommendation.cis_controls = [
-{"id": "4.1", "title": "..."},
-{"id": "4.8", "title": "..."}
-]
+# Input: the recommendation's CIS Controls of the mapping file's version (v8)
+recommendation.cis_controls = [CISControl(version=8, control="4.8", ...)]
+recommendation.nist_controls = ["CM-7", "SI-3"]
 
-# Step 1: Look up NIST controls for each CIS Control
-# 4.1 CM-8, CM-8(1)
-# 4.8 CM-7, CM-7(1)
+# Step 1: each safeguard's CCIs, from cis-cci-mapping.json (OFFICIAL entries only)
+# 4.8 -> CCI-001762 [CM-7 (1) (b)], CCI-000382 [CM-7 b], CCI-000381 [CM-7 a],
+#        CCI-000384 [CM-7 (1) (a)]
 
-# Step 2: Look up CCIs for each NIST control
-# CM-8 CCI-000389 (primary) + 3 supporting
-# CM-8(1) CCI-000390 (primary) + 2 supporting
-# CM-7 CCI-000381 (primary) + 2 supporting
-# CM-7(1) CCI-000382 (primary) + 1 supporting
+# Step 2: the control and enhancement each CCI sits under
+# {"CM-7(1)", "CM-7"}
 
-# Step 3: Extract (based on config)
-if extract == "primary":
-ccis = ["CCI-000389", "CCI-000390", "CCI-000381", "CCI-000382"]
-else: # "all"
-ccis = ["CCI-000389", "CCI-xxx", "CCI-yyy", ...] # 12 total
-
-# Step 4: Deduplicate
-ccis = unique(ccis) # Remove any duplicates
+# Step 3: cited controls no CCI restates exactly
+# "CM-7" is restated (CCI-000382 sits under CM-7 b); "SI-3" is not
 
 # Output
-Rule.ident = [IdentType(value=cci) for cci in ccis]
+Rule.ident = [IdentType(value=cci) for cci in ccis]        # the four CCIs
+Rule.reference = [ReferenceType(... dc:identifier "SI-3")]  # the one reference
 ```
 
 ---
@@ -503,7 +506,7 @@ field_mappings:
 default_value: # New mapping
 target_element: "default"
 source_field: "default_value"
-transform: "strip_html"
+transform: "none"
 optional: true # Only include if field has value
 xccdf_type: "TextType"
 ```
@@ -564,7 +567,7 @@ id_template: "xccdf_minimal_benchmark_{benchmark_id}"
 
 title:
 source: "title"
-transform: "strip_html"
+transform: "none"
 
 description:
 source: "title"
@@ -578,12 +581,12 @@ field_mappings:
 title:
 target_element: "title"
 source_field: "title"
-transform: "strip_html"
+transform: "none"
 
 description:
 target_element: "description"
 source_field: "description"
-transform: "strip_html_keep_code"
+transform: "none"
 
 # Just one check element (simplified)
 check:
@@ -595,7 +598,7 @@ children:
 
 - element: "check-content"
 source_field: "audit"
-transform: "strip_html_keep_code"
+transform: "none"
 ```
 
 ### Step 3: Register in Exporter
@@ -629,15 +632,9 @@ less minimal.xml
 ### Base Style Pattern
 
 ```yaml
-# base_style.yaml - Common configuration
-transformations:
-strip_html:
-function: "HTMLCleaner.strip_html"
-
-benchmark:
-namespaces:
-default: "http://checklists.nist.gov/xccdf/1.2"
-dc: "http://purl.org/dc/elements/1.1/"
+# base_style.yaml - Common configuration (no namespaces: each style declares its own)
+rule_defaults:
+  severity: "medium"
 ```
 
 ### Child Style Inherits
@@ -648,25 +645,34 @@ extends: base_style.yaml # Inherit all from base
 
 # Override specific settings
 metadata:
-xccdf_version: "1.1.4" # Override (base has 1.2)
+  xccdf_version: "1.1.4" # Override (base has 1.2)
 
-# Add new transformations
-transformations:
-custom_disa_transform:
-function: "MyCustomTransform"
+# The namespaces this style's documents use, declared on the root by the serializer
+benchmark:
+  namespaces:
+    default: "http://checklists.nist.gov/xccdf/1.1"
+    dc: "http://purl.org/dc/elements/1.1/"
 
 # field_mappings are merged (not replaced)
 field_mappings:
-title:
-source_field: "title" # Uses strip_html from base
+  title:
+    target_element: "title"
+    source_field: "title" # transform: none, the text as stored
 ```
 
 **Inheritance Rules:**
-1. `transformations` - Merged (child adds to base)
-2. `field_mappings` - Merged (child adds/overrides)
-3. `metadata` - Child overrides base
-4. `benchmark` - Child overrides base
-5. `namespaces` - Merged (child adds to base)
+Every section is inherited the same way. Mappings merge key by key, and the child's value
+wins where both set one; a list or a single value in the child replaces the parent's.
+So a child adds to or overrides `field_mappings`, `metadata`, `rule_defaults`,
+`benchmark` (including `benchmark.namespaces`) and `post_processing`. The transforms a
+mapping may name are the ones registered in `mapping_engine.py` (`TransformRegistry`),
+not a section of the style; a style that carries a top-level section the loader does not
+read, or a `post_processing` setting the exporter does not read, is refused when it loads,
+with its name.
+
+A child can add a namespace but cannot drop one it inherits, and the serializer declares
+every namespace in `benchmark.namespaces` on the root. So namespaces belong to the style
+whose documents use them, not to a shared base: the shipped `base.yaml` declares none.
 
 ---
 
@@ -680,7 +686,7 @@ Map fields only when certain conditions are met:
 impact_statement:
 target_element: "impact"
 source_field: "impact"
-transform: "strip_html"
+transform: "none"
 optional: true # Only include if field has value
 condition:
 field: "impact"
@@ -706,7 +712,7 @@ href: "oval-definitions.xml"
 
 - element: "check-content"
 source_field: "audit"
-transform: "strip_html_keep_code"
+transform: "none"
 ```
 
 **Output:**
@@ -725,12 +731,12 @@ Add CIS Controls as structured metadata:
 
 ```yaml
 cis_controls_metadata:
+  target_element: "metadata"
   structure: "metadata_from_config"
-  requires_post_processing: true
   source_field: "cis_controls"
   metadata_spec:
     root_element: "cis_controls"
-    namespace: "http://cisecurity.org/controls"
+    namespace_prefix: "controls"  # declared in benchmark.namespaces
     group_by: "item.version"
     group_element:
       element: "framework"
@@ -738,20 +744,50 @@ cis_controls_metadata:
         urn: "urn:cisecurity.org:controls:{group_key}"
       item_element:
         element: "safeguard"
-        # ... (see cis_style.yaml for complete spec)
+        # ... (see configs/styles/cis.yaml for the complete spec)
 ```
 
-**Output:**
+**Output** (synthetic control):
 ```xml
 <metadata>
-<controls:control id="4.1" version="8" ig="IG1">
-Establish and Maintain Secure Configuration Process
-</controls:control>
-<controls:control id="4.8" version="8" ig="IG2">
-Uninstall or Disable Unnecessary Services
-</controls:control>
+  <controls:cis_controls>
+    <controls:framework urn="urn:cisecurity.org:controls:8">
+      <controls:safeguard title="Example safeguard" urn="urn:cisecurity.org:controls:8:4.8">
+        <controls:implementation_groups ig1="false" ig2="true" ig3="true"/>
+        <controls:asset_type>Unknown</controls:asset_type>
+        <controls:security_function>Protect</controls:security_function>
+      </controls:safeguard>
+    </controls:framework>
+  </controls:cis_controls>
 </metadata>
 ```
+
+### Dublin Core references
+
+A reference's Dublin Core children (`dc_elements` on a `dublin_core` field, or on
+`benchmark.reference`) are built by `MappingEngine.dublin_core_elements` as xsdata
+`AnyElement` instances: qualified name from the prefix's namespace in
+`benchmark.namespaces`, text from the filled `content` template. `ReferenceType.content`
+is a wildcard (`##any`, mixed) in both XCCDF 1.1.4 and 1.2, so xsdata serializes them as
+child elements; the final namespace pass then declares `dc` once at the root. No
+post-processing handler is involved.
+
+### Rule metadata as model content
+
+`metadata_from_config` builds the metadata as xsdata `AnyElement` content, held by a
+`MetadataType` on `Rule.metadata` (one metadata element per mapping, in mapping order).
+xsdata writes it with the rest of the Rule, so its place among the Rule's children follows
+the schema the models were generated from, and its prefix is the one the root declares.
+Nothing is inserted after serialization.
+
+The engine checks every metadata mapping when the style loads (see
+[XCCDF mapping design](../design/xccdf-mapping-design.md#checked-when-the-style-loads)).
+XCCDF 1.1.4 allows `<metadata>` only on the Benchmark, not inside a Rule, so a metadata
+mapping on a 1.1.4 style (such as DISA) is refused with an error naming the version.
+
+Duplicate Rule ids stop an export with `ExportError`: XCCDF requires ids to be unique, so
+two recommendations whose `rule_id` template yields the same id are reported with their refs
+and titles, and no file is written.
 
 ---
 
@@ -769,9 +805,10 @@ install cramfs /bin/true
 ```
 
 **Requirements:**
+
 1. Element name: `fixtext`
 2. Attribute: `fixref` with format "F-{ref_normalized}"
-3. Content: Remediation text with code preserved
+3. Content: the stored remediation text (Markdown, written as it is)
 4. Type: FixTextType (xsdata)
 
 ### YAML Configuration
@@ -780,7 +817,7 @@ install cramfs /bin/true
 fixtext:
 target_element: "fixtext" # 1. Element name
 source_field: "remediation" # Source from Pydantic
-transform: "strip_html_keep_code" # 3. Preserve code blocks
+transform: "none" # 3. The stored Markdown, as it is
 attributes: # 2. Dynamic attribute
 fixref: "F-{ref_normalized}"
 xccdf_type: "FixTextType" # 4. xsdata type
@@ -792,12 +829,12 @@ xccdf_type: "FixTextType" # 4. xsdata type
 # 1. Load config
 config = field_mappings['fixtext']
 
-# 2. Get source data
+# 2. Get source data (the stored text is Markdown)
 source_value = getattr(recommendation, 'remediation')
-# "<p>Edit <code>/etc/modprobe.d/cramfs.conf</code> and add:<pre>install cramfs /bin/true</pre></p>"
+# "Edit `/etc/modprobe.d/cramfs.conf` and add:\n\n```\ninstall cramfs /bin/true\n```"
 
-# 3. Apply transformation
-transformed = apply_transform(source_value, 'strip_html_keep_code')
+# 3. Apply transformation: none leaves the text as it is
+transformed = apply_transform(source_value, 'none')
 # "Edit `/etc/modprobe.d/cramfs.conf` and add:\n\n```\ninstall cramfs /bin/true\n```"
 
 # 4. Substitute variables in attributes
@@ -847,8 +884,8 @@ cis-bench --verbose export 23598 --format xccdf --style disa
 ```
 DEBUG: Loading config: disa_style.yaml
 DEBUG: Processing field: title
-DEBUG: Source value: "<p>Ensure cramfs disabled</p>"
-DEBUG: Applying transform: strip_html
+DEBUG: Source value: "Ensure cramfs disabled"
+DEBUG: Applying transform: none
 DEBUG: Result: "Ensure cramfs disabled"
 DEBUG: Creating TextType object
 ```
@@ -871,7 +908,7 @@ TypeError: Rule.title expects TextType, got str
 ```
 WARNING: No CCIs found for CIS Control 18.1
 ```
-**Fix:** CCI mapping file incomplete, control is INFERRED (has no CCIs)
+**Fix:** none needed when the safeguard is INFERRED or UNMAPPED in `cis-cci-mapping.json`: only OFFICIAL entries give CCIs, and a rule with none gets the fallback CCI
 
 **Issue: "Namespace prefix not declared"**
 ```
@@ -917,8 +954,8 @@ assert len(xccdf.group[0].rule) > 0
 # Export
 cis-bench export 23598 --format xccdf --style custom -o test.xml
 
-# Validate against schema
-xmllint --schema schemas/xccdf-1.2.xsd test.xml
+# Validate against the XCCDF schema
+cis-bench validate test.xml
 
 # Check specific elements
 xmllint --xpath "//Rule/title" test.xml
@@ -950,14 +987,18 @@ desc:
 target_element: "description"
 ```
 
-### 3. Document Your Transformations
+### 3. Name a Registered Transform
 
 ```yaml
-transformations:
-custom_transform:
-description: "Converts CIS-style lists to DISA bullet points" # Document!
-function: "MyTransformers.convert_lists"
+field_mappings:
+  version:
+    target_element: "version"
+    source_field: "version"
+    transform: "strip_version_prefix" # registered in mapping_engine.py
 ```
+
+A transform is Python, registered with `TransformRegistry.register`, and a mapping names it;
+a style that names one that is not registered is refused when it loads.
 
 ### 4. Test Each Field Mapping
 
@@ -1029,7 +1070,7 @@ id_template: "xccdf_minimal_{benchmark_id}"
 
 title:
 source: "title"
-transform: "strip_html"
+transform: "none"
 
 version:
 source: "version"
@@ -1038,13 +1079,13 @@ field_mappings:
 title:
 target_element: "title"
 source_field: "title"
-transform: "strip_html"
+transform: "none"
 xccdf_type: "TextType"
 
 description:
 target_element: "description"
 source_field: "description"
-transform: "strip_html"
+transform: "none"
 xccdf_type: "HtmlTextWithSubType"
 
 check:
@@ -1056,7 +1097,7 @@ children:
 
 - element: "check-content"
 source_field: "audit"
-transform: "strip_html_keep_code"
+transform: "none"
 ```
 
 **This produces:**
@@ -1105,7 +1146,7 @@ separator: "\n\n"
 impact:
 target_element: "impact"
 source_field: "impact"
-transform: "strip_html"
+transform: "none"
 optional: true
 default: "No impact information available" # Use if field empty
 ```
@@ -1197,24 +1238,24 @@ print(config.keys())
 EOF
 ```
 
-### Transformation Not Applied
+### Transform Not Registered
 
-**Symptom:** HTML still in output when it should be stripped
+**Symptom:** the style is refused when it loads, naming the place and the transform:
 
-**Debug:**
-```yaml
-# Add logging to transformation
-title:
-source_field: "title"
-transform: "strip_html"
-debug: true # Enable debug logging for this field
+```text
+ValueError: field_mappings.title: Unknown transformation: strip_html
 ```
+
+**Cause:** the mapping (or a `{value|filter}` in a template) names a transform no function is
+registered under in `mapping_engine.py`. Text fields name `none`: the stored Markdown is written
+as it is, there is no HTML conversion to name.
 
 ### Missing Output
 
 **Symptom:** Field doesn't appear in XCCDF
 
 **Check:**
+
 1. Field exists in Pydantic model?
 2. Field mapping in config?
 3. Optional field but value is None?
@@ -1236,7 +1277,7 @@ debug: true # Enable debug logging for this field
 The MappingEngine provides:
 
 **Flexibility** - Change XCCDF structure without code changes
-**Reusability** - Share transformations across styles
+**Reusability** - Share field mappings, rule defaults and post-processing across styles
 **Maintainability** - Clear separation of data and structure
 **Extensibility** - Add new styles in minutes
 **Testability** - Test configs independent of code
