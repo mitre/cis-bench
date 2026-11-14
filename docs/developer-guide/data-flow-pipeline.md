@@ -248,7 +248,6 @@ title:
 target_element: "title"
 source_field: "title"
 transform: "none"
-xccdf_type: "TextType"
 
 # Composite field mapping
 description:
@@ -266,7 +265,6 @@ separator: "\n\n" # follows the description when the rationale has text
 
 - tag: "FalsePositives"
 content: ""
-xccdf_type: "HtmlTextWithSubType"
 
 # List field with CCI lookup
 ident:
@@ -779,9 +777,8 @@ KeyError: 'rationale' not in recommendation
 
 **Error:** Invalid XCCDF structure
 ```
-TypeError: Rule.title expects TextType, got str
- MappingEngine must wrap in proper type
- Check field_mappings xccdf_type
+ValueError: field_mappings.extra: XCCDF 1.1.4 has no 'no_such_element' element in Rule
+ A mapping's target_element must be an element of the XCCDF version's Rule
 ```
 
 ### Stage 5: XML Serialization
@@ -839,7 +836,6 @@ field_mappings:
 title:
 source_field: "title"
 transform: "uppercase" # Custom transform
-xccdf_type: "TextType"
 
 # Rule metadata: a metadata_from_config mapping (see the XCCDF mapping design)
 ```
@@ -1009,9 +1005,9 @@ ERROR: KeyError: 'custom_field'
 
 **"Invalid XCCDF structure"**
 ```
-ERROR: Rule.title expects TextType, got str
- Check: field_mappings xccdf_type
- Fix: Ensure MappingEngine wraps in correct type
+ValueError: field_mappings.extra: XCCDF 1.1.4 has no 'no_such_element' element in Rule
+ Check: the mapping's target_element
+ Fix: name an element the XCCDF version's Rule has; its type comes from the XCCDF model
 ```
 
 **"... is not a setting the exporter reads"**

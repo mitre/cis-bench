@@ -119,8 +119,8 @@ field_name:
             content: "Protect"
 ```
 
-The mapping needs no `rule_elements` entry: the type that holds the content is the one the
-XCCDF model gives the Rule's target element (`MetadataType` for `metadata`).
+The type that holds the content is the one the XCCDF model gives the Rule's target element
+(`MetadataType` for `metadata`), as for every element: a style declares no types.
 
 ### Checked when the style loads
 

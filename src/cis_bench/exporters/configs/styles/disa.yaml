@@ -77,23 +77,19 @@ benchmark:
   title:
     source: "title"
     transform: "none"
-    xccdf_type: "TextType"  # Benchmark.title uses TextType (with 'value'), not TextWithSubType
 
   description:
     source: "title"
     transform: "none"
     prepend_text: "CIS Benchmark exported to DISA STIG format. "
-    xccdf_type: "HtmlTextWithSubType"
 
   version:
     source: "version"
     transform: "strip_version_prefix"  # "v4.0.0" → "4.0.0" (Vulcan adds "V" prefix)
-    xccdf_type: "VersionType"
 
   # STIG-required elements (with types)
   notice:
     element: "notice"
-    xccdf_type: "NoticeType"
     attributes:
       id: "terms-of-use"
       xml:lang: "en"
@@ -106,14 +102,12 @@ benchmark:
 
   front_matter:
     element: "front-matter"
-    xccdf_type: "HtmlTextWithSubType"  # XCCDF 1.1.4 schema requires WithSubType
     attributes:
       xml:lang: "en"
     content: ""
 
   rear_matter:
     element: "rear-matter"
-    xccdf_type: "HtmlTextWithSubType"  # XCCDF 1.1.4 schema requires WithSubType
     attributes:
       xml:lang: "en"
     content: ""
@@ -350,70 +344,15 @@ validation:
   require_nist_controls: false
   max_cci_per_rule: 50  # Sanity check
 
-# Rule element specifications (xsdata types for each Rule element)
-# Note: A Rule is a security control/recommendation
-# Each Rule has elements (title, description, etc.) with specific xsdata types
-rule_elements:
-  version:
-    xccdf_type: "VersionType"
-    source: "ref"
-
-  title:
-    xccdf_type: "TextWithSubType"
-    source: "title"
-
-  description:
-    xccdf_type: "HtmlTextWithSubType"
-    source: "vuln_discussion"  # built from field_mappings.description's components
-
-  ident:
-    xccdf_type: "IdentType"
-    multiple: true
-
-  reference:
-    xccdf_type: "ReferenceType"
-    multiple: true
-
-  fixtext:
-    xccdf_type: "FixTextType"
-    source: "remediation"
-
-  fix:
-    xccdf_type: "FixType"
-    source: "remediation"
-
-  check:
-    xccdf_type: "CheckType"
-    source: "audit"
-
-  # CIS Controls and MITRE ATT&CK as ident elements
-  cis_controls:
-    xccdf_type: "IdentType"
-    description: "CIS Controls as ident elements"
-
-  mitre_techniques:
-    xccdf_type: "IdentType"
-    description: "MITRE ATT&CK techniques as ident elements"
-
-  mitre_tactics:
-    xccdf_type: "IdentType"
-    description: "MITRE ATT&CK tactics as ident elements"
-
-  mitre_mitigations:
-    xccdf_type: "IdentType"
-    description: "MITRE ATT&CK mitigations as ident elements"
-
 # Group element specifications (xsdata types for each Group element)
 # Note: Groups are DISA wrappers - one Group per Rule (STIG convention)
 # Each Group has elements (title, description) with specific xsdata types
 group_elements:
   title:
-    xccdf_type: "TextWithSubType"  # XCCDF 1.1.4 schema requires WithSubType
     source: "ref"  # Use CIS ref (e.g., "6.1.1") - Vulcan displays as SRG ID
     # In DISA STIGs this would be SRG-OS-000xxx, but CIS has no SRG so we use ref
 
   description:
-    xccdf_type: "HtmlTextWithSubType"
     source: "title"  # Use rule title as group description
     transform: "none"
 

@@ -614,6 +614,89 @@ class TestStyleInheritance:
         assert child.post_processing == {"remove_override_attr": False}
 
 
+class TestElementTypesComeFromTheModels:
+    """The type of a Rule, Group or Benchmark element is the one the generated XCCDF model
+    gives it; a style declares none, and a mapping is never skipped for lack of one."""
+
+    @staticmethod
+    def _style(tmp_path, parent, body: str):
+        style = tmp_path / "style.yaml"
+        style.write_text(f"extends: {parent}\nmetadata:\n  style_name: child\n{body}")
+        return style
+
+    def test_a_new_field_mapping_is_written_without_any_type_declaration(
+        self, tmp_path, disa_config_path, sample_recommendation_complete
+    ):
+        # The DISA style maps no rationale; a child adds the mapping and nothing else.
+        style = self._style(
+            tmp_path,
+            disa_config_path,
+            "field_mappings:\n  rationale:\n    target_element: rationale\n"
+            "    source_field: rationale\n    transform: none\n",
+        )
+        assert sample_recommendation_complete.rationale
+
+        rule = MappingEngine(style).map_rule(
+            sample_recommendation_complete, {"benchmark": None, "recommendations": []}
+        )
+
+        assert [r.content for r in rule.rationale] == [[sample_recommendation_complete.rationale]]
+
+    @pytest.mark.parametrize(
+        ("target", "message"),
+        [
+            pytest.param("no_such_element", r"1\.1\.4.*no_such_element", id="no Rule element"),
+            pytest.param("impact_metric", "impact_metric", id="a plain value, not an element type"),
+        ],
+    )
+    def test_a_field_mapping_the_rule_cannot_hold_is_refused(
+        self, tmp_path, disa_config_path, target, message
+    ):
+        style = self._style(
+            tmp_path,
+            disa_config_path,
+            f"field_mappings:\n  extra:\n    target_element: {target}\n"
+            "    source_field: rationale\n",
+        )
+
+        with pytest.raises(ValueError, match=rf"field_mappings\.extra.*{message}"):
+            MappingEngine(style)
+
+    @pytest.mark.parametrize(
+        ("body", "where"),
+        [
+            pytest.param(
+                "field_mappings:\n  title:\n    xccdf_type: TextWithSubType\n",
+                r"field_mappings\.title",
+                id="field mapping",
+            ),
+            pytest.param(
+                "group_elements:\n  title:\n    xccdf_type: TextWithSubType\n",
+                r"group_elements\.title",
+                id="group element",
+            ),
+            pytest.param(
+                "benchmark:\n  title:\n    xccdf_type: TextType\n",
+                r"benchmark\.title",
+                id="benchmark element",
+            ),
+        ],
+    )
+    def test_a_declared_type_is_refused(self, tmp_path, cis_config_path, body, where):
+        style = self._style(tmp_path, cis_config_path, body)
+
+        with pytest.raises(ValueError, match=rf"{where}\.xccdf_type.*XCCDF model"):
+            MappingEngine(style)
+
+    def test_the_removed_rule_elements_section_is_refused(self, tmp_path, cis_config_path):
+        style = self._style(
+            tmp_path, cis_config_path, "rule_elements:\n  title:\n    xccdf_type: TextWithSubType\n"
+        )
+
+        with pytest.raises(ValueError, match="rule_elements.*XCCDF model"):
+            MappingEngine(style)
+
+
 class TestDeclaredNamespaces:
     """benchmark.namespaces holds only bindings an XML document can declare (Namespaces in
     XML 1.0); anything else is refused when the style loads, not when an export fails."""
@@ -955,28 +1038,13 @@ class TestDRYHelpers:
         # Should handle None gracefully (depends on implementation)
         assert elem is not None or elem is None
 
-    def test_is_list_field_for_list_type(self, engine):
-        """Test _is_list_field correctly identifies list fields."""
-        Rule = engine.get_xccdf_class("Rule")
+    def test_the_model_says_which_rule_elements_repeat(self, engine):
+        # XCCDF: a Rule has any number of title elements and at most one version.
+        assert engine.model_element("Rule", "title").list_element is True
+        assert engine.model_element("Rule", "version").list_element is False
 
-        # Rule.title is list[TextWithSubType]
-        is_list = engine._is_list_field(Rule, "title")
-        assert is_list is True
-
-    def test_is_list_field_for_single_type(self, engine):
-        """Test _is_list_field correctly identifies single-value fields."""
-        Rule = engine.get_xccdf_class("Rule")
-
-        # Rule.version is Optional[VersionType] (single)
-        is_list = engine._is_list_field(Rule, "version")
-        # This depends on XCCDF schema - version might be single or list
-        assert isinstance(is_list, bool)
-
-    def test_is_list_field_for_nonexistent_field(self, engine):
-        """Test _is_list_field with non-existent field (defaults to True)."""
-        Rule = engine.get_xccdf_class("Rule")
-        is_list = engine._is_list_field(Rule, "nonexistent_field")
-        assert is_list is True  # Default behavior
+    def test_the_model_has_no_element_of_an_unknown_name(self, engine):
+        assert engine.model_element("Rule", "nonexistent_field") is None
 
     def test_element_name_to_type_name_kebab_case(self, engine):
         """Test _element_name_to_type_name with kebab-case."""
@@ -1896,7 +1964,6 @@ class TestNoticeCreation:
         engine.config.benchmark["notice"] = {
             "id": "custom-notice",
             "lang": "en-US",
-            "xccdf_type": "NoticeType",
             "content": "Exported from {benchmark.title} ({benchmark.url})",
         }
 
@@ -1915,7 +1982,6 @@ class TestNoticeCreation:
         engine = MappingEngine(disa_config_path)
         engine.config.benchmark["notice"] = {
             "element": "notice",
-            "xccdf_type": "NoticeType",
             "attributes": {
                 "id": "attr-notice-id",
                 "xml:lang": "en",
@@ -1931,7 +1997,6 @@ class TestNoticeCreation:
         assert isinstance(notice.content[0], str)
 
         engine.config.benchmark["notice"] = {
-            "xccdf_type": "NoticeType",
             "content": "Plain notice without explicit id or lang",
         }
         fallback_notice = engine.create_notice(synthetic_complete_benchmark)
