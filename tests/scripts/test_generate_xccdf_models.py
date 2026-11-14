@@ -262,3 +262,21 @@ def test_a_package_folder_that_is_a_symbolic_link_is_not_written_through(
     assert gen.main([], root=project, models=(BOX,)) == 2
 
     assert sorted(p.name for p in outside.iterdir()) == ["keep.py"]
+
+
+def test_a_failed_xsdata_run_reports_xsdata_output_not_the_known_missing_list(
+    project: Path, capsys
+):
+    (project / ".xsdata.xml").write_text("not xml at all", encoding="utf-8")
+    crate = gen.Model(
+        schema=Path("schemas/crate.xsd"),
+        package="example.models.crate",
+        known_missing=("parts.xsd",),
+    )
+
+    assert gen.main([], root=project, models=(crate,)) == 2
+
+    err = capsys.readouterr().err
+    assert "GeneratorConfig" in err
+    assert "known missing" not in err
+    assert not (project / "src").exists()

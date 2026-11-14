@@ -117,6 +117,10 @@ def _generate(model: Model, root: Path, workdir: Path) -> dict[str, str]:
         ],
         cwd=workdir,
     )
+    if result.returncode != 0:
+        raise GenerationError(
+            f"{model.schema}: xsdata failed (exit {result.returncode})\n{result.stdout}{result.stderr}"
+        )
     reported = set(RESOURCE_NOT_FOUND.findall(result.stdout + result.stderr))
     expected = {urljoin(schema_uri, location): location for location in model.known_missing}
     unreadable = sorted(reported - set(expected))
@@ -135,7 +139,7 @@ def _generate(model: Model, root: Path, workdir: Path) -> dict[str, str]:
         )
     output = workdir / Path(*model.package.split("."))
     modules = {path.name: path.read_text(encoding="utf-8") for path in sorted(output.glob("*.py"))}
-    if result.returncode != 0 or not modules:
+    if not modules:
         raise GenerationError(
             f"{model.schema}: xsdata generated no modules\n{result.stdout}{result.stderr}"
         )
