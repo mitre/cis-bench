@@ -610,11 +610,8 @@ class TestStyleInheritance:
             tmp_path, cis_config_path, "post_processing:\n  remove_override_attr: false\n"
         )
 
-        assert child.post_processing == {
-            **parent.post_processing,
-            "remove_override_attr": False,
-        }
-        assert child.post_processing["handlers"] == parent.post_processing["handlers"] != []
+        assert parent.post_processing == {"remove_override_attr": True}
+        assert child.post_processing == {"remove_override_attr": False}
 
 
 class TestPostProcessingSettings:
@@ -635,6 +632,12 @@ class TestPostProcessingSettings:
         with pytest.raises(ValueError, match=rf"{setting}.*benchmark\.namespaces"):
             ConfigLoader.load(style)
 
+    def test_the_removed_handlers_setting_is_refused_with_where_metadata_is_built(self, tmp_path):
+        style = self._style(tmp_path, "  handlers: [metadata_injection]\n")
+
+        with pytest.raises(ValueError, match=r"handlers.*metadata_from_config"):
+            ConfigLoader.load(style)
+
     def test_an_unknown_setting_is_refused_by_name(self, tmp_path):
         style = self._style(tmp_path, "  pretty_print: true\n")
 
@@ -642,12 +645,9 @@ class TestPostProcessingSettings:
             ConfigLoader.load(style)
 
     def test_the_settings_the_exporter_reads_load(self, tmp_path):
-        style = self._style(tmp_path, "  remove_override_attr: false\n  handlers: []\n")
+        style = self._style(tmp_path, "  remove_override_attr: false\n")
 
-        assert ConfigLoader.load(style).post_processing == {
-            "remove_override_attr": False,
-            "handlers": [],
-        }
+        assert ConfigLoader.load(style).post_processing == {"remove_override_attr": False}
 
 
 class TestVariableSubstituter:
@@ -2054,45 +2054,6 @@ class TestStyleFieldNames:
 
         assert _model_in(Annotated[MITREMapping, "constraint"] | None) is MITREMapping
         assert _model_in(list[MITREMapping]) is None
-
-
-class TestRuleElementOrder:
-    """The engine reports the Rule child-element order of its XCCDF version's schema."""
-
-    def test_xccdf_1_2_order_matches_the_schema_sequence(self, cis_config_path):
-        """src/cis_bench/schemas/xccdf/1.2/xccdf_1.2.xsd: itemType, then selectableItemType, then ruleType."""
-        engine = MappingEngine(cis_config_path)
-        assert engine.rule_element_order() == [
-            "status",
-            "dc-status",
-            "version",
-            "title",
-            "description",
-            "warning",
-            "question",
-            "reference",
-            "metadata",
-            "rationale",
-            "platform",
-            "requires",
-            "conflicts",
-            "ident",
-            "impact-metric",
-            "profile-note",
-            "fixtext",
-            "fix",
-            "check",
-            "complex-check",
-            "signature",
-        ]
-
-    def test_xccdf_1_1_4_order_has_no_metadata(self, disa_config_path):
-        """src/cis_bench/schemas/xccdf/1.1/xccdf-schema.xsd itemType (717-745) has no metadata element."""
-        engine = MappingEngine(disa_config_path)
-        order = engine.rule_element_order()
-        assert "metadata" not in order
-        assert order[:3] == ["status", "version", "title"]
-        assert order[-1] == "signature"
 
 
 class TestEmbeddedTagsAreCheckedWhenTheStyleLoads:

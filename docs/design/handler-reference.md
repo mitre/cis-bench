@@ -65,7 +65,8 @@ field_name:
 
 ### metadata_from_config
 
-Build any nested XML structure from YAML specification.
+Build a Rule's metadata content (nested elements in another namespace) from YAML. The
+content is xsdata model content on `Rule.metadata`; nothing is inserted after serialization.
 
 **Supports:** CIS Controls metadata, PCI-DSS hierarchies, ISO 27001 families
 
@@ -75,14 +76,12 @@ field_name:
   target_element: "metadata"
   structure: "metadata_from_config"
   source_field: "cis_controls"
-  requires_post_processing: true  # lxml injection after xsdata
   metadata_spec:
     root_element: "cis_controls"
-    namespace: "http://cisecurity.org/controls"
-    namespace_prefix: "controls"
+    namespace_prefix: "controls"  # declared in benchmark.namespaces
     allow_empty: true
 
-    group_by: "item.version"  # Optional grouping
+    group_by: "item.version"  # Required: items are written inside group elements
 
     group_element:
       element: "framework"
@@ -109,11 +108,15 @@ field_name:
 
 **Features:**
 
-- **Grouping:** Group items by field value
+- **Grouping:** Groups in key order, items in source order
 - **Nesting:** Unlimited depth via recursive children
-- **Attributes:** Template-based substitution
+- **Attributes:** Template-based substitution; booleans lowercase
 - **Content:** Static or template-based
-- **Empty handling:** Optional empty element generation
+- **Empty handling:** Optional empty root element (`allow_empty`)
+- **Checked when the style loads:** the prefix must be declared and not the XCCDF namespace;
+  the XCCDF version's Rule must have a metadata element (1.1.4 has none); names must be XML
+  names without a prefix; `group_by` is required. See
+  [XCCDF mapping design](xccdf-mapping-design.md#checked-when-the-style-loads)
 
 **Output:**
 ```xml
@@ -132,9 +135,8 @@ field_name:
 **Implementation:**
 
 - `MappingEngine.generate_metadata_from_config()`
-- `MappingEngine._build_config_item()`
-- `MappingEngine._build_config_child()`
-- `XCCDFUnifiedExporter._inject_metadata_from_config()`
+- `MappingEngine._build_config_element()`
+- `MappingEngine._refuse_unwritable_metadata_mappings()` (when the style loads)
 
 ---
 

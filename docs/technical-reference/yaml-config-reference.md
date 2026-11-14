@@ -50,7 +50,6 @@ validation: # Validation rules
 require_cci_for_cis_controls: false
 
 post_processing: # After serialization
-handlers: [...]
 remove_override_attr: true
 ```
 
@@ -308,36 +307,41 @@ reference's wildcard content, so xsdata writes it like any other element and a v
 contain any character. A prefix with no declared namespace stops the export. The same
 applies to the Benchmark's own `reference` (`benchmark.reference.dc_elements`).
 
-### Custom Namespace Elements
+### Rule Metadata (metadata_from_config)
 
-Elements in custom namespace:
+A Rule's `<metadata>` content, built as xsdata model content in the namespace the style
+declares for `namespace_prefix` (the rule_elements entry gives `xccdf_type: "MetadataType"`):
 
 ```yaml
-metadata:
+cis_controls_metadata:
 target_element: "metadata"
 structure: "metadata_from_config"
-namespace: "http://cisecurity.org/xccdf/metadata/1.0"
-enabled: true
-components:
-
-- element: "cis-control"
 source_field: "cis_controls"
-multiple: true # Create multiple elements
+metadata_spec:
+root_element: "cis_controls"
+namespace_prefix: "controls" # declared in benchmark.namespaces
+allow_empty: true
+group_by: "item.version"
+group_element:
+element: "framework"
 attributes:
-version: "{control.version}"
-id: "{control.control}"
-ig1: "{control.ig1}"
-content: "{control.title}"
-
-- element: "profile"
-source_field: "profiles"
-multiple: true
-content: "{profile}"
+urn: "urn:cisecurity.org:controls:{group_key}"
+item_element:
+element: "safeguard"
+attributes:
+title: "{item.title}"
+children:
+- element: "asset_type"
+content: "Unknown"
 ```
+
+Items are grouped by `group_by` (required); every element is in the prefix's namespace, which
+must not be the XCCDF namespace. XCCDF 1.1.4 Rules have no metadata element, so such a mapping
+is refused there. The full rules: [XCCDF mapping design](../design/xccdf-mapping-design.md#metadata_from_config-specification).
 
 ## Component Mapping Options
 
-Components are used in embedded XML and custom namespace structures:
+Components are used in embedded XML structures (`embedded_xml_tags`):
 
 ```yaml
 components:
@@ -597,13 +601,13 @@ What runs after serialization:
 
 ```yaml
 post_processing:
-handlers: [metadata_injection] # injects the lxml metadata of requires_post_processing mappings
 remove_override_attr: true # remove xsdata's override attributes (default true)
 ```
 
-These are the only settings; any other key is refused when the style loads. The settings
+This is the only setting; any other key is refused when the style loads. The settings
 `strip_namespace_prefixes` and `preserve_namespaces` are gone: a style's namespaces are the
-ones it lists in `benchmark.namespaces`, declared by the serializer.
+ones it lists in `benchmark.namespaces`, declared by the serializer. `handlers` is gone too: a
+Rule's metadata is model content (`metadata_from_config`), written by the serializer.
 
 ## Validation Section
 
@@ -862,22 +866,29 @@ href: "https://csrc.nist.gov/Projects/risk-management/sp800-53-controls"
 content: "{nist_control_id}"
 ```
 
-### Pattern 7: Custom Namespace Metadata
+### Pattern 7: Rule Metadata in Another Namespace
 
 ```yaml
-metadata:
+cis_controls_metadata:
 target_element: "metadata"
 structure: "metadata_from_config"
-namespace: "http://cisecurity.org/xccdf/metadata/1.0"
-components:
-
-- element: "cis-control"
 source_field: "cis_controls"
-multiple: true
+metadata_spec:
+root_element: "cis_controls"
+namespace_prefix: "controls" # declared in benchmark.namespaces
+allow_empty: true
+group_by: "item.version"
+group_element:
+element: "framework"
 attributes:
-version: "{control.version}"
-id: "{control.control}"
-content: "{control.title}"
+urn: "urn:cisecurity.org:controls:{group_key}"
+item_element:
+element: "safeguard"
+attributes:
+title: "{item.title}"
+children:
+- element: "asset_type"
+content: "Unknown"
 ```
 
 ## Troubleshooting

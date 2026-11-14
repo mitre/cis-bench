@@ -133,7 +133,7 @@ extract: "all"
 | `field_mappings` | Rule-level field transformations | Yes |
 | `rule_defaults` | Default attributes for all rules | No |
 | `validation` | Validation rules and constraints | No |
-| `post_processing` | Handlers (`metadata_injection`) and `override` attribute removal after serialization | No |
+| `post_processing` | `override` attribute removal after serialization (`remove_override_attr`) | No |
 
 ### Benchmark ID
 
@@ -664,8 +664,7 @@ field_mappings:
 Every section is inherited the same way. Mappings merge key by key, and the child's value
 wins where both set one; a list or a single value in the child replaces the parent's.
 So a child adds to or overrides `field_mappings`, `metadata`, `rule_defaults`,
-`benchmark` (including `benchmark.namespaces`) and `post_processing`, while a child that
-sets `post_processing.handlers` replaces the parent's list of handlers. The transforms a
+`benchmark` (including `benchmark.namespaces`) and `post_processing`. The transforms a
 mapping may name are the ones registered in `mapping_engine.py` (`TransformRegistry`),
 not a section of the style; a style that carries a top-level section the loader does not
 read, or a `post_processing` setting the exporter does not read, is refused when it loads,
@@ -732,12 +731,12 @@ Add CIS Controls as structured metadata:
 
 ```yaml
 cis_controls_metadata:
+  target_element: "metadata"
   structure: "metadata_from_config"
-  requires_post_processing: true
   source_field: "cis_controls"
   metadata_spec:
     root_element: "cis_controls"
-    namespace: "http://cisecurity.org/controls"
+    namespace_prefix: "controls"  # declared in benchmark.namespaces
     group_by: "item.version"
     group_element:
       element: "framework"
@@ -745,18 +744,21 @@ cis_controls_metadata:
         urn: "urn:cisecurity.org:controls:{group_key}"
       item_element:
         element: "safeguard"
-        # ... (see cis_style.yaml for complete spec)
+        # ... (see configs/styles/cis.yaml for the complete spec)
 ```
 
-**Output:**
+**Output** (synthetic control):
 ```xml
 <metadata>
-<controls:control id="4.1" version="8" ig="IG1">
-Establish and Maintain Secure Configuration Process
-</controls:control>
-<controls:control id="4.8" version="8" ig="IG2">
-Uninstall or Disable Unnecessary Services
-</controls:control>
+  <controls:cis_controls>
+    <controls:framework urn="urn:cisecurity.org:controls:8">
+      <controls:safeguard title="Example safeguard" urn="urn:cisecurity.org:controls:8:4.8">
+        <controls:implementation_groups ig1="false" ig2="true" ig3="true"/>
+        <controls:asset_type>Unknown</controls:asset_type>
+        <controls:security_function>Protect</controls:security_function>
+      </controls:safeguard>
+    </controls:framework>
+  </controls:cis_controls>
 </metadata>
 ```
 
@@ -770,35 +772,22 @@ is a wildcard (`##any`, mixed) in both XCCDF 1.1.4 and 1.2, so xsdata serializes
 child elements; the final namespace pass then declares `dc` once at the root. No
 post-processing handler is involved.
 
-### Post-processing: metadata injection
+### Rule metadata as model content
 
-Elements marked `requires_post_processing: true` are built as lxml elements and
-inserted into the serialized XML by the `metadata_injection` handler, which a
-style enables under `post_processing.handlers`:
+`metadata_from_config` builds the metadata as xsdata `AnyElement` content, held by a
+`MetadataType` on `Rule.metadata` (one metadata element per mapping, in mapping order).
+xsdata writes it with the rest of the Rule, so its place among the Rule's children follows
+the schema the models were generated from, and its prefix is the one the root declares.
+Nothing is inserted after serialization.
 
-```yaml
-post_processing:
-  handlers: [metadata_injection]
-```
+The engine checks every metadata mapping when the style loads (see
+[XCCDF mapping design](../design/xccdf-mapping-design.md#checked-when-the-style-loads)).
+XCCDF 1.1.4 allows `<metadata>` only on the Benchmark, not inside a Rule, so a metadata
+mapping on a 1.1.4 style (such as DISA) is refused with an error naming the version.
 
-Where the `<metadata>` lands is not configured. XCCDF fixes the order of a
-Rule's children, and the xsdata models in `cis_bench.models` are generated from
-the NIST schemas, so the exporter asks `MappingEngine.rule_element_order()` for
-the element sequence of the style's XCCDF version and inserts metadata before
-the first child the schema places after it (`rationale`, `platform`, `requires`,
-`conflicts`, `ident`, `impact-metric`, `profile-note`, `fixtext`, `fix`, `check`,
-`complex-check`, `signature` in 1.2). The schema is the single source of that
-order; there is no list to keep in sync.
-
-Two conditions stop an export with `ExportError`:
-
-- **Duplicate Rule ids.** Metadata is keyed by Rule id, and XCCDF requires ids
-  to be unique, so two recommendations whose `rule_id` template yields the same
-  id are reported with their refs and titles. No file is written.
-
-- **A version without Rule metadata.** XCCDF 1.1.4 allows `<metadata>` only on
-  the Benchmark, not inside a Rule, so enabling `metadata_injection` on a 1.1.4
-  style (such as DISA) is a configuration error.
+Duplicate Rule ids stop an export with `ExportError`: XCCDF requires ids to be unique, so
+two recommendations whose `rule_id` template yields the same id are reported with their refs
+and titles, and no file is written.
 
 ---
 

@@ -106,14 +106,14 @@ field_mappings:
 
   # Use generic metadata handler for CIS Controls
   cis_controls_metadata:
+    target_element: "metadata"
     structure: "metadata_from_config"
-    requires_post_processing: true
     source_field: "cis_controls"
     metadata_spec:
       root_element: "cis_controls"
-      namespace: "http://cisecurity.org/controls"
+      namespace_prefix: "controls"  # declared in benchmark.namespaces
       group_by: "item.version"
-      # ... (see cis_style.yaml for full spec)
+      # ... (see configs/styles/cis.yaml for the full spec)
 ```
 
 **The configuration is the implementation.** The MappingEngine reads this YAML and executes the transformations automatically.
@@ -268,8 +268,8 @@ framework_controls:
 
 # For nested hierarchies (CIS Controls, PCI-DSS requirements)
 framework_metadata:
+  target_element: "metadata"
   structure: "metadata_from_config"
-  requires_post_processing: true
   source_field: "controls"
   metadata_spec:
     # Define structure in YAML

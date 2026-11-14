@@ -103,7 +103,7 @@ class XCCDFPostProcessor:
         """Apply the style's post-processing to a serialized XCCDF document.
 
         Args:
-            xml_string: XML as the serializer wrote it (after any handlers)
+            xml_string: XML as the serializer wrote it
             post_processing_config: The style's post_processing settings
                 - remove_override_attr: bool (default: True)
 

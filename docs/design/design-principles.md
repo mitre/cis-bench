@@ -248,11 +248,11 @@ framework_controls:
 
 ```yaml
 framework_metadata:
+  target_element: "metadata"
   structure: "metadata_from_config"
-  requires_post_processing: true
   metadata_spec:
     root_element: "framework_controls"
-    namespace: "https://org.com/schema"
+    namespace_prefix: "org"  # declared in benchmark.namespaces
     group_by: "item.version"
     group_element:
       element: "family"

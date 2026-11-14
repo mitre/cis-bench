@@ -389,7 +389,6 @@ transform: "none"
 
 cis_controls_metadata:
 structure: "metadata_from_config"
-requires_post_processing: true
 ```
 
 **Adding new XCCDF style:**
@@ -560,7 +559,6 @@ transform: "none"
 cis_controls_metadata:
 target_element: "metadata"
 structure: "metadata_from_config"
-requires_post_processing: true
 
 # Multiple values
 reference:

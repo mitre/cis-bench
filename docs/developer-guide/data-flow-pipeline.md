@@ -631,10 +631,11 @@ so a second prefix for the XCCDF namespace would put an `xccdf:` prefix on every
 
 ### Post-Processing
 
-After serialization the exporter runs the style's `post_processing.handlers` (the CIS style
-injects its CIS Controls metadata with `metadata_injection`) and removes `override`
-attributes (`remove_override_attr`, default true). Neither renames an element or changes a
-namespace declaration: the injected elements use the prefixes the root declares. Prefixes
+After serialization the exporter removes `override` attributes (`remove_override_attr`,
+default true). It renames no element and changes no namespace declaration. A Rule's CIS
+Controls metadata is not added here: the mapping engine builds it as model content
+(`metadata_from_config`), so xsdata writes it in schema order with the prefixes the root
+declares. Prefixes
 are chosen once, when xsdata writes the document, never rewritten afterwards (see the W3C
 TAG finding [QNames as identifiers in content](https://www.w3.org/2001/tag/doc/qnameids.html)).
 
@@ -839,17 +840,7 @@ source_field: "title"
 transform: "uppercase" # Custom transform
 xccdf_type: "TextType"
 
-# Add custom metadata
-metadata:
-target_element: "metadata"
-custom_fields:
-
-- name: "organization"
-value: "My Company"
-
-- name: "custom_id"
-source_field: "ref"
-transform: "prefix_org"
+# Rule metadata: a metadata_from_config mapping (see the XCCDF mapping design)
 ```
 
 Register in exporter:
@@ -1025,7 +1016,7 @@ ERROR: Rule.title expects TextType, got str
 **"... is not a setting the exporter reads"**
 ```
 ValueError: style.yaml: post_processing.preserve_namespaces is not a setting the exporter reads
- Check: the style's post_processing section (the settings are handlers, remove_override_attr)
+ Check: the style's post_processing section (the one setting is remove_override_attr)
  Fix: declare the namespaces the style's documents use in benchmark.namespaces
 ```
 
