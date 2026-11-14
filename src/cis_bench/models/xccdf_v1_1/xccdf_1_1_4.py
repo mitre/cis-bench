@@ -1,71 +1,72 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import Enum
-from typing import Optional
 
 from xsdata.models.datatype import XmlDate, XmlDateTime
 
+from cis_bench.models.xccdf_v1_1.cpe_1_0 import CpeList
+from cis_bench.models.xccdf_v1_1.platform_0_2_3 import PlatformDefinitions
+from cis_bench.models.xccdf_v1_1.xccdfp_1_1 import PlatformSpecification
 from cis_bench.models.xccdf_v1_1.xml import LangValue
 
 __NAMESPACE__ = "http://checklists.nist.gov/xccdf/1.1"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class UriidrefType:
-    """Data type for elements that have no content, just a mandatory URI as an id.
-
-    (This is mainly for the
-    platform element, which uses CPE URIs and CPE Language
-    identifers used as platform identifiers.)  When referring
-    to a local CPE Language identifier, the URL should use
-    local reference syntax: "#cpeid1".
+    """
+    Data type for elements that have no content, just a mandatory URI as an
+    id. (This is mainly for the platform element, which uses CPE URIs and
+    CPE Language identifers used as platform identifiers.) When referring
+    to a local CPE Language identifier, the URL should use local reference
+    syntax: "#cpeid1".
     """
 
     class Meta:
         name = "URIidrefType"
 
-    idref: str | None = field(
-        default=None,
+    idref: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
 
 
 class CcOperatorEnumType(Enum):
-    """The type for the allowed operator names for the complex-check operator
+    """
+    The type for the allowed operator names for the complex-check operator
     attribute.
 
-    For now, we just allow boolean AND and OR as operators.  (The
-    complex-check has a separate mechanism for negation.)
+    For now, we just allow boolean AND and OR as operators. (The
+    complex-check has a separate mechanism for negation.).
     """
 
     OR = "OR"
     AND = "AND"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class CheckContentRefType:
-    """Data type for the check-content-ref element, which points to the code for a
-    detached check in another file.
+    """
+    Data type for the check-content-ref element, which points to the code
+    for a detached check in another file.
 
-    This element has no body, just a couple of attributes: href and
-    name.  The name is optional, if it does not appear then this
-    reference is to the entire other document.
+    This element has no body, just a couple of attributes: href and name.
+    The name is optional, if it does not appear then this reference is to
+    the entire other document.
     """
 
     class Meta:
         name = "checkContentRefType"
 
-    href: str | None = field(
-        default=None,
+    href: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
-    name: str | None = field(
+    name: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -73,13 +74,14 @@ class CheckContentRefType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class CheckContentType:
-    """Data type for the check-content element, which holds the actual code of an
-    enveloped check in some other (non-XCCDF) language.
+    """
+    Data type for the check-content element, which holds the actual code of
+    an enveloped check in some other (non-XCCDF) language.
 
-    This element can hold almost anything; XCCDF tools do not process
-    its content directly.
+    This element can hold almost anything; XCCDF tools do not process its
+    content directly.
     """
 
     class Meta:
@@ -95,80 +97,67 @@ class CheckContentType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class CheckExportType:
     """
-    Data type for the check-export element, which specifies a mapping between an
-    XCCDF internal Value id and a value name to be used by the checking system or
-    processor.
+    Data type for the check-export element, which specifies a mapping
+    between an XCCDF internal Value id and a value name to be used by the
+    checking system or processor.
     """
 
     class Meta:
         name = "checkExportType"
 
-    value_id: str | None = field(
-        default=None,
+    value_id: str = field(
         metadata={
             "name": "value-id",
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
-    export_name: str | None = field(
-        default=None,
+    export_name: str = field(
         metadata={
             "name": "export-name",
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class CheckImportType:
-    """Data type for the check-import element, which specifies a value that the
-    benchmark author wishes to retrieve from the the checking system.
+    """
+    Data type for the check-import element, which specifies a value that
+    the benchmark author wishes to retrieve from the the checking system.
 
     The import-name attribute gives the name or id of the value in the
-    checking system. When the check-import element appears in the
-    context of a rule-result, then the element's content is the desired
-    value.  When the check-import element appears in the context of a
-    Rule, then it should be empty and any content must be ignored.
+    checking system. When the check-import element appears in the context
+    of a rule-result, then the element's content is the desired value. When
+    the check-import element appears in the context of a Rule, then it
+    should be empty and any content must be ignored.
     """
 
     class Meta:
         name = "checkImportType"
 
-    value: str = field(
-        default="",
-        metadata={
-            "required": True,
-        },
-    )
-    import_name: str | None = field(
-        default=None,
+    value: str = field(default="")
+    import_name: str = field(
         metadata={
             "name": "import-name",
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
 
 
 class FixStrategyEnumType(Enum):
-    """Allowed strategy keyword values for a Rule fix or fixtext.
+    """
+    Allowed strategy keyword values for a Rule fix or fixtext.
 
-    The allowed values are:
-    unknown= strategy not defined (default for forward
-    compatibility for XCCDF 1.0)
-    configure=adjust target config or settings
-    patch=apply a patch, hotfix, or update
-    policy=remediation by changing policies/procedures
-    disable=turn off or deinstall something
-    enable=turn on or install something
-    restrict=adjust permissions or ACLs
-    update=install upgrade or update the system
-    combination=combo of two or more of the above
+    The allowed values are: unknown= strategy not defined (default for
+    forward compatibility for XCCDF 1.0) configure=adjust target config or
+    settings patch=apply a patch, hotfix, or update policy=remediation by
+    changing policies/procedures disable=turn off or deinstall something
+    enable=turn on or install something restrict=adjust permissions or ACLs
+    update=install upgrade or update the system combination=combo of two or
+    more of the above.
     """
 
     UNKNOWN = "unknown"
@@ -182,72 +171,58 @@ class FixStrategyEnumType(Enum):
     UPDATE = "update"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class IdentType:
     """
-    Type for a long-term globally meaningful identifier, consisting of a string
-    (ID) and a URI of the naming scheme within which the name is meaningful.
+    Type for a long-term globally meaningful identifier, consisting of a
+    string (ID) and a URI of the naming scheme within which the name is
+    meaningful.
     """
 
     class Meta:
         name = "identType"
 
-    value: str = field(
-        default="",
-        metadata={
-            "required": True,
-        },
-    )
-    system: str | None = field(
-        default=None,
+    value: str = field(default="")
+    system: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class IdentityType:
-    """Type for an identity element in a TestResult.
+    """
+    Type for an identity element in a TestResult.
 
     The content is a string, the name of the identity. The authenticated
     attribute indicates whether the test system authenticated using that
-    identity in order to apply the benchmark.  The privileged attribute
-    indicates whether the identity has access rights beyond those of
-    normal system users (e.g. "root" on Unix")
+    identity in order to apply the benchmark. The privileged attribute
+    indicates whether the identity has access rights beyond those of normal
+    system users (e.g. "root" on Unix").
     """
 
     class Meta:
         name = "identityType"
 
-    value: str = field(
-        default="",
-        metadata={
-            "required": True,
-        },
-    )
-    authenticated: bool | None = field(
-        default=None,
+    value: str = field(default="")
+    authenticated: bool = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
-    privileged: bool | None = field(
-        default=None,
+    privileged: bool = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class IdrefListType:
     """
-    Data type for elements that have no content, just a space-separated list of id
-    references.
+    Data type for elements that have no content, just a space-separated
+    list of id references.
     """
 
     class Meta:
@@ -262,34 +237,32 @@ class IdrefListType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class IdrefType:
     """
-    Data type for elements that have no content, just a mandatory id reference.
+    Data type for elements that have no content, just a mandatory id
+    reference.
     """
 
     class Meta:
         name = "idrefType"
 
-    idref: str | None = field(
-        default=None,
+    idref: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class InstanceFixType:
-    """Type for an instance element in a fix element.
+    """
+    Type for an instance element in a fix element.
 
-    The
-    instance element inside a fix element designates a
-    spot where the name of the instance should be
-    substituted into the fix template to generate the
-    final fix data.  The instance element in this usage
-    has one optional attribute: context.
+    The instance element inside a fix element designates a spot where the
+    name of the instance should be substituted into the fix template to
+    generate the final fix data. The instance element in this usage has one
+    optional attribute: context.
     """
 
     class Meta:
@@ -303,32 +276,27 @@ class InstanceFixType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class InstanceResultType:
-    """Type for an instance element in a rule-result.
+    """
+    Type for an instance element in a rule-result.
 
-    The content is a string, but the element may
-    also have two attribute: context and parentContext.
-    This type records the details of the target system
-    instance for multiply instantiated rules.
+    The content is a string, but the element may also have two attribute:
+    context and parentContext. This type records the details of the target
+    system instance for multiply instantiated rules.
     """
 
     class Meta:
         name = "instanceResultType"
 
-    value: str = field(
-        default="",
-        metadata={
-            "required": True,
-        },
-    )
+    value: str = field(default="")
     context: str = field(
         default="undefined",
         metadata={
             "type": "Attribute",
         },
     )
-    parent_context: str | None = field(
+    parent_context: None | str = field(
         default=None,
         metadata={
             "name": "parentContext",
@@ -338,10 +306,11 @@ class InstanceResultType:
 
 
 class InterfaceHintType(Enum):
-    """Allowed interface hint values.
+    """
+    Allowed interface hint values.
 
-    When an interfaceHint appears on the Value, it provides a suggestion
-    to a tailoring or benchmarking tool about how to present the UI for
+    When an interfaceHint appears on the Value, it provides a suggestion to
+    a tailoring or benchmarking tool about how to present the UI for
     adjusting a Value.
     """
 
@@ -352,15 +321,16 @@ class InterfaceHintType(Enum):
     DATETIME = "datetime"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class MetadataType:
-    """Metadata for the Benchmark, should be Dublin Core or some other well-
-    specified and accepted metadata format.
+    """
+    Metadata for the Benchmark, should be Dublin Core or some other
+    well-specified and accepted metadata format.
 
     If Dublin Core, then it will be a sequence of simple Dublin Core
-    elements.  The NIST checklist metadata should also be supported,
-    although the specification document is still in draft in NIST
-    special pub 800-70.
+    elements. The NIST checklist metadata should also be supported,
+    although the specification document is still in draft in NIST special
+    pub 800-70.
     """
 
     class Meta:
@@ -393,30 +363,24 @@ class MsgSevEnumType(Enum):
     INFO = "info"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ParamType:
-    """Type for a scoring model parameter: a name and a
-    string value."""
+    """
+    Type for a scoring model parameter: a name and a string value.
+    """
 
     class Meta:
         name = "paramType"
 
-    value: str = field(
-        default="",
-        metadata={
-            "required": True,
-        },
-    )
-    name: str | None = field(
-        default=None,
+    value: str = field(default="")
+    name: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class PlainTextType:
     """
     Data type for a reusable text block, with an unique id attribute.
@@ -425,25 +389,19 @@ class PlainTextType:
     class Meta:
         name = "plainTextType"
 
-    value: str = field(
-        default="",
-        metadata={
-            "required": True,
-        },
-    )
-    id: str | None = field(
-        default=None,
+    value: str = field(default="")
+    id: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ProfileSetValueType:
-    """Type for the set-value element in a Profile; it has one required attribute
-    and string content.
+    """
+    Type for the set-value element in a Profile; it has one required
+    attribute and string content.
 
     The attribute is 'idref', it refers to a Value.
     """
@@ -451,32 +409,25 @@ class ProfileSetValueType:
     class Meta:
         name = "profileSetValueType"
 
-    value: str = field(
-        default="",
-        metadata={
-            "required": True,
-        },
-    )
-    idref: str | None = field(
-        default=None,
+    value: str = field(default="")
+    idref: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
 
 
 class RatingEnumType(Enum):
-    """Allowed rating values values for a Rule fix
-    or fixtext: disruption, complexity, and maybe overhead.
-    The possible values are:
-    unknown= rating unknown or impossible to estimate
-    (default for forward compatibility for XCCDF 1.0)
-    low = little or no potential for disruption,
-    very modest complexity
-    medium= some chance of minor disruption,
-    substantial complexity
-    high = likely to cause serious disruption, very complex"""
+    """
+    Allowed rating values values for a Rule fix or fixtext: disruption,
+    complexity, and maybe overhead.
+
+    The possible values are: unknown= rating unknown or impossible to
+    estimate (default for forward compatibility for XCCDF 1.0) low = little
+    or no potential for disruption, very modest complexity medium= some
+    chance of minor disruption, substantial complexity high = likely to
+    cause serious disruption, very complex.
+    """
 
     UNKNOWN = "unknown"
     LOW = "low"
@@ -484,10 +435,11 @@ class RatingEnumType(Enum):
     HIGH = "high"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ReferenceType:
-    """Data type for a reference citation, an href URL attribute (optional), with
-    content of text or simple Dublin Core elements.
+    """
+    Data type for a reference citation, an href URL attribute (optional),
+    with content of text or simple Dublin Core elements.
 
     Elements of this type can also have an override attribute to help
     manage inheritance.
@@ -496,13 +448,13 @@ class ReferenceType:
     class Meta:
         name = "referenceType"
 
-    href: str | None = field(
+    href: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    override: bool | None = field(
+    override: None | bool = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -519,19 +471,18 @@ class ReferenceType:
 
 
 class ResultEnumType(Enum):
-    """Allowed result indicators for a test, several possibilities:
-
-    pass= the test passed, target complies w/ benchmark fail= the test
-    failed, target does not comply error= an error occurred and test
-    could not complete, or the test does not apply to this plaform
-    unknown= could not tell what happened, results with this status are
-    not to be scored notapplicable=Rule did not apply to test target
-    fixed=rule failed, but was later fixed (score as pass)
-    notchecked=Rule did not cause any evaluation by the checking engine
-    (role of "unchecked") notselected=Rule was not selected in the
-    Benchmark, and therefore was not checked (selected="0")
-    informational=Rule was evaluated by the checking engine, but isn't
-    to be scored (role of "unscored")
+    """
+    Allowed result indicators for a test, several possibilities: pass= the
+    test passed, target complies w/ benchmark fail= the test failed, target
+    does not comply error= an error occurred and test could not complete,
+    or the test does not apply to this plaform unknown= could not tell what
+    happened, results with this status are not to be scored
+    notapplicable=Rule did not apply to test target fixed=rule failed, but
+    was later fixed (score as pass) notchecked=Rule did not cause any
+    evaluation by the checking engine (role of "unchecked")
+    notselected=Rule was not selected in the Benchmark, and therefore was
+    not checked (selected="0") informational=Rule was evaluated by the
+    checking engine, but isn't to be scored (role of "unscored").
     """
 
     PASS = "pass"
@@ -546,18 +497,16 @@ class ResultEnumType(Enum):
 
 
 class RoleEnumType(Enum):
-    """Allowed checking and scoring roles for a Rule.
+    """
+    Allowed checking and scoring roles for a Rule.
 
-    There are several possible values:
-    full = if the rule is selected, then check it and let the
-    result contribute to the score and appear in reports
-    (default, for compatibility for XCCDF 1.0).
-    unscored = check the rule, and include the results in
-    any report, but do not include the result in
-    score computations (in the default scoring model
-    the same effect can be achieved with weight=0)
-    unchecked = don't check the rule, just force the result
-    status to 'unknown'.  Include the rule's
+    There are several possible values: full = if the rule is selected, then
+    check it and let the result contribute to the score and appear in
+    reports (default, for compatibility for XCCDF 1.0). unscored = check
+    the rule, and include the results in any report, but do not include the
+    result in score computations (in the default scoring model the same
+    effect can be achieved with weight=0) unchecked = don't check the rule,
+    just force the result status to 'unknown'. Include the rule's
     information in any reports.
     """
 
@@ -566,29 +515,24 @@ class RoleEnumType(Enum):
     UNCHECKED = "unchecked"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ScoreType:
     """
-    Type for a score value in a TestResult, the content is a real number and the
-    element can have two optional attributes.
+    Type for a score value in a TestResult, the content is a real number
+    and the element can have two optional attributes.
     """
 
     class Meta:
         name = "scoreType"
 
-    value: Decimal | None = field(
-        default=None,
-        metadata={
-            "required": True,
-        },
-    )
-    system: str | None = field(
+    value: Decimal = field()
+    system: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    maximum: Decimal | None = field(
+    maximum: None | Decimal = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -596,9 +540,10 @@ class ScoreType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class SelChoicesType:
-    """The choice element specifies a list of legal or suggested choices for a
+    """
+    The choice element specifies a list of legal or suggested choices for a
     Value object.
 
     It holds one or more choice elements, a mustMatch attribute, and a
@@ -616,7 +561,7 @@ class SelChoicesType:
             "min_occurs": 1,
         },
     )
-    must_match: bool | None = field(
+    must_match: None | bool = field(
         default=None,
         metadata={
             "name": "mustMatch",
@@ -631,9 +576,10 @@ class SelChoicesType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class SelNumType:
-    """This type is for an element that has numeric content and a selector
+    """
+    This type is for an element that has numeric content and a selector
     attribute.
 
     It is used for two of the child elements of Value.
@@ -642,12 +588,7 @@ class SelNumType:
     class Meta:
         name = "selNumType"
 
-    value: Decimal | None = field(
-        default=None,
-        metadata={
-            "required": True,
-        },
-    )
+    value: Decimal = field()
     selector: str = field(
         default="",
         metadata={
@@ -656,9 +597,10 @@ class SelNumType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class SelStringType:
-    """This type is for an element that has string content and a selector
+    """
+    This type is for an element that has string content and a selector
     attribute.
 
     It is used for some of the child elements of Value.
@@ -667,12 +609,7 @@ class SelStringType:
     class Meta:
         name = "selStringType"
 
-    value: str = field(
-        default="",
-        metadata={
-            "required": True,
-        },
-    )
+    value: str = field(default="")
     selector: str = field(
         default="",
         metadata={
@@ -682,18 +619,13 @@ class SelStringType:
 
 
 class SeverityEnumType(Enum):
-    """Allowed severity values for a Rule.
-
-    there are several possible values:
-    unknown= severity not defined (default, for forward
-    compatibility from XCCDF 1.0)
-    info = rule is informational only, failing the
-    rule does not imply failure to conform to
-    the security guidance of the benchmark.
-    (usually would also have a weight of 0)
-    low = not a serious problem
-    medium= fairly serious problem
-    high = a grave or critical problem
+    """
+    Allowed severity values for a Rule. there are several possible values:
+    unknown= severity not defined (default, for forward compatibility from
+    XCCDF 1.0) info = rule is informational only, failing the rule does not
+    imply failure to conform to the security guidance of the benchmark.
+    (usually would also have a weight of 0) low = not a serious problem
+    medium= fairly serious problem high = a grave or critical problem.
     """
 
     UNKNOWN = "unknown"
@@ -703,18 +635,18 @@ class SeverityEnumType(Enum):
     HIGH = "high"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class SignatureType:
     """
-    XML-Signature over the Benchmark; note that this will always be an 'enveloped'
-    signature, so the single element child of this element should be
-    dsig:Signature.
+    XML-Signature over the Benchmark; note that this will always be an
+    'enveloped' signature, so the single element child of this element
+    should be dsig:Signature.
     """
 
     class Meta:
         name = "signatureType"
 
-    w3_org_2000_09_xmldsig_element: object | None = field(
+    w3_org_2000_09_xmldsig_element: None | object = field(
         default=None,
         metadata={
             "type": "Wildcard",
@@ -726,8 +658,8 @@ class SignatureType:
 
 class StatusType(Enum):
     """
-    The possible status codes for an Benchmark or Item to be inherited from the
-    parent element if it is not defined.
+    The possible status codes for an Benchmark or Item to be inherited from
+    the parent element if it is not defined.
     """
 
     ACCEPTED = "accepted"
@@ -737,7 +669,7 @@ class StatusType(Enum):
     INTERIM = "interim"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class UriRefType:
     """
     Data type for elements that have no content, just a URI.
@@ -746,20 +678,19 @@ class UriRefType:
     class Meta:
         name = "uriRefType"
 
-    uri: str | None = field(
-        default=None,
+    uri: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
 
 
 class ValueOperatorType(Enum):
-    """Allowed operators for Values.
+    """
+    Allowed operators for Values.
 
-    Note that most of these are valid only for numeric data, but the
-    schema doesn't enforce that.
+    Note that most of these are valid only for numeric data, but the schema
+    doesn't enforce that.
     """
 
     EQUALS = "equals"
@@ -781,29 +712,24 @@ class ValueTypeType(Enum):
     BOOLEAN = "boolean"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class VersionType:
     """
-    Type for a version number, with a timestamp attribute for when the version was
-    made.
+    Type for a version number, with a timestamp attribute for when the
+    version was made.
     """
 
     class Meta:
         name = "versionType"
 
-    value: str = field(
-        default="",
-        metadata={
-            "required": True,
-        },
-    )
-    time: XmlDateTime | None = field(
+    value: str = field(default="")
+    time: None | XmlDateTime = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    update: str | None = field(
+    update: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -812,26 +738,20 @@ class VersionType:
 
 
 class WarningCategoryEnumType(Enum):
-    """Allowed warning category keywords for the warning element.
+    """
+    Allowed warning category keywords for the warning element.
 
-    The allowed categories are:
-    general=broad or general-purpose warning (default
-    for compatibility for XCCDF 1.0)
-    functionality=warning about possible impacts to
-    functionality or operational features
-    performance=warning about changes to target
-    system performance or throughput
-    hardware=warning about hardware restrictions or
-    possible impacts to hardware
-    legal=warning about legal implications
-    regulatory=warning about regulatory obligations
-    or compliance implications
-    management=warning about impacts to the mgmt
-    or administration of the target system
-    audit=warning about impacts to audit or logging
-    dependency=warning about dependencies between
-    this Rule and other parts of the target
-    system, or version dependencies.
+    The allowed categories are: general=broad or general-purpose warning
+    (default for compatibility for XCCDF 1.0) functionality=warning about
+    possible impacts to functionality or operational features
+    performance=warning about changes to target system performance or
+    throughput hardware=warning about hardware restrictions or possible
+    impacts to hardware legal=warning about legal implications
+    regulatory=warning about regulatory obligations or compliance
+    implications management=warning about impacts to the mgmt or
+    administration of the target system audit=warning about impacts to
+    audit or logging dependency=warning about dependencies between this
+    Rule and other parts of the target system, or version dependencies.
     """
 
     GENERAL = "general"
@@ -845,16 +765,16 @@ class WarningCategoryEnumType(Enum):
     DEPENDENCY = "dependency"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class CheckType:
-    """Data type for the check element, a checking system specification URI, and
-    XML content.
+    """
+    Data type for the check element, a checking system specification URI,
+    and XML content.
 
-    The content of the
-    check element is: zero or more check-export elements,
-    zero or more check-content-ref elements, and finally
-    an optional check-content element.  An content-less
-    check element isn't legal, but XSD cannot express that!
+    The content of the check element is: zero or more check-export
+    elements, zero or more check-content-ref elements, and finally an
+    optional check-content element. An content-less check element isn't
+    legal, but XSD cannot express that!
     """
 
     class Meta:
@@ -884,7 +804,7 @@ class CheckType:
             "namespace": "",
         },
     )
-    check_content: CheckContentType | None = field(
+    check_content: None | CheckContentType = field(
         default=None,
         metadata={
             "name": "check-content",
@@ -892,14 +812,12 @@ class CheckType:
             "namespace": "",
         },
     )
-    system: str | None = field(
-        default=None,
+    system: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
-    id: str | None = field(
+    id: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -911,7 +829,7 @@ class CheckType:
             "type": "Attribute",
         },
     )
-    base: str | None = field(
+    base: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -920,29 +838,25 @@ class CheckType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class FactType:
-    """Element type for a fact about a target system: a
-    name-value pair with a type. The content of the element
-    is the value, the type attribute gives the type.  This
-    is an area where XML schema is weak: we can't make the
-    schema validator check that the content matches the type."""
+    """
+    Element type for a fact about a target system: a name-value pair with a
+    type.
+
+    The content of the element is the value, the type attribute gives the
+    type. This is an area where XML schema is weak: we can't make the
+    schema validator check that the content matches the type.
+    """
 
     class Meta:
         name = "factType"
 
-    value: str = field(
-        default="",
-        metadata={
-            "required": True,
-        },
-    )
-    name: str | None = field(
-        default=None,
+    value: str = field(default="")
+    name: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
     type_value: ValueTypeType = field(
         default=ValueTypeType.BOOLEAN,
@@ -953,19 +867,20 @@ class FactType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class FixType:
-    """Type for a string with embedded Value and instance substitutions and an
+    """
+    Type for a string with embedded Value and instance substitutions and an
     optional platform id ref attribute, but no embedded XHTML markup.
 
-    The platform attribute should refer to a platform-definition element
-    in the platform-definitions child of the Benchmark.
+    The platform attribute should refer to a platform-definition element in
+    the platform-definitions child of the Benchmark.
     """
 
     class Meta:
         name = "fixType"
 
-    id: str | None = field(
+    id: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -995,13 +910,13 @@ class FixType:
             "type": "Attribute",
         },
     )
-    system: str | None = field(
+    system: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    platform: str | None = field(
+    platform: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -1029,9 +944,10 @@ class FixType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class HtmlTextType:
-    """Type for a string with XHTML elements and xml:lang attribute.
+    """
+    Type for a string with XHTML elements and xml:lang attribute.
 
     Elements of this type can also have an override attribute to help
     manage inheritance.
@@ -1040,7 +956,7 @@ class HtmlTextType:
     class Meta:
         name = "htmlTextType"
 
-    lang: str | LangValue | None = field(
+    lang: None | str | LangValue = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -1063,23 +979,23 @@ class HtmlTextType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class HtmlTextWithSubType:
-    """Type for a string with embedded Value substitutions and XHTML elements, and
-    an xml:lang attribute.
+    """
+    Type for a string with embedded Value substitutions and XHTML elements,
+    and an xml:lang attribute.
 
     Elements of this type can also have an override attribute to help
-    manage inheritance.  [Note: this definition is rather loose, it
-    allows anything whatsoever to occur insides XHTML tags inside here.
-    Further, constraints of the XHTML schema do not get checked!  It
-    might be possible to solve this using XML Schema redefinition
-    features.]
+    manage inheritance. [Note: this definition is rather loose, it allows
+    anything whatsoever to occur insides XHTML tags inside here. Further,
+    constraints of the XHTML schema do not get checked! It might be
+    possible to solve this using XML Schema redefinition features.].
     """
 
     class Meta:
         name = "htmlTextWithSubType"
 
-    lang: str | LangValue | None = field(
+    lang: None | str | LangValue = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -1109,10 +1025,11 @@ class HtmlTextWithSubType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class MessageType:
-    """Type for a message generated by the checking engine or XCCDF tool during
-    benchmark testing.
+    """
+    Type for a message generated by the checking engine or XCCDF tool
+    during benchmark testing.
 
     Content is string plus required severity attribute.
     """
@@ -1120,28 +1037,22 @@ class MessageType:
     class Meta:
         name = "messageType"
 
-    value: str = field(
-        default="",
-        metadata={
-            "required": True,
-        },
-    )
-    severity: MsgSevEnumType | None = field(
-        default=None,
+    value: str = field(default="")
+    severity: MsgSevEnumType = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Model:
-    """A suggested scoring model for a Benchmark, also encapsulating any parameters
-    needed by the model.
+    """
+    A suggested scoring model for a Benchmark, also encapsulating any
+    parameters needed by the model.
 
-    Every model is designated with a URI, which appears here as the
-    system attribute.
+    Every model is designated with a URI, which appears here as the system
+    attribute.
     """
 
     class Meta:
@@ -1155,39 +1066,37 @@ class Model:
             "namespace": "",
         },
     )
-    system: str | None = field(
-        default=None,
+    system: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class NoticeType:
     """
-    Data type for legal notice element that has text content and a unique id
-    attribute.
+    Data type for legal notice element that has text content and a unique
+    id attribute.
     """
 
     class Meta:
         name = "noticeType"
 
-    id: str | None = field(
+    id: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    base: str | None = field(
+    base: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
             "namespace": "http://www.w3.org/XML/1998/namespace",
         },
     )
-    lang: str | LangValue | None = field(
+    lang: None | str | LangValue = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -1204,11 +1113,12 @@ class NoticeType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class OverrideableIdrefType(IdrefType):
     """
-    Data type for elements that have no content, just a mandatory id reference, but
-    also have an override attribute for controlling inheritance.
+    Data type for elements that have no content, just a mandatory id
+    reference, but also have an override attribute for controlling
+    inheritance.
     """
 
     class Meta:
@@ -1222,11 +1132,12 @@ class OverrideableIdrefType(IdrefType):
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class OverrideableUriidrefType(UriidrefType):
     """
-    Data type for elements that have no content, just a mandatory URI reference,
-    but also have an override attribute for controlling inheritance.
+    Data type for elements that have no content, just a mandatory URI
+    reference, but also have an override attribute for controlling
+    inheritance.
     """
 
     class Meta:
@@ -1240,29 +1151,27 @@ class OverrideableUriidrefType(UriidrefType):
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ProfileNoteType:
     """
-    Type for a string with embedded Value substitutions and XHTML elements, an
-    xml:lang attribute, and a profile-note tag.
+    Type for a string with embedded Value substitutions and XHTML elements,
+    an xml:lang attribute, and a profile-note tag.
     """
 
     class Meta:
         name = "profileNoteType"
 
-    lang: str | LangValue | None = field(
+    lang: None | str | LangValue = field(
         default=None,
         metadata={
             "type": "Attribute",
             "namespace": "http://www.w3.org/XML/1998/namespace",
         },
     )
-    tag: str | None = field(
-        default=None,
+    tag: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
     content: list[object] = field(
         default_factory=list,
@@ -1281,24 +1190,19 @@ class ProfileNoteType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Status:
     """
-    The acceptance status of an Item with an optional date attribute that signifies
-    the date of the status change.
+    The acceptance status of an Item with an optional date attribute that
+    signifies the date of the status change.
     """
 
     class Meta:
         name = "status"
         namespace = "http://checklists.nist.gov/xccdf/1.1"
 
-    value: StatusType | None = field(
-        default=None,
-        metadata={
-            "required": True,
-        },
-    )
-    date: XmlDate | None = field(
+    value: StatusType = field()
+    date: None | XmlDate = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -1306,9 +1210,10 @@ class Status:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class TextType:
-    """Type for a string with an xml:lang attribute.
+    """
+    Type for a string with an xml:lang attribute.
 
     Elements of this type can also have an override attribute to help
     manage inheritance.
@@ -1317,13 +1222,8 @@ class TextType:
     class Meta:
         name = "textType"
 
-    value: str = field(
-        default="",
-        metadata={
-            "required": True,
-        },
-    )
-    lang: str | LangValue | None = field(
+    value: str = field(default="")
+    lang: None | str | LangValue = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -1338,10 +1238,11 @@ class TextType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class TextWithSubType:
-    """Type for a string with embedded Value substitutions and XHTML elements, and
-    an xml:lang attribute.
+    """
+    Type for a string with embedded Value substitutions and XHTML elements,
+    and an xml:lang attribute.
 
     Elements of this type can also have an override attribute to help
     manage inheritance.
@@ -1350,7 +1251,7 @@ class TextWithSubType:
     class Meta:
         name = "textWithSubType"
 
-    lang: str | LangValue | None = field(
+    lang: None | str | LangValue = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -1380,18 +1281,18 @@ class TextWithSubType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ComplexCheckType:
-    """The type for an element that can contains a boolean expression based on
+    """
+    The type for an element that can contains a boolean expression based on
     checks.
 
-    This element can have only
-    complex-check and check elements as children.  It has two
-    attributes: operator and negate.  The operator attribute
-    can have values "OR" or "AND", and the negate attribute is
-    boolean.  See the specification document for truth tables
-    for the operators and negations.  Note: complex-check is
-    defined in this way for conceptual equivalence with OVAL.
+    This element can have only complex-check and check elements as
+    children. It has two attributes: operator and negate. The operator
+    attribute can have values "OR" or "AND", and the negate attribute is
+    boolean. See the specification document for truth tables for the
+    operators and negations. Note: complex-check is defined in this way for
+    conceptual equivalence with OVAL.
     """
 
     class Meta:
@@ -1404,7 +1305,7 @@ class ComplexCheckType:
             "namespace": "",
         },
     )
-    complex_check: list["ComplexCheckType"] = field(
+    complex_check: list[ComplexCheckType] = field(
         default_factory=list,
         metadata={
             "name": "complex-check",
@@ -1412,12 +1313,10 @@ class ComplexCheckType:
             "namespace": "",
         },
     )
-    operator: CcOperatorEnumType | None = field(
-        default=None,
+    operator: CcOperatorEnumType = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
     negate: bool = field(
         default=False,
@@ -1427,17 +1326,18 @@ class ComplexCheckType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class FixTextType(HtmlTextWithSubType):
     """
-    Data type for the fixText element that represents a rich text string, with
-    substitutions allowed, and a series of attributes that qualify the fix.
+    Data type for the fixText element that represents a rich text string,
+    with substitutions allowed, and a series of attributes that qualify the
+    fix.
     """
 
     class Meta:
         name = "fixTextType"
 
-    fixref: str | None = field(
+    fixref: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -1469,71 +1369,62 @@ class FixTextType(HtmlTextWithSubType):
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class OverrideType:
-    """Type for an override block in a rule-result.
+    """
+    Type for an override block in a rule-result.
 
-    It contains five mandatory parts: time, authority,
-    old-result, new-result, and remark.
+    It contains five mandatory parts: time, authority, old-result,
+    new-result, and remark.
     """
 
     class Meta:
         name = "overrideType"
 
-    old_result: ResultEnumType | None = field(
-        default=None,
+    old_result: ResultEnumType = field(
         metadata={
             "name": "old-result",
             "type": "Element",
             "namespace": "",
-            "required": True,
-        },
+        }
     )
-    new_result: ResultEnumType | None = field(
-        default=None,
+    new_result: ResultEnumType = field(
         metadata={
             "name": "new-result",
             "type": "Element",
             "namespace": "",
-            "required": True,
-        },
+        }
     )
-    remark: TextType | None = field(
-        default=None,
+    remark: TextType = field(
         metadata={
             "type": "Element",
             "namespace": "",
-            "required": True,
-        },
+        }
     )
-    time: XmlDateTime | None = field(
-        default=None,
+    time: XmlDateTime = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
-    authority: str | None = field(
-        default=None,
+    authority: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ProfileRefineRuleType:
-    """Type for the refine-rule element in a Profile; all it has are four
+    """
+    Type for the refine-rule element in a Profile; all it has are four
     attributes, no content.
 
-    The main attribute is
-    'idref' which refers to a Rule, and three attributes that
-    allow the Profile author to adjust aspects of how a Rule is
-    processed during a benchmark run: weight, severity, role.
-    As content, the refine-rule element can contain zero or more
-    remark elements, which allows the benchmark author to
-    add explanatory material or other additional prose.
+    The main attribute is 'idref' which refers to a Rule, and three
+    attributes that allow the Profile author to adjust aspects of how a
+    Rule is processed during a benchmark run: weight, severity, role. As
+    content, the refine-rule element can contain zero or more remark
+    elements, which allows the benchmark author to add explanatory material
+    or other additional prose.
     """
 
     class Meta:
@@ -1546,14 +1437,12 @@ class ProfileRefineRuleType:
             "namespace": "",
         },
     )
-    idref: str | None = field(
-        default=None,
+    idref: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
-    weight: Decimal | None = field(
+    weight: None | Decimal = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -1561,19 +1450,19 @@ class ProfileRefineRuleType:
             "total_digits": 3,
         },
     )
-    selector: str | None = field(
+    selector: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    severity: SeverityEnumType | None = field(
+    severity: None | SeverityEnumType = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    role: RoleEnumType | None = field(
+    role: None | RoleEnumType = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -1581,17 +1470,18 @@ class ProfileRefineRuleType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ProfileRefineValueType:
-    """Type for the refine-value element in a Profile; all it has are three
+    """
+    Type for the refine-value element in a Profile; all it has are three
     attributes, no content.
 
     The three attributes are 'idref' which refers to a Value, 'selector'
-    which designates certain element children of the Value, and
-    'operator' which can override the operator attribute of the Value.
-    As content, the refine-value element can contain zero or more remark
-    elements, which allows the benchmark author to add explanatory
-    material or other additional prose.
+    which designates certain element children of the Value, and 'operator'
+    which can override the operator attribute of the Value. As content, the
+    refine-value element can contain zero or more remark elements, which
+    allows the benchmark author to add explanatory material or other
+    additional prose.
     """
 
     class Meta:
@@ -1604,20 +1494,18 @@ class ProfileRefineValueType:
             "namespace": "",
         },
     )
-    idref: str | None = field(
+    idref: str = field(
+        metadata={
+            "type": "Attribute",
+        }
+    )
+    selector: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
-            "required": True,
         },
     )
-    selector: str | None = field(
-        default=None,
-        metadata={
-            "type": "Attribute",
-        },
-    )
-    operator: ValueOperatorType | None = field(
+    operator: None | ValueOperatorType = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -1625,15 +1513,16 @@ class ProfileRefineValueType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ProfileSelectType:
-    """Type for the select element in a Profile; all it has are two attributes, no
-    content.
+    """
+    Type for the select element in a Profile; all it has are two
+    attributes, no content.
 
     The two attributes are idref which refers to a Group or Rule, and
-    selected which is boolean. As content, the select element can
-    contain zero or more remark elements, which allows the benchmark
-    author to add explanatory material or other additional prose.
+    selected which is boolean. As content, the select element can contain
+    zero or more remark elements, which allows the benchmark author to add
+    explanatory material or other additional prose.
     """
 
     class Meta:
@@ -1646,31 +1535,27 @@ class ProfileSelectType:
             "namespace": "",
         },
     )
-    idref: str | None = field(
-        default=None,
+    idref: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
-    selected: bool | None = field(
-        default=None,
+    selected: bool = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class TargetFactsType:
-    """This element holds a list of facts about the target system or platform.
+    """
+    This element holds a list of facts about the target system or platform.
 
-    Each fact is an element of type factType. Each fact must have a
-    name, but duplicate names are allowed. (For example, if you had a
-    fact about MAC addresses, and the target system had three NICs, then
-    you'd need three instance of the "urn:xccdf:fact:ethernet:MAC"
-    fact.)
+    Each fact is an element of type factType. Each fact must have a name,
+    but duplicate names are allowed. (For example, if you had a fact about
+    MAC addresses, and the target system had three NICs, then you'd need
+    three instance of the "urn:xccdf:fact:ethernet:MAC" fact.).
     """
 
     class Meta:
@@ -1685,11 +1570,12 @@ class TargetFactsType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class WarningType(HtmlTextWithSubType):
     """
-    Data type for the warning element under the Rule object, a rich text string
-    with substitutions allowed, plus an attribute for the kind of warning.
+    Data type for the warning element under the Rule object, a rich text
+    string with substitutions allowed, plus an attribute for the kind of
+    warning.
     """
 
     class Meta:
@@ -1703,11 +1589,11 @@ class WarningType(HtmlTextWithSubType):
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ItemType:
     """
-    This abstract item type represents the basic data shared by all Groups, Rules
-    and Values.
+    This abstract item type represents the basic data shared by all Groups,
+    Rules and Values.
     """
 
     class Meta:
@@ -1720,7 +1606,7 @@ class ItemType:
             "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
-    version: VersionType | None = field(
+    version: None | VersionType = field(
         default=None,
         metadata={
             "type": "Element",
@@ -1762,12 +1648,10 @@ class ItemType:
             "namespace": "",
         },
     )
-    id: str | None = field(
-        default=None,
+    id: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
     abstract: bool = field(
         default=False,
@@ -1775,14 +1659,14 @@ class ItemType:
             "type": "Attribute",
         },
     )
-    cluster_id: str | None = field(
+    cluster_id: None | str = field(
         default=None,
         metadata={
             "name": "cluster-id",
             "type": "Attribute",
         },
     )
-    extends: str | None = field(
+    extends: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -1801,21 +1685,21 @@ class ItemType:
             "type": "Attribute",
         },
     )
-    lang: str | LangValue | None = field(
+    lang: None | str | LangValue = field(
         default=None,
         metadata={
             "type": "Attribute",
             "namespace": "http://www.w3.org/XML/1998/namespace",
         },
     )
-    base: str | None = field(
+    base: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
             "namespace": "http://www.w3.org/XML/1998/namespace",
         },
     )
-    id_attribute: str | None = field(
+    id_attribute: None | str = field(
         default=None,
         metadata={
             "name": "Id",
@@ -1824,15 +1708,15 @@ class ItemType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ProfileType:
-    """Data type for the Profile element, which holds a specific tailoring of the
-    Benchmark.
+    """
+    Data type for the Profile element, which holds a specific tailoring of
+    the Benchmark.
 
-    The main part
-    of a Profile is the selectors: select, set-value,
-    refine-rule, and refine-value.  A Profile may also be
-    signed with an XML-Signature.
+    The main part of a Profile is the selectors: select, set-value,
+    refine-rule, and refine-value. A Profile may also be signed with an
+    XML-Signature.
     """
 
     class Meta:
@@ -1845,7 +1729,7 @@ class ProfileType:
             "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
-    version: VersionType | None = field(
+    version: None | VersionType = field(
         default=None,
         metadata={
             "type": "Element",
@@ -1912,19 +1796,17 @@ class ProfileType:
             "namespace": "",
         },
     )
-    signature: SignatureType | None = field(
+    signature: None | SignatureType = field(
         default=None,
         metadata={
             "type": "Element",
             "namespace": "",
         },
     )
-    id: str | None = field(
-        default=None,
+    id: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
     prohibit_changes: bool = field(
         default=False,
@@ -1939,27 +1821,27 @@ class ProfileType:
             "type": "Attribute",
         },
     )
-    note_tag: str | None = field(
+    note_tag: None | str = field(
         default=None,
         metadata={
             "name": "note-tag",
             "type": "Attribute",
         },
     )
-    extends: str | None = field(
+    extends: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    base: str | None = field(
+    base: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
             "namespace": "http://www.w3.org/XML/1998/namespace",
         },
     )
-    id_attribute: str | None = field(
+    id_attribute: None | str = field(
         default=None,
         metadata={
             "name": "Id",
@@ -1968,10 +1850,11 @@ class ProfileType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class RuleResultType:
-    """This element holds all the information about the application of one rule to
-    a target.
+    """
+    This element holds all the information about the application of one
+    rule to a target.
 
     It may only appear as part of a TestResult object.
     """
@@ -1979,13 +1862,11 @@ class RuleResultType:
     class Meta:
         name = "ruleResultType"
 
-    result: ResultEnumType | None = field(
-        default=None,
+    result: ResultEnumType = field(
         metadata={
             "type": "Element",
             "namespace": "",
-            "required": True,
-        },
+        }
     )
     override: list[OverrideType] = field(
         default_factory=list,
@@ -2029,38 +1910,36 @@ class RuleResultType:
             "namespace": "",
         },
     )
-    idref: str | None = field(
-        default=None,
+    idref: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
-    role: RoleEnumType | None = field(
-        default=None,
-        metadata={
-            "type": "Attribute",
-        },
-    )
-    severity: SeverityEnumType | None = field(
+    role: None | RoleEnumType = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    time: XmlDateTime | None = field(
+    severity: None | SeverityEnumType = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    version: str | None = field(
+    time: None | XmlDateTime = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    weight: Decimal | None = field(
+    version: None | str = field(
+        default=None,
+        metadata={
+            "type": "Attribute",
+        },
+    )
+    weight: None | Decimal = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -2070,9 +1949,10 @@ class RuleResultType:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Item(ItemType):
-    """Type element type imposes constraints shared by all Groups, Rules and
+    """
+    Type element type imposes constraints shared by all Groups, Rules and
     Values.
 
     The itemType is abstract, so the element Item can never appear in a
@@ -2083,16 +1963,17 @@ class Item(ItemType):
         namespace = "http://checklists.nist.gov/xccdf/1.1"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Profile(ProfileType):
     class Meta:
         namespace = "http://checklists.nist.gov/xccdf/1.1"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class SelectableItemType(ItemType):
-    """This abstract item type represents the basic data shared by all Groups and
-    Rules.
+    """
+    This abstract item type represents the basic data shared by all Groups
+    and Rules.
 
     It extends the itemType given above.
     """
@@ -2144,19 +2025,20 @@ class SelectableItemType(ItemType):
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class TestResultType:
-    """Data type for the TestResult element, which holds the results of one
+    """
+    Data type for the TestResult element, which holds the results of one
     application of the Benchmark.
 
-    The optional test-system attribute gives the name of the
-    benchmarking tool.
+    The optional test-system attribute gives the name of the benchmarking
+    tool.
     """
 
     class Meta:
         name = "testResultType"
 
-    benchmark: Optional["TestResultType.Benchmark"] = field(
+    benchmark: None | TestResultType.Benchmark = field(
         default=None,
         metadata={
             "type": "Element",
@@ -2184,14 +2066,14 @@ class TestResultType:
             "namespace": "",
         },
     )
-    identity: IdentityType | None = field(
+    identity: None | IdentityType = field(
         default=None,
         metadata={
             "type": "Element",
             "namespace": "",
         },
     )
-    profile: IdrefType | None = field(
+    profile: None | IdrefType = field(
         default=None,
         metadata={
             "type": "Element",
@@ -2214,7 +2096,7 @@ class TestResultType:
             "namespace": "",
         },
     )
-    target_facts: TargetFactsType | None = field(
+    target_facts: None | TargetFactsType = field(
         default=None,
         metadata={
             "name": "target-facts",
@@ -2253,49 +2135,45 @@ class TestResultType:
             "min_occurs": 1,
         },
     )
-    signature: SignatureType | None = field(
+    signature: None | SignatureType = field(
         default=None,
         metadata={
             "type": "Element",
             "namespace": "",
         },
     )
-    id: str | None = field(
-        default=None,
+    id: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
-    start_time: XmlDateTime | None = field(
+    start_time: None | XmlDateTime = field(
         default=None,
         metadata={
             "name": "start-time",
             "type": "Attribute",
         },
     )
-    end_time: XmlDateTime | None = field(
-        default=None,
+    end_time: XmlDateTime = field(
         metadata={
             "name": "end-time",
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
-    test_system: str | None = field(
+    test_system: None | str = field(
         default=None,
         metadata={
             "name": "test-system",
             "type": "Attribute",
         },
     )
-    version: str | None = field(
+    version: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    id_attribute: str | None = field(
+    id_attribute: None | str = field(
         default=None,
         metadata={
             "name": "Id",
@@ -2303,22 +2181,20 @@ class TestResultType:
         },
     )
 
-    @dataclass
+    @dataclass(kw_only=True)
     class Benchmark:
-        href: str | None = field(
-            default=None,
+        href: str = field(
             metadata={
                 "type": "Attribute",
-                "required": True,
-            },
+            }
         )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ValueType(ItemType):
     """
-    Data type for the Value element, which represents a tailorable string, boolean,
-    or number in the Benchmark.
+    Data type for the Value element, which represents a tailorable string,
+    boolean, or number in the Benchmark.
     """
 
     class Meta:
@@ -2376,7 +2252,7 @@ class ValueType(ItemType):
             "namespace": "",
         },
     )
-    signature: SignatureType | None = field(
+    signature: None | SignatureType = field(
         default=None,
         metadata={
             "type": "Element",
@@ -2402,7 +2278,7 @@ class ValueType(ItemType):
             "type": "Attribute",
         },
     )
-    interface_hint: InterfaceHintType | None = field(
+    interface_hint: None | InterfaceHintType = field(
         default=None,
         metadata={
             "name": "interfaceHint",
@@ -2411,22 +2287,23 @@ class ValueType(ItemType):
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class TestResult(TestResultType):
     class Meta:
         namespace = "http://checklists.nist.gov/xccdf/1.1"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Value(ValueType):
     class Meta:
         namespace = "http://checklists.nist.gov/xccdf/1.1"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class RuleType(SelectableItemType):
     """
-    Data type for the Rule element that represents a specific benchmark test.
+    Data type for the Rule element that represents a specific benchmark
+    test.
     """
 
     class Meta:
@@ -2439,7 +2316,7 @@ class RuleType(SelectableItemType):
             "namespace": "",
         },
     )
-    impact_metric: str | None = field(
+    impact_metric: None | str = field(
         default=None,
         metadata={
             "name": "impact-metric",
@@ -2476,7 +2353,7 @@ class RuleType(SelectableItemType):
             "namespace": "",
         },
     )
-    complex_check: ComplexCheckType | None = field(
+    complex_check: None | ComplexCheckType = field(
         default=None,
         metadata={
             "name": "complex-check",
@@ -2484,7 +2361,7 @@ class RuleType(SelectableItemType):
             "namespace": "",
         },
     )
-    signature: SignatureType | None = field(
+    signature: None | SignatureType = field(
         default=None,
         metadata={
             "type": "Element",
@@ -2503,7 +2380,7 @@ class RuleType(SelectableItemType):
             "type": "Attribute",
         },
     )
-    multiple: bool | None = field(
+    multiple: None | bool = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -2511,13 +2388,14 @@ class RuleType(SelectableItemType):
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Rule(RuleType):
-    """The Rule element contains the description for a single item of guidance or
-    constraint.
+    """
+    The Rule element contains the description for a single item of guidance
+    or constraint.
 
-    Rules form the basis for testing a target platform for compliance
-    with a benchmark, for scoring, and for conveying descriptive prose,
+    Rules form the basis for testing a target platform for compliance with
+    a benchmark, for scoring, and for conveying descriptive prose,
     identifiers, references, and remediation information.
     """
 
@@ -2525,11 +2403,11 @@ class Rule(RuleType):
         namespace = "http://checklists.nist.gov/xccdf/1.1"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class GroupType(SelectableItemType):
     """
-    Data type for the Group element that represents a grouping of Groups, Rules and
-    Values.
+    Data type for the Group element that represents a grouping of Groups,
+    Rules and Values.
     """
 
     class Meta:
@@ -2543,7 +2421,7 @@ class GroupType(SelectableItemType):
             "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
-    group: list["Group"] = field(
+    group: list[Group] = field(
         default_factory=list,
         metadata={
             "name": "Group",
@@ -2559,7 +2437,7 @@ class GroupType(SelectableItemType):
             "namespace": "http://checklists.nist.gov/xccdf/1.1",
         },
     )
-    signature: SignatureType | None = field(
+    signature: None | SignatureType = field(
         default=None,
         metadata={
             "type": "Element",
@@ -2568,16 +2446,18 @@ class GroupType(SelectableItemType):
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Group(GroupType):
     class Meta:
         namespace = "http://checklists.nist.gov/xccdf/1.1"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Benchmark:
-    """The benchmark tag is the top level element representing a complete security
-    checklist, including descriptive text, metadata, test items, and test results.
+    """
+    The benchmark tag is the top level element representing a complete
+    security checklist, including descriptive text, metadata, test items,
+    and test results.
 
     A Benchmark may be signed with a XML-Signature.
     """
@@ -2644,7 +2524,7 @@ class Benchmark:
             "namespace": "",
         },
     )
-    platform_definitions: str | None = field(
+    platform_definitions: None | PlatformDefinitions = field(
         default=None,
         metadata={
             "name": "platform-definitions",
@@ -2652,7 +2532,7 @@ class Benchmark:
             "namespace": "http://www.cisecurity.org/xccdf/platform/0.2.3",
         },
     )
-    platform_specification: str | None = field(
+    platform_specification: None | PlatformSpecification = field(
         default=None,
         metadata={
             "name": "Platform-Specification",
@@ -2660,7 +2540,7 @@ class Benchmark:
             "namespace": "http://checklists.nist.gov/xccdf-p/1.1",
         },
     )
-    cpe_list: str | None = field(
+    cpe_list: None | CpeList = field(
         default=None,
         metadata={
             "name": "cpe-list",
@@ -2668,7 +2548,7 @@ class Benchmark:
             "namespace": "http://cpe.mitre.org/XMLSchema/cpe/1.0",
         },
     )
-    cpe_mitre_org_language_2_0_platform_specification: str | None = field(
+    cpe_mitre_org_language_2_0_platform_specification: None | str = field(
         default=None,
         metadata={
             "name": "platform-specification",
@@ -2683,13 +2563,11 @@ class Benchmark:
             "namespace": "",
         },
     )
-    version: VersionType | None = field(
-        default=None,
+    version: VersionType = field(
         metadata={
             "type": "Element",
             "namespace": "",
-            "required": True,
-        },
+        }
     )
     metadata: list[MetadataType] = field(
         default_factory=list,
@@ -2739,21 +2617,19 @@ class Benchmark:
             "type": "Element",
         },
     )
-    signature: SignatureType | None = field(
+    signature: None | SignatureType = field(
         default=None,
         metadata={
             "type": "Element",
             "namespace": "",
         },
     )
-    id: str | None = field(
-        default=None,
+    id: str = field(
         metadata={
             "type": "Attribute",
-            "required": True,
-        },
+        }
     )
-    id_attribute: str | None = field(
+    id_attribute: None | str = field(
         default=None,
         metadata={
             "name": "Id",
@@ -2766,20 +2642,20 @@ class Benchmark:
             "type": "Attribute",
         },
     )
-    style: str | None = field(
+    style: None | str = field(
         default=None,
         metadata={
             "type": "Attribute",
         },
     )
-    style_href: str | None = field(
+    style_href: None | str = field(
         default=None,
         metadata={
             "name": "style-href",
             "type": "Attribute",
         },
     )
-    lang: str | LangValue | None = field(
+    lang: None | str | LangValue = field(
         default=None,
         metadata={
             "type": "Attribute",

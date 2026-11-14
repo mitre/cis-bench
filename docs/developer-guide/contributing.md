@@ -257,6 +257,28 @@ See: [How to Add XCCDF Style](how-to-add-xccdf-style.md)
 2. Define field mappings
 3. No code changes needed!
 
+### Regenerating the XCCDF Models
+
+The XCCDF model packages are generated, never edited by hand:
+
+| Package | Generated from |
+|---|---|
+| `src/cis_bench/models/xccdf_v1_1/` (XCCDF 1.1.4, DISA style) | `src/cis_bench/schemas/xccdf-1.1.4.xsd`, which also reads `cpe-1.0.xsd`, `platform-0.2.3.xsd` and `xccdfp-1.1.xsd` from the same folder |
+| `src/cis_bench/models/xccdf/` (XCCDF 1.2, CIS style) | `src/cis_bench/schemas/xccdf_1.2.xsd` |
+
+These schema copies are the generation inputs. `cis-bench validate` checks documents against other copies, under `src/cis_bench/schemas/xccdf/`.
+
+```bash
+uv run python scripts/generate_xccdf_models.py           # regenerate both packages
+uv run python scripts/generate_xccdf_models.py --check   # exit 1 if the committed models differ
+```
+
+- The script runs `xsdata generate` with `.xsdata.xml`, then `ruff check --fix` and `ruff format` with the project's settings. It replaces every module in the two packages and removes any module the generator no longer writes.
+- xsdata comes from the `dev` extra.
+- Generating needs the network: `xccdf-1.1.4.xsd` imports `dc.xsd` from `http://dublincore.org`. For the XML namespace schema (`xml.xsd`), xsdata uses its own bundled copy.
+- Some imports name schemas that do not exist: the CPE language schemas at `/schema/cpe/...`, and `../../common/xml.xsd` in the 1.1.4 copy's sibling schemas. xsdata warns about them and generates the fields that use the CPE types as plain strings. The script lists these imports for each model and stops with an error if xsdata cannot read any other schema or import. xsdata itself carries on, still exiting 0, in that case.
+- CI runs `--check`, so a hand edit or a changed schema copy without regenerated models fails the build.
+
 ---
 
 ## Coding Standards

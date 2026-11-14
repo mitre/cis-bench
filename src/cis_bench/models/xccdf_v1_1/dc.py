@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 
 from cis_bench.models.xccdf_v1_1.xml import LangValue
@@ -5,13 +7,13 @@ from cis_bench.models.xccdf_v1_1.xml import LangValue
 __NAMESPACE__ = "http://purl.org/dc/elements/1.1/"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Contributor:
     class Meta:
         name = "contributor"
         namespace = "http://purl.org/dc/elements/1.1/"
 
-    any_element: object | None = field(
+    any_element: None | object = field(
         default=None,
         metadata={
             "type": "Wildcard",
@@ -20,13 +22,13 @@ class Contributor:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Coverage:
     class Meta:
         name = "coverage"
         namespace = "http://purl.org/dc/elements/1.1/"
 
-    any_element: object | None = field(
+    any_element: None | object = field(
         default=None,
         metadata={
             "type": "Wildcard",
@@ -35,13 +37,13 @@ class Coverage:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Creator:
     class Meta:
         name = "creator"
         namespace = "http://purl.org/dc/elements/1.1/"
 
-    any_element: object | None = field(
+    any_element: None | object = field(
         default=None,
         metadata={
             "type": "Wildcard",
@@ -50,13 +52,13 @@ class Creator:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Date:
     class Meta:
         name = "date"
         namespace = "http://purl.org/dc/elements/1.1/"
 
-    any_element: object | None = field(
+    any_element: None | object = field(
         default=None,
         metadata={
             "type": "Wildcard",
@@ -65,13 +67,13 @@ class Date:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Description:
     class Meta:
         name = "description"
         namespace = "http://purl.org/dc/elements/1.1/"
 
-    any_element: object | None = field(
+    any_element: None | object = field(
         default=None,
         metadata={
             "type": "Wildcard",
@@ -80,13 +82,13 @@ class Description:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Format:
     class Meta:
         name = "format"
         namespace = "http://purl.org/dc/elements/1.1/"
 
-    any_element: object | None = field(
+    any_element: None | object = field(
         default=None,
         metadata={
             "type": "Wildcard",
@@ -95,13 +97,13 @@ class Format:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Identifier:
     class Meta:
         name = "identifier"
         namespace = "http://purl.org/dc/elements/1.1/"
 
-    any_element: object | None = field(
+    any_element: None | object = field(
         default=None,
         metadata={
             "type": "Wildcard",
@@ -110,13 +112,13 @@ class Identifier:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Language:
     class Meta:
         name = "language"
         namespace = "http://purl.org/dc/elements/1.1/"
 
-    any_element: object | None = field(
+    any_element: None | object = field(
         default=None,
         metadata={
             "type": "Wildcard",
@@ -125,13 +127,13 @@ class Language:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Publisher:
     class Meta:
         name = "publisher"
         namespace = "http://purl.org/dc/elements/1.1/"
 
-    any_element: object | None = field(
+    any_element: None | object = field(
         default=None,
         metadata={
             "type": "Wildcard",
@@ -140,13 +142,13 @@ class Publisher:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Relation:
     class Meta:
         name = "relation"
         namespace = "http://purl.org/dc/elements/1.1/"
 
-    any_element: object | None = field(
+    any_element: None | object = field(
         default=None,
         metadata={
             "type": "Wildcard",
@@ -155,13 +157,13 @@ class Relation:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Rights:
     class Meta:
         name = "rights"
         namespace = "http://purl.org/dc/elements/1.1/"
 
-    any_element: object | None = field(
+    any_element: None | object = field(
         default=None,
         metadata={
             "type": "Wildcard",
@@ -170,13 +172,13 @@ class Rights:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Source:
     class Meta:
         name = "source"
         namespace = "http://purl.org/dc/elements/1.1/"
 
-    any_element: object | None = field(
+    any_element: None | object = field(
         default=None,
         metadata={
             "type": "Wildcard",
@@ -185,13 +187,13 @@ class Source:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Subject:
     class Meta:
         name = "subject"
         namespace = "http://purl.org/dc/elements/1.1/"
 
-    any_element: object | None = field(
+    any_element: None | object = field(
         default=None,
         metadata={
             "type": "Wildcard",
@@ -200,13 +202,13 @@ class Subject:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Title:
     class Meta:
         name = "title"
         namespace = "http://purl.org/dc/elements/1.1/"
 
-    any_element: object | None = field(
+    any_element: None | object = field(
         default=None,
         metadata={
             "type": "Wildcard",
@@ -215,13 +217,13 @@ class Title:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Type:
     class Meta:
         name = "type"
         namespace = "http://purl.org/dc/elements/1.1/"
 
-    any_element: object | None = field(
+    any_element: None | object = field(
         default=None,
         metadata={
             "type": "Wildcard",
@@ -230,18 +232,18 @@ class Type:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class SimpleLiteral:
-    """This is the default type for all of the DC elements.
+    """
+    This is the default type for all of the DC elements.
 
-    It permits text content only with optional xml:lang attribute. Text
-    is allowed because mixed="true", but sub-elements are disallowed
-    because minOccurs="0" and maxOccurs="0" are on the xs:any tag. This
-    complexType allows for restriction or extension permitting child
-    elements.
+    It permits text content only with optional xml:lang attribute. Text is
+    allowed because mixed="true", but sub-elements are disallowed because
+    minOccurs="0" and maxOccurs="0" are on the xs:any tag. This complexType
+    allows for restriction or extension permitting child elements.
     """
 
-    lang: str | LangValue | None = field(
+    lang: None | str | LangValue = field(
         default=None,
         metadata={
             "type": "Attribute",
@@ -258,11 +260,11 @@ class SimpleLiteral:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ElementContainer:
     """
-    This complexType is included as a convenience for schema authors who need to
-    define a root or container element for all of the DC elements.
+    This complexType is included as a convenience for schema authors who
+    need to define a root or container element for all of the DC elements.
     """
 
     class Meta:
@@ -376,7 +378,7 @@ class ElementContainer:
     )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class AnyType(SimpleLiteral):
     class Meta:
         name = "any"

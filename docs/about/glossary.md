@@ -537,7 +537,7 @@ Python library that generates dataclasses from XSD schemas.
 
 **Usage:** Generate Python classes for XCCDF elements
 
-**Command:** `xsdata generate src/cis_bench/schemas/xccdf_1.2.xsd --config .xsdata.xml --package cis_bench.models.xccdf` (the generator comes with the `dev` extra)
+**Command:** `uv run python scripts/generate_xccdf_models.py` (runs xsdata, which comes with the `dev` extra, for both XCCDF versions)
 
 **Result:** Typed Python classes matching XCCDF schema
 
