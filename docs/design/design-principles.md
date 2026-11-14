@@ -248,11 +248,12 @@ framework_controls:
 
 ```yaml
 framework_metadata:
+  target_element: "metadata"
   structure: "metadata_from_config"
-  requires_post_processing: true
+  source_field: "cis_controls"
   metadata_spec:
     root_element: "framework_controls"
-    namespace: "https://org.com/schema"
+    namespace_prefix: "org"  # declared in benchmark.namespaces
     group_by: "item.version"
     group_element:
       element: "family"
@@ -260,7 +261,8 @@ framework_metadata:
         id: "{group_key}"
       item_element:
         element: "control"
-        # ... structure from config
+        attributes:
+          id: "{item.control}"
 ```
 
 ### 3. generate_profiles_from_rules

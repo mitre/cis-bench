@@ -15,7 +15,7 @@ RED FLAGS (Stop immediately if you see these):
 
 APPROVED PATTERNS:
 - ident_from_list: Generic ident generation from config
-- metadata_from_config: Generic nested XML from config (with requires_post_processing)
+- metadata_from_config: Generic nested XML from config, as model content (AnyElement)
 - generate_profiles_from_rules: Generic profile generation from config
 
 See ARCHITECTURE_PRINCIPLES.md for complete guidelines.
@@ -29,7 +29,7 @@ import re
 import string
 import unicodedata
 from collections.abc import Callable
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field, fields, is_dataclass
 from gettext import ngettext
 from pathlib import Path
 from types import ModuleType, UnionType
@@ -38,7 +38,10 @@ from typing import Annotated, Any, Final, Union, get_args, get_origin
 import yaml
 from lxml import etree
 from pydantic import BaseModel
+from xsdata.formats.dataclass.context import XmlContext
+from xsdata.formats.dataclass.models.elements import XmlVar
 from xsdata.formats.dataclass.models.generics import AnyElement
+from xsdata.formats.dataclass.serializers.mixins import EventHandler
 
 from cis_bench.exceptions import ExportError
 from cis_bench.models.benchmark import (
@@ -76,7 +79,7 @@ class MappingConfig:
     rule_elements: dict[str, Any] = field(default_factory=dict)
     group_elements: dict[str, Any] = field(default_factory=dict)
     validation: dict[str, Any] | None = None
-    # How the serialized XML is finished (handlers, namespace prefixes, root declarations)
+    # How the serialized XML is finished (remove_override_attr)
     post_processing: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -214,10 +217,10 @@ class ConfigLoader:
     }
 
     # The post_processing settings the exporter reads, and where a removed one went.
-    _POST_PROCESSING_SETTINGS: Final[frozenset[str]] = frozenset(
-        {"handlers", "remove_override_attr"}
-    )
+    _POST_PROCESSING_SETTINGS: Final[frozenset[str]] = frozenset({"remove_override_attr"})
     _REMOVED_POST_PROCESSING_HINTS: Final[dict[str, str]] = {
+        "handlers": "a Rule's metadata is model content (metadata_from_config); nothing "
+        "is inserted after serialization",
         "strip_namespace_prefixes": "the serializer writes the namespaces declared in "
         "benchmark.namespaces; nothing rewrites prefixes afterwards",
         "preserve_namespaces": "a style declares exactly the namespaces its documents use in "
@@ -240,6 +243,46 @@ class ConfigLoader:
                 + "; the settings are: "
                 + ", ".join(sorted(ConfigLoader._POST_PROCESSING_SETTINGS))
             )
+
+    # Namespaces in XML 1.0, section 3: the names no document may bind or rebind.
+    _RESERVED_NAMESPACES: Final[dict[str, str]] = {
+        "xml": "http://www.w3.org/XML/1998/namespace",
+        "xmlns": "http://www.w3.org/2000/xmlns/",
+    }
+
+    @staticmethod
+    def _refuse_undeclarable_namespaces(config_path: Path, config_data: dict[str, Any]) -> None:
+        """Refuse a benchmark.namespaces binding an XML document cannot declare.
+
+        A prefix is "default" (the default namespace) or an XML name without a colon, and
+        never xml or xmlns; a URI is a non-empty string, never one of the two reserved
+        namespaces, and is bound once (xsdata keeps one prefix per URI).
+        """
+        namespaces = (config_data.get("benchmark") or {}).get("namespaces") or {}
+        where = f"{config_path.name}: benchmark.namespaces"
+        bound: dict[str, str] = {}
+        for prefix, uri in namespaces.items():
+            if not isinstance(uri, str) or not uri:
+                raise ValueError(f"{where}: prefix {prefix!r} needs a namespace URI")
+            if prefix in ConfigLoader._RESERVED_NAMESPACES:
+                raise ValueError(f"{where}: prefix {prefix!r} is reserved by XML")
+            if uri in ConfigLoader._RESERVED_NAMESPACES.values():
+                raise ValueError(f"{where}: prefix {prefix!r} is bound to a namespace XML reserves")
+            if prefix != "default":
+                try:
+                    if not isinstance(prefix, str) or prefix.startswith("{"):
+                        raise ValueError("an XML name without a colon is needed")
+                    etree.QName(None, prefix)
+                except ValueError as error:
+                    raise ValueError(
+                        f"{where}: {prefix!r} is not a namespace prefix ({error})"
+                    ) from error
+            if uri in bound:
+                raise ValueError(
+                    f"{where}: {prefix!r} and {bound[uri]!r} are both bound to {uri}; "
+                    "a namespace is listed once"
+                )
+            bound[uri] = prefix
 
     @staticmethod
     def _refuse_unread_sections(config_path: Path, config_data: dict[str, Any]) -> None:
@@ -348,6 +391,7 @@ class ConfigLoader:
             else:
                 logger.debug(f"Loaded {config_path.name} (no inheritance)")
 
+            ConfigLoader._refuse_undeclarable_namespaces(config_path, config_data)
             return MappingConfig(
                 **{
                     section.name: config_data[section.name]
@@ -527,6 +571,7 @@ class MappingEngine:
 
         # Pre-load all types specified in config (stable code, config-driven types)
         self._load_types_from_config()
+        self._refuse_unwritable_metadata_mappings()
 
     # Structures whose source_field is read as a dotted path (_get_nested_field); every
     # other reader takes one field name.
@@ -754,6 +799,16 @@ class MappingEngine:
             raise ValueError(f"Unsupported XCCDF version: {version}")
 
         self.xccdf_version = version
+        self._xml_context = XmlContext()
+
+    def rule_element(self, target: str) -> XmlVar | None:
+        """The XCCDF model's description of the Rule element field `target` (its type, whether
+        it repeats), read from the xsdata model of this style's XCCDF version; None when Rule
+        has no such element."""
+        for var in self._xml_context.build(self.get_xccdf_class("Rule")).get_all_vars():
+            if var.name == target and var.is_element:
+                return var
+        return None
 
     def get_xccdf_class(self, class_name: str):
         """Get XCCDF class by name (version-agnostic).
@@ -765,22 +820,6 @@ class MappingEngine:
             Class from appropriate XCCDF module
         """
         return getattr(self.xccdf_models, class_name)
-
-    def rule_element_order(self) -> list[str]:
-        """Return the Rule child-element names in the order the XCCDF schema requires.
-
-        The xsdata models are generated from the NIST XSD of this engine's
-        version, so their field order is the schema sequence (itemType, then
-        selectableItemType, then ruleType) and their metadata carries the XML
-        names. The schema is therefore the single source of element order; no
-        list is kept in code or config.
-        """
-        rule_class = self.get_xccdf_class("Rule")
-        return [
-            f.metadata.get("name") or f.name
-            for f in fields(rule_class)
-            if f.metadata.get("type") == "Element"
-        ]
 
     def normalize_ref(self, ref: str) -> str:
         """Normalize CIS ref for IDs (3.1.1 → 3_1_1)."""
@@ -1356,6 +1395,17 @@ class MappingEngine:
             if field_mapping is None:
                 continue
 
+            # Metadata is model content in the type the XCCDF model gives the target element
+            # (checked when the style loaded): one metadata element per mapping, in order
+            if field_mapping.get("structure") == "metadata_from_config":
+                metadata_root = self.generate_metadata_from_config(rec, field_mapping)
+                if metadata_root is not None:
+                    target, MetadataHolder, content_field = self._metadata_holders[field_name]
+                    rule_fields.setdefault(target, []).append(
+                        MetadataHolder(**{content_field: [metadata_root]})
+                    )
+                continue
+
             # Get xsdata type for this element
             FieldType = self.rule_element_types.get(field_name)
             if not FieldType:
@@ -1466,26 +1516,6 @@ class MappingEngine:
                             len(idents),
                         ).format(count=len(idents), target=target_element)
                     )
-                continue
-
-            # For metadata_from_config structure - generic metadata from YAML
-            if structure == "metadata_from_config":
-                logger.debug(f"Generating metadata from config for {field_name}")
-                metadata_elem = self.generate_metadata_from_config(rec, field_mapping)
-
-                if metadata_elem is not None:
-                    # Check if requires post-processing (lxml can't serialize in xsdata)
-                    if field_mapping.get("requires_post_processing", False):
-                        # Store for post-processing injection
-                        if not hasattr(self, "_metadata_for_post_processing"):
-                            self._metadata_for_post_processing = []
-                        self._metadata_for_post_processing.append(metadata_elem)
-                        logger.debug("Stored metadata for post-processing injection")
-                    else:
-                        # Try to add directly (if xsdata compatible - currently not supported)
-                        logger.warning(
-                            "metadata_from_config without requires_post_processing not yet supported"
-                        )
                 continue
 
             # Get field value using config
@@ -2099,153 +2129,254 @@ class MappingEngine:
         visit(name, [])
         return names
 
+    # The metadata_spec keys a removed setting used, and where it went.
+    _REMOVED_METADATA_KEYS: Final[dict[str, str]] = {
+        "requires_post_processing": "the Rule holds the metadata as model content; nothing "
+        "is added after serialization",
+        "metadata_spec.namespace": "the namespace comes from benchmark.namespaces by "
+        "metadata_spec.namespace_prefix",
+    }
+
+    def _refuse_unwritable_metadata_mappings(self) -> None:
+        """Refuse a metadata_from_config mapping that could not be written as XCCDF allows.
+
+        XCCDF metadata holds only elements from another namespace than XCCDF's own
+        (metadataType: xsd:any namespace="##other"), and only some XCCDF versions give a
+        Rule a metadata element. Both are known from the style and the XCCDF models alone,
+        so they are checked before any benchmark is exported.
+
+        Raises:
+            ValueError: A removed key is set; the XCCDF version's Rule has no element for the
+                mapping's target; the mapping has no source_field; its namespace prefix is
+                missing, undeclared or the XCCDF namespace; it has no group_by; or an element
+                or attribute name is no XML name without a prefix.
+        """
+        # Mapping name -> (Rule field, the model type that holds the metadata content there,
+        # that type's wildcard field)
+        self._metadata_holders: dict[str, tuple[str, type, str]] = {}
+        for name, mapping in self.config.field_mappings.items():
+            if not isinstance(mapping, dict):
+                continue
+            where = f"field_mappings.{name}"
+            if "requires_post_processing" in mapping:
+                raise ValueError(
+                    f"{where}.requires_post_processing is no longer read "
+                    f"({self._REMOVED_METADATA_KEYS['requires_post_processing']})"
+                )
+            if mapping.get("structure") != "metadata_from_config":
+                continue
+            target = mapping.get("target_element", name)
+            element = self.rule_element(target)
+            if element is None:
+                raise ValueError(
+                    f"{where}: XCCDF {self.xccdf_version} Rules have no {target!r} element, so "
+                    f"this metadata mapping cannot be written"
+                )
+            if not mapping.get("source_field"):
+                raise ValueError(f"{where}: a metadata mapping needs a source_field")
+            spec = mapping.get("metadata_spec") or {}
+            where = f"{where}.metadata_spec"
+            if "namespace" in spec:
+                raise ValueError(
+                    f"{where}.namespace is no longer read "
+                    f"({self._REMOVED_METADATA_KEYS['metadata_spec.namespace']})"
+                )
+            prefix = spec.get("namespace_prefix")
+            if not prefix:
+                raise ValueError(f"{where}: a metadata mapping needs a namespace_prefix")
+            try:
+                namespace = self._namespace_uri(prefix)
+            except ValueError as error:
+                raise ValueError(f"{where}: {error}") from error
+            if namespace == self.xccdf_namespace:
+                raise ValueError(
+                    f"{where}: namespace_prefix {prefix!r} is the XCCDF namespace; XCCDF "
+                    "metadata holds only elements from another namespace"
+                )
+            if not spec.get("group_by"):
+                raise ValueError(
+                    f"{where}: a metadata mapping needs group_by (the builder writes items "
+                    "only inside group elements)"
+                )
+            self._refuse_unknown_group_field(where, mapping["source_field"], spec["group_by"])
+            # The content goes in the element-only wildcard of the target's type (text types
+            # have a mixed one), which must take elements of the mapping's namespace; the
+            # Rule must be able to repeat the target, one per mapping.
+            holder = element.types[0] if len(element.types) == 1 else None
+            wildcards = (
+                [
+                    var.name
+                    for var in self._xml_context.build(holder).get_all_vars()
+                    if var.is_wildcard
+                    and not var.mixed
+                    and var.match_namespace(f"{{{namespace}}}{spec.get('root_element')}")
+                ]
+                if holder is not None and is_dataclass(holder) and element.list_element
+                else []
+            )
+            if holder is None or len(wildcards) != 1:
+                raise ValueError(
+                    f"field_mappings.{name}: the Rule's {target!r} element cannot hold "
+                    f"repeated elements of the namespace {namespace}; metadata content goes "
+                    "in metadata"
+                )
+            self._metadata_holders[name] = (target, holder, wildcards[0])
+            group = spec.get("group_element") or {}
+            self._refuse_invalid_metadata_names(
+                where,
+                [
+                    ("root_element", spec.get("root_element"), {}),
+                    ("group_element", group.get("element"), group.get("attributes") or {}),
+                ],
+            )
+            self._refuse_invalid_metadata_element(
+                f"{where}.group_element.item_element", group.get("item_element") or {}
+            )
+
+    @staticmethod
+    def _refuse_unknown_group_field(where: str, source_field: str, group_by: str) -> None:
+        """group_by names a field of the items source_field lists; a name that is no field
+        would read as empty for every item and leave the metadata without groups."""
+        current: Any = Recommendation
+        *parents, last = source_field.split(".")
+        for part in parents:
+            current = _model_in(current.model_fields[part].annotation)
+        annotation = current.model_fields[last].annotation
+        while get_origin(annotation) is Annotated or get_origin(annotation) in (UnionType, Union):
+            annotation = next(a for a in get_args(annotation) if a is not type(None))
+        item = _model_in(get_args(annotation)[0]) if get_origin(annotation) is list else None
+        for part in group_by.removeprefix("item.").split("."):
+            if item is None or part not in item.model_fields:
+                raise ValueError(
+                    f"{where}.group_by names {group_by!r}: {part!r} is not a field of the "
+                    f"items {source_field!r} lists"
+                )
+            item = _model_in(item.model_fields[part].annotation)
+
+    def _refuse_invalid_metadata_element(self, where: str, spec: dict) -> None:
+        """Check an item or child element spec and its children, recursively."""
+        self._refuse_invalid_metadata_names(
+            where, [("element", spec.get("element"), spec.get("attributes") or {})]
+        )
+        for i, child in enumerate(spec.get("children") or []):
+            self._refuse_invalid_metadata_element(f"{where}.children[{i}]", child or {})
+
+    @staticmethod
+    def _refuse_invalid_metadata_names(
+        where: str, elements: list[tuple[str, Any, dict[str, Any]]]
+    ) -> None:
+        """Each element name and attribute name must be an XML name without a prefix: the
+        element takes the mapping's namespace, and an attribute has none."""
+        for key, element, attributes in elements:
+            for kind, name in [(key, element)] + [
+                (f"{key} attribute", attribute) for attribute in attributes
+            ]:
+                try:
+                    if not isinstance(name, str) or name.startswith("{") or name == "xmlns":
+                        raise ValueError("an XML name without a prefix or namespace is needed")
+                    etree.QName(None, name)
+                except ValueError as error:
+                    raise ValueError(
+                        f"{where}: {kind} {name!r} is not an XML name ({error})"
+                    ) from error
+
     def generate_metadata_from_config(
         self, recommendation: "Recommendation", field_mapping: dict
-    ) -> Any:
-        """Generate nested XML metadata from YAML config - GENERIC for ANY structure.
+    ) -> AnyElement | None:
+        """Build a metadata root element from a metadata_from_config mapping.
 
-        Builds metadata using lxml based on YAML specification.
-        Supports grouping, nesting, attributes, content - all config-driven.
+        Items of the source list are grouped by metadata_spec.group_by; groups are written
+        in key order and each group's items in source order. Every element is in the
+        namespace benchmark.namespaces declares for metadata_spec.namespace_prefix (the
+        style was checked when it loaded).
 
         Args:
             recommendation: Source recommendation data
             field_mapping: YAML field mapping with metadata_spec
 
         Returns:
-            lxml Element with metadata structure, or None if no data
+            The root element, an empty root when the source list is empty and allow_empty is
+            set, or None.
+
+        Raises:
+            ValueError: An attribute value would be rewritten by the XML serializer.
         """
-        from collections import defaultdict
+        spec = field_mapping["metadata_spec"]
+        namespace = self._namespace_uri(spec["namespace_prefix"])
 
-        from lxml import etree
+        def qname(name: str) -> str:
+            return f"{{{namespace}}}{name}"
 
-        source_field = field_mapping.get("source_field")
-        metadata_spec = field_mapping.get("metadata_spec", {})
+        source_data = self._get_nested_field(recommendation, field_mapping["source_field"])
+        group_by = spec["group_by"].removeprefix("item.")
+        groups: dict[Any, list[Any]] = {}
+        for item in source_data or []:
+            group_key = self._get_nested_field(item, group_by)
+            if group_key:
+                groups.setdefault(group_key, []).append(item)
+        if not groups:
+            # No data, or no item in any group: the same case, decided by allow_empty
+            return (
+                AnyElement(qname=qname(spec["root_element"])) if spec.get("allow_empty") else None
+            )
 
-        if not source_field or not metadata_spec:
-            logger.warning("metadata_from_config missing source_field or metadata_spec")
-            return None
+        group_spec = spec["group_element"]
+        return AnyElement(
+            qname=qname(spec["root_element"]),
+            children=[
+                AnyElement(
+                    qname=qname(group_spec["element"]),
+                    attributes=self._metadata_attributes(
+                        group_spec.get("attributes") or {}, {"group_key": group_key}
+                    ),
+                    children=[
+                        self._build_config_element(item, group_spec["item_element"], qname)
+                        for item in items
+                    ],
+                )
+                for group_key, items in sorted(groups.items())
+            ],
+        )
 
-        # Get source data
-        source_data = self._get_nested_field(recommendation, source_field)
-
-        # Handle empty case
-        allow_empty = metadata_spec.get("allow_empty", False)
-        if not source_data:
-            if allow_empty:
-                # Create empty element
-                root_element = metadata_spec.get("root_element")
-                namespace = metadata_spec.get("namespace")
-                if namespace:
-                    return etree.Element(f"{{{namespace}}}{root_element}")
-                else:
-                    return etree.Element(root_element)
-            else:
-                return None
-
-        # Create root element
-        root_element = metadata_spec.get("root_element")
-        namespace = metadata_spec.get("namespace")
-
-        if namespace:
-            root = etree.Element(f"{{{namespace}}}{root_element}")
-        else:
-            root = etree.Element(root_element)
-
-        # Check for grouping
-        group_by = metadata_spec.get("group_by")
-
-        if group_by:
-            # Group items by field (e.g., CIS Controls by version)
-            groups = defaultdict(list)
-            for item in source_data:
-                group_key = self._get_nested_field(item, group_by.replace("item.", ""))
-                if group_key:
-                    groups[group_key].append(item)
-
-            # Build group elements from config
-            group_spec = metadata_spec.get("group_element", {})
-            group_elem_name = group_spec.get("element", "group")
-            group_attrs = group_spec.get("attributes", {})
-            item_spec = group_spec.get("item_element", {})
-
-            for group_key, group_items in sorted(groups.items()):
-                # Create group element
-                if namespace:
-                    group_elem = etree.SubElement(root, f"{{{namespace}}}{group_elem_name}")
-                else:
-                    group_elem = etree.SubElement(root, group_elem_name)
-
-                # Add group attributes from config
-                for attr_name, attr_template in group_attrs.items():
-                    attr_value = VariableSubstituter.substitute(
-                        attr_template, {"group_key": group_key}
-                    )
-                    group_elem.set(attr_name, attr_value)
-
-                # Build items in group
-                for item in group_items:
-                    self._build_config_item(group_elem, item, item_spec, namespace)
-
-        return root
-
-    def _build_config_item(self, parent, item, item_spec, namespace):
-        """Build item element from config spec."""
-        from lxml import etree
-
-        elem_name = item_spec.get("element")
-        attrs = item_spec.get("attributes", {})
-        children = item_spec.get("children", [])
-
-        # Create element
-        if namespace:
-            elem = etree.SubElement(parent, f"{{{namespace}}}{elem_name}")
-        else:
-            elem = etree.SubElement(parent, elem_name)
-
-        # Add attributes from config
-        for attr_name, attr_template in attrs.items():
-            attr_value = VariableSubstituter.substitute(attr_template, {"item": item})
-            elem.set(attr_name, str(attr_value))
-
-        # Add children from config
-        for child_spec in children:
-            self._build_config_child(elem, item, child_spec, namespace)
-
-        return elem
-
-    def _build_config_child(self, parent, item, child_spec, namespace):
-        """Build child element recursively from config."""
-        from lxml import etree
-
-        elem_name = child_spec.get("element")
-        attrs = child_spec.get("attributes", {})
-        content = child_spec.get("content")
-        children = child_spec.get("children", [])
-
-        # Create element
-        if namespace:
-            elem = etree.SubElement(parent, f"{{{namespace}}}{elem_name}")
-        else:
-            elem = etree.SubElement(parent, elem_name)
-
-        # Add attributes from config
-        for attr_name, attr_template in attrs.items():
-            attr_value = VariableSubstituter.substitute(attr_template, {"item": item})
-            # Boolean to lowercase string for XML (handle both bool and string "True"/"False")
-            if isinstance(attr_value, bool):
-                attr_value = str(attr_value).lower()
-            elif isinstance(attr_value, str) and attr_value in ["True", "False"]:
-                attr_value = attr_value.lower()
-            else:
-                attr_value = str(attr_value)
-            elem.set(attr_name, attr_value)
-
-        # Add content from config
+    def _build_config_element(
+        self, item: Any, spec: dict, qname: Callable[[str], str]
+    ) -> AnyElement:
+        """An item element, or one of its children, with its own children, from config."""
+        content = spec.get("content")
+        text = None
         if content:
-            elem.text = str(VariableSubstituter.substitute(content, {"item": item}))
+            value = VariableSubstituter.substitute(content, {"item": item})
+            text = None if value is None else str(value)
+        return AnyElement(
+            qname=qname(spec["element"]),
+            text=text,
+            attributes=self._metadata_attributes(spec.get("attributes") or {}, {"item": item}),
+            children=[
+                self._build_config_element(item, child, qname)
+                for child in spec.get("children") or []
+            ],
+        )
 
-        # Recursive children
-        for grandchild_spec in children:
-            self._build_config_child(elem, item, grandchild_spec, namespace)
+    @staticmethod
+    def _metadata_attributes(templates: dict[str, Any], context: dict[str, Any]) -> dict[str, str]:
+        """Attribute values as text: booleans lowercase (XML Schema boolean), anything else
+        as str().
 
-        return elem
+        Raises:
+            ValueError: A value the XML serializer would write as a type name (it starts with
+                "{" and names an XML Schema type) instead of as the text given.
+        """
+        attributes: dict[str, str] = {}
+        for name, template in templates.items():
+            value = VariableSubstituter.substitute(template, context)
+            if isinstance(value, bool) or (isinstance(value, str) and value in ("True", "False")):
+                text = str(value).lower()
+            else:
+                text = str(value)
+            if EventHandler.is_xsi_type(name, text):
+                raise ValueError(
+                    f"metadata attribute {name!r} has the value {text!r}, which the XML "
+                    "serializer would write as an XML Schema type name, not as this text"
+                )
+            attributes[name] = text
+        return attributes

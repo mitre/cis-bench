@@ -79,6 +79,7 @@ benchmark:
     default: "http://checklists.nist.gov/xccdf/1.2"
     dc: "http://purl.org/dc/elements/1.1/"
     pci: "http://pci-dss.org/xccdf/1.0"  # Your custom namespace
+    controls: "http://cisecurity.org/controls"  # the prefix the metadata mapping below names
   title:
     source: "title"
     transform: "none"
@@ -106,14 +107,21 @@ field_mappings:
 
   # Use generic metadata handler for CIS Controls
   cis_controls_metadata:
+    target_element: "metadata"
     structure: "metadata_from_config"
-    requires_post_processing: true
     source_field: "cis_controls"
     metadata_spec:
       root_element: "cis_controls"
-      namespace: "http://cisecurity.org/controls"
+      namespace_prefix: "controls"  # declared in benchmark.namespaces
       group_by: "item.version"
-      # ... (see cis_style.yaml for full spec)
+      group_element:
+        element: "framework"
+        attributes:
+          urn: "urn:cisecurity.org:controls:{group_key}"
+        item_element:
+          element: "safeguard"
+          attributes:
+            title: "{item.title}"
 ```
 
 **The configuration is the implementation.** The MappingEngine reads this YAML and executes the transformations automatically.
@@ -268,11 +276,17 @@ framework_controls:
 
 # For nested hierarchies (CIS Controls, PCI-DSS requirements)
 framework_metadata:
+  target_element: "metadata"
   structure: "metadata_from_config"
-  requires_post_processing: true
-  source_field: "controls"
+  source_field: "cis_controls"
   metadata_spec:
-    # Define structure in YAML
+    root_element: "cis_controls"
+    namespace_prefix: "controls"  # declared in benchmark.namespaces
+    group_by: "item.version"
+    group_element:
+      element: "framework"
+      item_element:
+        element: "safeguard"
 ```
 
 ### 4. Always Validate Output

@@ -421,6 +421,3 @@ group_elements:
 post_processing:
   # Remove 'override' attributes (xsdata artifact)
   remove_override_attr: true
-
-  # Handlers to run
-  handlers: []

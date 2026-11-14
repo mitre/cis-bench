@@ -589,8 +589,8 @@ Benchmark
 ## Stage 6: XML Serialization
 
 **Input:** xsdata `Benchmark` object
-**Component:** xsdata XML serializer (`XCCDFExporter._render`, `XCCDFSerializer.serialize_to_string`)
-**Output:** XCCDF XML with the style's namespaces declared on the root
+**Component:** xsdata tree serializer (`XCCDFExporter._render`, `XCCDFSerializer.serialize_to_tree`)
+**Output:** XCCDF XML with the style's namespaces declared on the root, written once
 
 ### Serialization Process
 
@@ -603,11 +603,13 @@ ns_map = {
     (None if prefix == "default" else prefix): uri
     for prefix, uri in self.config.namespaces.items()
 }
-return XCCDFSerializer.serialize_to_string(xccdf_benchmark, ns_map=ns_map)
+return XCCDFSerializer.serialize_to_tree(xccdf_benchmark, ns_map)
 ```
 
-`XCCDFSerializer.serialize_to_string` calls `XmlSerializer(config=SerializerConfig(indent="  ",
-xml_declaration=True)).render(xccdf_obj, ns_map=ns_map)`.
+`XCCDFSerializer.serialize_to_tree` renders the object with xsdata's `TreeSerializer` to an
+lxml tree. The exporter applies the style's post-processing to that tree
+(`XCCDFPostProcessor.process`) and writes it once with `XCCDFSerializer.tree_to_string`
+(lxml, indented, with the XML declaration). No step parses text the export itself wrote.
 
 ### Namespace Handling
 
@@ -631,12 +633,12 @@ so a second prefix for the XCCDF namespace would put an `xccdf:` prefix on every
 
 ### Post-Processing
 
-After serialization the exporter runs the style's `post_processing.handlers` (the CIS style
-injects its CIS Controls metadata with `metadata_injection`) and removes `override`
-attributes (`remove_override_attr`, default true). Neither renames an element or changes a
-namespace declaration: the injected elements use the prefixes the root declares. Prefixes
-are chosen once, when xsdata writes the document, never rewritten afterwards (see the W3C
-TAG finding [QNames as identifiers in content](https://www.w3.org/2001/tag/doc/qnameids.html)).
+After rendering, the exporter removes `override` attributes from the tree's XCCDF elements
+(`remove_override_attr`, default true); content of another namespace keeps its attributes. It renames no element and changes no namespace
+declaration. A Rule's CIS Controls metadata is not added here: the mapping engine builds it
+as model content (`metadata_from_config`), so xsdata writes it in schema order with the
+prefixes the root declares. Prefixes are chosen once, when xsdata renders the document,
+never rewritten afterwards (see the W3C TAG finding [QNames as identifiers in content](https://www.w3.org/2001/tag/doc/qnameids.html)).
 
 ---
 
@@ -839,17 +841,7 @@ source_field: "title"
 transform: "uppercase" # Custom transform
 xccdf_type: "TextType"
 
-# Add custom metadata
-metadata:
-target_element: "metadata"
-custom_fields:
-
-- name: "organization"
-value: "My Company"
-
-- name: "custom_id"
-source_field: "ref"
-transform: "prefix_org"
+# Rule metadata: a metadata_from_config mapping (see the XCCDF mapping design)
 ```
 
 Register in exporter:
@@ -1025,7 +1017,7 @@ ERROR: Rule.title expects TextType, got str
 **"... is not a setting the exporter reads"**
 ```
 ValueError: style.yaml: post_processing.preserve_namespaces is not a setting the exporter reads
- Check: the style's post_processing section (the settings are handlers, remove_override_attr)
+ Check: the style's post_processing section (the one setting is remove_override_attr)
  Fix: declare the namespaces the style's documents use in benchmark.namespaces
 ```
 

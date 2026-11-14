@@ -223,8 +223,3 @@ class TestNoRegressionToOldPatterns:
             assert f"def {method}" not in content, (
                 f"Old injection method '{method}' found! Should be deleted."
             )
-
-        # Should have generic injection
-        assert "_inject_metadata_from_config" in content, (
-            "Should have generic _inject_metadata_from_config"
-        )

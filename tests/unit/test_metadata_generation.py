@@ -1,360 +1,422 @@
-"""Unit tests for generic metadata_from_config handler (TDD)."""
+"""Rule metadata built from a style's metadata_from_config mapping.
 
-from pathlib import Path
+The metadata is XCCDF model content: an xsdata AnyElement tree in the namespace the style
+declares for the mapping's prefix, held by a MetadataType on Rule.metadata. XCCDF allows only
+elements from another namespace inside metadata, so a mapping that could give anything else
+is refused when the style loads.
+"""
 
 import pytest
+from lxml import etree
+from xsdata.formats.dataclass.models.generics import AnyElement
 
 from cis_bench.exporters.mapping_engine import MappingEngine
-from cis_bench.models.benchmark import CISControl, MITREMapping, Recommendation
+from cis_bench.exporters.xccdf_unified_exporter import XCCDFExporter
+from cis_bench.models.benchmark import Benchmark, CISControl, Recommendation
+
+CONTROLS = "http://cisecurity.org/controls"
 
 
-@pytest.fixture
-def mapping_engine():
-    """Create MappingEngine for testing."""
-    config_path = Path("src/cis_bench/exporters/configs/styles/disa.yaml")
-    return MappingEngine(config_path)
+def control(version: int, number: str, title: str, ig1: bool = False) -> CISControl:
+    return CISControl(version=version, control=number, title=title, ig1=ig1, ig2=True, ig3=True)
 
 
-@pytest.fixture
-def sample_recommendation():
-    """Create sample recommendation with CIS Controls."""
+def recommendation(*controls: CISControl) -> Recommendation:
     return Recommendation(
         ref="6.1.1",
-        title="Test recommendation",
-        description="Test description",
-        url="https://example.org",
+        title="Synthetic recommendation",
+        url="https://example.org/6.1.1",
         assessment_status="Automated",
-        cis_controls=[
-            CISControl(
-                version="8",
-                control="3.14",
-                title="Log Sensitive Data Access",
-                ig1=False,
-                ig2=False,
-                ig3=True,
-            ),
-            CISControl(
-                version="7",
-                control="14.9",
-                title="Enforce Detail Logging",
-                ig1=False,
-                ig2=False,
-                ig3=True,
-            ),
-        ],
-        mitre_mapping=MITREMapping(
-            techniques=["T1565", "T1565.001"],
-            tactics=["TA0001"],
-            mitigations=["M1022"],
-        ),
-        profiles=["Level 1 - Server", "Level 1 - Workstation"],
+        cis_controls=list(controls),
     )
 
 
-class TestMetadataGenerationSimple:
-    """Test basic metadata generation without grouping."""
+def shape(element: AnyElement) -> tuple:
+    """An AnyElement tree as (qname, attributes, text, children)."""
+    return (
+        element.qname,
+        dict(element.attributes),
+        element.text,
+        [shape(child) for child in element.children],
+    )
 
-    def test_simple_single_child(self, mapping_engine, sample_recommendation):
-        """Test metadata with single child element."""
-        field_mapping = {
-            "source_field": "title",
-            "metadata_spec": {
-                "root_element": "custom_metadata",
-                "namespace": "http://example.org/metadata",
-                "namespace_prefix": "custom",
-                "children": [
-                    {
-                        "element": "recommendation_title",
-                        "content": "{item}",  # item = title string
-                    }
+
+@pytest.fixture
+def engine(cis_config_path) -> MappingEngine:
+    return MappingEngine(cis_config_path)
+
+
+@pytest.fixture
+def controls_mapping(engine) -> dict:
+    """The CIS style's own CIS Controls metadata mapping."""
+    return engine.config.field_mappings["cis_controls_metadata"]
+
+
+class TestBuiltContent:
+    def test_controls_are_grouped_by_version_with_each_safeguard_under_its_framework(
+        self, engine, controls_mapping
+    ):
+        rec = recommendation(
+            control(8, "3.14", "Log Sensitive Data Access"),
+            control(7, "14.9", "Enforce Detail Logging", ig1=True),
+        )
+
+        root = engine.generate_metadata_from_config(rec, controls_mapping)
+
+        def safeguard(version: str, number: str, title: str, ig1: str) -> tuple:
+            return (
+                f"{{{CONTROLS}}}safeguard",
+                {"title": title, "urn": f"urn:cisecurity.org:controls:{version}:{number}"},
+                None,
+                [
+                    (
+                        f"{{{CONTROLS}}}implementation_groups",
+                        {"ig1": ig1, "ig2": "true", "ig3": "true"},
+                        None,
+                        [],
+                    ),
+                    (f"{{{CONTROLS}}}asset_type", {}, "Unknown", []),
+                    (f"{{{CONTROLS}}}security_function", {}, "Protect", []),
                 ],
-            },
-        }
+            )
 
-        result = mapping_engine.generate_metadata_from_config(sample_recommendation, field_mapping)
+        assert shape(root) == (
+            f"{{{CONTROLS}}}cis_controls",
+            {},
+            None,
+            [
+                (
+                    f"{{{CONTROLS}}}framework",
+                    {"urn": "urn:cisecurity.org:controls:7"},
+                    None,
+                    [safeguard("7", "14.9", "Enforce Detail Logging", "true")],
+                ),
+                (
+                    f"{{{CONTROLS}}}framework",
+                    {"urn": "urn:cisecurity.org:controls:8"},
+                    None,
+                    [safeguard("8", "3.14", "Log Sensitive Data Access", "false")],
+                ),
+            ],
+        )
 
-        # Should return metadata object
-        assert result is not None
-        # TODO: Verify structure once implemented
+    def test_items_of_one_group_keep_the_order_of_the_source(self, engine, controls_mapping):
+        rec = recommendation(
+            control(8, "4.8", "Second listed first"),
+            control(8, "4.1", "First by number, listed second"),
+        )
 
-    def test_simple_multiple_children(self, mapping_engine, sample_recommendation):
-        """Test metadata with multiple child elements."""
-        field_mapping = {
-            "source_field": "profiles",  # List of strings
+        root = engine.generate_metadata_from_config(rec, controls_mapping)
+
+        (framework,) = root.children
+        assert [child.attributes["title"] for child in framework.children] == [
+            "Second listed first",
+            "First by number, listed second",
+        ]
+
+    def test_a_boolean_attribute_of_an_item_element_is_written_lowercase(
+        self, engine, controls_mapping
+    ):
+        mapping = {
+            **controls_mapping,
             "metadata_spec": {
-                "root_element": "profile_metadata",
-                "namespace": "http://example.org/profiles",
-                "namespace_prefix": "prof",
-                "children": [
-                    {
-                        "element": "profile",
-                        "for_each": True,  # Create one per item
-                        "content": "{item}",
-                    }
-                ],
-            },
-        }
-
-        result = mapping_engine.generate_metadata_from_config(sample_recommendation, field_mapping)
-
-        assert result is not None
-        # Should create one profile element per item in profiles list
-
-
-class TestMetadataGenerationWithGrouping:
-    """Test metadata generation with grouping (like CIS Controls)."""
-
-    def test_group_by_version(self, mapping_engine, sample_recommendation):
-        """Test grouping items by version field (CIS Controls pattern)."""
-        field_mapping = {
-            "source_field": "cis_controls",
-            "metadata_spec": {
-                "root_element": "cis_controls",
-                "namespace": "http://cisecurity.org/controls",
-                "namespace_prefix": "controls",
-                "allow_empty": True,
-                "group_by": "item.version",  # Group by version
+                **controls_mapping["metadata_spec"],
                 "group_element": {
                     "element": "framework",
-                    "attributes": {"urn": "urn:cisecurity.org:controls:{group_key}"},
-                    "item_element": {
-                        "element": "safeguard",
-                        "attributes": {
-                            "title": "{item.title}",
-                            "urn": "urn:cisecurity.org:controls:{item.version}:{item.control}",
-                        },
-                        "children": [
-                            {
-                                "element": "implementation_groups",
-                                "attributes": {
-                                    "ig1": "{item.ig1}",
-                                    "ig2": "{item.ig2}",
-                                    "ig3": "{item.ig3}",
-                                },
-                            },
-                            {"element": "asset_type", "content": "Unknown"},
-                            {"element": "security_function", "content": "Protect"},
-                        ],
-                    },
+                    "item_element": {"element": "safeguard", "attributes": {"ig1": "{item.ig1}"}},
                 },
             },
         }
 
-        result = mapping_engine.generate_metadata_from_config(sample_recommendation, field_mapping)
-
-        assert result is not None
-        # Should have 2 framework elements (version 7 and 8)
-        # Each framework should have 1 safeguard
-        # Each safeguard should have 3 children
-
-    def test_empty_metadata_when_no_data(self, mapping_engine):
-        """Test that empty metadata element created when allow_empty=True."""
-        rec_no_controls = Recommendation(
-            ref="1.1.1",
-            title="No controls",
-            description="Test",
-            url="https://example.org",
-            assessment_status="Automated",
-            cis_controls=[],  # Empty!
+        root = engine.generate_metadata_from_config(
+            recommendation(control(8, "4.8", "t", ig1=True)), mapping
         )
 
-        field_mapping = {
-            "source_field": "cis_controls",
+        assert root.children[0].children[0].attributes == {"ig1": "true"}
+
+    def test_no_data_gives_an_empty_root_when_the_mapping_allows_it(self, engine, controls_mapping):
+        assert controls_mapping["metadata_spec"]["allow_empty"] is True
+
+        root = engine.generate_metadata_from_config(recommendation(), controls_mapping)
+
+        assert shape(root) == (f"{{{CONTROLS}}}cis_controls", {}, None, [])
+
+    def test_no_data_gives_nothing_when_the_mapping_does_not_allow_an_empty_root(
+        self, engine, controls_mapping
+    ):
+        mapping = {
+            **controls_mapping,
+            "metadata_spec": {**controls_mapping["metadata_spec"], "allow_empty": False},
+        }
+
+        assert engine.generate_metadata_from_config(recommendation(), mapping) is None
+
+    @pytest.mark.parametrize(("allow_empty", "expected"), [(False, None), (True, "empty root")])
+    def test_items_that_fall_in_no_group_are_handled_like_no_data(
+        self, engine, controls_mapping, allow_empty, expected
+    ):
+        # Grouping by a field that is false for every item gives no group.
+        mapping = {
+            **controls_mapping,
             "metadata_spec": {
-                "root_element": "cis_controls",
-                "namespace": "http://cisecurity.org/controls",
-                "allow_empty": True,  # Should create empty element
+                **controls_mapping["metadata_spec"],
+                "group_by": "item.ig1",
+                "allow_empty": allow_empty,
             },
         }
 
-        result = mapping_engine.generate_metadata_from_config(rec_no_controls, field_mapping)
-
-        # Should return empty metadata element
-        assert result is not None
-        # Should be <controls:cis_controls/> (self-closing)
-
-    def test_skip_metadata_when_no_data_and_not_allowed(self, mapping_engine):
-        """Test that no metadata created when allow_empty=False."""
-        rec_no_controls = Recommendation(
-            ref="1.1.1",
-            title="No controls",
-            description="Test",
-            url="https://example.org",
-            assessment_status="Automated",
-            cis_controls=[],
+        root = engine.generate_metadata_from_config(
+            recommendation(control(8, "4.8", "t", ig1=False)), mapping
         )
 
-        field_mapping = {
-            "source_field": "cis_controls",
-            "metadata_spec": {
-                "root_element": "cis_controls",
-                "namespace": "http://cisecurity.org/controls",
-                "allow_empty": False,  # Don't create if empty
-            },
-        }
+        assert (root and "empty root") == expected
+        assert root is None or shape(root) == (f"{{{CONTROLS}}}cis_controls", {}, None, [])
 
-        result = mapping_engine.generate_metadata_from_config(rec_no_controls, field_mapping)
+    def test_an_attribute_value_xsdata_would_rewrite_as_a_type_name_stops_the_export(
+        self, engine, controls_mapping
+    ):
+        # xsdata writes a value that names an XML Schema type as a prefixed QName.
+        rec = recommendation(control(8, "4.8", "{http://www.w3.org/2001/XMLSchema}string"))
 
-        # Should return None
-        assert result is None
+        with pytest.raises(ValueError, match="title"):
+            engine.generate_metadata_from_config(rec, controls_mapping)
 
 
-class TestMetadataAttributeTemplates:
-    """Test attribute template substitution."""
-
-    def test_static_attributes(self, mapping_engine, sample_recommendation):
-        """Test static attribute values."""
-        field_mapping = {
-            "source_field": "title",
-            "metadata_spec": {
-                "root_element": "metadata",
-                "namespace": "http://example.org",
-                "attributes": {"static_attr": "static_value", "another": "fixed"},
-            },
-        }
-
-        result = mapping_engine.generate_metadata_from_config(sample_recommendation, field_mapping)
-
-        assert result is not None
-        # Attributes should be: static_attr="static_value", another="fixed"
-
-    def test_template_attributes(self, mapping_engine, sample_recommendation):
-        """Test attribute templates with variable substitution."""
-        field_mapping = {
-            "source_field": "cis_controls",
-            "metadata_spec": {
-                "root_element": "control",
-                "namespace": "http://example.org",
-                "group_element": {
-                    "element": "framework",
-                    "attributes": {
-                        "version": "{group_key}",  # Should be "7" or "8"
-                        "count": "{group_count}",  # Number of items in group
-                    },
-                },
-            },
-        }
-
-        result = mapping_engine.generate_metadata_from_config(sample_recommendation, field_mapping)
-
-        assert result is not None
-        # Attributes should use actual values from data
-
-
-class TestMetadataContentTemplates:
-    """Test content template substitution."""
-
-    def test_static_content(self, mapping_engine, sample_recommendation):
-        """Test static content in elements."""
-        field_mapping = {
-            "source_field": "profiles",
-            "metadata_spec": {
-                "root_element": "metadata",
-                "namespace": "http://example.org",
-                "children": [{"element": "category", "content": "Security"}],
-            },
-        }
-
-        result = mapping_engine.generate_metadata_from_config(sample_recommendation, field_mapping)
-
-        assert result is not None
-        # Should have <category>Security</category>
-
-    def test_template_content(self, mapping_engine, sample_recommendation):
-        """Test content templates with variables."""
-        field_mapping = {
-            "source_field": "cis_controls",
-            "metadata_spec": {
-                "root_element": "metadata",
-                "namespace": "http://example.org",
-                "children": [{"element": "control_id", "content": "{item.control}"}],
-            },
-        }
-
-        result = mapping_engine.generate_metadata_from_config(sample_recommendation, field_mapping)
-
-        assert result is not None
-        # Content should use actual control IDs
-
-
-class TestMetadataRealWorld:
-    """Test with real-world CIS Controls structure."""
-
-    def test_generates_cis_controls_metadata(self, mapping_engine, sample_recommendation):
-        """Test full CIS Controls metadata structure (matches official CIS XCCDF)."""
-        field_mapping = {
-            "source_field": "cis_controls",
-            "metadata_spec": {
-                "root_element": "cis_controls",
-                "namespace": "http://cisecurity.org/controls",
-                "namespace_prefix": "controls",
-                "allow_empty": True,
-                "group_by": "item.version",
-                "group_element": {
-                    "element": "framework",
-                    "attributes": {"urn": "urn:cisecurity.org:controls:{group_key}"},
-                    "item_element": {
-                        "element": "safeguard",
-                        "attributes": {
-                            "title": "{item.title}",
-                            "urn": "urn:cisecurity.org:controls:{item.version}:{item.control}",
-                        },
-                        "children": [
-                            {
-                                "element": "implementation_groups",
-                                "attributes": {
-                                    "ig1": "{item.ig1}",
-                                    "ig2": "{item.ig2}",
-                                    "ig3": "{item.ig3}",
-                                },
-                            },
-                            {"element": "asset_type", "content": "Unknown"},
-                            {"element": "security_function", "content": "Protect"},
-                        ],
-                    },
-                },
-            },
-        }
-
-        result = mapping_engine.generate_metadata_from_config(sample_recommendation, field_mapping)
-
-        assert result is not None
-        # Should match structure:
-        # <controls:cis_controls>
-        #   <controls:framework urn="urn:cisecurity.org:controls:8">
-        #     <controls:safeguard title="..." urn="...">
-        #       <controls:implementation_groups ig1="false" ig2="false" ig3="true"/>
-        #       <controls:asset_type>Unknown</controls:asset_type>
-        #       <controls:security_function>Protect</controls:security_function>
-        #     </controls:safeguard>
-        #   </controls:framework>
-        #   <controls:framework urn="urn:cisecurity.org:controls:7">
-        #     ... (same for v7)
-        #   </controls:framework>
-        # </controls:cis_controls>
-
-    def test_generates_empty_cis_controls_when_no_data(self, mapping_engine):
-        """Test empty CIS Controls metadata (official CIS pattern)."""
-        rec_no_controls = Recommendation(
-            ref="1.1.1",
-            title="No controls",
-            description="Test",
-            url="https://example.org",
-            assessment_status="Automated",
-            cis_controls=[],
+class TestMetadataOnTheRule:
+    def test_the_rule_holds_the_metadata_as_model_content(self, engine):
+        rule = engine.map_rule(
+            recommendation(control(8, "4.8", "t")),
+            {"benchmark": None, "recommendations": []},
         )
 
-        field_mapping = {
-            "source_field": "cis_controls",
-            "metadata_spec": {
-                "root_element": "cis_controls",
-                "namespace": "http://cisecurity.org/controls",
-                "namespace_prefix": "controls",
-                "allow_empty": True,
-            },
-        }
+        (metadata,) = rule.metadata
+        (root,) = metadata.other_element
+        assert isinstance(metadata, engine.get_xccdf_class("MetadataType"))
+        assert root.qname == f"{{{CONTROLS}}}cis_controls"
 
-        result = mapping_engine.generate_metadata_from_config(rec_no_controls, field_mapping)
+    def test_each_metadata_mapping_gives_its_own_metadata_element_in_mapping_order(
+        self, tmp_path, cis_config_path
+    ):
+        style = tmp_path / "style.yaml"
+        style.write_text(
+            f"extends: {cis_config_path}\nmetadata:\n  style_name: child\n"
+            "field_mappings:\n  second_metadata:\n    target_element: metadata\n"
+            "    structure: metadata_from_config\n    source_field: cis_controls\n"
+            "    metadata_spec:\n      root_element: second\n"
+            "      namespace_prefix: controls\n      group_by: item.version\n"
+            "      group_element:\n        element: framework\n"
+            "        item_element:\n          element: safeguard\n"
+        )
+        engine = MappingEngine(style)
 
-        assert result is not None
-        # Should be <controls:cis_controls/> (empty, self-closing)
+        rule = engine.map_rule(
+            recommendation(control(8, "4.8", "t")),
+            {"benchmark": None, "recommendations": []},
+        )
+
+        assert [metadata.other_element[0].qname for metadata in rule.metadata] == [
+            f"{{{CONTROLS}}}cis_controls",
+            f"{{{CONTROLS}}}second",
+        ]
+
+
+class TestRefusedWhenTheStyleLoads:
+    """A mapping that could write something XCCDF does not allow in metadata, or that sets a
+    key nothing reads, is refused before any benchmark is exported."""
+
+    @staticmethod
+    def _style(tmp_path, parent, body: str):
+        style = tmp_path / "style.yaml"
+        style.write_text(f"extends: {parent}\nmetadata:\n  style_name: child\n{body}")
+        return style
+
+    def _with_metadata_spec(self, tmp_path, cis_config_path, spec_lines: str):
+        return self._style(
+            tmp_path,
+            cis_config_path,
+            "field_mappings:\n  cis_controls_metadata:\n    metadata_spec:\n" + spec_lines,
+        )
+
+    @pytest.mark.parametrize(
+        ("spec_lines", "message"),
+        [
+            pytest.param('      namespace_prefix: ""\n', "namespace_prefix", id="no prefix"),
+            pytest.param('      namespace_prefix: "nope"\n', "'nope'", id="undeclared prefix"),
+            pytest.param(
+                '      namespace_prefix: "default"\n',
+                "another namespace",
+                id="the XCCDF namespace itself",
+            ),
+            pytest.param(
+                '      namespace: "http://cisecurity.org/controls"\n',
+                "benchmark.namespaces",
+                id="removed namespace key",
+            ),
+            pytest.param("      group_by: null\n", "group_by", id="no grouping"),
+            pytest.param('      root_element: "not a name"\n', "not a name", id="bad element name"),
+            pytest.param(
+                '      group_element:\n        attributes:\n          "xsi:type": "x"\n',
+                "xsi:type",
+                id="attribute name with a prefix",
+            ),
+            pytest.param(
+                '      group_element:\n        attributes:\n          xmlns: "urn:x"\n',
+                "xmlns",
+                id="a namespace declaration as an attribute",
+            ),
+            pytest.param('      root_element: "xmlns"\n', "xmlns", id="xmlns as an element"),
+            pytest.param(
+                '      group_by: "item.versoin"\n', "versoin", id="grouping by no field of the item"
+            ),
+        ],
+    )
+    def test_a_metadata_spec_that_cannot_be_written_is_refused(
+        self, tmp_path, cis_config_path, spec_lines, message
+    ):
+        style = self._with_metadata_spec(tmp_path, cis_config_path, spec_lines)
+
+        with pytest.raises(ValueError, match=message):
+            MappingEngine(style)
+
+    @pytest.mark.parametrize(
+        "target",
+        [
+            pytest.param("title", id="text content"),
+            pytest.param("impact_metric", id="a plain value"),
+            pytest.param("dc_status", id="elements of one other namespace only"),
+            pytest.param("signature", id="a single element, not a list"),
+        ],
+    )
+    def test_metadata_aimed_at_an_element_that_cannot_hold_it_is_refused(
+        self, tmp_path, cis_config_path, target
+    ):
+        # Only a repeatable Rule element whose type takes elements of the mapping's namespace
+        # can hold the content: in XCCDF 1.2 that is metadata.
+        style = self._style(
+            tmp_path,
+            cis_config_path,
+            f"field_mappings:\n  cis_controls_metadata:\n    target_element: {target}\n",
+        )
+
+        with pytest.raises(ValueError, match=target):
+            MappingEngine(style)
+
+    def test_the_removed_requires_post_processing_key_is_refused(self, tmp_path, cis_config_path):
+        style = self._style(
+            tmp_path,
+            cis_config_path,
+            "field_mappings:\n  cis_controls_metadata:\n    requires_post_processing: true\n",
+        )
+
+        with pytest.raises(ValueError, match="requires_post_processing"):
+            MappingEngine(style)
+
+    def test_metadata_is_refused_for_a_version_whose_rules_have_no_metadata_element(
+        self, tmp_path, disa_config_path
+    ):
+        # XCCDF 1.1.4 has a metadata type (on Benchmark) but no metadata element in Rule.
+        # The style is refused as it loads, whether or not a benchmark has controls.
+        style = self._style(
+            tmp_path,
+            disa_config_path,
+            "benchmark:\n  namespaces:\n    controls: http://cisecurity.org/controls\n"
+            "field_mappings:\n  controls_metadata:\n    target_element: metadata\n"
+            "    structure: metadata_from_config\n    source_field: cis_controls\n"
+            "    metadata_spec:\n      root_element: cis_controls\n"
+            "      namespace_prefix: controls\n      group_by: item.version\n"
+            "      group_element:\n        element: framework\n"
+            "        item_element:\n          element: safeguard\n",
+        )
+
+        with pytest.raises(ValueError, match=r"1\.1\.4.*metadata"):
+            MappingEngine(style)
+
+
+def benchmark(*recommendations: Recommendation) -> Benchmark:
+    return Benchmark(
+        title="Synthetic benchmark",
+        benchmark_id="12345",
+        url="https://example.org/benchmarks/12345",
+        version="v1.0.0",
+        scraper_version="v2_2026_01",
+        total_recommendations=len(recommendations),
+        recommendations=list(recommendations),
+    )
+
+
+class TestTheExportedMetadata:
+    """The metadata as the CIS export writes it and a reader parses it back."""
+
+    @staticmethod
+    def _safeguards(path) -> list[dict[str, str]]:
+        root = etree.parse(str(path)).getroot()
+        return [dict(e.attrib) for e in root.iter(f"{{{CONTROLS}}}safeguard")]
+
+    def test_attribute_text_is_written_as_given(self, tmp_path):
+        titles = [
+            "Use <tags> & \"quotes\" and 'apostrophes'",
+            "Überwachung der Protokolle – café, 日本語",
+            "Long title " + "x" * 5000,
+        ]
+        output = tmp_path / "cis.xml"
+        rec = recommendation(*(control(8, f"4.{i}", title) for i, title in enumerate(titles)))
+
+        XCCDFExporter(style="cis").export(benchmark(rec), str(output))
+
+        assert [s["title"] for s in self._safeguards(output)] == titles
+
+    def test_long_element_text_is_written_as_given(self, tmp_path, cis_config_path):
+        style = tmp_path / "style.yaml"
+        style.write_text(
+            f"extends: {cis_config_path}\nmetadata:\n  style_name: child\n"
+            "field_mappings:\n  cis_controls_metadata:\n    metadata_spec:\n"
+            "      group_element:\n        item_element:\n          children:\n"
+            '            - element: note\n              content: "{item.title}"\n'
+        )
+        title = "Long <text> & more " + "y" * 5000
+        exporter = XCCDFExporter(style="cis")
+        exporter.engine = MappingEngine(style)
+        exporter.config = exporter.engine.config
+        output = tmp_path / "cis.xml"
+
+        exporter.export(benchmark(recommendation(control(8, "4.8", title))), str(output))
+
+        root = etree.parse(str(output)).getroot()
+        assert [e.text for e in root.iter(f"{{{CONTROLS}}}note")] == [title]
+
+    def test_two_exports_from_one_exporter_are_identical(self, tmp_path):
+        exporter = XCCDFExporter(style="cis")
+        bench = benchmark(recommendation(control(8, "4.8", "t"), control(7, "9.2", "u")))
+        first, second = tmp_path / "first.xml", tmp_path / "second.xml"
+
+        exporter.export(bench, str(first))
+        exporter.export(bench, str(second))
+
+        assert first.read_bytes() == second.read_bytes()
+
+    def test_a_rule_without_data_gets_no_metadata_element_when_empty_is_not_allowed(
+        self, tmp_path, cis_config_path
+    ):
+        style = tmp_path / "style.yaml"
+        style.write_text(
+            f"extends: {cis_config_path}\nmetadata:\n  style_name: child\n"
+            "field_mappings:\n  cis_controls_metadata:\n    metadata_spec:\n"
+            "      allow_empty: false\n"
+        )
+
+        rule = MappingEngine(style).map_rule(
+            recommendation(), {"benchmark": None, "recommendations": []}
+        )
+
+        assert rule.metadata == []
+
+    def test_a_value_xsdata_would_rewrite_stops_the_export_before_the_file_is_written(
+        self, tmp_path
+    ):
+        output = tmp_path / "cis.xml"
+        rec = recommendation(control(8, "4.8", "{http://www.w3.org/2001/XMLSchema}string"))
+
+        with pytest.raises(ValueError, match="title"):
+            XCCDFExporter(style="cis").export(benchmark(rec), str(output))
+
+        assert not output.exists()

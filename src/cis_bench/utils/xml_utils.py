@@ -6,7 +6,6 @@ style declares); nothing renames elements or rewrites namespace declarations aft
 
 import logging
 import re
-from gettext import ngettext
 
 from lxml import etree
 
@@ -33,46 +32,25 @@ class XCCDFSerializer:
     """XCCDF XML serialization utilities."""
 
     @staticmethod
-    def serialize_to_string(
-        xccdf_obj,
-        ns_map: dict[str | None, str] | None = None,
-        pretty: bool = True,
-        indent: str = "  ",
-    ) -> str:
-        """Serialize xsdata XCCDF object to XML string.
+    def serialize_to_tree(xccdf_obj, ns_map: dict[str | None, str] | None = None) -> etree._Element:
+        """Render an xsdata XCCDF object to an lxml element tree (xsdata's TreeSerializer).
+
+        The export works on this tree and writes it once (tree_to_string); no step parses
+        text the export itself wrote.
 
         Args:
             xccdf_obj: xsdata XCCDF object (Benchmark, Rule, etc.)
             ns_map: Prefix -> namespace URI the document declares on its root (None for the
                 default namespace); xsdata names every element and xsi:type value with these
                 prefixes and makes up one only for a namespace the map does not hold
-            pretty: Enable pretty printing
-            indent: Indentation string (default: 2 spaces)
 
         Returns:
-            XML string
-
-        Note:
-            Uses xsdata's XmlSerializer with proper configuration.
+            The root element
         """
-        from xsdata.formats.dataclass.serializers import XmlSerializer
-        from xsdata.formats.dataclass.serializers.config import SerializerConfig
+        from xsdata.formats.dataclass.serializers.tree import TreeSerializer
 
-        logger.debug(f"Serializing {type(xccdf_obj).__name__} to XML")
-
-        # Use 'indent' instead of deprecated 'pretty_print'
-        config = SerializerConfig(indent=indent if pretty else None, xml_declaration=True)
-        serializer = XmlSerializer(config=config)
-        result = serializer.render(xccdf_obj, ns_map=ns_map)
-
-        logger.debug(
-            ngettext(
-                "Serialization complete: {count} char",
-                "Serialization complete: {count} chars",
-                len(result),
-            ).format(count=len(result))
-        )
-        return result
+        logger.debug(f"Rendering {type(xccdf_obj).__name__} to an XML tree")
+        return TreeSerializer().render(xccdf_obj, ns_map=ns_map).getroot()
 
     @staticmethod
     def tree_to_string(tree: etree.Element, pretty: bool = True) -> str:
@@ -86,7 +64,7 @@ class XCCDFSerializer:
             XML string with declaration
 
         Note:
-            Used for post-processed XML (after metadata injection and attribute removal).
+            Writes the exported tree once, after post-processing.
         """
         xml_bytes: bytes = etree.tostring(
             tree, pretty_print=pretty, xml_declaration=True, encoding="UTF-8"
@@ -95,26 +73,22 @@ class XCCDFSerializer:
 
 
 class XCCDFPostProcessor:
-    """The post-processing that remains after serialization, driven by the style's
+    """The post-processing that remains after rendering, driven by the style's
     post_processing settings. It changes attributes only; namespaces are the serializer's."""
 
     @staticmethod
-    def process(xml_string: str, post_processing_config: dict | None = None) -> str:
-        """Apply the style's post-processing to a serialized XCCDF document.
+    def process(root: etree._Element, post_processing_config: dict | None = None) -> None:
+        """Apply the style's post-processing to the rendered tree, in place.
 
         Args:
-            xml_string: XML as the serializer wrote it (after any handlers)
+            root: The root of the tree as xsdata rendered it
             post_processing_config: The style's post_processing settings
                 - remove_override_attr: bool (default: True)
-
-        Returns:
-            Fully processed XML ready for output
         """
         config = post_processing_config or {}
-        root = etree.fromstring(xml_string.encode("utf-8"))
-
         if config.get("remove_override_attr", True):
-            for element in root.iter("*"):
+            # override is an XCCDF attribute: only the document's own XCCDF elements lose it,
+            # never content of another namespace (a Rule's metadata)
+            xccdf_namespace = etree.QName(root).namespace or ""
+            for element in root.iter(f"{{{xccdf_namespace}}}*"):
                 element.attrib.pop("override", None)
-
-        return XCCDFSerializer.tree_to_string(root)

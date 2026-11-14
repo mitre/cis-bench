@@ -159,12 +159,6 @@ rule_elements:
     xccdf_type: "CheckType"
     source: "audit"
 
-  metadata:
-    xccdf_type: "MetadataType"
-
-  cis_controls_metadata:
-    xccdf_type: "MetadataType"
-
   cis_controls_ident:
     xccdf_type: "IdentType"
 
@@ -268,10 +262,8 @@ field_mappings:
     target_element: "metadata"
     structure: "metadata_from_config"
     source_field: "cis_controls"
-    requires_post_processing: true  # lxml elements injected after serialization
     metadata_spec:
       root_element: "cis_controls"
-      namespace: "http://cisecurity.org/controls"
       namespace_prefix: "controls"
       allow_empty: true
       group_by: "item.version"
@@ -364,7 +356,3 @@ validation:
 post_processing:
   # Remove 'override' attributes (xsdata artifact)
   remove_override_attr: true
-
-  # Handlers to run (includes metadata injection for CIS Controls)
-  handlers:
-    - metadata_injection

@@ -89,14 +89,12 @@ field_name:
   target_element: "metadata"
   structure: "metadata_from_config"
   source_field: "cis_controls"
-  requires_post_processing: true  # lxml elements injected after xsdata serialization
   metadata_spec:
     root_element: "cis_controls"
-    namespace: "http://cisecurity.org/controls"
-    namespace_prefix: "controls"
+    namespace_prefix: "controls"  # declared in benchmark.namespaces; not the XCCDF namespace
     allow_empty: true  # Generate empty element if no data
 
-    # Grouping (optional)
+    # Grouping (required: items are written inside group elements)
     group_by: "item.version"  # Group items by this field
 
     group_element:
@@ -151,10 +149,11 @@ field_name:
 
 **Implementation:**
 
-- `MappingEngine.generate_metadata_from_config()`
-- `MappingEngine._build_config_item()`
-- `MappingEngine._build_config_child()`
-- `XCCDFUnifiedExporter._inject_metadata_from_config()`
+- `MappingEngine.generate_metadata_from_config()` builds xsdata `AnyElement` content, held
+  by a `MetadataType` on `Rule.metadata`; the serializer writes it in schema order
+- `MappingEngine._build_config_element()`
+- `MappingEngine._refuse_unwritable_metadata_mappings()` checks the mapping when the style
+  loads ([XCCDF mapping design](../design/xccdf-mapping-design.md#checked-when-the-style-loads))
 
 ### 3. generate_profiles_from_rules - Profile Generation
 

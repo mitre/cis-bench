@@ -279,7 +279,7 @@ class TestCreateBenchmark:
 
 
 class TestPostProcessing:
-    """Tests for _apply_post_processing method."""
+    """The style's post_processing settings, as the loaded config gives them."""
 
     def test_the_root_declares_the_namespaces_of_the_loaded_config(
         self, tmp_path, minimal_benchmark
@@ -293,20 +293,16 @@ class TestPostProcessing:
         assert etree.parse(str(output_file)).getroot().nsmap.get("ex") == "urn:example"
 
     def test_post_processing_follows_the_loaded_config(self, tmp_path, sample_benchmark):
-        def controls_metadata(exporter):
+        def override_attributes(exporter):
             output_file = tmp_path / "out.xml"
             exporter.export(sample_benchmark, str(output_file))
-            return (
-                etree.parse(str(output_file))
-                .getroot()
-                .xpath("//*[namespace-uri()='http://cisecurity.org/controls']")
-            )
+            return etree.parse(str(output_file)).getroot().xpath("//@override")
 
-        without_injection = XCCDFExporter(style="cis")
-        without_injection.config.post_processing["handlers"] = []
+        keeping_overrides = XCCDFExporter(style="cis")
+        keeping_overrides.config.post_processing["remove_override_attr"] = False
 
-        assert controls_metadata(XCCDFExporter(style="cis"))
-        assert controls_metadata(without_injection) == []
+        assert override_attributes(XCCDFExporter(style="cis")) == []
+        assert override_attributes(keeping_overrides)
 
 
 XCCDF_1_1 = "http://checklists.nist.gov/xccdf/1.1"
@@ -322,8 +318,8 @@ def _declared(exporter: XCCDFExporter) -> dict[str | None, str]:
 
 
 def _rendered_root(exporter: XCCDFExporter, benchmark: Benchmark):
-    """The root of the document xsdata writes, before any post-processing."""
-    return etree.fromstring(exporter._render(exporter._create_benchmark(benchmark)).encode())
+    """The root of the tree xsdata renders, before any post-processing."""
+    return exporter._render(exporter._create_benchmark(benchmark))
 
 
 class TestRendering:
@@ -352,7 +348,7 @@ class TestRendering:
         assert root.prefix == "xccdf"
         assert root.nsmap == {"xccdf": XCCDF_1_1, "dc": DUBLIN_CORE}
 
-    def test_metadata_is_injected_in_the_xccdf_namespace_when_it_is_declared_with_a_prefix(
+    def test_rule_metadata_is_in_the_xccdf_namespace_when_it_is_declared_with_a_prefix(
         self, sample_benchmark, tmp_path
     ):
         from cis_bench.validators.xccdf_schema import validate_xccdf
@@ -388,7 +384,6 @@ class TestRendering:
         self, style, sample_benchmark, tmp_path
     ):
         exporter = XCCDFExporter(style=style)
-        exporter.config.post_processing["handlers"] = []
         rendered = _rendered_root(exporter, sample_benchmark)
         output_file = tmp_path / "out.xml"
 
@@ -400,7 +395,7 @@ class TestRendering:
 
     @pytest.mark.parametrize("style", ["disa", "cis"])
     def test_only_the_root_declares_namespaces(self, style, sample_benchmark, tmp_path):
-        # Injected metadata uses the prefixes the root declares; nothing below it adds one.
+        # Metadata uses the prefixes the root declares; nothing below it adds one.
         exporter = XCCDFExporter(style=style)
         output_file = tmp_path / "out.xml"
 
@@ -409,95 +404,6 @@ class TestRendering:
 
         assert root.nsmap == _declared(exporter)
         assert [e.tag for e in root.iter("*") if e.nsmap != root.nsmap] == []
-
-
-# ============================================================================
-# Test: Metadata Injection
-# ============================================================================
-
-
-class TestMetadataInjection:
-    """Tests for _inject_metadata_from_config method."""
-
-    def test_inject_metadata_no_elements(self, minimal_benchmark):
-        """Should return unchanged XML when no metadata elements."""
-        exporter = XCCDFExporter(style="cis")
-
-        test_xml = '<?xml version="1.0"?><Benchmark><Rule id="test"/></Benchmark>'
-
-        # Ensure no metadata stored
-        if hasattr(exporter.engine, "_metadata_for_post_processing"):
-            delattr(exporter.engine, "_metadata_for_post_processing")
-
-        result = exporter._inject_metadata_from_config(test_xml)
-
-        # Should return unchanged (minus formatting differences)
-        assert "Rule" in result
-
-    def test_inject_metadata_with_elements(self, minimal_benchmark):
-        """Should inject metadata elements into rules."""
-        from lxml import etree
-
-        exporter = XCCDFExporter(style="cis")
-
-        # Create a simple metadata element to inject
-        metadata_elem = etree.Element("test-metadata")
-        metadata_elem.text = "Test content"
-
-        # Store metadata for injection
-        exporter.engine._metadata_for_post_processing = [metadata_elem]
-
-        test_xml = '<?xml version="1.0"?><Benchmark xmlns="http://checklists.nist.gov/xccdf/1.2"><Rule id="test"/></Benchmark>'
-
-        result = exporter._inject_metadata_from_config(test_xml)
-
-        # Should have injected metadata
-        assert "metadata" in result.lower() or "test-metadata" in result
-
-    def test_inject_metadata_respects_rule_count(self, minimal_benchmark):
-        """Should not inject more metadata than rules exist."""
-        from lxml import etree
-
-        exporter = XCCDFExporter(style="cis")
-
-        # Create multiple metadata elements (more than rules)
-        metadata_elems = [etree.Element(f"meta-{i}") for i in range(5)]
-        exporter.engine._metadata_for_post_processing = metadata_elems
-
-        # XML with only 2 rules
-        test_xml = """<?xml version="1.0"?>
-        <Benchmark xmlns="http://checklists.nist.gov/xccdf/1.2">
-            <Rule id="rule1"/>
-            <Rule id="rule2"/>
-        </Benchmark>"""
-
-        result = exporter._inject_metadata_from_config(test_xml)
-
-        # Should still produce valid XML
-        root = etree.fromstring(result.encode("utf-8"))
-        assert root is not None
-
-    def test_inject_metadata_handles_missing_namespace(self, minimal_benchmark):
-        """Should handle case where root has no namespace map."""
-        from lxml import etree
-
-        exporter = XCCDFExporter(style="cis")
-
-        metadata_elem = etree.Element("test-metadata")
-        exporter.engine._metadata_for_post_processing = [metadata_elem]
-
-        # XML without namespace
-        test_xml = '<?xml version="1.0"?><Benchmark><Rule id="test"/></Benchmark>'
-
-        result = exporter._inject_metadata_from_config(test_xml)
-
-        # Should still work - creates metadata without namespace prefix
-        assert "metadata" in result.lower()
-
-
-# ============================================================================
-# Test: CIS Controls Ident URIs
-# ============================================================================
 
 
 # ============================================================================
@@ -572,69 +478,6 @@ class TestEdgeCases:
 # ============================================================================
 
 
-class TestApplyPostProcessingAdditional:
-    """Additional tests for _apply_post_processing to cover edge cases."""
-
-    def test_post_processing_with_xccdf_key_namespace(self, minimal_benchmark):
-        """Should handle config with 'xccdf' key for namespace (line 177)."""
-        exporter = XCCDFExporter(style="disa")
-
-        # Create minimal XML to process
-        test_xml = '<?xml version="1.0"?><Benchmark xmlns="http://checklists.nist.gov/xccdf/1.1" id="test"/>'
-
-        # A config naming the XCCDF namespace "xccdf" instead of "default"
-        exporter.config.benchmark["namespaces"] = {"xccdf": "http://checklists.nist.gov/xccdf/1.1"}
-        exporter.config.post_processing = {"handlers": []}
-
-        # Should use xccdf key namespace and not raise
-        result = exporter._apply_post_processing(test_xml, minimal_benchmark)
-        assert result is not None
-
-    def test_post_processing_unknown_handler_logs_warning(self, minimal_benchmark, caplog):
-        """Should log warning for unknown handler (line 197)."""
-        import logging
-
-        exporter = XCCDFExporter(style="disa")
-
-        test_xml = '<?xml version="1.0"?><Benchmark xmlns="http://checklists.nist.gov/xccdf/1.1" id="test"/>'
-
-        exporter.config.post_processing = {"handlers": ["unknown_handler_xyz"]}
-
-        with caplog.at_level(logging.WARNING):
-            exporter._apply_post_processing(test_xml, minimal_benchmark)
-
-        assert "Unknown post-processing handler" in caplog.text
-
-
-class TestMetadataInjectionAdditional:
-    """Additional tests for _inject_metadata_from_config edge cases."""
-
-    def test_inject_metadata_more_rules_than_metadata(self):
-        """Should break when metadata elements < rules (line 249)."""
-        from lxml import etree
-
-        exporter = XCCDFExporter(style="cis")
-
-        # Create only 1 metadata element
-        metadata_elem = etree.Element("test-metadata")
-        metadata_elem.text = "Test"
-        exporter.engine._metadata_for_post_processing = [metadata_elem]
-
-        # XML with 3 rules
-        test_xml = """<?xml version="1.0"?>
-        <Benchmark xmlns="http://checklists.nist.gov/xccdf/1.2">
-            <Rule id="rule1"/>
-            <Rule id="rule2"/>
-            <Rule id="rule3"/>
-        </Benchmark>"""
-
-        result = exporter._inject_metadata_from_config(test_xml)
-
-        # Should produce valid XML - only first rule gets metadata
-        root = etree.fromstring(result.encode("utf-8"))
-        assert root is not None
-
-
 class TestFormatNameEdgeCases:
     """Tests for format_name with different style names."""
 
@@ -688,7 +531,7 @@ class TestFactoryRegistration:
 
 
 # ============================================================================
-# Test: Duplicate Rule IDs and schema-ordered metadata insertion
+# Test: Duplicate Rule IDs
 # ============================================================================
 
 
@@ -744,65 +587,6 @@ class TestDuplicateRuleIds:
         output = tmp_path / "ok.xml"
         XCCDFExporter(style="cis").export(benchmark, str(output))
         assert output.exists()
-
-
-class TestMetadataInsertionFollowsSchemaOrder:
-    """Metadata is placed where the XCCDF schema of the style's version puts it."""
-
-    def test_metadata_goes_after_the_last_item_element_present(self):
-        """XCCDF 1.2 Rule: ...reference, metadata, rationale, platform, ..., signature.
-
-        Order from src/cis_bench/schemas/xccdf/1.2/xccdf_1.2.xsd itemType -> selectableItemType -> ruleType.
-        """
-        from lxml import etree
-
-        exporter = XCCDFExporter(style="cis")
-        exporter.engine._metadata_for_post_processing = [etree.Element("extra")]
-        exporter._rule_metadata_by_id = {"r": [etree.Element("extra")]}
-        xml = (
-            '<Benchmark xmlns="http://checklists.nist.gov/xccdf/1.2">'
-            '<Rule id="r"><title/><description/><reference/><rationale/><fixtext/><check/></Rule>'
-            "</Benchmark>"
-        )
-
-        root = etree.fromstring(exporter._inject_metadata_from_config(xml).encode())
-        children = [etree.QName(c).localname for c in root[0]]
-        assert children == [
-            "title",
-            "description",
-            "reference",
-            "metadata",
-            "rationale",
-            "fixtext",
-            "check",
-        ]
-
-    def test_metadata_is_appended_when_no_later_element_is_present(self):
-        from lxml import etree
-
-        exporter = XCCDFExporter(style="cis")
-        exporter._rule_metadata_by_id = {"r": [etree.Element("extra")]}
-        xml = (
-            '<Benchmark xmlns="http://checklists.nist.gov/xccdf/1.2">'
-            '<Rule id="r"><title/><description/></Rule></Benchmark>'
-        )
-
-        root = etree.fromstring(exporter._inject_metadata_from_config(xml).encode())
-        assert [etree.QName(c).localname for c in root[0]] == ["title", "description", "metadata"]
-
-    def test_injection_is_refused_for_a_version_whose_rule_has_no_metadata(self):
-        """XCCDF 1.1.4 Rules carry no metadata element (src/cis_bench/schemas/xccdf/1.1/xccdf-schema.xsd itemType, 717-745).
-
-        Enabling the handler on such a style is a configuration error whether or
-        not anything happens to be queued for injection.
-        """
-        from cis_bench.exceptions import ExportError
-
-        exporter = XCCDFExporter(style="disa")
-        xml = '<Benchmark xmlns="http://checklists.nist.gov/xccdf/1.1"><Rule id="r"><title/></Rule></Benchmark>'
-
-        with pytest.raises(ExportError, match="1.1.4"):
-            exporter._inject_metadata_from_config(xml)
 
 
 # ============================================================================

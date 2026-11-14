@@ -32,7 +32,3 @@ validation:
 post_processing:
   # Whether to remove 'override' attributes (xsdata artifact)
   remove_override_attr: true
-
-  # Post-processing handlers to run (in order)
-  # Available: metadata_injection
-  handlers: []
