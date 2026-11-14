@@ -177,7 +177,6 @@ title:
 target_element: "title" # XCCDF element name
 source_field: "title" # Pydantic model field
 transform: "none" # Transformation to apply; the text is Markdown, written as it is
-xccdf_type: "TextType" # xsdata type (optional)
 ```
 
 **Example:**
@@ -508,7 +507,6 @@ target_element: "default"
 source_field: "default_value"
 transform: "none"
 optional: true # Only include if field has value
-xccdf_type: "TextType"
 ```
 
 ### Step 4: Test the Change
@@ -820,7 +818,6 @@ source_field: "remediation" # Source from Pydantic
 transform: "none" # 3. The stored Markdown, as it is
 attributes: # 2. Dynamic attribute
 fixref: "F-{ref_normalized}"
-xccdf_type: "FixTextType" # 4. xsdata type
 ```
 
 ### MappingEngine Process
@@ -898,11 +895,11 @@ KeyError: 'custom_field'
 ```
 **Fix:** Add field to Pydantic model or use `optional: true` in config
 
-**Issue: "Invalid xsdata type"**
+**Issue: "has no ... element in Rule"**
 ```
-TypeError: Rule.title expects TextType, got str
+ValueError: field_mappings.extra: XCCDF 1.1.4 has no 'no_such_element' element in Rule
 ```
-**Fix:** Check `xccdf_type` in config matches xsdata model
+**Fix:** Set `target_element` to an element the XCCDF version's Rule has. An element's type is the one the generated XCCDF model gives it (`MappingEngine.element_type`); a style declares none, and `xccdf_type` or a `rule_elements` section is refused when the style loads.
 
 **Issue: "CCI lookup returns no results"**
 ```
@@ -1026,11 +1023,8 @@ class Rule:
 title: TextWithSubType # Not TextType!
 ```
 
-```yaml
-# Config must match
-title:
-xccdf_type: "TextWithSubType" # Matches
-```
+The engine reads that type from the model (`MappingEngine.element_type("Rule", "title")`);
+a style does not repeat it.
 
 ---
 
@@ -1080,13 +1074,11 @@ title:
 target_element: "title"
 source_field: "title"
 transform: "none"
-xccdf_type: "TextType"
 
 description:
 target_element: "description"
 source_field: "description"
 transform: "none"
-xccdf_type: "HtmlTextWithSubType"
 
 check:
 target_element: "check"

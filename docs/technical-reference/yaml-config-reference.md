@@ -298,8 +298,7 @@ looked up: v7 reuses the same numbers for unrelated safeguards. A rule with no c
 that version gets `fallback_cci`. Without the key, every control is looked up.
 
 The NIST controls no CCI on the rule covers are written as references by a field with
-`source_logic: "nist_after_cci_deduplication"` (the DISA style's `reference`, listed in its
-`rule_elements`); each reference carries the `dc_elements` the field names (`dc:title`
+`source_logic: "nist_after_cci_deduplication"` (the DISA style's `reference`); each reference carries the `dc_elements` the field names (`dc:title`
 "NIST SP 800-53" and `dc:identifier`). A `dublin_core` field with any other `source_logic`
 stops the export with an error. The CCI lookup runs once per rule for both.
 
@@ -313,8 +312,7 @@ applies to the Benchmark's own `reference` (`benchmark.reference.dc_elements`).
 ### Rule Metadata (metadata_from_config)
 
 A Rule's `<metadata>` content, built as xsdata model content in the namespace the style
-declares for `namespace_prefix` (no `rule_elements` entry is needed: the type comes from the
-XCCDF model):
+declares for `namespace_prefix` (the type that holds it comes from the XCCDF model):
 
 ```yaml
 cis_controls_metadata:

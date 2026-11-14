@@ -76,7 +76,6 @@ class MappingConfig:
     field_mappings: dict[str, Any] = field(default_factory=dict)
     cci_deduplication: dict[str, Any] = field(default_factory=dict)
     # Specification of each Rule and Group element and its xsdata type
-    rule_elements: dict[str, Any] = field(default_factory=dict)
     group_elements: dict[str, Any] = field(default_factory=dict)
     validation: dict[str, Any] | None = None
     # How the serialized XML is finished (remove_override_attr)
@@ -212,6 +211,7 @@ class ConfigLoader:
     # Where a setting a style might put in an unread section is actually read.
     _UNREAD_SECTION_HINTS: Final[dict[str, str]] = {
         "namespaces": "declare namespaces in benchmark.namespaces",
+        "rule_elements": "an element's type comes from the XCCDF model; a style declares none",
         "transformations": "a mapping names a transform registered in TransformRegistry; "
         "a style declares none",
     }
@@ -569,8 +569,7 @@ class MappingEngine:
         xccdf_version = self.config.metadata.get("xccdf_version", "1.2")
         self._load_xccdf_models(xccdf_version)
 
-        # Pre-load all types specified in config (stable code, config-driven types)
-        self._load_types_from_config()
+        self._refuse_unwritable_elements()
         self._refuse_unwritable_metadata_mappings()
 
     # Structures whose source_field is read as a dotted path (_get_nested_field); every
@@ -801,15 +800,6 @@ class MappingEngine:
         self.xccdf_version = version
         self._xml_context = XmlContext()
 
-    def rule_element(self, target: str) -> XmlVar | None:
-        """The XCCDF model's description of the Rule element field `target` (its type, whether
-        it repeats), read from the xsdata model of this style's XCCDF version; None when Rule
-        has no such element."""
-        for var in self._xml_context.build(self.get_xccdf_class("Rule")).get_all_vars():
-            if var.name == target and var.is_element:
-                return var
-        return None
-
     def get_xccdf_class(self, class_name: str):
         """Get XCCDF class by name (version-agnostic).
 
@@ -820,6 +810,73 @@ class MappingEngine:
             Class from appropriate XCCDF module
         """
         return getattr(self.xccdf_models, class_name)
+
+    def model_element(self, parent: str, target: str) -> XmlVar | None:
+        """The XCCDF model's description of the element field `target` of Rule, Group or
+        Benchmark (its type, whether it repeats), read from the xsdata model of this style's
+        XCCDF version; None when the parent has no such element."""
+        for var in self._xml_context.build(self.get_xccdf_class(parent)).get_all_vars():
+            if var.name == target and var.is_element:
+                return var
+        return None
+
+    def element_type(self, parent: str, target: str) -> type:
+        """The type the XCCDF model gives the element field `target` of Rule, Group or
+        Benchmark. The schema is the one source of element types; a style declares none.
+
+        Raises:
+            ValueError: The parent has no such element in this XCCDF version, or the element
+                holds a plain value, not an element type.
+        """
+        element = self.model_element(parent, target)
+        if element is None:
+            raise ValueError(f"XCCDF {self.xccdf_version} has no {target!r} element in {parent}")
+        if len(element.types) != 1 or not is_dataclass(element.types[0]):
+            raise ValueError(
+                f"the {target!r} element of an XCCDF {self.xccdf_version} {parent} holds a "
+                "plain value, not an element type a mapping can fill"
+            )
+        return element.types[0]
+
+    def _repeats(self, parent: str, target: str) -> bool:
+        """Whether the XCCDF model lets `parent` hold more than one `target` element."""
+        element = self.model_element(parent, target)
+        return element is not None and element.list_element
+
+    def _refuse_unwritable_elements(self) -> None:
+        """Refuse a style that declares an element type or maps to an element the XCCDF
+        version does not have, so no mapping is skipped without a word at export.
+
+        Raises:
+            ValueError: An xccdf_type is set (group_elements, benchmark elements); a field
+                mapping's target is no element of Rule; a group_elements name is no element
+                of Group; a benchmark element with a source is no element of Benchmark.
+        """
+        targets: list[tuple[str, str, str]] = []
+        for name, mapping in self.config.field_mappings.items():
+            if isinstance(mapping, dict):
+                targets.append(
+                    (f"field_mappings.{name}", "Rule", mapping.get("target_element", name))
+                )
+        for section, parent, elements in (
+            ("group_elements", "Group", self.config.group_elements),
+            ("benchmark", "Benchmark", self.config.benchmark),
+        ):
+            for name, element in elements.items():
+                if not isinstance(element, dict):
+                    continue
+                if "xccdf_type" in element:
+                    raise ValueError(
+                        f"{section}.{name}.xccdf_type is no longer read: an element's type "
+                        "comes from the XCCDF model"
+                    )
+                if section == "group_elements" or "source" in element:
+                    targets.append((f"{section}.{name}", parent, name))
+        for where, parent, target in targets:
+            try:
+                self.element_type(parent, target)
+            except ValueError as error:
+                raise ValueError(f"{where}: {error}") from error
 
     def normalize_ref(self, ref: str) -> str:
         """Normalize CIS ref for IDs (3.1.1 → 3_1_1)."""
@@ -970,8 +1027,7 @@ class MappingEngine:
         raw_attrs = notice_config.get("attributes")
         attributes = raw_attrs if isinstance(raw_attrs, dict) else {}
 
-        type_name = notice_config.get("xccdf_type", "NoticeType")
-        NoticeType = self.get_xccdf_class(type_name)
+        NoticeType = self.element_type("Benchmark", "notice")
 
         substitution_context = {"benchmark": benchmark}
 
@@ -1003,21 +1059,17 @@ class MappingEngine:
     def create_front_matter(self, benchmark: Benchmark):
         """Create front-matter element from config (version-agnostic).
 
-        Type specified in config (handles 1.1.4 vs 1.2 differences).
+        Its type is the one the XCCDF model of the style's version gives the element.
         """
-        front_config = self.config.benchmark.get("front_matter", {})
-        type_name = front_config.get("xccdf_type", "HtmlTextType")
-        FrontMatterType = self.get_xccdf_class(type_name)
+        FrontMatterType = self.element_type("Benchmark", "front_matter")
         return FrontMatterType(content=[])
 
     def create_rear_matter(self, benchmark: Benchmark):
         """Create rear-matter element from config (version-agnostic).
 
-        Type specified in config (handles 1.1.4 vs 1.2 differences).
+        Its type is the one the XCCDF model of the style's version gives the element.
         """
-        rear_config = self.config.benchmark.get("rear_matter", {})
-        type_name = rear_config.get("xccdf_type", "HtmlTextType")
-        RearMatterType = self.get_xccdf_class(type_name)
+        RearMatterType = self.element_type("Benchmark", "rear_matter")
         return RearMatterType(content=[])
 
     def dublin_core_elements(
@@ -1096,39 +1148,6 @@ class MappingEngine:
     #   - create_benchmark() → map_benchmark()
     # These methods hard-coded field lists. New methods loop through config.
 
-    def _load_types_from_config(self):
-        """Pre-load all XCCDF types specified in config.
-
-        Loads xsdata type classes for each element specification.
-        Code is stable - all type changes happen in YAML.
-
-        Hierarchy:
-          Benchmark → Group → Rule → Elements (title, description, etc.)
-
-        Each element needs an xsdata type class (e.g., TextWithSubType).
-        """
-        self.rule_element_types = {}
-        self.group_element_types = {}
-        self.benchmark_element_types = {}
-
-        # Load Rule element types (from rule_elements section)
-        for element_name, element_config in self.config.rule_elements.items():
-            type_name = element_config.get("xccdf_type")
-            if type_name:
-                self.rule_element_types[element_name] = self.get_xccdf_class(type_name)
-
-        # Load Group element types (from group_elements section)
-        for element_name, element_config in self.config.group_elements.items():
-            type_name = element_config.get("xccdf_type")
-            if type_name:
-                self.group_element_types[element_name] = self.get_xccdf_class(type_name)
-
-        # Load Benchmark element types
-        for element_name, element_config in self.config.benchmark.items():
-            if isinstance(element_config, dict) and "xccdf_type" in element_config:
-                type_name = element_config["xccdf_type"]
-                self.benchmark_element_types[element_name] = self.get_xccdf_class(type_name)
-
     # ===== NEW: Loop-Driven Element Construction (Config-Driven) =====
     # Per MAPPING_ENGINE_DESIGN.md line 759 - Loop through config, don't hard-code fields
 
@@ -1162,34 +1181,6 @@ class MappingEngine:
         else:
             # Fallback: try content
             return ElementType(content=[value])
-
-    def _is_list_field(self, parent_class, field_name: str) -> bool:
-        """Check if a field in parent class expects a list - DRY helper.
-
-        Uses schema introspection instead of hard-coding field names.
-
-        Args:
-            parent_class: xsdata parent class (Rule, Group, Benchmark)
-            field_name: Field name to check
-
-        Returns:
-            True if field expects list, False if single element
-
-        Example:
-            Rule.title → list[TextWithSubType] → True
-            Rule.version → Optional[VersionType] → False
-        """
-        if not hasattr(parent_class, "__dataclass_fields__"):
-            return True  # Default to list
-
-        if field_name not in parent_class.__dataclass_fields__:
-            return True  # Default to list
-
-        field = parent_class.__dataclass_fields__[field_name]
-        type_str = str(field.type)
-
-        # Check if type annotation includes 'list[' or 'List['
-        return "list[" in type_str.lower()
 
     def _element_name_to_type_name(self, element_name: str) -> str:
         """Convert element name to xsdata type class name.
@@ -1406,14 +1397,9 @@ class MappingEngine:
                     )
                 continue
 
-            # Get xsdata type for this element
-            FieldType = self.rule_element_types.get(field_name)
-            if not FieldType:
-                # Element not in rule_elements config - skip
-                continue
-
-            # Get target element name from config
+            # The target element and the type the XCCDF model gives it (checked at load)
             target_element = field_mapping.get("target_element", field_name)
+            FieldType = self.element_type("Rule", target_element)
 
             # Determine construction pattern based on CONFIG, not field name
             attributes_config = field_mapping.get("attributes", {})
@@ -1581,11 +1567,9 @@ class MappingEngine:
                 elem_instance = self._construct_typed_element(FieldType, value)
 
                 if elem_instance:
-                    # Use schema introspection to determine list vs single (DRY helper)
-                    Rule = self.get_xccdf_class("Rule")
-                    is_list = self._is_list_field(Rule, target_element)
-
-                    rule_fields[target_element] = [elem_instance] if is_list else elem_instance
+                    rule_fields[target_element] = (
+                        [elem_instance] if self._repeats("Rule", target_element) else elem_instance
+                    )
 
         # Construct Rule dynamically from config
         return Rule(**rule_fields)
@@ -1616,10 +1600,7 @@ class MappingEngine:
 
         # Loop through group_elements config
         for element_name, element_config in self.config.group_elements.items():
-            # Get type
-            ElementType = self.group_element_types.get(element_name)
-            if not ElementType:
-                continue
+            ElementType = self.element_type("Group", element_name)
 
             # Get source value
             source = element_config.get("source")
@@ -1639,8 +1620,9 @@ class MappingEngine:
             if value:
                 elem_instance = self._construct_typed_element(ElementType, value)
                 if elem_instance:
-                    # Groups: all elements are lists
-                    group_fields[element_name] = [elem_instance]
+                    group_fields[element_name] = (
+                        [elem_instance] if self._repeats("Group", element_name) else elem_instance
+                    )
 
         return Group(**group_fields)
 
@@ -1693,19 +1675,11 @@ class MappingEngine:
             if element_name in ["id_template", "namespaces"]:
                 continue
 
-            # Get xsdata type
-            type_name = element_config.get("xccdf_type")
-            if not type_name:
-                # Special elements (notice, front_matter, etc.) handled below
-                continue
-
-            ElementType = self.benchmark_element_types.get(element_name)
-            if not ElementType:
-                ElementType = self.get_xccdf_class(type_name)
-
-            # Get source value
+            # Elements read from a benchmark field; the others (notice, front_matter,
+            # profiles, reference) are built by their own methods below
             source = element_config.get("source")
             if source:
+                ElementType = self.element_type("Benchmark", element_name)
                 value = getattr(benchmark, source, None)
 
                 # Apply transform
@@ -1722,12 +1696,10 @@ class MappingEngine:
                     elem_instance = self._construct_typed_element(ElementType, transformed)
 
                     if elem_instance:
-                        # Use schema introspection (DRY helper)
-                        XCCDFBenchmark = self.get_xccdf_class("Benchmark")
-                        is_list = self._is_list_field(XCCDFBenchmark, element_name)
-
                         benchmark_fields[element_name] = (
-                            [elem_instance] if is_list else elem_instance
+                            [elem_instance]
+                            if self._repeats("Benchmark", element_name)
+                            else elem_instance
                         )
 
         # Add DISA-required elements (using existing config-driven methods)
@@ -2166,7 +2138,7 @@ class MappingEngine:
             if mapping.get("structure") != "metadata_from_config":
                 continue
             target = mapping.get("target_element", name)
-            element = self.rule_element(target)
+            element = self.model_element("Rule", target)
             if element is None:
                 raise ValueError(
                     f"{where}: XCCDF {self.xccdf_version} Rules have no {target!r} element, so "

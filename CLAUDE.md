@@ -152,7 +152,7 @@ All test data via fixtures in `tests/conftest.py`. NO hardcoded paths.
 ## Code Standards
 
 ### Architecture Compliance
-- Types and mappings MUST be in YAML config, not hard-coded
+- Mappings MUST be in YAML config; element types come from the generated XCCDF models (`MappingEngine.element_type`), never hard-coded and never declared in a style
 - Use `MappingEngine.get_xccdf_class()` instead of direct model imports
 - No version-specific imports (xccdf_1_2, xccdf_v1_1) in exporters
 - If design doc exists, follow it exactly; update design first if wrong

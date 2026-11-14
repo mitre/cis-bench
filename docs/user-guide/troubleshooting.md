@@ -210,15 +210,12 @@ cis-bench catalog update
 - Which style you're using
 - Sample benchmark data
 
-### "HtmlTextType is not derived from HtmlTextWithSubType"
+### "xccdf_type is no longer read" or "rule_elements is not a section the loader reads"
 
-**Cause:** Wrong XCCDF type for element.
+**Cause:** A custom style declares element types. An element's type now comes from the XCCDF
+model of the style's version.
 
-**Check:**
-
-- `rule_elements` section in YAML
-- Using correct type (HtmlTextType vs HtmlTextWithSubType)
-- XCCDF version (1.1.4 vs 1.2)
+**Fix:** Delete the `xccdf_type` keys and the `rule_elements` section from the style.
 
 ---
 

@@ -37,9 +37,3 @@ field_mappings:
     ident_spec:
       system_template: "https://attack.mitre.org/techniques"
       value_template: "{item}"
-
-rule_elements:
-  pci_requirements:
-    xccdf_type: "IdentType"
-  mitre_techniques:
-    xccdf_type: "IdentType"

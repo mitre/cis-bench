@@ -14,12 +14,11 @@ metadata:
     - "Research and analysis tools"
   conventions: "Clean CIS-centric format with separate elements (no embedded XML tags)"
 
-# Group element specifications (xsdata types)
+# Group elements. Neither names a source, so each is written with the engine's
+# placeholder text (an existing behaviour, kept as it is here).
 group_elements:
-  title:
-    xccdf_type: "TextWithSubType"
-  description:
-    xccdf_type: "HtmlTextWithSubType"
+  title: {}
+  description: {}
 
 # Benchmark-level mappings
 benchmark:
@@ -82,29 +81,21 @@ benchmark:
   title:
     source: "title"
     transform: "none"
-    xccdf_type: "TextType"
   description:
     source: "title"  # Use title as description
     transform: "none"
-    xccdf_type: "HtmlTextWithSubType"
   version:
     source: "version"
     transform: "none"
-    xccdf_type: "VersionType"
   notice:
     id: "terms-of-use"
     lang: "en"
-    xccdf_type: "NoticeType"
     content: >-
       This XCCDF file was exported via cis-bench format conversion from
       "{benchmark.title}" ({benchmark.url}). Source benchmark content is
       copyright Center for Internet Security, Inc. (CIS) and subject to the CIS
       WorkBench Terms of Use (https://workbench.cisecurity.org/terms-of-use) and
       applicable CIS license terms.
-  front_matter:
-    xccdf_type: "HtmlTextWithSubType"
-  rear_matter:
-    xccdf_type: "HtmlTextWithSubType"
 
 # Rule-level default attributes
 rule_defaults:
@@ -124,55 +115,6 @@ group_id:
 rule_id:
   template: "xccdf_org.cisecurity.benchmarks_rule_{ref_normalized}"
   description: "CIS Rule ID format (includes CIS ref)"
-
-# Rule element specifications (xsdata types for each Rule element)
-rule_elements:
-  version:
-    xccdf_type: "VersionType"
-    source: "ref"
-
-  title:
-    xccdf_type: "TextWithSubType"
-    source: "title"
-
-  description:
-    xccdf_type: "HtmlTextWithSubType"
-    source: "description"
-
-  rationale:
-    xccdf_type: "HtmlTextWithSubType"
-    source: "rationale"
-
-  warning:
-    xccdf_type: "WarningType"
-    source: "impact"
-
-  reference:
-    xccdf_type: "ReferenceType"
-    multiple: true
-
-  fixtext:
-    xccdf_type: "FixTextType"
-    source: "remediation"
-
-  check:
-    xccdf_type: "CheckType"
-    source: "audit"
-
-  cis_controls_ident:
-    xccdf_type: "IdentType"
-
-  references_ident:
-    xccdf_type: "IdentType"
-
-  mitre_techniques:
-    xccdf_type: "IdentType"
-
-  mitre_tactics:
-    xccdf_type: "IdentType"
-
-  mitre_mitigations:
-    xccdf_type: "IdentType"
 
 # Field mappings - Clean separated structure
 field_mappings:

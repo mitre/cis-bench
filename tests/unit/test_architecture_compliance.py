@@ -40,29 +40,6 @@ class TestArchitectureCompliance:
                         f"  Use engine.get_xccdf_class() instead"
                     )
 
-    def test_types_loaded_from_config(self, disa_config_path):
-        """All XCCDF types must be specified in YAML config, not hard-coded."""
-        from cis_bench.exporters.mapping_engine import ConfigLoader
-
-        config = ConfigLoader.load(disa_config_path)
-
-        # Check rule_elements section exists
-        assert config.rule_elements, "Missing rule_elements in config"
-        assert len(config.rule_elements) > 0, "rule_elements is empty"
-
-        # Check all have xccdf_type specified
-        for element_name, element_spec in config.rule_elements.items():
-            assert "xccdf_type" in element_spec, (
-                f"Element '{element_name}' missing xccdf_type specification"
-            )
-
-        # Check group_elements
-        assert config.group_elements, "Missing group_elements in config"
-        for element_name, element_spec in config.group_elements.items():
-            assert "xccdf_type" in element_spec, (
-                f"Group element '{element_name}' missing xccdf_type specification"
-            )
-
     def test_loop_driven_construction(self, mapping_engine_file):
         """MappingEngine must construct elements by looping config, not listing fields."""
         source = mapping_engine_file.read_text()
@@ -190,8 +167,6 @@ class TestArchitectureCompliance:
         assert hasattr(engine, "_construct_typed_element"), (
             "Missing DRY helper: _construct_typed_element"
         )
-
-        assert hasattr(engine, "_is_list_field"), "Missing DRY helper: _is_list_field"
 
         assert hasattr(engine, "_element_name_to_type_name"), (
             "Missing DRY helper: _element_name_to_type_name"
