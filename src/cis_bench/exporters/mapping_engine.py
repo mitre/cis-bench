@@ -29,7 +29,7 @@ import re
 import string
 import unicodedata
 from collections.abc import Callable
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field, fields, is_dataclass
 from gettext import ngettext
 from pathlib import Path
 from types import ModuleType, UnionType
@@ -39,6 +39,7 @@ import yaml
 from lxml import etree
 from pydantic import BaseModel
 from xsdata.formats.dataclass.context import XmlContext
+from xsdata.formats.dataclass.models.elements import XmlVar
 from xsdata.formats.dataclass.models.generics import AnyElement
 from xsdata.formats.dataclass.serializers.mixins import EventHandler
 
@@ -800,12 +801,13 @@ class MappingEngine:
         self.xccdf_version = version
         self._xml_context = XmlContext()
 
-    def rule_element_type(self, target: str) -> type | None:
-        """The type the XCCDF model gives the Rule element field `target`, read from the
-        xsdata model of this style's XCCDF version; None when Rule has no such element."""
+    def rule_element(self, target: str) -> XmlVar | None:
+        """The XCCDF model's description of the Rule element field `target` (its type, whether
+        it repeats), read from the xsdata model of this style's XCCDF version; None when Rule
+        has no such element."""
         for var in self._xml_context.build(self.get_xccdf_class("Rule")).get_all_vars():
-            if var.name == target and var.is_element and len(var.types) == 1:
-                return var.types[0]
+            if var.name == target and var.is_element:
+                return var
         return None
 
     def get_xccdf_class(self, class_name: str):
@@ -2164,24 +2166,12 @@ class MappingEngine:
             if mapping.get("structure") != "metadata_from_config":
                 continue
             target = mapping.get("target_element", name)
-            holder = self.rule_element_type(target)
-            if holder is None:
+            element = self.rule_element(target)
+            if element is None:
                 raise ValueError(
                     f"{where}: XCCDF {self.xccdf_version} Rules have no {target!r} element, so "
                     f"this metadata mapping cannot be written"
                 )
-            # The content goes in the type's element-only wildcard (text types have a mixed one)
-            wildcards = [
-                var.name
-                for var in self._xml_context.build(holder).get_all_vars()
-                if var.is_wildcard and not var.mixed
-            ]
-            if len(wildcards) != 1:
-                raise ValueError(
-                    f"{where}: the Rule's {target!r} element ({holder.__name__}) does not hold "
-                    "elements of another namespace alone; metadata content goes in metadata"
-                )
-            self._metadata_holders[name] = (target, holder, wildcards[0])
             if not mapping.get("source_field"):
                 raise ValueError(f"{where}: a metadata mapping needs a source_field")
             spec = mapping.get("metadata_spec") or {}
@@ -2209,6 +2199,28 @@ class MappingEngine:
                     "only inside group elements)"
                 )
             self._refuse_unknown_group_field(where, mapping["source_field"], spec["group_by"])
+            # The content goes in the element-only wildcard of the target's type (text types
+            # have a mixed one), which must take elements of the mapping's namespace; the
+            # Rule must be able to repeat the target, one per mapping.
+            holder = element.types[0] if len(element.types) == 1 else None
+            wildcards = (
+                [
+                    var.name
+                    for var in self._xml_context.build(holder).get_all_vars()
+                    if var.is_wildcard
+                    and not var.mixed
+                    and var.match_namespace(f"{{{namespace}}}{spec.get('root_element')}")
+                ]
+                if holder is not None and is_dataclass(holder) and element.list_element
+                else []
+            )
+            if holder is None or len(wildcards) != 1:
+                raise ValueError(
+                    f"field_mappings.{name}: the Rule's {target!r} element cannot hold "
+                    f"repeated elements of the namespace {namespace}; metadata content goes "
+                    "in metadata"
+                )
+            self._metadata_holders[name] = (target, holder, wildcards[0])
             group = spec.get("group_element") or {}
             self._refuse_invalid_metadata_names(
                 where,

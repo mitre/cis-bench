@@ -129,7 +129,8 @@ XCCDF allows only elements from another namespace inside `metadata`
 refuses a style, before any export, when a metadata mapping:
 
 - targets an element the XCCDF version's Rule does not have (any metadata mapping on 1.1.4),
-  or one whose type does not hold elements of another namespace alone (`title`, `ident`)
+  or one that cannot hold repeated elements of the mapping's namespace (`title`, `ident`,
+  `dc_status`, `signature`)
 - has no `source_field`, or no `group_by`, or a `group_by` that is no field of the listed items
 - has no `namespace_prefix`, a prefix `benchmark.namespaces` does not declare, or a prefix
   that resolves to the XCCDF namespace

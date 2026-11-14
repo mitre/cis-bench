@@ -278,17 +278,27 @@ class TestRefusedWhenTheStyleLoads:
         with pytest.raises(ValueError, match=message):
             MappingEngine(style)
 
-    def test_metadata_aimed_at_an_element_that_holds_no_foreign_content_is_refused(
-        self, tmp_path, cis_config_path
+    @pytest.mark.parametrize(
+        "target",
+        [
+            pytest.param("title", id="text content"),
+            pytest.param("impact_metric", id="a plain value"),
+            pytest.param("dc_status", id="elements of one other namespace only"),
+            pytest.param("signature", id="a single element, not a list"),
+        ],
+    )
+    def test_metadata_aimed_at_an_element_that_cannot_hold_it_is_refused(
+        self, tmp_path, cis_config_path, target
     ):
-        # A Rule's title holds text; only metadata holds elements of another namespace.
+        # Only a repeatable Rule element whose type takes elements of the mapping's namespace
+        # can hold the content: in XCCDF 1.2 that is metadata.
         style = self._style(
             tmp_path,
             cis_config_path,
-            "field_mappings:\n  cis_controls_metadata:\n    target_element: title\n",
+            f"field_mappings:\n  cis_controls_metadata:\n    target_element: {target}\n",
         )
 
-        with pytest.raises(ValueError, match="title"):
+        with pytest.raises(ValueError, match=target):
             MappingEngine(style)
 
     def test_the_removed_requires_post_processing_key_is_refused(self, tmp_path, cis_config_path):

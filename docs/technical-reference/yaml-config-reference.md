@@ -49,7 +49,7 @@ algorithm: {...}
 validation: # Validation rules
 require_cci_for_cis_controls: false
 
-post_processing: # After serialization
+post_processing: # On the rendered tree, before it is written
 remove_override_attr: true
 ```
 
@@ -601,7 +601,7 @@ result: "written" # a different enhancement
 
 ## Post-processing Section
 
-What runs after serialization:
+What runs on the rendered tree, before it is written:
 
 ```yaml
 post_processing:
