@@ -473,7 +473,8 @@ src/cis_bench/
 │ ├── benchmark.py # Pydantic models
 │ ├── cis_controls_official.py
 │ ├── enhanced_metadata.py
-│ └── xccdf/ # xsdata generated
+│ ├── xccdf/ # XCCDF 1.2 models, generated from schemas/xccdf_1.2.xsd
+│ └── xccdf_v1_1/ # XCCDF 1.1.4 models, generated from schemas/xccdf-1.1.4.xsd
 ├── utils/ # Utilities
 │ ├── xml_utils.py # XCCDF processing
 │ ├── html_parser.py # HTML table and reference parsers
@@ -483,6 +484,8 @@ src/cis_bench/
 ├── validators/ # XCCDF validators
 └── config.py # Environment config
 ```
+
+The two XCCDF model packages are written by `scripts/generate_xccdf_models.py` (xsdata with `.xsdata.xml`, then ruff) from the schema copies named above, and are never edited by hand. CI checks that the committed packages match the generator's output. See [Regenerating the XCCDF Models](contributing.md#regenerating-the-xccdf-models).
 
 ---
 

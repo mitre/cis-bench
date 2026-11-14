@@ -233,6 +233,7 @@ ignore = [
 "fetch.py" = ["B023"]  # Legacy script - not fixing
 "src/cis_bench/cli/commands/download.py" = ["B023"]  # Loop variable in callback is intentional
 "src/cis_bench/cli/app.py" = ["E402"]  # Imports after function to avoid circular imports with Click
+"scripts/generate_xccdf_models.py" = ["S603"]  # runs xsdata and ruff with fixed argument lists, no user input
 "src/cis_bench/cli/commands/auth.py" = ["S603"]  # subprocess calls secured: URL validated, full paths via shutil.which(), no shell=True
 
 [tool.mypy]
