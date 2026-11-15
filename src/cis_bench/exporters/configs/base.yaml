@@ -10,8 +10,6 @@
 rule_defaults:
   severity: "medium"
   weight: "10.0"
-  selected: "true"
-  role: "full"
 
 # Default ID templates (can be overridden by child configs)
 # Variables available: {ref}, {ref_normalized}, {stig_number}
@@ -20,12 +18,6 @@ rule_id:
 
 group_id:
   template: "xccdf_org.cisecurity_group_{ref_normalized}"
-
-# Common validation rules
-validation:
-  require_cci_for_cis_controls: false
-  require_nist_controls: false
-  max_cci_per_rule: 50
 
 # Post-processing configuration (config-driven, not hardcoded)
 # Each style can override these settings

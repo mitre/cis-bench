@@ -360,7 +360,6 @@ Structure matches YAML file:
 - rule_defaults: Default rule attributes
 - rule_id: ID generation template
 - field_mappings: Core field mapping definitions
-- validation: Validation rules
 """
 
 style_name: str
@@ -374,7 +373,6 @@ rule_id_template: str
 field_mappings: Dict[str, FieldMapping]
 
 cci_lookup: Optional[CCILookupConfig] = None
-validation: Optional[ValidationConfig] = None
 
 class ConfigLoader:
 """Load and validate YAML configuration files."""
@@ -886,7 +884,6 @@ rule = Rule(
 id=rule_id,
 severity=self.config.rule_defaults.get('severity', 'medium'),
 weight=self.config.rule_defaults.get('weight', '10.0'),
-selected=self.config.rule_defaults.get('selected', True)
 )
 
 # 3. Map each field
@@ -1288,7 +1285,6 @@ content: "{nist_control_id}"
 # cis_native_style.yaml
 metadata:
 style_name: "cis_native"
-description: "CIS native XCCDF format"
 xccdf_version: "1.2"
 
 field_mappings:

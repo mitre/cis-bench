@@ -58,15 +58,12 @@ When you add a new XCCDF style:
 Create `src/cis_bench/exporters/configs/pci_dss_style.yaml`:
 
 ```yaml
-# PCI-DSS XCCDF Export Configuration
+# PCI-DSS XCCDF Export Configuration: PCI-DSS compliant XCCDF export
+# Target tools: PCI compliance tools, OpenSCAP
+# (descriptive text goes in comments; a key the exporter does not read is refused)
 metadata:
   style_name: "pci-dss"
-  description: "PCI-DSS compliant XCCDF export"
   xccdf_version: "1.2"  # Use "1.1.4" for DISA/DoD compatibility
-  target_tools:
-
-    - "PCI Compliance Tools"
-    - "OpenSCAP"
 
 # Benchmark-level configuration
 benchmark:
@@ -90,7 +87,6 @@ benchmark:
 rule_defaults:
   severity: "high"  # PCI-DSS is strict by default
   weight: "10.0"
-  selected: "true"
 
 # Field mappings: YAML tells the engine what to do
 field_mappings:

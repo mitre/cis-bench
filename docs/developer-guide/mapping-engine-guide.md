@@ -95,7 +95,6 @@ extends: base_style.yaml
 metadata:
 style_name: "custom"
 xccdf_version: "1.2"
-description: "My custom XCCDF format"
 
 # Benchmark-level settings
 benchmark:
@@ -555,9 +554,7 @@ extends: base_style.yaml
 # Style metadata
 metadata:
 style_name: "minimal"
-description: "Minimal XCCDF with only essential fields"
 xccdf_version: "1.2"
-xccdf_namespace: "http://checklists.nist.gov/xccdf/1.2"
 
 # Benchmark settings
 benchmark:
@@ -664,9 +661,11 @@ wins where both set one; a list or a single value in the child replaces the pare
 So a child adds to or overrides `field_mappings`, `metadata`, `rule_defaults`,
 `benchmark` (including `benchmark.namespaces`) and `post_processing`. The transforms a
 mapping may name are the ones registered in `mapping_engine.py` (`TransformRegistry`),
-not a section of the style; a style that carries a top-level section the loader does not
-read, or a `post_processing` setting the exporter does not read, is refused when it loads,
-with its name.
+not a section of the style. The merged style is checked against one schema
+(`style_config.StyleConfig`): a top-level section, or a key of `metadata`, `rule_defaults`,
+`rule_id`, `group_id`, `cci_deduplication`, `group_elements` or `post_processing`, that the
+exporter does not read is refused when the style loads, and so is a value of the wrong
+kind. Every mistake is listed with the file and the dotted path of the key.
 
 A child can add a namespace but cannot drop one it inherits, and the serializer declares
 every namespace in `benchmark.namespaces` on the root. So namespaces belong to the style

@@ -17,7 +17,6 @@ extends: base_style.yaml
 
 metadata:
   style_name: "pci_dss"
-  description: "PCI-DSS v4.0 compliance export"
   xccdf_version: "1.2"
 
 benchmark:

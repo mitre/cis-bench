@@ -210,7 +210,7 @@ cis-bench catalog update
 - Which style you're using
 - Sample benchmark data
 
-### "xccdf_type is no longer read" or "rule_elements is not a section the loader reads"
+### "xccdf_type is no longer read" or "rule_elements: is not read"
 
 **Cause:** A custom style declares element types. An element's type now comes from the XCCDF
 model of the style's version.

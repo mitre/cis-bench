@@ -12,11 +12,24 @@ This document provides a complete reference for writing MappingEngine YAML confi
 
 ## Configuration Structure
 
+A style is checked against one schema (`StyleConfig` in
+`src/cis_bench/exporters/style_config.py`) when it loads, after its `extends` chain is
+merged. In the sections `metadata`, `rule_defaults`, `rule_id`, `group_id`,
+`cci_deduplication`, `group_elements` and `post_processing`, and at the top level, a key
+the exporter does not read is refused, and so is a value of the wrong kind. The error has
+one line per mistake, each with the file and the dotted path of the key:
+
+```text
+my_style.yaml: rule_defaults.severty: is not a key the exporter reads; the keys here are: severity, weight
+my_style.yaml: cci_deduplication.enabled: Input should be a valid boolean
+```
+
+Descriptive text (what a style is for, which tools read it) goes in YAML comments.
+
 ```yaml
 # Top-level structure
 metadata: # Style metadata
 style_name: "..."
-description: "..."
 xccdf_version: "..."
 
 benchmark: # Benchmark-level mappings
@@ -29,11 +42,15 @@ version: {...}
 rule_defaults: # Default rule attributes
 severity: "..."
 weight: "..."
-selected: "..."
 
 rule_id: # Rule ID generation
 template: "..."
-ref_normalized: "..."
+
+group_id: # Group ID generation
+template: "..."
+
+group_elements: # What each Group element is filled from
+title: {...}
 
 field_mappings: # Field mapping definitions
 field_name:
@@ -44,10 +61,6 @@ transform: "..."
 
 cci_deduplication: # CCI/NIST deduplication config
 enabled: true
-algorithm: {...}
-
-validation: # Validation rules
-require_cci_for_cis_controls: false
 
 post_processing: # On the rendered tree, before it is written
 remove_override_attr: true
@@ -55,19 +68,18 @@ remove_override_attr: true
 
 ## Metadata Section
 
-Describes the export style:
+Names the export style and the XCCDF version it writes:
 
 ```yaml
+# DISA/DoD STIG-compatible XCCDF export
 metadata:
 style_name: "disa" # Unique identifier
-description: "DISA/DoD STIG-compatible XCCDF export"
-xccdf_version: "1.2" # Target XCCDF version
-target_tools: # Compatible tools (optional)
-
-- "DISA SCAP Compliance Checker (SCC)"
-- "OpenSCAP (DoD configurations)"
-conventions: "Follows DISA STIG XML structure" # Notes (optional)
+xccdf_version: "1.1.4" # Target XCCDF version: "1.1.4" or "1.2"
 ```
+
+These are the only keys. `description`, `conventions` and `target_tools` are refused:
+write them as comments. `xccdf_namespace` is refused: the XCCDF namespace is the one bound
+in `benchmark.namespaces`.
 
 ## Benchmark Section
 
@@ -128,10 +140,11 @@ Default attributes applied to all rules:
 ```yaml
 rule_defaults:
 severity: "medium" # CAT II equivalent
-weight: "10.0" # DISA standard
-selected: "true" # Rule enabled by default
-role: "full" # Full rule (not snippet)
+weight: "10.0" # DISA standard; a number, or a number written as text
 ```
+
+These are the only keys. `selected` and `role` are refused: a Rule is written with the
+XCCDF model's default for both.
 
 ## Rule ID Generation
 
@@ -140,10 +153,9 @@ Template for generating rule IDs:
 ```yaml
 rule_id:
 template: "xccdf_org.cisecurity.benchmarks_rule_{ref_normalized}"
-ref_normalized: "replace('.', '_')" # 3.1.1 3_1_1
 ```
 
-The template sees two values made from the recommendation's ref: `{ref_normalized}`
+`template` is the only key of `rule_id` and of `group_id`. The template sees two values made from the recommendation's ref: `{ref_normalized}`
 (`3_1_1`) and `{stig_number}` (`030101`). The same id names the Rule and every Profile
 `select` of it. A template that names any other variable, or gives no id (an empty
 template, or a filter whose result is not text), stops the export with an error.
@@ -564,38 +576,27 @@ source_field: "mitre_mapping.mitigations" # List of mitigations
 
 ## CCI Deduplication Configuration
 
-Complex logic for CCI/NIST deduplication:
+Switches the CCI/NIST deduplication on or off:
 
 ```yaml
 cci_deduplication:
-enabled: true
-algorithm:
-description: "Use CCIs where available, NIST references for extras"
-steps:
-
-- "Extract all CIS Controls from recommendation"
-- "Look up every CCI of each CIS Controls v8 safeguard (extract: all)"
-- "Note the control and enhancement each CCI sits under"
-- "Add CCIs as <ident> elements"
-- "Add every cited NIST control as a <reference>, except one a CCI restates exactly"
-
-matching_rules:
-description: "A CCI restates only the control and enhancement it sits under"
-hierarchical: false # CM-7 (1) (b) does not stand for CM-7 or CM-7(2)
-examples:
-
-- cci_maps_to: "CM-7 (1) (b)"
-cis_cites: "CM-7(1)"
-result: "restated" # same control and enhancement; not written again
-
-- cci_maps_to: "CM-7 (1) (b)"
-cis_cites: "CM-7"
-result: "written" # the base control is a broader requirement
-
-- cci_maps_to: "CM-7 b"
-cis_cites: "CM-7(5)"
-result: "written" # a different enhancement
+enabled: true # true or false, not text
 ```
+
+`enabled` is the only key. The deduplication itself is the exporter's own and no style
+changes it; `algorithm` and `matching_rules` are refused. When it is on:
+
+1. The recommendation's CIS Controls of the mapping file's version are taken.
+2. Every CCI of each safeguard is looked up, primary first, each once.
+3. The CCIs are written as `<ident>` elements.
+4. Every cited NIST control is written as a `<reference>`, except one a CCI restates
+   exactly. A CCI restates only the control and enhancement it sits under:
+
+| The CCI maps to | CIS cites | The cited control is |
+|---|---|---|
+| CM-7 (1) (b) | CM-7(1) | not written again (same control and enhancement) |
+| CM-7 (1) (b) | CM-7 | written (the base control is broader) |
+| CM-7 b | CM-7(5) | written (a different enhancement) |
 
 ## Post-processing Section
 
@@ -611,26 +612,18 @@ This is the only setting; any other key is refused when the style loads. The set
 ones it lists in `benchmark.namespaces`, declared by the serializer. `handlers` is gone too: a
 Rule's metadata is model content (`metadata_from_config`), written by the serializer.
 
-## Validation Section
-
-Validation rules for export:
-
-```yaml
-validation:
-require_cci_for_cis_controls: false # Warn if CCI missing
-require_nist_controls: false # Warn if NIST missing
-max_cci_per_rule: 50 # Sanity check limit
-```
+A style has no `validation` section: nothing checks an export against limits a style
+sets, and the section is refused. `cis-bench validate` checks an exported file against the
+XCCDF schema.
 
 ## Complete Example
 
 Minimal working configuration:
 
 ```yaml
-# minimal_style.yaml
+# minimal_style.yaml: minimal XCCDF export
 metadata:
 style_name: "minimal"
-description: "Minimal XCCDF export"
 xccdf_version: "1.2"
 
 benchmark:
@@ -647,11 +640,9 @@ transform: "none"
 rule_defaults:
 severity: "medium"
 weight: "10.0"
-selected: "true"
 
 rule_id:
 template: "xccdf_org.cisecurity.benchmarks_rule_{ref_normalized}"
-ref_normalized: "replace('.', '_')"
 
 field_mappings:
 title:

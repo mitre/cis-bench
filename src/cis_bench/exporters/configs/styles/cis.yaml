@@ -3,16 +3,13 @@
 # Version: 1.0.0
 # XCCDF Target: 1.2 (clean format optimized for general XCCDF tools)
 
+# CIS Native clean XCCDF export.
+# Conventions: clean CIS-centric format with separate elements (no embedded XML tags).
+# Target tools: OpenSCAP (commercial/non-DoD), generic XCCDF validators, custom compliance
+# tools, research and analysis tools.
 metadata:
   style_name: "cis"
-  description: "CIS Native clean XCCDF export"
   xccdf_version: "1.2"
-  target_tools:
-    - "OpenSCAP (commercial/non-DoD)"
-    - "Generic XCCDF validators"
-    - "Custom compliance tools"
-    - "Research and analysis tools"
-  conventions: "Clean CIS-centric format with separate elements (no embedded XML tags)"
 
 # Group elements. Neither names a source, so each is written with the engine's
 # placeholder text (an existing behaviour, kept as it is here).
@@ -101,20 +98,18 @@ benchmark:
 rule_defaults:
   severity: "medium"  # CIS has no severity concept
   weight: "10.0"
-  selected: "true"
-  role: "full"
 
 # ID Generation - CIS Native Format
 # CIS uses descriptive IDs with organization prefix
 # Variables: {stig_number}, {ref_normalized}
 
+# CIS Group ID format (includes CIS ref)
 group_id:
   template: "xccdf_org.cisecurity.benchmarks_group_{ref_normalized}"
-  description: "CIS Group ID format (includes CIS ref)"
 
+# CIS Rule ID format (includes CIS ref)
 rule_id:
   template: "xccdf_org.cisecurity.benchmarks_rule_{ref_normalized}"
-  description: "CIS Rule ID format (includes CIS ref)"
 
 # Field mappings - Clean separated structure
 field_mappings:
@@ -283,16 +278,10 @@ field_mappings:
       value_template: "{item}"
 
 # CCI Deduplication - DISABLED for CIS native style
+# CIS native style includes ALL NIST controls as direct references: there is no DoD CCI
+# requirement, and direct NIST 800-53 citations are cleaner.
 cci_deduplication:
   enabled: false
-  description: "CIS native style includes ALL NIST controls as direct references"
-  rationale: "No DoD CCI requirement, cleaner to have direct NIST 800-53 citations"
-
-# Validation rules
-validation:
-  require_nist_controls: false
-  require_cis_controls: false
-  max_references_per_rule: 100  # Sanity check
 
 # Post-processing for CIS format
 post_processing:
