@@ -90,7 +90,7 @@ def _declarable_namespaces(value: Any) -> Any:
     problems = [
         InitErrorDetails(
             type=PydanticCustomError("namespace_binding", "{problem}", {"problem": problem}),
-            loc=(prefix if isinstance(prefix, int) else str(prefix),),
+            loc=(str(prefix),),
             input=uri,
         )
         for prefix, uri in value.items()

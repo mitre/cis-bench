@@ -287,6 +287,20 @@ class TestInheritedStyles:
         assert "parent.yaml: benchmark.namespaces.xml: prefix 'xml' is reserved" in message
         assert "child.yaml: benchmark.namespaces.a:b: 'a:b' is not a namespace prefix" in message
 
+    def test_a_prefix_yaml_reads_as_no_text_is_reported_with_the_file_that_wrote_it(self, tmp_path):
+        # YAML reads an unquoted true as a boolean, not as the text "true"
+        parent = _style(
+            tmp_path, "benchmark:\n  namespaces:\n    true: urn:example:bad\n", name="parent.yaml"
+        )
+        child = self._child(
+            tmp_path, parent, "benchmark:\n  namespaces:\n    good: urn:example:good\n"
+        )
+
+        with pytest.raises(
+            ValueError, match=r"parent\.yaml: benchmark\.namespaces\.True: True is not a namespace"
+        ):
+            ConfigLoader.load(child)
+
     def test_a_style_that_is_no_mapping_is_refused(self, tmp_path):
         style = tmp_path / "style.yaml"
         style.write_text("- metadata\n- benchmark\n")
