@@ -21,7 +21,7 @@ from pydantic import (
     Field,
     ValidationError,
 )
-from pydantic_core import PydanticCustomError
+from pydantic_core import InitErrorDetails, PydanticCustomError
 
 _IN_A_COMMENT: Final = "descriptive text goes in a YAML comment"
 _TYPE_FROM_MODEL: Final = "an element's type comes from the XCCDF model; a style declares none"
@@ -80,7 +80,7 @@ def _declarable_namespaces(value: Any) -> Any:
     A prefix is "default" (the default namespace) or an XML name without a colon, and never
     xml or xmlns; a URI is a non-empty string, never one of the two reserved namespaces, and
     is bound once (xsdata keeps one prefix per URI). Every binding that breaks a rule is
-    named.
+    reported at its own prefix.
     """
     if value is None:
         return {}
@@ -88,12 +88,16 @@ def _declarable_namespaces(value: Any) -> Any:
         raise PydanticCustomError("namespace_map", "a mapping of prefix to namespace URI is needed")
     bound: dict[str, Any] = {}
     problems = [
-        problem
+        InitErrorDetails(
+            type=PydanticCustomError("namespace_binding", "{problem}", {"problem": problem}),
+            loc=(prefix if isinstance(prefix, int) else str(prefix),),
+            input=uri,
+        )
         for prefix, uri in value.items()
         if (problem := _binding_problem(prefix, uri, bound)) is not None
     ]
     if problems:
-        raise PydanticCustomError("namespace_map", "{problems}", {"problems": "; ".join(problems)})
+        raise ValidationError.from_exception_data("NamespaceMap", problems)
     return dict(value)
 
 

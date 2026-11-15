@@ -270,6 +270,23 @@ class TestInheritedStyles:
         with pytest.raises(ValueError, match=r"child\.yaml: rule_defaults\.severty"):
             ConfigLoader.load(child)
 
+    def test_a_namespace_binding_is_reported_with_the_file_that_wrote_it(self, tmp_path):
+        parent = _style(
+            tmp_path, "benchmark:\n  namespaces:\n    xml: urn:example:bad\n", name="parent.yaml"
+        )
+        child = self._child(
+            tmp_path,
+            parent,
+            'benchmark:\n  namespaces:\n    good: urn:example:good\n    "a:b": urn:example:b\n',
+        )
+
+        with pytest.raises(ValueError) as refused:
+            ConfigLoader.load(child)
+
+        message = str(refused.value)
+        assert "parent.yaml: benchmark.namespaces.xml: prefix 'xml' is reserved" in message
+        assert "child.yaml: benchmark.namespaces.a:b: 'a:b' is not a namespace prefix" in message
+
     def test_a_style_that_is_no_mapping_is_refused(self, tmp_path):
         style = tmp_path / "style.yaml"
         style.write_text("- metadata\n- benchmark\n")
