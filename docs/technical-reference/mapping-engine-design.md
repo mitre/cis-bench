@@ -363,7 +363,6 @@ Structure matches YAML file:
 """
 
 style_name: str
-description: str
 xccdf_version: str
 
 benchmark_mappings: Dict[str, FieldMapping]
@@ -859,7 +858,7 @@ def map_rule(self, recommendation: Recommendation, context: MappingContext) -> R
 Algorithm:
 
 1. Generate rule ID from template
-2. Apply rule defaults (severity, weight, selected)
+2. Apply rule defaults (severity, weight)
 3. For each field in field_mappings:
 a. Determine mapping strategy (simple/composite/embedded/lookup)
 b. Apply strategy to map field

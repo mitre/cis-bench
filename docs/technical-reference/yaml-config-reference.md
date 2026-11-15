@@ -24,46 +24,50 @@ my_style.yaml: rule_defaults.severty: is not a key the exporter reads; the keys 
 my_style.yaml: cci_deduplication.enabled: Input should be a valid boolean
 ```
 
+A key written with no value (`weight:` or `weight: null`) is refused too: leave the key out
+to take the default. A style that extends another is checked as merged, so a child may
+replace a parent's value, and each mistake is reported with the file that wrote it.
+
 Descriptive text (what a style is for, which tools read it) goes in YAML comments.
 
 ```yaml
 # Top-level structure
 metadata: # Style metadata
-style_name: "..."
-xccdf_version: "..."
+  style_name: "..."
+  xccdf_version: "..."
 
 benchmark: # Benchmark-level mappings
-id_template: "..."
-namespaces: {...} # Prefix -> namespace URI the documents declare
-title: {...}
-description: {...}
-version: {...}
+  id_template: "..."
+  namespaces: {...} # Prefix -> namespace URI the documents declare
+  title: {...}
+  description: {...}
+  version: {...}
 
 rule_defaults: # Default rule attributes
-severity: "..."
-weight: "..."
+  severity: "..."
+  weight: "..."
 
 rule_id: # Rule ID generation
-template: "..."
+  template: "..."
 
 group_id: # Group ID generation
-template: "..."
+  template: "..."
 
 group_elements: # What each Group element is filled from
-title: {...}
+  title: {...}
 
 field_mappings: # Field mapping definitions
-field_name:
-target_element: "..."
-source_field: "..."
-transform: "..."
-# ... more options
+  field_name:
+    target_element: "..."
+    source_field: "..."
+    transform: "..."
+    # ... more options
 
 cci_deduplication: # CCI/NIST deduplication config
-enabled: true
+  enabled: true
 
 post_processing: # On the rendered tree, before it is written
-remove_override_attr: true
+  remove_override_attr: true
 ```
 
 ## Metadata Section
@@ -73,8 +77,8 @@ Names the export style and the XCCDF version it writes:
 ```yaml
 # DISA/DoD STIG-compatible XCCDF export
 metadata:
-style_name: "disa" # Unique identifier
-xccdf_version: "1.1.4" # Target XCCDF version: "1.1.4" or "1.2"
+  style_name: "disa" # Unique identifier
+  xccdf_version: "1.1.4" # Target XCCDF version: "1.1.4" or "1.2"
 ```
 
 These are the only keys. `description`, `conventions` and `target_tools` are refused:
@@ -139,8 +143,8 @@ Default attributes applied to all rules:
 
 ```yaml
 rule_defaults:
-severity: "medium" # CAT II equivalent
-weight: "10.0" # DISA standard; a number, or a number written as text
+  severity: "medium" # CAT II equivalent
+  weight: "10.0" # DISA standard; a number, or a number written as text
 ```
 
 These are the only keys. `selected` and `role` are refused: a Rule is written with the
@@ -152,7 +156,7 @@ Template for generating rule IDs:
 
 ```yaml
 rule_id:
-template: "xccdf_org.cisecurity.benchmarks_rule_{ref_normalized}"
+  template: "xccdf_org.cisecurity.benchmarks_rule_{ref_normalized}"
 ```
 
 `template` is the only key of `rule_id` and of `group_id`. The template sees two values made from the recommendation's ref: `{ref_normalized}`
@@ -580,7 +584,7 @@ Switches the CCI/NIST deduplication on or off:
 
 ```yaml
 cci_deduplication:
-enabled: true # true or false, not text
+  enabled: true # true or false, not text
 ```
 
 `enabled` is the only key. The deduplication itself is the exporter's own and no style
@@ -623,42 +627,45 @@ Minimal working configuration:
 ```yaml
 # minimal_style.yaml: minimal XCCDF export
 metadata:
-style_name: "minimal"
-xccdf_version: "1.2"
+  style_name: "minimal"
+  xccdf_version: "1.2"
 
 benchmark:
-id_template: "xccdf_org.cisecurity.benchmarks_benchmark_{version}_{title_slug}"
-namespaces:
-default: "http://checklists.nist.gov/xccdf/1.2"
-title:
-source: "title"
-transform: "none"
-version:
-source: "version"
-transform: "none"
+  id_template: "xccdf_org.cisecurity.benchmarks_benchmark_{version}_{title_slug}"
+  namespaces:
+    default: "http://checklists.nist.gov/xccdf/1.2"
+  title:
+    source: "title"
+    transform: "none"
+  version:
+    source: "version"
+    transform: "none"
 
 rule_defaults:
-severity: "medium"
-weight: "10.0"
+  severity: "medium"
+  weight: "10.0"
 
 rule_id:
-template: "xccdf_org.cisecurity.benchmarks_rule_{ref_normalized}"
+  template: "xccdf_org.cisecurity.benchmarks_rule_{ref_normalized}"
+
+group_id:
+  template: "xccdf_org.cisecurity.benchmarks_group_{ref_normalized}"
 
 field_mappings:
-title:
-target_element: "title"
-source_field: "title"
-transform: "none"
+  title:
+    target_element: "title"
+    source_field: "title"
+    transform: "none"
 
-description:
-target_element: "description"
-source_field: "description"
-transform: "none"
+  description:
+    target_element: "description"
+    source_field: "description"
+    transform: "none"
 
-rationale:
-target_element: "rationale"
-source_field: "rationale"
-transform: "none"
+  rationale:
+    target_element: "rationale"
+    source_field: "rationale"
+    transform: "none"
 ```
 
 ## Best Practices

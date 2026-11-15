@@ -131,7 +131,6 @@ extract: "all"
 | `benchmark` | Benchmark-level elements and namespaces (`benchmark.namespaces`) | Yes |
 | `field_mappings` | Rule-level field transformations | Yes |
 | `rule_defaults` | Default attributes for all rules | No |
-| `validation` | Validation rules and constraints | No |
 | `post_processing` | `override` attribute removal on the rendered tree, XCCDF elements only (`remove_override_attr`) | No |
 
 ### Benchmark ID

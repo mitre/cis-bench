@@ -235,79 +235,93 @@ class ConfigLoader:
         return result
 
     @staticmethod
-    def load(config_path: Path, _loading_stack: list[Path] | None = None) -> MappingConfig:
+    def _record_source(
+        sources: dict[tuple[str, ...], str],
+        data: dict[str, Any],
+        source: str,
+        path: tuple[str, ...] = (),
+    ) -> None:
+        """Note that this file wrote every key of data, so a mistake is reported with the
+        file that made it. A value that replaces a parent's mapping takes the parent's
+        keys below it out of the record."""
+        for key, value in data.items():
+            here = (*path, str(key))
+            if not isinstance(value, dict):
+                for below in [known for known in sources if known[: len(here)] == here]:
+                    del sources[below]
+            sources[here] = source
+            if isinstance(value, dict):
+                ConfigLoader._record_source(sources, value, source, here)
+
+    @staticmethod
+    def _load_merged(
+        config_path: Path, loading_stack: list[Path]
+    ) -> tuple[dict[str, Any], dict[tuple[str, ...], str]]:
+        """A style as written, merged over the styles it extends, with the file that wrote
+        each key.
+
+        Raises:
+            ValueError: Circular inheritance, or a file that is not a mapping of sections
+            FileNotFoundError: A file of the chain does not exist
+        """
+        if config_path in loading_stack:
+            cycle = " -> ".join(str(p) for p in loading_stack)
+            raise ValueError(f"Circular inheritance detected: {cycle} -> {config_path}")
+        if not config_path.exists():
+            raise FileNotFoundError(f"Configuration file not found: {config_path}")
+
+        loading_stack.append(config_path)
+        try:
+            with open(config_path) as f:
+                config_data = yaml.safe_load(f) or {}
+            if not isinstance(config_data, dict):
+                raise ValueError(f"{config_path.name}: a style is a mapping of sections")
+
+            merged: dict[str, Any] = {}
+            sources: dict[tuple[str, ...], str] = {}
+            if "extends" in config_data:
+                extends_path = Path(config_data.pop("extends"))
+                # Resolve relative to current file's directory
+                if not extends_path.is_absolute():
+                    extends_path = config_path.parent / extends_path
+                merged, sources = ConfigLoader._load_merged(extends_path, loading_stack)
+                logger.debug(f"Loaded {config_path.name} extending {extends_path.name}")
+            else:
+                logger.debug(f"Loaded {config_path.name} (no inheritance)")
+
+            ConfigLoader._record_source(sources, config_data, config_path.name)
+            return ConfigLoader._deep_merge(merged, config_data), sources
+        finally:
+            loading_stack.pop()
+
+    @staticmethod
+    def load(config_path: Path) -> MappingConfig:
         """Load mapping configuration from YAML file with inheritance support.
 
         Config files can specify 'extends: base_style.yaml' to inherit from another file.
         Child configs override parent configs. Deep merge is used for nested dictionaries.
+        The merged style is checked against the style schema once; a mistake is reported
+        with the file of the chain that wrote it.
 
         Args:
             config_path: Path to the configuration file
-            _loading_stack: Internal - tracks loading chain to detect circular inheritance
 
         Returns:
             MappingConfig with merged configuration
 
         Raises:
-            ValueError: If circular inheritance is detected
+            ValueError: Circular inheritance, or a style the schema refuses
             FileNotFoundError: If config file not found
         """
-        if _loading_stack is None:
-            _loading_stack = []
-
-        # Check for circular inheritance
-        if config_path in _loading_stack:
-            cycle = " -> ".join(str(p) for p in _loading_stack)
-            raise ValueError(f"Circular inheritance detected: {cycle} -> {config_path}")
-
-        if not config_path.exists():
-            raise FileNotFoundError(f"Configuration file not found: {config_path}")
-
-        # Add to loading stack
-        _loading_stack.append(config_path)
-
-        try:
-            # Load the current file
-            with open(config_path) as f:
-                config_data = yaml.safe_load(f) or {}
-
-            # Check for inheritance
-            if "extends" in config_data:
-                extends_path = Path(config_data.pop("extends"))
-
-                # Resolve relative to current file's directory
-                if not extends_path.is_absolute():
-                    extends_path = config_path.parent / extends_path
-
-                # Recursively load parent configuration
-                parent_config_obj = ConfigLoader.load(extends_path, _loading_stack)
-
-                # Convert parent MappingConfig back to dict for merging
-                parent_dict = {
-                    section.name: getattr(parent_config_obj, section.name)
-                    for section in fields(MappingConfig)
-                }
-
-                # Deep merge parent with current (current overrides parent)
-                config_data = ConfigLoader._deep_merge(parent_dict, config_data)
-
-                logger.debug(f"Loaded {config_path.name} extending {extends_path.name}")
-            else:
-                logger.debug(f"Loaded {config_path.name} (no inheritance)")
-
-            # One schema for the merged style: unread keys, value kinds, namespaces
-            validate_style(config_path.name, config_data)
-            return MappingConfig(
-                **{
-                    section.name: config_data[section.name]
-                    for section in fields(MappingConfig)
-                    if section.name in config_data
-                }
-            )
-
-        finally:
-            # Remove from loading stack
-            _loading_stack.pop()
+        config_data, sources = ConfigLoader._load_merged(config_path, [])
+        validate_style(config_path.name, config_data, sources)
+        return MappingConfig(
+            **{
+                section.name: config_data[section.name]
+                for section in fields(MappingConfig)
+                if section.name in config_data
+            }
+        )
 
 
 def _model_in(annotation: Any) -> type[BaseModel] | None:

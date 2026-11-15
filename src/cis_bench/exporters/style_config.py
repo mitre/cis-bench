@@ -101,6 +101,19 @@ NamespaceMap = Annotated[dict[str, str], BeforeValidator(_declarable_namespaces)
 """Prefix -> namespace URI, holding only bindings an XML document can declare."""
 
 
+def _given(value: Any) -> Any:
+    """Refuse a key written with no value: a style takes a default by leaving the key out."""
+    if value is None:
+        raise PydanticCustomError("no_value", "has no value; leave the key out for the default")
+    return value
+
+
+_Text = Annotated[str | None, BeforeValidator(_given)]
+_Switch = Annotated[bool | None, BeforeValidator(_given)]
+# A number, or a number written as text ("10.0")
+_Number = Annotated[Annotated[float, Field(strict=False)] | None, BeforeValidator(_given)]
+
+
 class _Section(BaseModel):
     """A part of a style: the keys it declares are the keys the exporter reads."""
 
@@ -120,8 +133,8 @@ class Metadata(_Section):
         "target_tools": _IN_A_COMMENT,
     }
 
-    style_name: str | None = None
-    xccdf_version: str | None = None
+    style_name: _Text = None
+    xccdf_version: _Text = None
 
 
 _RULE_ATTRIBUTE_FROM_MODEL: Final = (
@@ -137,9 +150,8 @@ class RuleDefaults(_Section):
         "role": _RULE_ATTRIBUTE_FROM_MODEL,
     }
 
-    severity: str | None = None
-    # A number, or a number written as text ("10.0")
-    weight: Annotated[float, Field(strict=False)] | None = None
+    severity: _Text = None
+    weight: _Number = None
 
 
 class IdTemplate(_Section):
@@ -147,7 +159,7 @@ class IdTemplate(_Section):
 
     removed_keys: ClassVar[Mapping[str, str]] = {"description": _IN_A_COMMENT}
 
-    template: str | None = None
+    template: _Text = None
 
 
 _DEDUPLICATION_IS_CODE: Final = (
@@ -165,7 +177,7 @@ class CciDeduplication(_Section):
         "rationale": _IN_A_COMMENT,
     }
 
-    enabled: bool | None = None
+    enabled: _Switch = None
 
 
 class PostProcessing(_Section):
@@ -180,7 +192,7 @@ class PostProcessing(_Section):
         "benchmark.namespaces, and all of them are declared on the root",
     }
 
-    remove_override_attr: bool | None = None
+    remove_override_attr: _Switch = None
 
 
 class GroupElement(_Section):
@@ -188,9 +200,9 @@ class GroupElement(_Section):
 
     removed_keys: ClassVar[Mapping[str, str]] = {"xccdf_type": _TYPE_FROM_MODEL}
 
-    source: str | None = None
-    transform: str | None = None
-    content: str | None = None
+    source: _Text = None
+    transform: _Text = None
+    content: _Text = None
 
 
 class BenchmarkSection(BaseModel):
@@ -270,12 +282,28 @@ def _unknown_key(location: tuple[int | str, ...]) -> str:
     )
 
 
-def validate_style(source: str, data: Any) -> StyleConfig:
+def _written_by(
+    location: tuple[int | str, ...], sources: Mapping[tuple[str, ...], str], default: str
+) -> str:
+    """The file that wrote the key at a place in a merged style: the nearest key at or above
+    the place that a file of the chain is recorded for."""
+    names = tuple(str(part) for part in location)
+    for length in range(len(names), 0, -1):
+        if names[:length] in sources:
+            return sources[names[:length]]
+    return default
+
+
+def validate_style(
+    source: str, data: Any, sources: Mapping[tuple[str, ...], str] | None = None
+) -> StyleConfig:
     """Check a merged style against the schema.
 
     Args:
-        source: The style's file name, named in every error
+        source: The style's file name
         data: The style as loaded from YAML, its extends chain merged
+        sources: The file that wrote each key (its path as a tuple), for a style that
+            extends others; a mistake is reported with that file, or with source
 
     Raises:
         ValueError: One line per mistake: the file, the dotted path of the key, and what is
@@ -285,7 +313,7 @@ def validate_style(source: str, data: Any) -> StyleConfig:
         return StyleConfig.model_validate(data)
     except ValidationError as error:
         problems = [
-            f"{source}: {_dotted(mistake['loc'])}: "
+            f"{_written_by(mistake['loc'], sources or {}, source)}: {_dotted(mistake['loc'])}: "
             + (
                 _unknown_key(mistake["loc"])
                 if mistake["type"] == "extra_forbidden"

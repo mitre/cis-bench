@@ -232,3 +232,88 @@ class TestStylesInTheRepository:
         config = ConfigLoader.load(project_root / relative)
 
         assert config.rule_defaults["severity"] == "medium"
+
+
+class TestInheritedStyles:
+    """A style that extends another is checked once, as merged, and each mistake is
+    reported with the file that wrote it."""
+
+    @staticmethod
+    def _child(tmp_path: Path, parent: Path, body: str) -> Path:
+        child = tmp_path / "child.yaml"
+        child.write_text(f"extends: {parent}\n{body}")
+        return child
+
+    def test_a_parent_value_the_child_replaces_is_not_checked(self, tmp_path):
+        parent = _style(tmp_path, "rule_defaults:\n  weight: heavy\n", name="parent.yaml")
+        child = self._child(tmp_path, parent, "rule_defaults:\n  weight: 10.0\n")
+
+        assert ConfigLoader.load(child).rule_defaults == {"weight": 10.0}
+
+    def test_mistakes_in_parent_and_child_are_reported_together_each_with_its_file(self, tmp_path):
+        parent = _style(tmp_path, "rule_id:\n  templat: x\n", name="parent.yaml")
+        child = self._child(tmp_path, parent, "cci_deduplication:\n  enabled: maybe\n")
+
+        with pytest.raises(ValueError) as refused:
+            ConfigLoader.load(child)
+
+        message = str(refused.value)
+        assert "parent.yaml: rule_id.templat" in message
+        assert "child.yaml: cci_deduplication.enabled" in message
+
+    def test_a_key_the_child_adds_to_a_parent_section_is_reported_with_the_child_file(
+        self, tmp_path
+    ):
+        parent = _style(tmp_path, "rule_defaults:\n  severity: low\n", name="parent.yaml")
+        child = self._child(tmp_path, parent, "rule_defaults:\n  severty: high\n")
+
+        with pytest.raises(ValueError, match=r"child\.yaml: rule_defaults\.severty"):
+            ConfigLoader.load(child)
+
+    def test_a_style_that_is_no_mapping_is_refused(self, tmp_path):
+        style = tmp_path / "style.yaml"
+        style.write_text("- metadata\n- benchmark\n")
+
+        with pytest.raises(ValueError, match=r"style\.yaml"):
+            ConfigLoader.load(style)
+
+
+class TestKeysWithoutAValue:
+    """A key written with no value is refused: leaving the key out is how a style takes
+    the default, and an empty value would reach the exporter as nothing."""
+
+    @pytest.mark.parametrize(
+        ("body", "path"),
+        [
+            pytest.param("rule_defaults:\n  weight:\n", r"rule_defaults\.weight", id="weight"),
+            pytest.param(
+                "rule_defaults:\n  severity: null\n", r"rule_defaults\.severity", id="severity"
+            ),
+            pytest.param(
+                "group_elements:\n  title:\n    source: ref\n    transform:\n",
+                r"group_elements\.title\.transform",
+                id="transform",
+            ),
+            pytest.param(
+                "post_processing:\n  remove_override_attr:\n",
+                r"post_processing\.remove_override_attr",
+                id="post-processing switch",
+            ),
+            pytest.param(
+                "cci_deduplication:\n  enabled:\n", r"cci_deduplication\.enabled", id="switch"
+            ),
+            pytest.param("rule_id:\n  template:\n", r"rule_id\.template", id="template"),
+        ],
+    )
+    def test_a_key_with_no_value_is_refused_with_its_path(self, tmp_path, body, path):
+        style = _style(tmp_path, body)
+
+        with pytest.raises(ValueError, match=rf"style\.yaml: {path}:.*leave the key out"):
+            ConfigLoader.load(style)
+
+    def test_a_metadata_key_with_no_value_is_refused(self, tmp_path):
+        style = tmp_path / "style.yaml"
+        style.write_text("metadata:\n  style_name: s\n  xccdf_version:\n")
+
+        with pytest.raises(ValueError, match=r"metadata\.xccdf_version:.*leave the key out"):
+            ConfigLoader.load(style)
