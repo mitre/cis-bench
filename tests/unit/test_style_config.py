@@ -235,9 +235,9 @@ class TestStylesInTheRepository:
 
 
 class TestInheritedStyles:
-    """Each file of an extends chain is checked alone, so a mistake is reported with its
-    file; the merged style is checked once more for what only the files together get
-    wrong."""
+    """The chain is merged root first, and after each file the style built so far is checked:
+    a mistake is reported with the file just merged, and loading stops at the first file
+    with mistakes."""
 
     @staticmethod
     def _child(tmp_path: Path, parent: Path, body: str) -> Path:
@@ -265,8 +265,10 @@ class TestInheritedStyles:
         ):
             ConfigLoader.load(child)
 
-    def test_mistakes_in_parent_and_child_are_reported_together_each_with_its_file(self, tmp_path):
-        parent = _style(tmp_path, "rule_id:\n  templat: x\n", name="parent.yaml")
+    def test_only_the_first_file_with_mistakes_is_reported(self, tmp_path):
+        parent = _style(
+            tmp_path, "rule_id:\n  templat: x\nrule_defaults:\n  severty: low\n", name="parent.yaml"
+        )
         child = self._child(tmp_path, parent, "cci_deduplication:\n  enabled: maybe\n")
 
         with pytest.raises(ValueError) as refused:
@@ -274,7 +276,18 @@ class TestInheritedStyles:
 
         message = str(refused.value)
         assert "parent.yaml: rule_id.templat" in message
-        assert "child.yaml: cci_deduplication.enabled" in message
+        assert "parent.yaml: rule_defaults.severty" in message
+        assert "child.yaml" not in message
+
+    def test_a_parent_that_is_no_valid_style_alone_is_refused(self, tmp_path):
+        # the child would complete the element, but every file a style extends is a style
+        parent = _style(tmp_path, "benchmark:\n  title:\n    transform: none\n", name="parent.yaml")
+        child = self._child(tmp_path, parent, "benchmark:\n  title:\n    source: title\n")
+
+        with pytest.raises(
+            ValueError, match=r"parent\.yaml: benchmark\.title\.source: Field required"
+        ):
+            ConfigLoader.load(child)
 
     def test_a_key_the_child_adds_to_a_parent_section_is_reported_with_the_child_file(
         self, tmp_path
@@ -287,20 +300,18 @@ class TestInheritedStyles:
 
     def test_a_namespace_binding_is_reported_with_the_file_that_wrote_it(self, tmp_path):
         parent = _style(
-            tmp_path, "benchmark:\n  namespaces:\n    xml: urn:example:bad\n", name="parent.yaml"
+            tmp_path, "benchmark:\n  namespaces:\n    good: urn:example:good\n", name="parent.yaml"
         )
         child = self._child(
-            tmp_path,
-            parent,
-            'benchmark:\n  namespaces:\n    good: urn:example:good\n    "a:b": urn:example:b\n',
+            tmp_path, parent, 'benchmark:\n  namespaces:\n    "a:b": urn:example:b\n'
         )
 
         with pytest.raises(ValueError) as refused:
             ConfigLoader.load(child)
 
         message = str(refused.value)
-        assert "parent.yaml: benchmark.namespaces.xml: prefix 'xml' is reserved" in message
         assert "child.yaml: benchmark.namespaces.a:b: 'a:b' is not a namespace prefix" in message
+        assert "parent.yaml" not in message
 
     def test_parent_and_child_sections_that_contain_themselves_are_refused_without_a_crash(
         self, tmp_path
@@ -313,8 +324,39 @@ class TestInheritedStyles:
             ConfigLoader.load(child)
 
         message = str(refused.value)
-        assert "parent.yaml: rule_defaults.again" in message
-        assert "child.yaml: rule_defaults.again" in message
+        assert "parent.yaml: rule_defaults.again: Recursion error" in message
+        assert "child.yaml" not in message
+
+    def test_a_section_that_contains_itself_only_in_the_child_is_refused_before_the_merge(
+        self, tmp_path
+    ):
+        parent = _style(tmp_path, "rule_defaults:\n  severity: low\n", name="parent.yaml")
+        child = self._child(
+            tmp_path, parent, "rule_defaults: &defaults\n  severity: low\n  again: *defaults\n"
+        )
+
+        with pytest.raises(ValueError) as refused:
+            ConfigLoader.load(child)
+
+        message = str(refused.value)
+        assert "child.yaml: rule_defaults.again: Recursion error" in message
+        assert "parent.yaml" not in message
+
+    def test_keys_a_merge_would_confuse_are_refused_in_the_first_file(self, tmp_path):
+        # true and 1 are one key to a Python mapping; merged, they would be confused
+        parent = _style(
+            tmp_path, "benchmark:\n  namespaces:\n    true: urn:example:a\n", name="parent.yaml"
+        )
+        child = self._child(tmp_path, parent, "benchmark:\n  namespaces:\n    1: urn:example:b\n")
+
+        with pytest.raises(ValueError) as refused:
+            ConfigLoader.load(child)
+
+        message = str(refused.value)
+        assert "parent.yaml: benchmark.namespaces.true: is not text; write the key in quotes" in (
+            message
+        )
+        assert "child.yaml" not in message
 
     @pytest.mark.parametrize("section", ["field_mappings", "benchmark"])
     def test_sections_that_contain_themselves_are_refused_without_a_crash(self, tmp_path, section):
@@ -326,8 +368,8 @@ class TestInheritedStyles:
             ConfigLoader.load(child)
 
         message = str(refused.value)
-        assert f"parent.yaml: {section}.entry" in message
-        assert f"child.yaml: {section}.entry" in message
+        assert f"parent.yaml: {section}.entry.again: Recursion error" in message
+        assert "child.yaml" not in message
 
     @pytest.mark.parametrize(
         ("value", "reason"),
@@ -398,11 +440,12 @@ class TestKeysOfTypedSections:
     the schema types takes text keys only."""
 
     @pytest.mark.parametrize("key", ["1", "true", "null", "2026-01-01"])
-    def test_a_key_that_is_no_text_is_refused_with_its_place(self, tmp_path, key):
+    def test_a_key_that_is_no_text_is_refused_as_written(self, tmp_path, key):
         style = _style(tmp_path, f"rule_defaults:\n  {key}: x\n")
 
         with pytest.raises(
-            ValueError, match=r"style\.yaml: rule_defaults\..+: Keys should be strings"
+            ValueError,
+            match=rf"style\.yaml: rule_defaults\.{key}: is not text; write the key in quotes",
         ):
             ConfigLoader.load(style)
 
@@ -497,10 +540,10 @@ class TestBenchmarkSection:
             "prepend_text": "CIS: ",
         }
 
-    def test_an_element_no_file_of_the_chain_gives_a_source_is_refused_with_the_loaded_file(
+    def test_an_element_no_file_of_the_chain_gives_a_source_is_refused_with_its_file(
         self, tmp_path
     ):
-        parent = _style(tmp_path, "benchmark:\n  title:\n    transform: none\n", name="parent.yaml")
+        parent = _style(tmp_path, "metadata:\n  xccdf_version: '1.2'\n", name="parent.yaml")
         child = tmp_path / "child.yaml"
         child.write_text(f"extends: {parent}\nbenchmark:\n  title:\n    prepend_text: x\n")
 

@@ -14,6 +14,7 @@ JsonValue).
 from collections.abc import Mapping
 from typing import Annotated, Any, ClassVar, Final, Self, get_args, get_origin
 
+import yaml
 from lxml import etree
 from pydantic import (
     AfterValidator,
@@ -24,7 +25,6 @@ from pydantic import (
     JsonValue,
     TypeAdapter,
     ValidationError,
-    ValidationInfo,
     model_validator,
 )
 from pydantic_core import InitErrorDetails, PydanticCustomError
@@ -242,20 +242,9 @@ class SourcedElement(_Section):
 
     removed_keys: ClassVar[Mapping[str, str]] = {"xccdf_type": _TYPE_FROM_MODEL}
 
-    source: _Text = None
+    source: str
     transform: _Text = None
     prepend_text: _Text = None
-
-    @model_validator(mode="after")
-    def _source_named(self, info: ValidationInfo) -> Self:
-        """On a whole style, refuse an element no file of the chain names a source for. A
-        child may change only the transform or the text of an element its parent sources,
-        so a file alone may leave the source out."""
-        if (info.context or {}).get("whole_style") and self.source is None:
-            raise ValidationError.from_exception_data(
-                "SourcedElement", [InitErrorDetails(type="missing", loc=("source",), input={})]
-            )
-        return self
 
 
 class Notice(_Section):
@@ -366,12 +355,9 @@ class StyleConfig(_Section):
     post_processing: PostProcessing = Field(default_factory=PostProcessing)
 
     @model_validator(mode="after")
-    def _prefixes_declared(self, info: ValidationInfo) -> Self:
-        """On a whole style, refuse a prefixed element name whose prefix the style does not
-        bind in benchmark.namespaces. A file of an extends chain may use a prefix its parent
-        binds, so this runs on the merged style only (validation context whole_style)."""
-        if not (info.context or {}).get("whole_style"):
-            return self
+    def _prefixes_declared(self) -> Self:
+        """Refuse a prefixed element name whose prefix the style does not bind in
+        benchmark.namespaces (the style is always a whole one: see validate_style)."""
         named = [
             (("benchmark", "reference", "dc_elements", index, "element"), element.element)
             for index, element in enumerate(self.benchmark.reference.dc_elements)
@@ -454,6 +440,9 @@ def _unknown_key(location: tuple[int | str, ...]) -> str:
 
 
 _EXTENDS: Final = TypeAdapter(_StyleFile)
+_MERGEABLE: Final = TypeAdapter(dict[str, JsonValue])
+# The tags pydantic puts in a JsonValue error's place, after each mapping or list it enters
+_JSON_VALUE_TAGS: Final = frozenset({"dict", "list", "str", "int", "float", "bool", "none"})
 
 
 def extended_style(data: Mapping[str, Any]) -> str | None:
@@ -465,21 +454,53 @@ def extended_style(data: Mapping[str, Any]) -> str | None:
         return None
 
 
-def validate_style(source: str, data: Any, *, whole_style: bool = False) -> StyleConfig:
-    """Check one style file, or a merged style, against the schema.
+def _as_written(key: Any) -> str:
+    """A key as YAML wrote it: true, 1, null, 2026-01-01."""
+    return yaml.safe_dump(key, default_flow_style=True).splitlines()[0].removesuffix(" ...")
+
+
+def check_mergeable(source: str, data: Any) -> None:
+    """Refuse a style file that cannot be merged safely: a key that is not text (YAML reads
+    an unquoted true or 1 as a boolean or a number, and a mapping takes them as one key), or
+    a mapping that contains itself (a YAML anchor), which a merge would follow without end.
+    pydantic's JsonValue checks both; nothing else of the schema is checked here.
+
+    Raises:
+        ValueError: One line per mistake, with the file and the dotted path.
+    """
+    try:
+        _MERGEABLE.validate_python(data, strict=True)
+    except ValidationError as error:
+        lines = []
+        for mistake in error.errors():
+            # the file is dict[str, JsonValue]: its place reads key, tag, key, tag, ...
+            place = tuple(
+                part
+                for index, part in enumerate(mistake["loc"])
+                if not (index % 2 and part in _JSON_VALUE_TAGS)
+            )
+            why = mistake["msg"]
+            if place[-1:] == ("[key]",):
+                place = (*place[:-2], _as_written(mistake["input"]), "[key]")
+                why = "is not text; write the key in quotes"
+            lines.append(f"{source}: {_dotted(place, mistake['type'])}: {why}")
+        raise ValueError("\n".join(lines)) from error
+
+
+def validate_style(source: str, data: Any) -> StyleConfig:
+    """Check a whole style against the schema: a style file with no extends, or the style
+    an extends chain has built up to and including the file named source.
 
     Args:
         source: The file name the mistakes are reported with
-        data: The style as loaded from YAML
-        whole_style: The style is complete (its extends chain merged), so what one file
-            alone cannot show is checked too: each prefix is bound in benchmark.namespaces
+        data: The style as built so far
 
     Raises:
         ValueError: One line per mistake: the file, the dotted path of the key, and what is
             wrong with it.
     """
     try:
-        return StyleConfig.model_validate(data, context={"whole_style": whole_style})
+        return StyleConfig.model_validate(data)
     except ValidationError as error:
         raise ValueError(
             "\n".join(

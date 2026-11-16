@@ -29,22 +29,29 @@ to take the default.
 
 A style takes another style's settings with `extends: <file>`, a file name relative to the
 style's own file (or absolute); an `extends` with no value, or one that is not text, is
-refused. Each file of an `extends` chain is checked alone, and each mistake is reported with its
-file; a mistake in a parent file is refused even when the child replaces that value. The
-mistakes of every file are reported together. Then the merged style is checked once more,
-for what only the files together get wrong (one namespace URI bound in the parent and in the
-child); such a mistake is reported with the file that was loaded.
+refused.
 
-Every key of a style is text. YAML reads an unquoted `true`, `1` or `null` as a boolean, a
-number or nothing, and such a key is refused; write it in quotes (`"true": ...`).
+An `extends` chain is loaded from its root, the order compose-go loads compose files in.
+Each file is merged onto the style built so far, and that style is checked; a mistake is
+reported with the file just merged. So a child can change one key of a parent's entry (an
+element's `prepend_text`, say) and the entry is checked whole, and a mistake is named with
+the file that made it: a parent's mistake with the parent, even when the child replaces that
+value; one namespace URI bound in the parent and in the child, with the child. Loading stops
+at the first file with mistakes, and every mistake of that file is reported together. Every
+file a style extends is therefore a valid style on its own.
 
-The entries of `field_mappings` are checked as JSON-like data (pydantic's `JsonValue`): text keys, values that are text, numbers,
-booleans, lists or mappings, and no mapping that contains itself through a YAML anchor. A
-mistake there is reported with pydantic's type tag in its path:
+Before a file is merged it is checked for what would make the merge unsafe. Every key is
+text: YAML reads an unquoted `true`, `1` or `null` as a boolean, a number or nothing, and a
+mapping takes `true` and `1` for one key, so such a key is refused; write it in quotes
+(`"true": ...`). No mapping contains itself through a YAML anchor:
 
 ```text
-my_style.yaml: field_mappings.title.dict.again: Recursion error - cyclic reference detected
+my_style.yaml: rule_defaults.true: is not text; write the key in quotes
+my_style.yaml: rule_defaults.again: Recursion error - cyclic reference detected
 ```
+
+The entries of `field_mappings` are checked as JSON-like data (pydantic's `JsonValue`):
+text keys, and values that are text, numbers, booleans, lists or mappings.
 
 Descriptive text (what a style is for, which tools read it) goes in YAML comments.
 
@@ -152,8 +159,7 @@ benchmark:
 ```
 
 - An element filled from a field needs a `source`, written in the file or in a style it
-  extends: a child may change only an element's `transform` or `prepend_text`. A missing
-  source is checked after the `extends` chain is merged and reported with the loaded file.
+  extends: a child may change only an element's `transform` or `prepend_text`.
   The element's name must be an element of the XCCDF Benchmark for the style's version;
   that is checked when the engine starts.
 - The notice, front-matter, rear-matter and reference elements come from the XCCDF model:
@@ -161,9 +167,8 @@ benchmark:
   written empty in every style, so a style has no entry for them.
 - The notice's id and language are written as `id` and `lang`; `attributes` is refused.
 - A profile mapping sets no `id`: profile ids come from `profiles.id_template`.
-- The prefix of each `dc_elements` element must be bound in `benchmark.namespaces` of the
-  whole style (the file itself or a style it extends). It is checked after the `extends`
-  chain is merged and reported with the loaded file.
+- The prefix of each `dc_elements` element must be bound in `benchmark.namespaces`, by the
+  file itself or a style it extends.
 
 ### Namespaces
 
