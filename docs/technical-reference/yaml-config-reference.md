@@ -28,6 +28,10 @@ A key written with no value (`weight:` or `weight: null`) is refused too: leave 
 to take the default. A style that extends another is checked as merged, so a child may
 replace a parent's value, and each mistake is reported with the file that wrote it.
 
+Every key of a style file is text. YAML reads an unquoted `true`, `1` or `null` as a
+boolean, a number or nothing; such a key is refused in the file that has it, anywhere in the
+file. Write it in quotes (`"true": ...`).
+
 Descriptive text (what a style is for, which tools read it) goes in YAML comments.
 
 ```yaml

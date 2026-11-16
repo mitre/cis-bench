@@ -9,7 +9,7 @@ The benchmark section and the field mappings are accepted as written here; only
 benchmark.namespaces is checked.
 """
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Annotated, Any, ClassVar, Final, get_args, get_origin
 
 from lxml import etree
@@ -286,6 +286,34 @@ def _unknown_key(location: tuple[int | str, ...]) -> str:
     )
 
 
+def text_keys(
+    source: str, data: Any, problems: list[str], location: tuple[int | str, ...] = ()
+) -> Any:
+    """One style file's content without the mapping keys that are not text; each such key is
+    added to problems with the file and the place of its mapping.
+
+    YAML reads an unquoted true, 1 or null as a boolean, a number or nothing. A mapping
+    takes true and 1 for one key, so such keys are refused in every file before styles are
+    merged, and the keys of a merged style are text only.
+    """
+    if isinstance(data, dict):
+        kept: dict[str, Any] = {}
+        for key, value in data.items():
+            if isinstance(key, str):
+                kept[key] = text_keys(source, value, problems, (*location, key))
+            else:
+                problems.append(
+                    f"{source}: {_dotted(location)}: the key {key!r} is not text; "
+                    "write it in quotes"
+                )
+        return kept
+    if isinstance(data, list):
+        return [
+            text_keys(source, item, problems, (*location, index)) for index, item in enumerate(data)
+        ]
+    return data
+
+
 def _written_by(
     location: tuple[int | str, ...], sources: Mapping[tuple[str, ...], str], default: str
 ) -> str:
@@ -299,7 +327,10 @@ def _written_by(
 
 
 def validate_style(
-    source: str, data: Any, sources: Mapping[tuple[str, ...], str] | None = None
+    source: str,
+    data: Any,
+    sources: Mapping[tuple[str, ...], str] | None = None,
+    key_problems: Sequence[str] = (),
 ) -> StyleConfig:
     """Check a merged style against the schema.
 
@@ -308,13 +339,14 @@ def validate_style(
         data: The style as loaded from YAML, its extends chain merged
         sources: The file that wrote each key (its path as a tuple), for a style that
             extends others; a mistake is reported with that file, or with source
+        key_problems: The keys text_keys took out of the files, reported with the rest
 
     Raises:
         ValueError: One line per mistake: the file, the dotted path of the key, and what is
             wrong with it.
     """
     try:
-        return StyleConfig.model_validate(data)
+        style = StyleConfig.model_validate(data)
     except ValidationError as error:
         problems = [
             f"{_written_by(mistake['loc'], sources or {}, source)}: {_dotted(mistake['loc'])}: "
@@ -325,4 +357,7 @@ def validate_style(
             )
             for mistake in error.errors()
         ]
-        raise ValueError("\n".join(problems)) from error
+        raise ValueError("\n".join([*key_problems, *problems])) from error
+    if key_problems:
+        raise ValueError("\n".join(key_problems))
+    return style

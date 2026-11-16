@@ -44,7 +44,7 @@ from xsdata.formats.dataclass.models.generics import AnyElement
 from xsdata.formats.dataclass.serializers.mixins import EventHandler
 
 from cis_bench.exceptions import ExportError
-from cis_bench.exporters.style_config import validate_style
+from cis_bench.exporters.style_config import text_keys, validate_style
 from cis_bench.models.benchmark import (
     Benchmark,
     CISControl,
@@ -243,9 +243,10 @@ class ConfigLoader:
     ) -> None:
         """Note that this file wrote every key of data, so a mistake is reported with the
         file that made it. A value that replaces a parent's mapping takes the parent's
-        keys below it out of the record."""
+        keys below it out of the record. Keys are text (text_keys), the same keys the merge
+        uses."""
         for key, value in data.items():
-            here = (*path, str(key))
+            here = (*path, key)
             if not isinstance(value, dict):
                 for below in [known for known in sources if known[: len(here)] == here]:
                     del sources[below]
@@ -255,10 +256,11 @@ class ConfigLoader:
 
     @staticmethod
     def _load_merged(
-        config_path: Path, loading_stack: list[Path]
+        config_path: Path, loading_stack: list[Path], key_problems: list[str]
     ) -> tuple[dict[str, Any], dict[tuple[str, ...], str]]:
         """A style as written, merged over the styles it extends, with the file that wrote
-        each key.
+        each key. A key of a file that is not text is left out of the merge and added to
+        key_problems.
 
         Raises:
             ValueError: Circular inheritance, or a file that is not a mapping of sections
@@ -276,6 +278,7 @@ class ConfigLoader:
                 config_data = yaml.safe_load(f) or {}
             if not isinstance(config_data, dict):
                 raise ValueError(f"{config_path.name}: a style is a mapping of sections")
+            config_data = text_keys(config_path.name, config_data, key_problems)
 
             merged: dict[str, Any] = {}
             sources: dict[tuple[str, ...], str] = {}
@@ -284,7 +287,9 @@ class ConfigLoader:
                 # Resolve relative to current file's directory
                 if not extends_path.is_absolute():
                     extends_path = config_path.parent / extends_path
-                merged, sources = ConfigLoader._load_merged(extends_path, loading_stack)
+                merged, sources = ConfigLoader._load_merged(
+                    extends_path, loading_stack, key_problems
+                )
                 logger.debug(f"Loaded {config_path.name} extending {extends_path.name}")
             else:
                 logger.debug(f"Loaded {config_path.name} (no inheritance)")
@@ -313,8 +318,9 @@ class ConfigLoader:
             ValueError: Circular inheritance, or a style the schema refuses
             FileNotFoundError: If config file not found
         """
-        config_data, sources = ConfigLoader._load_merged(config_path, [])
-        validate_style(config_path.name, config_data, sources)
+        key_problems: list[str] = []
+        config_data, sources = ConfigLoader._load_merged(config_path, [], key_problems)
+        validate_style(config_path.name, config_data, sources, key_problems)
         return MappingConfig(
             **{
                 section.name: config_data[section.name]

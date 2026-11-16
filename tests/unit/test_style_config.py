@@ -287,20 +287,6 @@ class TestInheritedStyles:
         assert "parent.yaml: benchmark.namespaces.xml: prefix 'xml' is reserved" in message
         assert "child.yaml: benchmark.namespaces.a:b: 'a:b' is not a namespace prefix" in message
 
-    def test_a_prefix_yaml_reads_as_no_text_is_reported_with_the_file_that_wrote_it(self, tmp_path):
-        # YAML reads an unquoted true as a boolean, not as the text "true"
-        parent = _style(
-            tmp_path, "benchmark:\n  namespaces:\n    true: urn:example:bad\n", name="parent.yaml"
-        )
-        child = self._child(
-            tmp_path, parent, "benchmark:\n  namespaces:\n    good: urn:example:good\n"
-        )
-
-        with pytest.raises(
-            ValueError, match=r"parent\.yaml: benchmark\.namespaces\.True: True is not a namespace"
-        ):
-            ConfigLoader.load(child)
-
     def test_a_style_that_is_no_mapping_is_refused(self, tmp_path):
         style = tmp_path / "style.yaml"
         style.write_text("- metadata\n- benchmark\n")
@@ -347,4 +333,75 @@ class TestKeysWithoutAValue:
         style.write_text("metadata:\n  style_name: s\n  xccdf_version:\n")
 
         with pytest.raises(ValueError, match=r"metadata\.xccdf_version:.*leave the key out"):
+            ConfigLoader.load(style)
+
+
+class TestKeysAreText:
+    """Every key of a style file is text. YAML reads an unquoted true, 1 or null as a
+    boolean, a number or nothing, and such keys would be confused with one another when
+    styles are merged (true and 1 are the same key to a mapping)."""
+
+    def test_a_key_yaml_reads_as_no_text_is_refused_with_its_place_and_file(self, tmp_path):
+        style = _style(tmp_path, "benchmark:\n  namespaces:\n    true: urn:example:a\n")
+
+        with pytest.raises(
+            ValueError, match=r"style\.yaml: benchmark\.namespaces: the key True is not text"
+        ):
+            ConfigLoader.load(style)
+
+    @pytest.mark.parametrize("key", ["1", "1.5", "null", "~", "2026-01-01"])
+    def test_every_kind_of_key_that_is_no_text_is_refused(self, tmp_path, key):
+        style = _style(tmp_path, f"rule_defaults:\n  {key}: x\n")
+
+        with pytest.raises(ValueError, match=r"style\.yaml: rule_defaults: the key .* is not text"):
+            ConfigLoader.load(style)
+
+    def test_a_quoted_key_is_text(self, tmp_path):
+        style = _style(tmp_path, 'benchmark:\n  namespaces:\n    "true": urn:example:a\n')
+
+        assert ConfigLoader.load(style).namespaces == {"true": "urn:example:a"}
+
+    def test_keys_a_mapping_would_confuse_are_each_reported_with_their_own_file(self, tmp_path):
+        # true and 1 are one key to a Python mapping: merged, the parent's key would carry
+        # the child's value
+        parent = _style(
+            tmp_path,
+            "benchmark:\n  namespaces:\n    true: urn:example:parent\n",
+            name="parent.yaml",
+        )
+        child = tmp_path / "child.yaml"
+        child.write_text(
+            f"extends: {parent}\nbenchmark:\n  namespaces:\n    1: urn:example:child\n"
+        )
+
+        with pytest.raises(ValueError) as refused:
+            ConfigLoader.load(child)
+
+        message = str(refused.value)
+        assert "parent.yaml: benchmark.namespaces: the key True is not text" in message
+        assert "child.yaml: benchmark.namespaces: the key 1 is not text" in message
+
+    def test_a_key_that_is_no_text_is_reported_together_with_other_mistakes(self, tmp_path):
+        style = _style(tmp_path, "rule_defaults:\n  1: x\n  severty: high\n")
+
+        with pytest.raises(ValueError) as refused:
+            ConfigLoader.load(style)
+
+        message = str(refused.value)
+        assert "style.yaml: rule_defaults: the key 1 is not text" in message
+        assert "style.yaml: rule_defaults.severty" in message
+
+    def test_a_key_inside_a_list_of_a_field_mapping_is_checked_too(self, tmp_path):
+        style = _style(tmp_path, "field_mappings:\n  title:\n    sources:\n      - 1: x\n")
+
+        with pytest.raises(
+            ValueError,
+            match=r"style\.yaml: field_mappings\.title\.sources\[0\]: the key 1 is not text",
+        ):
+            ConfigLoader.load(style)
+
+    def test_a_top_level_key_that_is_no_text_is_refused(self, tmp_path):
+        style = _style(tmp_path, "1: x\n")
+
+        with pytest.raises(ValueError, match=r"style\.yaml: the style: the key 1 is not text"):
             ConfigLoader.load(style)
