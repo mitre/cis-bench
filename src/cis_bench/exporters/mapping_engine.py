@@ -308,7 +308,7 @@ class ConfigLoader:
         config_data = ConfigLoader._load_merged(config_path, [], problems)
         if problems:
             raise ValueError("\n".join(problems))
-        validate_style(config_path.name, config_data)
+        validate_style(config_path.name, config_data, whole_style=True)
         return MappingConfig(
             **{
                 section.name: config_data[section.name]
@@ -932,23 +932,21 @@ class MappingEngine:
     def create_notice(self, benchmark: Benchmark):
         """Create notice element from config (version-agnostic).
 
-        Resolves notice id, xml:lang, and optional variable-substituted text
-        content from the style's benchmark.notice configuration while keeping
-        content empty when omitted or blank.
+        Resolves the notice's id (terms-of-use when the style names none), its language
+        (lang, written as xml:lang) and its variable-substituted text from the style's
+        benchmark.notice, keeping the content empty when it is left out or blank.
         """
         raw_notice = self.config.benchmark.get("notice")
         notice_config = raw_notice if isinstance(raw_notice, dict) else {}
-        raw_attrs = notice_config.get("attributes")
-        attributes = raw_attrs if isinstance(raw_attrs, dict) else {}
 
         NoticeType = self.element_type("Benchmark", "notice")
 
         substitution_context = {"benchmark": benchmark}
 
-        raw_id = notice_config.get("id") or attributes.get("id") or "terms-of-use"
+        raw_id = notice_config.get("id") or "terms-of-use"
         notice_id = str(VariableSubstituter.substitute(str(raw_id), substitution_context))
 
-        raw_lang = notice_config.get("lang") or attributes.get("xml:lang")
+        raw_lang = notice_config.get("lang")
         notice_lang = (
             str(VariableSubstituter.substitute(str(raw_lang), substitution_context))
             if raw_lang

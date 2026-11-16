@@ -317,9 +317,7 @@ class TestInheritedStyles:
         assert "child.yaml: rule_defaults.again" in message
 
     @pytest.mark.parametrize("section", ["field_mappings", "benchmark"])
-    def test_untyped_sections_that_contain_themselves_are_refused_without_a_crash(
-        self, tmp_path, section
-    ):
+    def test_sections_that_contain_themselves_are_refused_without_a_crash(self, tmp_path, section):
         looping = f"{section}:\n  entry: &entry\n    again: *entry\n"
         parent = _style(tmp_path, looping, name="parent.yaml")
         child = self._child(tmp_path, parent, looping)
@@ -421,7 +419,7 @@ class TestKeysOfTypedSections:
             pytest.param("benchmark:\n  title:\n    true: x\n", id="benchmark entry"),
         ],
     )
-    def test_a_key_that_is_no_text_below_an_untyped_section_is_refused(self, tmp_path, body):
+    def test_a_key_that_is_no_text_below_a_section_is_refused(self, tmp_path, body):
         style = _style(tmp_path, body)
 
         with pytest.raises(ValueError, match=r"style\.yaml: (field_mappings|benchmark)\.title"):
@@ -436,3 +434,132 @@ class TestSelfContainingStyles:
 
         with pytest.raises(ValueError, match=r"style\.yaml: rule_defaults\.again"):
             ConfigLoader.load(style)
+
+
+class TestBenchmarkSection:
+    """Each benchmark entry takes the keys the engine reads; every other entry is an element
+    filled from a benchmark field."""
+
+    def test_a_misspelled_notice_key_is_refused_with_its_path(self, tmp_path):
+        style = _style(tmp_path, "benchmark:\n  notice:\n    contnt: x\n")
+
+        with pytest.raises(
+            ValueError, match=r"style\.yaml: benchmark\.notice\.contnt: .*content, id, lang"
+        ):
+            ConfigLoader.load(style)
+
+    @pytest.mark.parametrize(
+        ("body", "path", "hint"),
+        [
+            pytest.param(
+                "notice:\n    element: notice\n",
+                r"notice\.element",
+                "XCCDF model",
+                id="notice element",
+            ),
+            pytest.param(
+                "notice:\n    attributes:\n      id: x\n",
+                r"notice\.attributes",
+                "id and lang",
+                id="notice attributes",
+            ),
+            pytest.param(
+                "reference:\n    element: reference\n",
+                r"reference\.element",
+                "XCCDF model",
+                id="reference element",
+            ),
+        ],
+    )
+    def test_a_key_nothing_reads_is_refused_with_what_happens_instead(
+        self, tmp_path, body, path, hint
+    ):
+        style = _style(tmp_path, f"benchmark:\n  {body}")
+
+        with pytest.raises(ValueError, match=rf"benchmark\.{path}: is not read \(.*{hint}"):
+            ConfigLoader.load(style)
+
+    def test_an_element_filled_from_a_field_needs_its_source(self, tmp_path):
+        style = _style(tmp_path, "benchmark:\n  title:\n    transform: none\n")
+
+        with pytest.raises(ValueError, match=r"benchmark\.title\.source: Field required"):
+            ConfigLoader.load(style)
+
+    def test_front_matter_settings_are_refused(self, tmp_path):
+        # nothing reads them: the front-matter is written empty from the XCCDF model
+        style = _style(tmp_path, 'benchmark:\n  front_matter:\n    content: ""\n')
+
+        with pytest.raises(ValueError, match=r"benchmark\.front_matter\.content"):
+            ConfigLoader.load(style)
+
+    @pytest.mark.parametrize(
+        ("body", "path"),
+        [
+            pytest.param(
+                "plain_text:\n    - content: x\n", r"plain_text\[0\]\.id", id="plain text id"
+            ),
+            pytest.param(
+                "profiles:\n    profile_mappings:\n      - title: x\n",
+                r"profiles\.profile_mappings\[0\]\.match",
+                id="profile match",
+            ),
+            pytest.param(
+                "reference:\n    dc_elements:\n      - content: x\n",
+                r"reference\.dc_elements\[0\]\.element",
+                id="dc element",
+            ),
+        ],
+    )
+    def test_a_required_key_left_out_is_refused_with_its_path(self, tmp_path, body, path):
+        style = _style(tmp_path, f"benchmark:\n  {body}")
+
+        with pytest.raises(ValueError, match=rf"style\.yaml: benchmark\.{path}: Field required"):
+            ConfigLoader.load(style)
+
+    def test_a_profile_mapping_with_an_id_is_refused_with_where_ids_come_from(self, tmp_path):
+        style = _style(
+            tmp_path,
+            "benchmark:\n  profiles:\n    profile_mappings:\n      - match: x\n        id: y\n",
+        )
+
+        with pytest.raises(
+            ValueError, match=r"profile_mappings\[0\]\.id: is not read \(.*id_template"
+        ):
+            ConfigLoader.load(style)
+
+    def test_a_dublin_core_element_needs_a_prefix(self, tmp_path):
+        style = _style(
+            tmp_path,
+            "benchmark:\n  namespaces:\n    dc: urn:example:dc\n"
+            "  reference:\n    dc_elements:\n      - element: publisher\n        content: x\n",
+        )
+
+        with pytest.raises(ValueError, match=r"reference\.dc_elements\[0\]\.element: "):
+            ConfigLoader.load(style)
+
+    def test_a_dublin_core_prefix_the_style_does_not_declare_is_refused(self, tmp_path):
+        style = _style(
+            tmp_path,
+            "benchmark:\n  reference:\n    dc_elements:\n"
+            "      - element: dc:publisher\n        content: x\n",
+        )
+
+        with pytest.raises(
+            ValueError,
+            match=r"style\.yaml: benchmark\.reference\.dc_elements\[0\]\.element: .*'dc'",
+        ):
+            ConfigLoader.load(style)
+
+    def test_a_dublin_core_prefix_declared_by_the_parent_style_is_accepted(self, tmp_path):
+        parent = _style(
+            tmp_path, "benchmark:\n  namespaces:\n    dc: urn:example:dc\n", name="parent.yaml"
+        )
+        child = tmp_path / "child.yaml"
+        child.write_text(
+            f"extends: {parent}\nbenchmark:\n  reference:\n    dc_elements:\n"
+            "      - element: dc:publisher\n        content: x\n"
+        )
+
+        assert ConfigLoader.load(child).benchmark["reference"]["dc_elements"] == [
+            {"element": "dc:publisher", "content": "x"}
+        ]

@@ -83,12 +83,10 @@ benchmark:
     source: "version"
     transform: "strip_version_prefix"  # "v4.0.0" → "4.0.0" (Vulcan adds "V" prefix)
 
-  # STIG-required elements (with types)
+  # STIG-required elements; front-matter and rear-matter are written empty in every style
   notice:
-    element: "notice"
-    attributes:
-      id: "terms-of-use"
-      xml:lang: "en"
+    id: "terms-of-use"
+    lang: "en"
     content: >-
       This XCCDF file was exported via cis-bench format conversion from
       "{benchmark.title}" ({benchmark.url}). Source benchmark content is
@@ -96,21 +94,8 @@ benchmark:
       WorkBench Terms of Use (https://workbench.cisecurity.org/terms-of-use) and
       applicable CIS license terms.
 
-  front_matter:
-    element: "front-matter"
-    attributes:
-      xml:lang: "en"
-    content: ""
-
-  rear_matter:
-    element: "rear-matter"
-    attributes:
-      xml:lang: "en"
-    content: ""
-
   # Dublin Core reference (STIG requirement)
   reference:
-    element: "reference"
     attributes:
       href: "{benchmark.url}"
     dc_elements:
