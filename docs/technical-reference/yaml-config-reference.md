@@ -116,7 +116,7 @@ benchmark:
 
   # Any other entry is the Benchmark element of that name, filled from a benchmark field
   title:
-    source: "title" # required: the benchmark field
+    source: "title" # the benchmark field; required in the file or a style it extends
     transform: "none" # optional, a registered transform
   description:
     source: "title" # a field can fill more than one element
@@ -151,8 +151,11 @@ benchmark:
         includes: ["Level 1 - Server"]
 ```
 
-- An element filled from a field needs its `source`. Its name must be an element of the
-  XCCDF Benchmark for the style's version; that is checked when the engine starts.
+- An element filled from a field needs a `source`, written in the file or in a style it
+  extends: a child may change only an element's `transform` or `prepend_text`. A missing
+  source is checked after the `extends` chain is merged and reported with the loaded file.
+  The element's name must be an element of the XCCDF Benchmark for the style's version;
+  that is checked when the engine starts.
 - The notice, front-matter, rear-matter and reference elements come from the XCCDF model:
   `element` is refused in `notice` and `reference`. Front-matter and rear-matter are
   written empty in every style, so a style has no entry for them.

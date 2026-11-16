@@ -482,8 +482,32 @@ class TestBenchmarkSection:
     def test_an_element_filled_from_a_field_needs_its_source(self, tmp_path):
         style = _style(tmp_path, "benchmark:\n  title:\n    transform: none\n")
 
-        with pytest.raises(ValueError, match=r"benchmark\.title\.source: Field required"):
+        with pytest.raises(
+            ValueError, match=r"style\.yaml: benchmark\.title\.source: Field required"
+        ):
             ConfigLoader.load(style)
+
+    def test_a_child_may_change_an_element_whose_source_the_parent_names(self, tmp_path):
+        parent = _style(tmp_path, "benchmark:\n  title:\n    source: title\n", name="parent.yaml")
+        child = tmp_path / "child.yaml"
+        child.write_text(f"extends: {parent}\nbenchmark:\n  title:\n    prepend_text: 'CIS: '\n")
+
+        assert ConfigLoader.load(child).benchmark["title"] == {
+            "source": "title",
+            "prepend_text": "CIS: ",
+        }
+
+    def test_an_element_no_file_of_the_chain_gives_a_source_is_refused_with_the_loaded_file(
+        self, tmp_path
+    ):
+        parent = _style(tmp_path, "benchmark:\n  title:\n    transform: none\n", name="parent.yaml")
+        child = tmp_path / "child.yaml"
+        child.write_text(f"extends: {parent}\nbenchmark:\n  title:\n    prepend_text: x\n")
+
+        with pytest.raises(
+            ValueError, match=r"child\.yaml: benchmark\.title\.source: Field required"
+        ):
+            ConfigLoader.load(child)
 
     def test_front_matter_settings_are_refused(self, tmp_path):
         # nothing reads them: the front-matter is written empty from the XCCDF model

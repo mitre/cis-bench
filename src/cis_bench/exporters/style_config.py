@@ -242,9 +242,20 @@ class SourcedElement(_Section):
 
     removed_keys: ClassVar[Mapping[str, str]] = {"xccdf_type": _TYPE_FROM_MODEL}
 
-    source: str
+    source: _Text = None
     transform: _Text = None
     prepend_text: _Text = None
+
+    @model_validator(mode="after")
+    def _source_named(self, info: ValidationInfo) -> Self:
+        """On a whole style, refuse an element no file of the chain names a source for. A
+        child may change only the transform or the text of an element its parent sources,
+        so a file alone may leave the source out."""
+        if (info.context or {}).get("whole_style") and self.source is None:
+            raise ValidationError.from_exception_data(
+                "SourcedElement", [InitErrorDetails(type="missing", loc=("source",), input={})]
+            )
+        return self
 
 
 class Notice(_Section):
