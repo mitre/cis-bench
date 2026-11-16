@@ -44,7 +44,7 @@ from xsdata.formats.dataclass.models.generics import AnyElement
 from xsdata.formats.dataclass.serializers.mixins import EventHandler
 
 from cis_bench.exceptions import ExportError
-from cis_bench.exporters.style_config import validate_style
+from cis_bench.exporters.style_config import extended_style, validate_style
 from cis_bench.models.benchmark import (
     Benchmark,
     CISControl,
@@ -260,8 +260,9 @@ class ConfigLoader:
                 raise ValueError(f"{config_path.name}: a style is a mapping of sections")
 
             merged: dict[str, Any] = {}
-            if "extends" in config_data:
-                extends_path = Path(config_data.pop("extends"))
+            extends = extended_style(config_data)
+            if extends is not None:
+                extends_path = Path(extends)
                 # Resolve relative to current file's directory
                 if not extends_path.is_absolute():
                     extends_path = config_path.parent / extends_path
@@ -277,6 +278,7 @@ class ConfigLoader:
             if problems:
                 # Only styles the schema accepts are merged; load reports the mistakes
                 return {}
+            config_data.pop("extends", None)
             return ConfigLoader._deep_merge(merged, config_data)
         finally:
             loading_stack.pop()

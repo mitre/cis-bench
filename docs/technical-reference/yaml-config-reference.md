@@ -27,7 +27,9 @@ my_style.yaml: cci_deduplication.enabled: Input should be a valid boolean
 A key written with no value (`weight:` or `weight: null`) is refused too: leave the key out
 to take the default.
 
-Each file of an `extends` chain is checked alone, and each mistake is reported with its
+A style takes another style's settings with `extends: <file>`, a file name relative to the
+style's own file (or absolute); an `extends` with no value, or one that is not text, is
+refused. Each file of an `extends` chain is checked alone, and each mistake is reported with its
 file; a mistake in a parent file is refused even when the child replaces that value. The
 mistakes of every file are reported together. Then the merged style is checked once more,
 for what only the files together get wrong (one namespace URI bound in the parent and in the

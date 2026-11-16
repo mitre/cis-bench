@@ -331,6 +331,20 @@ class TestInheritedStyles:
         assert f"parent.yaml: {section}.entry" in message
         assert f"child.yaml: {section}.entry" in message
 
+    @pytest.mark.parametrize(
+        ("value", "reason"),
+        [
+            pytest.param("", "leave the key out", id="no value"),
+            pytest.param(" 1", "valid string", id="number"),
+            pytest.param(' ""', "at least 1 character", id="empty text"),
+        ],
+    )
+    def test_an_extends_that_names_no_file_is_refused(self, tmp_path, value, reason):
+        style = _style(tmp_path, f"extends:{value}\n")
+
+        with pytest.raises(ValueError, match=rf"style\.yaml: extends: .*{reason}"):
+            ConfigLoader.load(style)
+
     def test_a_style_that_is_no_mapping_is_refused(self, tmp_path):
         style = tmp_path / "style.yaml"
         style.write_text("- metadata\n- benchmark\n")

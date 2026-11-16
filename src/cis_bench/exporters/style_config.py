@@ -22,6 +22,7 @@ from pydantic import (
     ConfigDict,
     Field,
     JsonValue,
+    TypeAdapter,
     ValidationError,
 )
 from pydantic_core import InitErrorDetails, PydanticCustomError
@@ -223,8 +224,12 @@ class BenchmarkSection(BaseModel):
     namespaces: NamespaceMap = Field(default_factory=dict)
 
 
+# The style file a style extends, relative to its own file or absolute
+_StyleFile = Annotated[str, Field(min_length=1)]
+
+
 class StyleConfig(_Section):
-    """A whole style, after its extends chain is merged."""
+    """One style file, or a whole style after its extends chain is merged."""
 
     removed_keys: ClassVar[Mapping[str, str]] = {
         "namespaces": "declare namespaces in benchmark.namespaces",
@@ -234,6 +239,7 @@ class StyleConfig(_Section):
         "validation": "nothing checks an export against limits a style sets; a style declares none",
     }
 
+    extends: Annotated[_StyleFile | None, BeforeValidator(_given)] = None
     metadata: Metadata = Field(default_factory=Metadata)
     benchmark: BenchmarkSection = Field(default_factory=BenchmarkSection)
     rule_defaults: RuleDefaults = Field(default_factory=RuleDefaults)
@@ -284,6 +290,18 @@ def _unknown_key(location: tuple[int | str, ...]) -> str:
     return "is not a key the exporter reads; the keys here are: " + ", ".join(
         sorted(section.model_fields)
     )
+
+
+_EXTENDS: Final = TypeAdapter(_StyleFile)
+
+
+def extended_style(data: Mapping[str, Any]) -> str | None:
+    """The style file a style extends, as written; None when it names none, or names it in
+    a way the schema refuses (validate_style reports that)."""
+    try:
+        return _EXTENDS.validate_python(data.get("extends"), strict=True)
+    except ValidationError:
+        return None
 
 
 def validate_style(source: str, data: Any) -> StyleConfig:
