@@ -405,3 +405,32 @@ class TestKeysAreText:
 
         with pytest.raises(ValueError, match=r"style\.yaml: the style: the key 1 is not text"):
             ConfigLoader.load(style)
+
+    def test_a_key_inside_an_ordered_map_is_checked_too(self, tmp_path):
+        # PyYAML builds !!omap as a list of tuples
+        style = _style(
+            tmp_path,
+            "field_mappings:\n  title:\n    sources: !!omap\n      - entry:\n          1: x\n",
+        )
+
+        with pytest.raises(
+            ValueError, match=r"style\.yaml: field_mappings\.title\.sources.*the key 1"
+        ):
+            ConfigLoader.load(style)
+
+    def test_keys_below_a_refused_key_are_reported_in_the_same_error(self, tmp_path):
+        style = _style(tmp_path, "rule_defaults:\n  1:\n    nested:\n      - null: x\n")
+
+        with pytest.raises(ValueError) as refused:
+            ConfigLoader.load(style)
+
+        message = str(refused.value)
+        assert "style.yaml: rule_defaults: the key 1 is not text" in message
+        assert "the key None is not text" in message
+
+    def test_an_ordered_map_with_text_keys_loads_as_written(self, tmp_path):
+        style = _style(
+            tmp_path, "field_mappings:\n  title:\n    sources: !!omap\n      - entry: x\n"
+        )
+
+        assert ConfigLoader.load(style).field_mappings == {"title": {"sources": [("entry", "x")]}}

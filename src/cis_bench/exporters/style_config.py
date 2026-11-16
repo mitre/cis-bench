@@ -294,7 +294,9 @@ def text_keys(
 
     YAML reads an unquoted true, 1 or null as a boolean, a number or nothing. A mapping
     takes true and 1 for one key, so such keys are refused in every file before styles are
-    merged, and the keys of a merged style are text only.
+    merged, and the keys of a merged style are text only. Mappings are found at any depth:
+    PyYAML's safe loader nests them in mappings, lists and tuples only (a set holds no
+    mapping).
     """
     if isinstance(data, dict):
         kept: dict[str, Any] = {}
@@ -306,11 +308,14 @@ def text_keys(
                     f"{source}: {_dotted(location)}: the key {key!r} is not text; "
                     "write it in quotes"
                 )
+                # the refused entry is left out, but the keys below it are reported too
+                text_keys(source, value, problems, (*location, str(key)))
         return kept
-    if isinstance(data, list):
-        return [
+    # PyYAML builds a sequence as a list, and the entries of !!omap and !!pairs as tuples
+    if isinstance(data, list | tuple):
+        return type(data)(
             text_keys(source, item, problems, (*location, index)) for index, item in enumerate(data)
-        ]
+        )
     return data
 
 
