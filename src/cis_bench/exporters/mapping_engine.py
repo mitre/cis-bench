@@ -210,8 +210,9 @@ TransformRegistry.register("slug", slug)
 
 
 class ConfigLoader:
-    """Loads mapping configuration from YAML with inheritance support, and checks each file
-    and the merged style against the style schema (style_config.StyleConfig)."""
+    """Loads mapping configuration from YAML with inheritance support: after each file of the
+    extends chain is merged, root first, the style built so far is checked against the style
+    schema (style_config.StyleConfig)."""
 
     @staticmethod
     def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
@@ -244,7 +245,8 @@ class ConfigLoader:
         to find a file's parent; nothing else is checked here.
 
         Raises:
-            ValueError: Circular inheritance, or a file that is not a mapping of sections
+            ValueError: Circular inheritance, an extends that names a folder, a file that is
+                not YAML, or a file that is not a mapping of sections
             FileNotFoundError: A file of the chain does not exist
         """
         if config_path in loading_stack:
@@ -252,8 +254,15 @@ class ConfigLoader:
             raise ValueError(f"Circular inheritance detected: {cycle} -> {config_path}")
         if not config_path.exists():
             raise FileNotFoundError(f"Configuration file not found: {config_path}")
-        with open(config_path) as f:
-            config_data = yaml.safe_load(f) or {}
+        if not config_path.is_file():
+            named_by = f"{loading_stack[-1].name}: extends names " if loading_stack else ""
+            raise ValueError(f"{named_by}{config_path}, which is not a file")
+        try:
+            with open(config_path) as f:
+                config_data = yaml.safe_load(f) or {}
+        except yaml.YAMLError as error:
+            # compose-go's loader does the same: "failed to parse <file>: <error>"
+            raise ValueError(f"{config_path.name}: not valid YAML: {error}") from error
         if not isinstance(config_data, dict):
             raise ValueError(f"{config_path.name}: a style is a mapping of sections")
         earlier: list[tuple[str, dict[str, Any]]] = []

@@ -1,10 +1,11 @@
 """The schema of an XCCDF style file.
 
-A style is YAML. Each file of an extends chain is checked against StyleConfig alone, so a
-mistake is reported with its file, and the merged style is checked once more. A section or
-key the exporter does not read is refused (never ignored), a value of the wrong kind is
-refused, and every mistake of one load is reported with the file and the dotted path of
-the key.
+A style is YAML. ConfigLoader loads an extends chain root first: each file is checked for a
+safe merge (check_mergeable), merged onto the style built so far, and that style is checked
+against StyleConfig (validate_style), its mistakes named with the file just merged. A
+section or key the exporter does not read is refused (never ignored), a value of the wrong
+kind is refused, and every mistake of one file is reported with the file and the dotted path
+of the key.
 
 The field mappings are checked only as JSON-like data: text keys, values that are text,
 numbers, booleans, lists and mappings, and no mapping that contains itself (pydantic's

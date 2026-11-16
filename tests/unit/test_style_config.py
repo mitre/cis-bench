@@ -400,6 +400,18 @@ class TestInheritedStyles:
         ):
             ConfigLoader.load(child)
 
+    def test_an_extends_that_names_a_folder_is_refused_with_the_file_that_wrote_it(self, tmp_path):
+        style = _style(tmp_path, "extends: .\n")
+
+        with pytest.raises(ValueError, match=r"style\.yaml: extends names .*, which is not a file"):
+            ConfigLoader.load(style)
+
+    def test_a_style_that_is_no_valid_yaml_is_refused_with_its_file(self, tmp_path):
+        style = _style(tmp_path, "benchmark: [\n")
+
+        with pytest.raises(ValueError, match=r"style\.yaml: not valid YAML"):
+            ConfigLoader.load(style)
+
     def test_a_style_that_is_no_mapping_is_refused(self, tmp_path):
         style = tmp_path / "style.yaml"
         style.write_text("- metadata\n- benchmark\n")

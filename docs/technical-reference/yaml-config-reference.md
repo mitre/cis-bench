@@ -28,8 +28,8 @@ A key written with no value (`weight:` or `weight: null`) is refused too: leave 
 to take the default.
 
 A style takes another style's settings with `extends: <file>`, a file name relative to the
-style's own file (or absolute); an `extends` with no value, or one that is not text, is
-refused.
+style's own file (or absolute); an `extends` with no value, one that is not text, or one
+that names a folder is refused, and so is a file that is not valid YAML.
 
 An `extends` chain is loaded from its root, the order compose-go loads compose files in.
 Each file is merged onto the style built so far, and that style is checked; a mistake is
