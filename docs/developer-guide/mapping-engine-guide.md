@@ -663,11 +663,12 @@ mapping may name are the ones registered in `mapping_engine.py` (`TransformRegis
 not a section of the style. Each file of the chain is checked alone against one schema
 (`style_config.StyleConfig`), and a file with a mistake is not merged; then the merged
 style is checked once more. A top-level section, or a key of `metadata`, `rule_defaults`,
-`rule_id`, `group_id`, `cci_deduplication`, `group_elements` or `post_processing`, that the
-exporter does not read is refused when the style loads, and so is a value of the wrong
-kind; the other entries of `benchmark` and of `field_mappings` are checked as JSON-like
-data (`JsonValue`). Every mistake is listed with the file and the dotted path of the key; a mistake only
-the merged style shows (one namespace URI bound in two files) is listed with the loaded file.
+`rule_id`, `group_id`, `cci_deduplication`, `group_elements`, `post_processing` or
+`benchmark`, that the exporter does not read is refused when the style loads, and so is a
+value of the wrong kind; the entries of `field_mappings` are checked as JSON-like data
+(`JsonValue`). Every mistake is listed with the file and the dotted path of the key; a
+mistake only the merged style shows (one namespace URI bound in two files, a `dc_elements`
+prefix no file binds) is listed with the loaded file.
 
 A child can add a namespace but cannot drop one it inherits, and the serializer declares
 every namespace in `benchmark.namespaces` on the root. So namespaces belong to the style

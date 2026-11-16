@@ -6,13 +6,13 @@ key the exporter does not read is refused (never ignored), a value of the wrong 
 refused, and every mistake of one load is reported with the file and the dotted path of
 the key.
 
-The benchmark section (other than benchmark.namespaces) and the field mappings are
-checked only as JSON-like data: text keys, values that are text, numbers, booleans, lists
-and mappings, and no mapping that contains itself (pydantic's JsonValue).
+The field mappings are checked only as JSON-like data: text keys, values that are text,
+numbers, booleans, lists and mappings, and no mapping that contains itself (pydantic's
+JsonValue).
 """
 
 from collections.abc import Mapping
-from typing import Annotated, Any, ClassVar, Final, get_args, get_origin
+from typing import Annotated, Any, ClassVar, Final, Self, get_args, get_origin
 
 from lxml import etree
 from pydantic import (
@@ -24,6 +24,8 @@ from pydantic import (
     JsonValue,
     TypeAdapter,
     ValidationError,
+    ValidationInfo,
+    model_validator,
 )
 from pydantic_core import InitErrorDetails, PydanticCustomError
 
@@ -106,6 +108,25 @@ def _declarable_namespaces(value: Any) -> Any:
 
 NamespaceMap = Annotated[dict[str, str], BeforeValidator(_declarable_namespaces)]
 """Prefix -> namespace URI, holding only bindings an XML document can declare."""
+
+
+def _prefixed_name(value: str) -> str:
+    """An element name with a namespace prefix: prefix:name, each part an XML name."""
+    prefix, colon, local = value.partition(":")
+    if not colon:
+        raise PydanticCustomError(
+            "prefixed_name",
+            "{name} needs a namespace prefix (prefix:name) declared in benchmark.namespaces",
+            {"name": repr(value)},
+        )
+    _xml_name(prefix)
+    _xml_name(local)
+    return value
+
+
+PrefixedName = Annotated[str, AfterValidator(_prefixed_name)]
+"""An element in a namespace the style declares, written prefix:name (dc:publisher); the
+prefix must be bound in benchmark.namespaces of the whole style."""
 
 
 def _given(value: Any) -> Any:
@@ -212,16 +233,110 @@ class GroupElement(_Section):
     content: _Text = None
 
 
-class BenchmarkSection(BaseModel):
-    """The benchmark section: its namespaces are checked, its other entries are checked as
-    JSON-like data only."""
+_ELEMENT_FROM_MODEL: Final = "the element comes from the XCCDF model; a style names none"
+
+
+class SourcedElement(_Section):
+    """A Benchmark element filled from a benchmark field (title, description, version); its
+    name is the element's, checked against the XCCDF model when the engine starts."""
+
+    removed_keys: ClassVar[Mapping[str, str]] = {"xccdf_type": _TYPE_FROM_MODEL}
+
+    source: _Text = None
+    transform: _Text = None
+    prepend_text: _Text = None
+
+    @model_validator(mode="after")
+    def _source_named(self, info: ValidationInfo) -> Self:
+        """On a whole style, refuse an element no file of the chain names a source for. A
+        child may change only the transform or the text of an element its parent sources,
+        so a file alone may leave the source out."""
+        if (info.context or {}).get("whole_style") and self.source is None:
+            raise ValidationError.from_exception_data(
+                "SourcedElement", [InitErrorDetails(type="missing", loc=("source",), input={})]
+            )
+        return self
+
+
+class Notice(_Section):
+    """The Benchmark's notice: its id (terms-of-use when left out), language and text."""
+
+    removed_keys: ClassVar[Mapping[str, str]] = {
+        "element": _ELEMENT_FROM_MODEL,
+        "attributes": "write the notice's id and language as id and lang",
+    }
+
+    id: _Text = None
+    lang: _Text = None
+    content: _Text = None
+
+
+class PlainText(_Section):
+    """One plain-text element of the Benchmark."""
+
+    id: str
+    content: _Text = None
+
+
+class ProfileMapping(_Section):
+    """How a profile named on the recommendations is written."""
+
+    removed_keys: ClassVar[Mapping[str, str]] = {
+        "id": "a profile's id comes from benchmark.profiles.id_template",
+    }
+
+    match: str
+    title: _Text = None
+    description: _Text = None
+    includes: list[str] = Field(default_factory=list)
+
+
+class Profiles(_Section):
+    """Whether and how the Benchmark's Profile elements are written."""
+
+    generate_from_rules: _Switch = None
+    id_template: _Text = None
+    description_transform: _Text = None
+    profile_mappings: list[ProfileMapping] = Field(default_factory=list)
+
+
+class ReferenceAttributes(_Section):
+    """The attributes of the Benchmark's reference."""
+
+    href: _Text = None
+
+
+class DublinCoreElement(_Section):
+    """A Dublin Core element of a reference: its prefixed name and its text."""
+
+    element: PrefixedName
+    content: str
+
+
+class Reference(_Section):
+    """The Benchmark's own reference: its href and its Dublin Core elements."""
+
+    removed_keys: ClassVar[Mapping[str, str]] = {"element": _ELEMENT_FROM_MODEL}
+
+    attributes: ReferenceAttributes = Field(default_factory=ReferenceAttributes)
+    dc_elements: list[DublinCoreElement] = Field(default_factory=list)
+
+
+class BenchmarkSection(_Section):
+    """The benchmark section: the entries the engine reads by name, and the elements filled
+    from a benchmark field (every other entry)."""
 
     model_config = ConfigDict(extra="allow", strict=True)
 
-    # The type of the entries other than namespaces (pydantic's documented form)
-    __pydantic_extra__: dict[str, JsonValue] = Field(init=False)
+    # The type of every other entry (pydantic's documented form)
+    __pydantic_extra__: dict[str, SourcedElement] = Field(init=False)
 
+    id_template: _Text = None
     namespaces: NamespaceMap = Field(default_factory=dict)
+    notice: Notice = Field(default_factory=Notice)
+    plain_text: list[PlainText] = Field(default_factory=list)
+    profiles: Profiles = Field(default_factory=Profiles)
+    reference: Reference = Field(default_factory=Reference)
 
 
 # The style file a style extends, relative to its own file or absolute
@@ -250,6 +365,34 @@ class StyleConfig(_Section):
     group_elements: dict[XmlName, GroupElement] = Field(default_factory=dict)
     post_processing: PostProcessing = Field(default_factory=PostProcessing)
 
+    @model_validator(mode="after")
+    def _prefixes_declared(self, info: ValidationInfo) -> Self:
+        """On a whole style, refuse a prefixed element name whose prefix the style does not
+        bind in benchmark.namespaces. A file of an extends chain may use a prefix its parent
+        binds, so this runs on the merged style only (validation context whole_style)."""
+        if not (info.context or {}).get("whole_style"):
+            return self
+        named = [
+            (("benchmark", "reference", "dc_elements", index, "element"), element.element)
+            for index, element in enumerate(self.benchmark.reference.dc_elements)
+        ]
+        problems = [
+            InitErrorDetails(
+                type=PydanticCustomError(
+                    "undeclared_prefix",
+                    "the prefix '{prefix}' is not bound in benchmark.namespaces",
+                    {"prefix": prefix},
+                ),
+                loc=location,
+                input=name,
+            )
+            for location, name in named
+            if (prefix := name.partition(":")[0]) not in self.benchmark.namespaces
+        ]
+        if problems:
+            raise ValidationError.from_exception_data("StyleConfig", problems)
+        return self
+
 
 def _section_at(location: tuple[int | str, ...]) -> type[BaseModel] | None:
     """The model holding the keys at a place in a style, or None where the place is not a
@@ -257,25 +400,43 @@ def _section_at(location: tuple[int | str, ...]) -> type[BaseModel] | None:
     model: type[BaseModel] = StyleConfig
     parts = list(location)
     while parts:
-        declared = model.model_fields.get(str(parts.pop(0)))
-        if declared is None:
+        name = str(parts.pop(0))
+        declared = model.model_fields.get(name)
+        annotation: Any = declared.annotation if declared else None
+        if declared is None and model.model_config.get("extra") == "allow":
+            # an entry the model takes beyond its fields: the type of __pydantic_extra__
+            annotation = get_args(model.__annotations__.get("__pydantic_extra__"))[1:2]
+            annotation = annotation[0] if annotation else None
+        if annotation is None:
             return None
-        annotation = declared.annotation
-        if get_origin(annotation) is dict:
+        if get_origin(annotation) in (dict, list):
+            # a mapping's key or a list's position, then the type of its values
             if not parts:
                 return None
             parts.pop(0)
-            annotation = get_args(annotation)[1]
+            annotation = get_args(annotation)[-1]
         if not (isinstance(annotation, type) and issubclass(annotation, BaseModel)):
             return None
         model = annotation
     return model
 
 
-def _dotted(location: tuple[int | str, ...]) -> str:
-    """A place in a style as a dotted path: rule_defaults.weight. The typed sections hold
-    no lists, so every part is a key (a key YAML read as a number shows as that number)."""
-    return ".".join(str(part) for part in location if part != "[key]") or "the style"
+def _dotted(location: tuple[int | str, ...], kind: str = "") -> str:
+    """A place in a style as a dotted path: benchmark.plain_text[0].id. A number is a
+    position in a list, unless it is a mapping key YAML read as a number: pydantic marks
+    such a key with "[key]" after it, or reports it as the place of an invalid_key."""
+    path = ""
+    for index, part in enumerate(location):
+        if part == "[key]":
+            continue
+        is_key = location[index + 1 : index + 2] == ("[key]",) or (
+            kind == "invalid_key" and index == len(location) - 1
+        )
+        if isinstance(part, int) and not isinstance(part, bool) and not is_key:
+            path += f"[{part}]"
+        else:
+            path += f".{part}" if path else str(part)
+    return path or "the style"
 
 
 def _unknown_key(location: tuple[int | str, ...]) -> str:
@@ -304,23 +465,25 @@ def extended_style(data: Mapping[str, Any]) -> str | None:
         return None
 
 
-def validate_style(source: str, data: Any) -> StyleConfig:
+def validate_style(source: str, data: Any, *, whole_style: bool = False) -> StyleConfig:
     """Check one style file, or a merged style, against the schema.
 
     Args:
         source: The file name the mistakes are reported with
         data: The style as loaded from YAML
+        whole_style: The style is complete (its extends chain merged), so what one file
+            alone cannot show is checked too: each prefix is bound in benchmark.namespaces
 
     Raises:
         ValueError: One line per mistake: the file, the dotted path of the key, and what is
             wrong with it.
     """
     try:
-        return StyleConfig.model_validate(data)
+        return StyleConfig.model_validate(data, context={"whole_style": whole_style})
     except ValidationError as error:
         raise ValueError(
             "\n".join(
-                f"{source}: {_dotted(mistake['loc'])}: "
+                f"{source}: {_dotted(mistake['loc'], mistake['type'])}: "
                 + (
                     _unknown_key(mistake["loc"])
                     if mistake["type"] == "extra_forbidden"

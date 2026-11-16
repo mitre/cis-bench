@@ -14,8 +14,8 @@ This document provides a complete reference for writing MappingEngine YAML confi
 
 A style is checked against one schema (`StyleConfig` in
 `src/cis_bench/exporters/style_config.py`) when it loads. In the sections `metadata`,
-`rule_defaults`, `rule_id`, `group_id`, `cci_deduplication`, `group_elements` and
-`post_processing`, in `benchmark.namespaces`, and at the top level, a key
+`rule_defaults`, `rule_id`, `group_id`, `cci_deduplication`, `group_elements`,
+`post_processing` and `benchmark`, and at the top level, a key
 the exporter does not read is refused, and so is a value of the wrong kind. The error has
 one line per mistake, each with the file and the dotted path of the key:
 
@@ -38,8 +38,7 @@ child); such a mistake is reported with the file that was loaded.
 Every key of a style is text. YAML reads an unquoted `true`, `1` or `null` as a boolean, a
 number or nothing, and such a key is refused; write it in quotes (`"true": ...`).
 
-The other entries of `benchmark` and the entries of `field_mappings` are checked as
-JSON-like data (pydantic's `JsonValue`): text keys, values that are text, numbers,
+The entries of `field_mappings` are checked as JSON-like data (pydantic's `JsonValue`): text keys, values that are text, numbers,
 booleans, lists or mappings, and no mapping that contains itself through a YAML anchor. A
 mistake there is reported with pydantic's type tag in its path:
 
@@ -106,26 +105,65 @@ in `benchmark.namespaces`.
 
 ## Benchmark Section
 
-Benchmark-level field mappings:
+What the Benchmark element is built from. Each entry takes only the keys listed here:
 
 ```yaml
 benchmark:
-# ID template with variables
-id_template: "xccdf_org.cisecurity.benchmarks_benchmark_{version}_{title_slug}"
+  # The Benchmark id, from {benchmark_id}, {version} and {title_slug}
+  id_template: "xccdf_org.cisecurity.benchmarks_benchmark_{version}_{title_slug}"
 
-# Simple field mapping
-title:
-source: "title"
-transform: "none"
+  namespaces: {...} # see Namespaces below
 
-description:
-source: "title" # Can reuse other fields
-transform: "none"
+  # Any other entry is the Benchmark element of that name, filled from a benchmark field
+  title:
+    source: "title" # the benchmark field; required in the file or a style it extends
+    transform: "none" # optional, a registered transform
+  description:
+    source: "title" # a field can fill more than one element
+    prepend_text: "CIS Benchmark exported to DISA STIG format. " # optional
+  version:
+    source: "version"
 
-version:
-source: "version"
-transform: "none"
+  notice:
+    id: "terms-of-use" # optional; terms-of-use when left out
+    lang: "en" # optional; written as xml:lang
+    content: "Exported from {benchmark.title}" # optional; empty when left out
+
+  plain_text: # one plain-text element each
+    - id: "release-info" # required
+      content: "Release: 1 Benchmark Date: {download_date}"
+
+  reference:
+    attributes:
+      href: "{benchmark.url}" # optional; the benchmark's URL when left out
+    dc_elements: # Dublin Core children of the reference
+      - element: "dc:publisher" # required: prefix:name, prefix bound in namespaces
+        content: "CIS Security" # required
+
+  profiles:
+    generate_from_rules: true
+    id_template: "{profile.title|slug:-}"
+    description_transform: "none"
+    profile_mappings:
+      - match: "Level 2 - Server" # required: the profile name on the recommendations
+        title: "Level 2 - Server"
+        description: "CIS Level 2 recommendations for server environments"
+        includes: ["Level 1 - Server"]
 ```
+
+- An element filled from a field needs a `source`, written in the file or in a style it
+  extends: a child may change only an element's `transform` or `prepend_text`. A missing
+  source is checked after the `extends` chain is merged and reported with the loaded file.
+  The element's name must be an element of the XCCDF Benchmark for the style's version;
+  that is checked when the engine starts.
+- The notice, front-matter, rear-matter and reference elements come from the XCCDF model:
+  `element` is refused in `notice` and `reference`. Front-matter and rear-matter are
+  written empty in every style, so a style has no entry for them.
+- The notice's id and language are written as `id` and `lang`; `attributes` is refused.
+- A profile mapping sets no `id`: profile ids come from `profiles.id_template`.
+- The prefix of each `dc_elements` element must be bound in `benchmark.namespaces` of the
+  whole style (the file itself or a style it extends). It is checked after the `extends`
+  chain is merged and reported with the loaded file.
 
 ### Namespaces
 

@@ -1975,24 +1975,16 @@ class TestNoticeCreation:
             f"Exported from {synthetic_complete_benchmark.title} ({synthetic_complete_benchmark.url})"
         ]
 
-    def test_create_notice_resolves_attributes_dict_and_default_id(
+    def test_create_notice_writes_the_url_as_text_and_defaults_the_id(
         self, disa_config_path, synthetic_complete_benchmark
     ):
-        """create_notice resolves attributes.id and attributes['xml:lang'] and normalizes HttpUrl."""
+        """create_notice fills the benchmark URL in as text, and takes terms-of-use as the id
+        and no language when the style names none."""
         engine = MappingEngine(disa_config_path)
-        engine.config.benchmark["notice"] = {
-            "element": "notice",
-            "attributes": {
-                "id": "attr-notice-id",
-                "xml:lang": "en",
-            },
-            "content": "{benchmark.url}",
-        }
+        engine.config.benchmark["notice"] = {"content": "{benchmark.url}"}
 
         notice = engine.create_notice(synthetic_complete_benchmark)
 
-        assert notice.id == "attr-notice-id"
-        assert notice.lang == "en"
         assert notice.content == [str(synthetic_complete_benchmark.url)]
         assert isinstance(notice.content[0], str)
 
