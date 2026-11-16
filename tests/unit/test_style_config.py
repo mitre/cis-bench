@@ -385,6 +385,21 @@ class TestInheritedStyles:
         with pytest.raises(ValueError, match=rf"style\.yaml: extends: .*{reason}"):
             ConfigLoader.load(style)
 
+    def test_a_chain_that_extends_itself_is_refused(self, tmp_path):
+        (tmp_path / "a.yaml").write_text("metadata:\n  style_name: a\nextends: b.yaml\n")
+        (tmp_path / "b.yaml").write_text("metadata:\n  style_name: b\nextends: a.yaml\n")
+
+        with pytest.raises(ValueError, match=r"Circular inheritance detected: .*a\.yaml$"):
+            ConfigLoader.load(tmp_path / "a.yaml")
+
+    def test_a_parent_file_that_does_not_exist_is_reported(self, tmp_path):
+        child = self._child(tmp_path, tmp_path / "parent.yaml", "")
+
+        with pytest.raises(
+            FileNotFoundError, match=r"Configuration file not found: .*parent\.yaml"
+        ):
+            ConfigLoader.load(child)
+
     def test_a_style_that_is_no_mapping_is_refused(self, tmp_path):
         style = tmp_path / "style.yaml"
         style.write_text("- metadata\n- benchmark\n")
