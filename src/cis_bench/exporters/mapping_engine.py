@@ -44,7 +44,7 @@ from xsdata.formats.dataclass.models.generics import AnyElement
 from xsdata.formats.dataclass.serializers.mixins import EventHandler
 
 from cis_bench.exceptions import ExportError
-from cis_bench.exporters.style_config import text_keys, validate_style
+from cis_bench.exporters.style_config import validate_style
 from cis_bench.models.benchmark import (
     Benchmark,
     CISControl,
@@ -206,8 +206,8 @@ TransformRegistry.register("slug", slug)
 
 
 class ConfigLoader:
-    """Loads mapping configuration from YAML with inheritance support, and checks the
-    merged style against the style schema (style_config.StyleConfig)."""
+    """Loads mapping configuration from YAML with inheritance support, and checks each file
+    and the merged style against the style schema (style_config.StyleConfig)."""
 
     @staticmethod
     def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
@@ -235,32 +235,11 @@ class ConfigLoader:
         return result
 
     @staticmethod
-    def _record_source(
-        sources: dict[tuple[str, ...], str],
-        data: dict[str, Any],
-        source: str,
-        path: tuple[str, ...] = (),
-    ) -> None:
-        """Note that this file wrote every key of data, so a mistake is reported with the
-        file that made it. A value that replaces a parent's mapping takes the parent's
-        keys below it out of the record. Keys are text (text_keys), the same keys the merge
-        uses."""
-        for key, value in data.items():
-            here = (*path, key)
-            if not isinstance(value, dict):
-                for below in [known for known in sources if known[: len(here)] == here]:
-                    del sources[below]
-            sources[here] = source
-            if isinstance(value, dict):
-                ConfigLoader._record_source(sources, value, source, here)
-
-    @staticmethod
     def _load_merged(
-        config_path: Path, loading_stack: list[Path], key_problems: list[str]
-    ) -> tuple[dict[str, Any], dict[tuple[str, ...], str]]:
-        """A style as written, merged over the styles it extends, with the file that wrote
-        each key. A key of a file that is not text is left out of the merge and added to
-        key_problems.
+        config_path: Path, loading_stack: list[Path], problems: list[str]
+    ) -> dict[str, Any]:
+        """A style as written, merged over the styles it extends. Each file is checked
+        against the style schema alone before the merge; its mistakes are added to problems.
 
         Raises:
             ValueError: Circular inheritance, or a file that is not a mapping of sections
@@ -278,24 +257,23 @@ class ConfigLoader:
                 config_data = yaml.safe_load(f) or {}
             if not isinstance(config_data, dict):
                 raise ValueError(f"{config_path.name}: a style is a mapping of sections")
-            config_data = text_keys(config_path.name, config_data, key_problems)
 
             merged: dict[str, Any] = {}
-            sources: dict[tuple[str, ...], str] = {}
             if "extends" in config_data:
                 extends_path = Path(config_data.pop("extends"))
                 # Resolve relative to current file's directory
                 if not extends_path.is_absolute():
                     extends_path = config_path.parent / extends_path
-                merged, sources = ConfigLoader._load_merged(
-                    extends_path, loading_stack, key_problems
-                )
+                merged = ConfigLoader._load_merged(extends_path, loading_stack, problems)
                 logger.debug(f"Loaded {config_path.name} extending {extends_path.name}")
             else:
                 logger.debug(f"Loaded {config_path.name} (no inheritance)")
 
-            ConfigLoader._record_source(sources, config_data, config_path.name)
-            return ConfigLoader._deep_merge(merged, config_data), sources
+            try:
+                validate_style(config_path.name, config_data)
+            except ValueError as mistakes:
+                problems.append(str(mistakes))
+            return ConfigLoader._deep_merge(merged, config_data)
         finally:
             loading_stack.pop()
 
@@ -305,8 +283,10 @@ class ConfigLoader:
 
         Config files can specify 'extends: base_style.yaml' to inherit from another file.
         Child configs override parent configs. Deep merge is used for nested dictionaries.
-        The merged style is checked against the style schema once; a mistake is reported
-        with the file of the chain that wrote it.
+        Each file of the chain is checked against the style schema alone, and the mistakes
+        of every file are reported together, each with its file. When no file has a
+        mistake, the merged style is checked too; what only the files together get wrong
+        (one namespace bound in two files) is reported with the loaded file.
 
         Args:
             config_path: Path to the configuration file
@@ -318,9 +298,11 @@ class ConfigLoader:
             ValueError: Circular inheritance, or a style the schema refuses
             FileNotFoundError: If config file not found
         """
-        key_problems: list[str] = []
-        config_data, sources = ConfigLoader._load_merged(config_path, [], key_problems)
-        validate_style(config_path.name, config_data, sources, key_problems)
+        problems: list[str] = []
+        config_data = ConfigLoader._load_merged(config_path, [], problems)
+        if problems:
+            raise ValueError("\n".join(problems))
+        validate_style(config_path.name, config_data)
         return MappingConfig(
             **{
                 section.name: config_data[section.name]

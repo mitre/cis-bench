@@ -1,15 +1,16 @@
 """The schema of an XCCDF style file.
 
-A style is YAML; after its extends chain is merged it is checked against StyleConfig once.
-A section or key the exporter does not read is refused (never ignored), a value of the
-wrong kind is refused, and every mistake of one load is reported with the file and the
-dotted path of the key.
+A style is YAML. Each file of an extends chain is checked against StyleConfig alone, so a
+mistake is reported with its file, and the merged style is checked once more. A section or
+key the exporter does not read is refused (never ignored), a value of the wrong kind is
+refused, and every mistake of one load is reported with the file and the dotted path of
+the key.
 
 The benchmark section and the field mappings are accepted as written here; only
 benchmark.namespaces is checked.
 """
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from typing import Annotated, Any, ClassVar, Final, get_args, get_origin
 
 from lxml import etree
@@ -262,14 +263,9 @@ def _section_at(location: tuple[int | str, ...]) -> type[BaseModel] | None:
 
 
 def _dotted(location: tuple[int | str, ...]) -> str:
-    """A place in a style as a dotted path: rule_defaults.weight, children[0]."""
-    path = ""
-    for part in location:
-        if isinstance(part, int):
-            path += f"[{part}]"
-        elif part != "[key]":
-            path += f".{part}" if path else part
-    return path or "the style"
+    """A place in a style as a dotted path: rule_defaults.weight. The typed sections hold
+    no lists, so every part is a key (a key YAML read as a number shows as that number)."""
+    return ".".join(str(part) for part in location if part != "[key]") or "the style"
 
 
 def _unknown_key(location: tuple[int | str, ...]) -> str:
@@ -286,83 +282,28 @@ def _unknown_key(location: tuple[int | str, ...]) -> str:
     )
 
 
-def text_keys(
-    source: str, data: Any, problems: list[str], location: tuple[int | str, ...] = ()
-) -> Any:
-    """One style file's content without the mapping keys that are not text; each such key is
-    added to problems with the file and the place of its mapping.
-
-    YAML reads an unquoted true, 1 or null as a boolean, a number or nothing. A mapping
-    takes true and 1 for one key, so such keys are refused in every file before styles are
-    merged, and the keys of a merged style are text only. Mappings are found at any depth:
-    PyYAML's safe loader nests them in mappings, lists and tuples only (a set holds no
-    mapping).
-    """
-    if isinstance(data, dict):
-        kept: dict[str, Any] = {}
-        for key, value in data.items():
-            if isinstance(key, str):
-                kept[key] = text_keys(source, value, problems, (*location, key))
-            else:
-                problems.append(
-                    f"{source}: {_dotted(location)}: the key {key!r} is not text; "
-                    "write it in quotes"
-                )
-                # the refused entry is left out, but the keys below it are reported too
-                text_keys(source, value, problems, (*location, str(key)))
-        return kept
-    # PyYAML builds a sequence as a list, and the entries of !!omap and !!pairs as tuples
-    if isinstance(data, list | tuple):
-        return type(data)(
-            text_keys(source, item, problems, (*location, index)) for index, item in enumerate(data)
-        )
-    return data
-
-
-def _written_by(
-    location: tuple[int | str, ...], sources: Mapping[tuple[str, ...], str], default: str
-) -> str:
-    """The file that wrote the key at a place in a merged style: the nearest key at or above
-    the place that a file of the chain is recorded for."""
-    names = tuple(str(part) for part in location)
-    for length in range(len(names), 0, -1):
-        if names[:length] in sources:
-            return sources[names[:length]]
-    return default
-
-
-def validate_style(
-    source: str,
-    data: Any,
-    sources: Mapping[tuple[str, ...], str] | None = None,
-    key_problems: Sequence[str] = (),
-) -> StyleConfig:
-    """Check a merged style against the schema.
+def validate_style(source: str, data: Any) -> StyleConfig:
+    """Check one style file, or a merged style, against the schema.
 
     Args:
-        source: The style's file name
-        data: The style as loaded from YAML, its extends chain merged
-        sources: The file that wrote each key (its path as a tuple), for a style that
-            extends others; a mistake is reported with that file, or with source
-        key_problems: The keys text_keys took out of the files, reported with the rest
+        source: The file name the mistakes are reported with
+        data: The style as loaded from YAML
 
     Raises:
         ValueError: One line per mistake: the file, the dotted path of the key, and what is
             wrong with it.
     """
     try:
-        style = StyleConfig.model_validate(data)
+        return StyleConfig.model_validate(data)
     except ValidationError as error:
-        problems = [
-            f"{_written_by(mistake['loc'], sources or {}, source)}: {_dotted(mistake['loc'])}: "
-            + (
-                _unknown_key(mistake["loc"])
-                if mistake["type"] == "extra_forbidden"
-                else mistake["msg"]
+        raise ValueError(
+            "\n".join(
+                f"{source}: {_dotted(mistake['loc'])}: "
+                + (
+                    _unknown_key(mistake["loc"])
+                    if mistake["type"] == "extra_forbidden"
+                    else mistake["msg"]
+                )
+                for mistake in error.errors()
             )
-            for mistake in error.errors()
-        ]
-        raise ValueError("\n".join([*key_problems, *problems])) from error
-    if key_problems:
-        raise ValueError("\n".join(key_problems))
-    return style
+        ) from error

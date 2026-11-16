@@ -660,11 +660,12 @@ wins where both set one; a list or a single value in the child replaces the pare
 So a child adds to or overrides `field_mappings`, `metadata`, `rule_defaults`,
 `benchmark` (including `benchmark.namespaces`) and `post_processing`. The transforms a
 mapping may name are the ones registered in `mapping_engine.py` (`TransformRegistry`),
-not a section of the style. The merged style is checked against one schema
-(`style_config.StyleConfig`): a top-level section, or a key of `metadata`, `rule_defaults`,
+not a section of the style. Each file of the chain is checked alone against one schema
+(`style_config.StyleConfig`), then the merged style is checked once more: a top-level section, or a key of `metadata`, `rule_defaults`,
 `rule_id`, `group_id`, `cci_deduplication`, `group_elements` or `post_processing`, that the
 exporter does not read is refused when the style loads, and so is a value of the wrong
-kind. Every mistake is listed with the file and the dotted path of the key.
+kind. Every mistake is listed with the file and the dotted path of the key; a mistake only
+the merged style shows (one namespace URI bound in two files) is listed with the loaded file.
 
 A child can add a namespace but cannot drop one it inherits, and the serializer declares
 every namespace in `benchmark.namespaces` on the root. So namespaces belong to the style

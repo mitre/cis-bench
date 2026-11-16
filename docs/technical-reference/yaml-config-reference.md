@@ -13,8 +13,7 @@ This document provides a complete reference for writing MappingEngine YAML confi
 ## Configuration Structure
 
 A style is checked against one schema (`StyleConfig` in
-`src/cis_bench/exporters/style_config.py`) when it loads, after its `extends` chain is
-merged. In the sections `metadata`, `rule_defaults`, `rule_id`, `group_id`,
+`src/cis_bench/exporters/style_config.py`) when it loads. In the sections `metadata`, `rule_defaults`, `rule_id`, `group_id`,
 `cci_deduplication`, `group_elements` and `post_processing`, and at the top level, a key
 the exporter does not read is refused, and so is a value of the wrong kind. The error has
 one line per mistake, each with the file and the dotted path of the key:
@@ -25,12 +24,17 @@ my_style.yaml: cci_deduplication.enabled: Input should be a valid boolean
 ```
 
 A key written with no value (`weight:` or `weight: null`) is refused too: leave the key out
-to take the default. A style that extends another is checked as merged, so a child may
-replace a parent's value, and each mistake is reported with the file that wrote it.
+to take the default.
 
-Every key of a style file is text. YAML reads an unquoted `true`, `1` or `null` as a
-boolean, a number or nothing; such a key is refused in the file that has it, anywhere in the
-file. Write it in quotes (`"true": ...`).
+Each file of an `extends` chain is checked alone, and each mistake is reported with its
+file; a mistake in a parent file is refused even when the child replaces that value. The
+mistakes of every file are reported together. Then the merged style is checked once more,
+for what only the files together get wrong (one namespace URI bound in the parent and in the
+child); such a mistake is reported with the file that was loaded.
+
+A key of the sections above is text. YAML reads an unquoted `true`, `1` or `null` as a
+boolean, a number or nothing, and such a key is refused; write it in quotes
+(`"true": ...`).
 
 Descriptive text (what a style is for, which tools read it) goes in YAML comments.
 
