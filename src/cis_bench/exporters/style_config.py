@@ -6,8 +6,9 @@ key the exporter does not read is refused (never ignored), a value of the wrong 
 refused, and every mistake of one load is reported with the file and the dotted path of
 the key.
 
-The benchmark section and the field mappings are accepted as written here; only
-benchmark.namespaces is checked.
+The benchmark section (other than benchmark.namespaces) and the field mappings are
+checked only as JSON-like data: text keys, values that are text, numbers, booleans, lists
+and mappings, and no mapping that contains itself (pydantic's JsonValue).
 """
 
 from collections.abc import Mapping
@@ -20,6 +21,7 @@ from pydantic import (
     BeforeValidator,
     ConfigDict,
     Field,
+    JsonValue,
     ValidationError,
 )
 from pydantic_core import InitErrorDetails, PydanticCustomError
@@ -83,8 +85,7 @@ def _declarable_namespaces(value: Any) -> Any:
     is bound once (xsdata keeps one prefix per URI). Every binding that breaks a rule is
     reported at its own prefix.
     """
-    if value is None:
-        return {}
+    _given(value)
     if not isinstance(value, Mapping):
         raise PydanticCustomError("namespace_map", "a mapping of prefix to namespace URI is needed")
     bound: dict[str, Any] = {}
@@ -211,10 +212,13 @@ class GroupElement(_Section):
 
 
 class BenchmarkSection(BaseModel):
-    """The benchmark section: its namespaces are checked, its other entries are accepted
-    as written."""
+    """The benchmark section: its namespaces are checked, its other entries are checked as
+    JSON-like data only."""
 
     model_config = ConfigDict(extra="allow", strict=True)
+
+    # The type of the entries other than namespaces (pydantic's documented form)
+    __pydantic_extra__: dict[str, JsonValue] = Field(init=False)
 
     namespaces: NamespaceMap = Field(default_factory=dict)
 
@@ -235,7 +239,7 @@ class StyleConfig(_Section):
     rule_defaults: RuleDefaults = Field(default_factory=RuleDefaults)
     rule_id: IdTemplate = Field(default_factory=IdTemplate)
     group_id: IdTemplate = Field(default_factory=IdTemplate)
-    field_mappings: dict[str, Any] = Field(default_factory=dict)
+    field_mappings: dict[str, JsonValue] = Field(default_factory=dict)
     cci_deduplication: CciDeduplication = Field(default_factory=CciDeduplication)
     group_elements: dict[XmlName, GroupElement] = Field(default_factory=dict)
     post_processing: PostProcessing = Field(default_factory=PostProcessing)

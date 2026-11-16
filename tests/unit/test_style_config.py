@@ -302,6 +302,35 @@ class TestInheritedStyles:
         assert "parent.yaml: benchmark.namespaces.xml: prefix 'xml' is reserved" in message
         assert "child.yaml: benchmark.namespaces.a:b: 'a:b' is not a namespace prefix" in message
 
+    def test_parent_and_child_sections_that_contain_themselves_are_refused_without_a_crash(
+        self, tmp_path
+    ):
+        looping = "rule_defaults: &defaults\n  severity: low\n  again: *defaults\n"
+        parent = _style(tmp_path, looping, name="parent.yaml")
+        child = self._child(tmp_path, parent, looping)
+
+        with pytest.raises(ValueError) as refused:
+            ConfigLoader.load(child)
+
+        message = str(refused.value)
+        assert "parent.yaml: rule_defaults.again" in message
+        assert "child.yaml: rule_defaults.again" in message
+
+    @pytest.mark.parametrize("section", ["field_mappings", "benchmark"])
+    def test_untyped_sections_that_contain_themselves_are_refused_without_a_crash(
+        self, tmp_path, section
+    ):
+        looping = f"{section}:\n  entry: &entry\n    again: *entry\n"
+        parent = _style(tmp_path, looping, name="parent.yaml")
+        child = self._child(tmp_path, parent, looping)
+
+        with pytest.raises(ValueError) as refused:
+            ConfigLoader.load(child)
+
+        message = str(refused.value)
+        assert f"parent.yaml: {section}.entry" in message
+        assert f"child.yaml: {section}.entry" in message
+
     def test_a_style_that_is_no_mapping_is_refused(self, tmp_path):
         style = tmp_path / "style.yaml"
         style.write_text("- metadata\n- benchmark\n")
@@ -335,6 +364,7 @@ class TestKeysWithoutAValue:
                 "cci_deduplication:\n  enabled:\n", r"cci_deduplication\.enabled", id="switch"
             ),
             pytest.param("rule_id:\n  template:\n", r"rule_id\.template", id="template"),
+            pytest.param("benchmark:\n  namespaces:\n", r"benchmark\.namespaces", id="namespaces"),
         ],
     )
     def test_a_key_with_no_value_is_refused_with_its_path(self, tmp_path, body, path):
@@ -368,6 +398,19 @@ class TestKeysOfTypedSections:
         style = _style(tmp_path, "group_elements:\n  1:\n    source: ref\n")
 
         with pytest.raises(ValueError, match=r"style\.yaml: group_elements\.1: "):
+            ConfigLoader.load(style)
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            pytest.param("field_mappings:\n  title:\n    1: x\n", id="field mapping"),
+            pytest.param("benchmark:\n  title:\n    true: x\n", id="benchmark entry"),
+        ],
+    )
+    def test_a_key_that_is_no_text_below_an_untyped_section_is_refused(self, tmp_path, body):
+        style = _style(tmp_path, body)
+
+        with pytest.raises(ValueError, match=r"style\.yaml: (field_mappings|benchmark)\.title"):
             ConfigLoader.load(style)
 
 

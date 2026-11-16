@@ -239,7 +239,8 @@ class ConfigLoader:
         config_path: Path, loading_stack: list[Path], problems: list[str]
     ) -> dict[str, Any]:
         """A style as written, merged over the styles it extends. Each file is checked
-        against the style schema alone before the merge; its mistakes are added to problems.
+        against the style schema alone before the merge; its mistakes are added to problems,
+        and once a file of the chain has a mistake nothing more is merged.
 
         Raises:
             ValueError: Circular inheritance, or a file that is not a mapping of sections
@@ -273,6 +274,9 @@ class ConfigLoader:
                 validate_style(config_path.name, config_data)
             except ValueError as mistakes:
                 problems.append(str(mistakes))
+            if problems:
+                # Only styles the schema accepts are merged; load reports the mistakes
+                return {}
             return ConfigLoader._deep_merge(merged, config_data)
         finally:
             loading_stack.pop()

@@ -13,8 +13,9 @@ This document provides a complete reference for writing MappingEngine YAML confi
 ## Configuration Structure
 
 A style is checked against one schema (`StyleConfig` in
-`src/cis_bench/exporters/style_config.py`) when it loads. In the sections `metadata`, `rule_defaults`, `rule_id`, `group_id`,
-`cci_deduplication`, `group_elements` and `post_processing`, and at the top level, a key
+`src/cis_bench/exporters/style_config.py`) when it loads. In the sections `metadata`,
+`rule_defaults`, `rule_id`, `group_id`, `cci_deduplication`, `group_elements` and
+`post_processing`, in `benchmark.namespaces`, and at the top level, a key
 the exporter does not read is refused, and so is a value of the wrong kind. The error has
 one line per mistake, each with the file and the dotted path of the key:
 
@@ -32,9 +33,17 @@ mistakes of every file are reported together. Then the merged style is checked o
 for what only the files together get wrong (one namespace URI bound in the parent and in the
 child); such a mistake is reported with the file that was loaded.
 
-A key of the sections above is text. YAML reads an unquoted `true`, `1` or `null` as a
-boolean, a number or nothing, and such a key is refused; write it in quotes
-(`"true": ...`).
+Every key of a style is text. YAML reads an unquoted `true`, `1` or `null` as a boolean, a
+number or nothing, and such a key is refused; write it in quotes (`"true": ...`).
+
+The other entries of `benchmark` and the entries of `field_mappings` are checked as
+JSON-like data (pydantic's `JsonValue`): text keys, values that are text, numbers,
+booleans, lists or mappings, and no mapping that contains itself through a YAML anchor. A
+mistake there is reported with pydantic's type tag in its path:
+
+```text
+my_style.yaml: field_mappings.title.dict.again: Recursion error - cyclic reference detected
+```
 
 Descriptive text (what a style is for, which tools read it) goes in YAML comments.
 
