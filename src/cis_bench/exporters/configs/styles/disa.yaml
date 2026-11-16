@@ -6,17 +6,13 @@
 # Inherit common configuration (namespaces, rule defaults, post-processing)
 extends: ../base.yaml
 
+# DISA/DoD STIG-compatible XCCDF export.
+# Conventions: follows DISA STIG XML structure and element naming (conventions v1.10.0).
+# Target tools: DISA SCAP Compliance Checker (SCC), OpenSCAP (DoD configurations), DISA STIG
+# Viewer, Nessus (Government).
 metadata:
   style_name: "disa"
-  description: "DISA/DoD STIG-compatible XCCDF export"
   xccdf_version: "1.1.4"  # STIGs use 1.1.4, not 1.2
-  xccdf_namespace: "http://checklists.nist.gov/xccdf/1.1"
-  target_tools:
-    - "DISA SCAP Compliance Checker (SCC)"
-    - "OpenSCAP (DoD configurations)"
-    - "DISA STIG Viewer"
-    - "Nessus (Government)"
-  conventions: "Follows DISA STIG XML structure and element naming (conventions v1.10.0)"
 
 # Benchmark-level mappings
 benchmark:
@@ -136,21 +132,19 @@ benchmark:
 rule_defaults:
   severity: "medium"  # CIS has no severity → default CAT II equivalent
   weight: "10.0"      # DISA standard
-  selected: "true"
-  role: "full"
 
 # ID Generation - DISA STIG Format
 # DISA STIGs use V-NNNNNN for Groups and SV-NNNNNNrREV_rule for Rules
 # We convert CIS refs (1.1.1) to padded numbers (010101) for STIG-style IDs
 # Variables: {stig_number}, {ref_normalized}
 
+# DISA STIG Group ID format (V-NNNNNN)
 group_id:
   template: "V-{stig_number}"
-  description: "DISA STIG Group ID format (V-NNNNNN)"
 
+# DISA STIG Rule ID format (SV-NNNNNNrREV_rule)
 rule_id:
   template: "SV-{stig_number}r1_rule"
-  description: "DISA STIG Rule ID format (SV-NNNNNNrREV_rule)"
   # Note: r1 = revision 1, would increment on changes
 
 # Field mappings - Order matters for composite fields!
@@ -313,36 +307,22 @@ field_mappings:
       value_template: "{item}"
 
 # CCI Deduplication Configuration
+# What the exporter does when enabled (the algorithm is the exporter's own, not a setting):
+# every mapped CCI is written as an ident; every cited NIST control is written as a
+# reference unless a CCI restates it.
+#   1. Take the recommendation's CIS Controls of the mapping file's version
+#      (cis_controls_version)
+#   2. Look up every CCI of each safeguard (extract: all), primary first, each once
+#   3. Note the control and enhancement each CCI sits under (CM-7 (1) (b) sits under CM-7(1))
+#   4. Add the CCIs as <ident> elements
+#   5. Add every cited NIST control as a <reference>, except one a CCI restates exactly
+# A CCI restates only the control and enhancement it sits under (CM-7 (1) (b) does not
+# stand for CM-7 or for CM-7(2)):
+#   CCI maps to CM-7 (1) (b), CIS cites CM-7(1): restated, not written again
+#   CCI maps to CM-7 (1) (b), CIS cites CM-7:    written (the base control is broader)
+#   CCI maps to CM-7 b,       CIS cites CM-7(5): written (a different enhancement)
 cci_deduplication:
   enabled: true
-  algorithm:
-    description: "Every mapped CCI as an ident; every cited NIST control as a reference unless a CCI restates it"
-    steps:
-      - "Take the recommendation's CIS Controls of the mapping file's version (cis_controls_version)"
-      - "Look up every CCI of each safeguard (extract: all), primary first, each once"
-      - "Note the control and enhancement each CCI sits under (CM-7 (1) (b) sits under CM-7(1))"
-      - "Add the CCIs as <ident> elements"
-      - "Add every cited NIST control as a <reference>, except one a CCI restates exactly"
-
-  matching_rules:
-    description: "A CCI restates only the control and enhancement it sits under"
-    hierarchical: false  # CM-7 (1) (b) does not stand for CM-7 or for CM-7(2)
-    examples:
-      - cci_maps_to: "CM-7 (1) (b)"
-        cis_cites: "CM-7(1)"
-        result: "restated"  # same control and enhancement; not written again
-      - cci_maps_to: "CM-7 (1) (b)"
-        cis_cites: "CM-7"
-        result: "written"  # the base control is a broader requirement
-      - cci_maps_to: "CM-7 b"
-        cis_cites: "CM-7(5)"
-        result: "written"  # a different enhancement
-
-# Validation rules
-validation:
-  require_cci_for_cis_controls: false  # Warn if missing, don't fail
-  require_nist_controls: false
-  max_cci_per_rule: 50  # Sanity check
 
 # Group element specifications (xsdata types for each Group element)
 # Note: Groups are DISA wrappers - one Group per Rule (STIG convention)

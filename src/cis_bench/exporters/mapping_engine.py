@@ -44,6 +44,7 @@ from xsdata.formats.dataclass.models.generics import AnyElement
 from xsdata.formats.dataclass.serializers.mixins import EventHandler
 
 from cis_bench.exceptions import ExportError
+from cis_bench.exporters.style_config import extended_style, validate_style
 from cis_bench.models.benchmark import (
     Benchmark,
     CISControl,
@@ -77,7 +78,6 @@ class MappingConfig:
     cci_deduplication: dict[str, Any] = field(default_factory=dict)
     # What each Group element is filled from (its type comes from the XCCDF model)
     group_elements: dict[str, Any] = field(default_factory=dict)
-    validation: dict[str, Any] | None = None
     # How the serialized XML is finished (remove_override_attr)
     post_processing: dict[str, Any] = field(default_factory=dict)
 
@@ -206,102 +206,8 @@ TransformRegistry.register("slug", slug)
 
 
 class ConfigLoader:
-    """Loads and validates mapping configuration from YAML with inheritance support."""
-
-    # Where a setting a style might put in an unread section is actually read.
-    _UNREAD_SECTION_HINTS: Final[dict[str, str]] = {
-        "namespaces": "declare namespaces in benchmark.namespaces",
-        "rule_elements": "an element's type comes from the XCCDF model; a style declares none",
-        "transformations": "a mapping names a transform registered in TransformRegistry; "
-        "a style declares none",
-    }
-
-    # The post_processing settings the exporter reads, and where a removed one went.
-    _POST_PROCESSING_SETTINGS: Final[frozenset[str]] = frozenset({"remove_override_attr"})
-    _REMOVED_POST_PROCESSING_HINTS: Final[dict[str, str]] = {
-        "handlers": "a Rule's metadata is model content (metadata_from_config); nothing "
-        "is inserted after serialization",
-        "strip_namespace_prefixes": "the serializer writes the namespaces declared in "
-        "benchmark.namespaces; nothing rewrites prefixes afterwards",
-        "preserve_namespaces": "a style declares exactly the namespaces its documents use in "
-        "benchmark.namespaces, and all of them are declared on the root",
-    }
-
-    @staticmethod
-    def _refuse_unread_post_processing_settings(
-        config_path: Path, config_data: dict[str, Any]
-    ) -> None:
-        """A post_processing setting the exporter does not read is refused, by name, so a
-        style cannot promise a behaviour nothing applies."""
-        for name in config_data.get("post_processing") or {}:
-            if name in ConfigLoader._POST_PROCESSING_SETTINGS:
-                continue
-            hint = ConfigLoader._REMOVED_POST_PROCESSING_HINTS.get(name)
-            raise ValueError(
-                f"{config_path.name}: post_processing.{name} is not a setting the exporter reads"
-                + (f" ({hint})" if hint else "")
-                + "; the settings are: "
-                + ", ".join(sorted(ConfigLoader._POST_PROCESSING_SETTINGS))
-            )
-
-    # Namespaces in XML 1.0, section 3: the names no document may bind or rebind.
-    _RESERVED_NAMESPACES: Final[dict[str, str]] = {
-        "xml": "http://www.w3.org/XML/1998/namespace",
-        "xmlns": "http://www.w3.org/2000/xmlns/",
-    }
-
-    @staticmethod
-    def _refuse_undeclarable_namespaces(config_path: Path, config_data: dict[str, Any]) -> None:
-        """Refuse a benchmark.namespaces binding an XML document cannot declare.
-
-        A prefix is "default" (the default namespace) or an XML name without a colon, and
-        never xml or xmlns; a URI is a non-empty string, never one of the two reserved
-        namespaces, and is bound once (xsdata keeps one prefix per URI).
-        """
-        namespaces = (config_data.get("benchmark") or {}).get("namespaces") or {}
-        where = f"{config_path.name}: benchmark.namespaces"
-        bound: dict[str, str] = {}
-        for prefix, uri in namespaces.items():
-            if not isinstance(uri, str) or not uri:
-                raise ValueError(f"{where}: prefix {prefix!r} needs a namespace URI")
-            if prefix in ConfigLoader._RESERVED_NAMESPACES:
-                raise ValueError(f"{where}: prefix {prefix!r} is reserved by XML")
-            if uri in ConfigLoader._RESERVED_NAMESPACES.values():
-                raise ValueError(f"{where}: prefix {prefix!r} is bound to a namespace XML reserves")
-            if prefix != "default":
-                try:
-                    if not isinstance(prefix, str) or prefix.startswith("{"):
-                        raise ValueError("an XML name without a colon is needed")
-                    etree.QName(None, prefix)
-                except ValueError as error:
-                    raise ValueError(
-                        f"{where}: {prefix!r} is not a namespace prefix ({error})"
-                    ) from error
-            if uri in bound:
-                raise ValueError(
-                    f"{where}: {prefix!r} and {bound[uri]!r} are both bound to {uri}; "
-                    "a namespace is listed once"
-                )
-            bound[uri] = prefix
-
-    @staticmethod
-    def _refuse_unread_sections(config_path: Path, config_data: dict[str, Any]) -> None:
-        """A top-level section the loader does not read is refused, by name.
-
-        The loader fills one MappingConfig field per section; a section with no field would
-        be ignored silently, and the style would promise a setting nothing applies.
-        """
-        sections = {section.name for section in fields(MappingConfig)} | {"extends"}
-        for name in config_data:
-            if name in sections:
-                continue
-            hint = ConfigLoader._UNREAD_SECTION_HINTS.get(name)
-            raise ValueError(
-                f"{config_path.name}: {name} is not a section the loader reads"
-                + (f" ({hint})" if hint else "")
-                + "; the sections are: "
-                + ", ".join(sorted(sections - {"extends"}))
-            )
+    """Loads mapping configuration from YAML with inheritance support, and checks each file
+    and the merged style against the style schema (style_config.StyleConfig)."""
 
     @staticmethod
     def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
@@ -329,80 +235,87 @@ class ConfigLoader:
         return result
 
     @staticmethod
-    def load(config_path: Path, _loading_stack: list[Path] | None = None) -> MappingConfig:
+    def _load_merged(
+        config_path: Path, loading_stack: list[Path], problems: list[str]
+    ) -> dict[str, Any]:
+        """A style as written, merged over the styles it extends. Each file is checked
+        against the style schema alone before the merge; its mistakes are added to problems,
+        and once a file of the chain has a mistake nothing more is merged.
+
+        Raises:
+            ValueError: Circular inheritance, or a file that is not a mapping of sections
+            FileNotFoundError: A file of the chain does not exist
+        """
+        if config_path in loading_stack:
+            cycle = " -> ".join(str(p) for p in loading_stack)
+            raise ValueError(f"Circular inheritance detected: {cycle} -> {config_path}")
+        if not config_path.exists():
+            raise FileNotFoundError(f"Configuration file not found: {config_path}")
+
+        loading_stack.append(config_path)
+        try:
+            with open(config_path) as f:
+                config_data = yaml.safe_load(f) or {}
+            if not isinstance(config_data, dict):
+                raise ValueError(f"{config_path.name}: a style is a mapping of sections")
+
+            merged: dict[str, Any] = {}
+            extends = extended_style(config_data)
+            if extends is not None:
+                extends_path = Path(extends)
+                # Resolve relative to current file's directory
+                if not extends_path.is_absolute():
+                    extends_path = config_path.parent / extends_path
+                merged = ConfigLoader._load_merged(extends_path, loading_stack, problems)
+                logger.debug(f"Loaded {config_path.name} extending {extends_path.name}")
+            else:
+                logger.debug(f"Loaded {config_path.name} (no inheritance)")
+
+            try:
+                validate_style(config_path.name, config_data)
+            except ValueError as mistakes:
+                problems.append(str(mistakes))
+            if problems:
+                # Only styles the schema accepts are merged; load reports the mistakes
+                return {}
+            config_data.pop("extends", None)
+            return ConfigLoader._deep_merge(merged, config_data)
+        finally:
+            loading_stack.pop()
+
+    @staticmethod
+    def load(config_path: Path) -> MappingConfig:
         """Load mapping configuration from YAML file with inheritance support.
 
         Config files can specify 'extends: base_style.yaml' to inherit from another file.
         Child configs override parent configs. Deep merge is used for nested dictionaries.
+        Each file of the chain is checked against the style schema alone, and the mistakes
+        of every file are reported together, each with its file. When no file has a
+        mistake, the merged style is checked too; what only the files together get wrong
+        (one namespace bound in two files) is reported with the loaded file.
 
         Args:
             config_path: Path to the configuration file
-            _loading_stack: Internal - tracks loading chain to detect circular inheritance
 
         Returns:
             MappingConfig with merged configuration
 
         Raises:
-            ValueError: If circular inheritance is detected
+            ValueError: Circular inheritance, or a style the schema refuses
             FileNotFoundError: If config file not found
         """
-        if _loading_stack is None:
-            _loading_stack = []
-
-        # Check for circular inheritance
-        if config_path in _loading_stack:
-            cycle = " -> ".join(str(p) for p in _loading_stack)
-            raise ValueError(f"Circular inheritance detected: {cycle} -> {config_path}")
-
-        if not config_path.exists():
-            raise FileNotFoundError(f"Configuration file not found: {config_path}")
-
-        # Add to loading stack
-        _loading_stack.append(config_path)
-
-        try:
-            # Load the current file
-            with open(config_path) as f:
-                config_data = yaml.safe_load(f) or {}
-            ConfigLoader._refuse_unread_sections(config_path, config_data)
-            ConfigLoader._refuse_unread_post_processing_settings(config_path, config_data)
-
-            # Check for inheritance
-            if "extends" in config_data:
-                extends_path = Path(config_data.pop("extends"))
-
-                # Resolve relative to current file's directory
-                if not extends_path.is_absolute():
-                    extends_path = config_path.parent / extends_path
-
-                # Recursively load parent configuration
-                parent_config_obj = ConfigLoader.load(extends_path, _loading_stack)
-
-                # Convert parent MappingConfig back to dict for merging
-                parent_dict = {
-                    section.name: getattr(parent_config_obj, section.name)
-                    for section in fields(MappingConfig)
-                }
-
-                # Deep merge parent with current (current overrides parent)
-                config_data = ConfigLoader._deep_merge(parent_dict, config_data)
-
-                logger.debug(f"Loaded {config_path.name} extending {extends_path.name}")
-            else:
-                logger.debug(f"Loaded {config_path.name} (no inheritance)")
-
-            ConfigLoader._refuse_undeclarable_namespaces(config_path, config_data)
-            return MappingConfig(
-                **{
-                    section.name: config_data[section.name]
-                    for section in fields(MappingConfig)
-                    if section.name in config_data
-                }
-            )
-
-        finally:
-            # Remove from loading stack
-            _loading_stack.pop()
+        problems: list[str] = []
+        config_data = ConfigLoader._load_merged(config_path, [], problems)
+        if problems:
+            raise ValueError("\n".join(problems))
+        validate_style(config_path.name, config_data)
+        return MappingConfig(
+            **{
+                section.name: config_data[section.name]
+                for section in fields(MappingConfig)
+                if section.name in config_data
+            }
+        )
 
 
 def _model_in(annotation: Any) -> type[BaseModel] | None:

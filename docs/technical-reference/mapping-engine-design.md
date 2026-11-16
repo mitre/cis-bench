@@ -360,11 +360,9 @@ Structure matches YAML file:
 - rule_defaults: Default rule attributes
 - rule_id: ID generation template
 - field_mappings: Core field mapping definitions
-- validation: Validation rules
 """
 
 style_name: str
-description: str
 xccdf_version: str
 
 benchmark_mappings: Dict[str, FieldMapping]
@@ -374,7 +372,6 @@ rule_id_template: str
 field_mappings: Dict[str, FieldMapping]
 
 cci_lookup: Optional[CCILookupConfig] = None
-validation: Optional[ValidationConfig] = None
 
 class ConfigLoader:
 """Load and validate YAML configuration files."""
@@ -861,7 +858,7 @@ def map_rule(self, recommendation: Recommendation, context: MappingContext) -> R
 Algorithm:
 
 1. Generate rule ID from template
-2. Apply rule defaults (severity, weight, selected)
+2. Apply rule defaults (severity, weight)
 3. For each field in field_mappings:
 a. Determine mapping strategy (simple/composite/embedded/lookup)
 b. Apply strategy to map field
@@ -886,7 +883,6 @@ rule = Rule(
 id=rule_id,
 severity=self.config.rule_defaults.get('severity', 'medium'),
 weight=self.config.rule_defaults.get('weight', '10.0'),
-selected=self.config.rule_defaults.get('selected', True)
 )
 
 # 3. Map each field
@@ -1288,7 +1284,6 @@ content: "{nist_control_id}"
 # cis_native_style.yaml
 metadata:
 style_name: "cis_native"
-description: "CIS native XCCDF format"
 xccdf_version: "1.2"
 
 field_mappings:
