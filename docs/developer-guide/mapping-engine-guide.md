@@ -118,6 +118,7 @@ transform: "none"
 ident:
 target_element: "ident"
 multiple: true
+source_logic: "cci_lookup_with_deduplication"
 cci_lookup:
 source_field: "cis_controls"
 extract: "all"
@@ -293,11 +294,10 @@ Removing support for unneeded filesystem types reduces attack surface.</VulnDisc
 ident:
 target_element: "ident"
 multiple: true # Creates one <ident> per CCI
+source_logic: "cci_lookup_with_deduplication"
 cci_lookup:
-enabled: true
 source_field: "cis_controls"
 extract: "all"
-deduplicate_nist: true
 attributes:
 system: "http://cyber.mil/cci"
 ```
@@ -421,12 +421,11 @@ CCI (Control Correlation Identifier) lookup is a special feature for DISA compli
 ident:
 target_element: "ident"
 multiple: true
+source_logic: "cci_lookup_with_deduplication" # runs the lookup; cited NIST controls a CCI restates are dropped when cci_deduplication.enabled
 cci_lookup:
-enabled: true
 mapping_file: "my-cci-mapping.json" # optional: relative to this style file; the bundled mapping when left out
 source_field: "cis_controls" # Look up CCIs from CIS Controls
 extract: "all" # "all" or "primary"
-deduplicate_nist: true # Write cited NIST controls as references unless a CCI restates them
 attributes:
 system: "http://cyber.mil/cci"
 ```
@@ -503,8 +502,7 @@ field_mappings:
 default_value: # New mapping
 target_element: "default"
 source_field: "default_value"
-transform: "none"
-optional: true # Only include if field has value
+transform: "none" # left out of a rule whose field has no value
 ```
 
 ### Step 4: Test the Change
@@ -666,8 +664,9 @@ contains itself), merged onto the style built so far, and that style is checked 
 schema (`style_config.StyleConfig`). A top-level section, or a key of `metadata`, `rule_defaults`,
 `rule_id`, `group_id`, `cci_deduplication`, `group_elements`, `post_processing` or
 `benchmark`, that the exporter does not read is refused when the style loads, and so is a
-value of the wrong kind; the entries of `field_mappings` are checked as JSON-like data
-(`JsonValue`). Every mistake is listed with the dotted path of the key and the file just
+value of the wrong kind; a field mapping takes the keys of its `structure` (`simple`,
+`composite`, `nested`, `dublin_core`; the other three are checked as JSON-like data for
+now). Every mistake is listed with the dotted path of the key and the file just
 merged when it appeared, so a parent's mistake names the parent and one namespace URI bound
 in parent and child names the child. Loading stops at the first file with mistakes; every
 file a style extends is a valid style on its own.
@@ -688,11 +687,7 @@ Map fields only when certain conditions are met:
 impact_statement:
 target_element: "impact"
 source_field: "impact"
-transform: "none"
-optional: true # Only include if field has value
-condition:
-field: "impact"
-not_empty: true # Only map if field is not empty/None
+transform: "none" # left out of a rule whose impact has no text
 ```
 
 ### Nested Structures
@@ -1005,17 +1000,10 @@ a style that names one that is not registered is refused when it loads.
 
 Do not add 10 mappings at once. Add one, test, commit, repeat.
 
-### 5. Use Optional Wisely
+### 5. A Mapping with No Value Is Left Out
 
-```yaml
-impact_statement:
-source_field: "impact"
-optional: true # Good - impact field might not exist
-
-title:
-source_field: "title"
-optional: false # Good - title is required
-```
+A mapping whose field has no text, and which has no attributes, writes no element for that
+rule; there is no `optional` key.
 
 ### 6. Validate xsdata Types
 
@@ -1142,9 +1130,7 @@ separator: "\n\n"
 impact:
 target_element: "impact"
 source_field: "impact"
-transform: "none"
-optional: true
-default: "No impact information available" # Use if field empty
+transform: "none" # left out of a rule whose impact has no text
 ```
 
 ### Pattern 3: List Expansion
