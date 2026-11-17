@@ -152,7 +152,16 @@ def test_the_default_lookup_reads_the_bundled_mapping():
 
 
 @pytest.mark.parametrize(
-    "content", [pytest.param('{"cis_id": "1.1"}', id="object"), pytest.param("[1]", id="entry")]
+    "content",
+    [
+        pytest.param('{"cis_id": "1.1"}', id="object"),
+        pytest.param("[1]", id="entry"),
+        pytest.param(
+            '[{"cis_id": "4.8", "mapping_status": "OFFICIAL", "primary_cci": "invalid"}]',
+            id="cci that is no mapping",
+        ),
+        pytest.param('[{"cis_id": 4.8, "mapping_status": "OFFICIAL"}]', id="cis_id not text"),
+    ],
 )
 def test_a_file_that_is_no_list_of_safeguard_entries_is_refused(tmp_path, content):
     path = tmp_path / "mapping.json"

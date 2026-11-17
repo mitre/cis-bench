@@ -2605,6 +2605,11 @@ class TestStyleCciMappingFile:
         [
             pytest.param(None, "No such file", id="missing"),
             pytest.param("{}", "list of safeguard entries", id="not a mapping file"),
+            pytest.param(
+                '[{"cis_id": "4.8", "mapping_status": "OFFICIAL", "primary_cci": "x"}]',
+                "list of safeguard entries",
+                id="an entry of the wrong shape",
+            ),
         ],
     )
     def test_a_mapping_file_that_cannot_be_read_is_refused_with_both_files(
