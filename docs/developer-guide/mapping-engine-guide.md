@@ -660,15 +660,17 @@ wins where both set one; a list or a single value in the child replaces the pare
 So a child adds to or overrides `field_mappings`, `metadata`, `rule_defaults`,
 `benchmark` (including `benchmark.namespaces`) and `post_processing`. The transforms a
 mapping may name are the ones registered in `mapping_engine.py` (`TransformRegistry`),
-not a section of the style. Each file of the chain is checked alone against one schema
-(`style_config.StyleConfig`), and a file with a mistake is not merged; then the merged
-style is checked once more. A top-level section, or a key of `metadata`, `rule_defaults`,
+not a section of the style. The chain is loaded root first (the order compose-go loads
+compose files in): each file is checked for a safe merge (text keys, no mapping that
+contains itself), merged onto the style built so far, and that style is checked against one
+schema (`style_config.StyleConfig`). A top-level section, or a key of `metadata`, `rule_defaults`,
 `rule_id`, `group_id`, `cci_deduplication`, `group_elements`, `post_processing` or
 `benchmark`, that the exporter does not read is refused when the style loads, and so is a
 value of the wrong kind; the entries of `field_mappings` are checked as JSON-like data
-(`JsonValue`). Every mistake is listed with the file and the dotted path of the key; a
-mistake only the merged style shows (one namespace URI bound in two files, a `dc_elements`
-prefix no file binds) is listed with the loaded file.
+(`JsonValue`). Every mistake is listed with the dotted path of the key and the file just
+merged when it appeared, so a parent's mistake names the parent and one namespace URI bound
+in parent and child names the child. Loading stops at the first file with mistakes; every
+file a style extends is a valid style on its own.
 
 A child can add a namespace but cannot drop one it inherits, and the serializer declares
 every namespace in `benchmark.namespaces` on the root. So namespaces belong to the style

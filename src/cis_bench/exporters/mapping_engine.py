@@ -44,7 +44,11 @@ from xsdata.formats.dataclass.models.generics import AnyElement
 from xsdata.formats.dataclass.serializers.mixins import EventHandler
 
 from cis_bench.exceptions import ExportError
-from cis_bench.exporters.style_config import extended_style, validate_style
+from cis_bench.exporters.style_config import (
+    check_mergeable,
+    extended_style,
+    validate_style,
+)
 from cis_bench.models.benchmark import (
     Benchmark,
     CISControl,
@@ -206,8 +210,9 @@ TransformRegistry.register("slug", slug)
 
 
 class ConfigLoader:
-    """Loads mapping configuration from YAML with inheritance support, and checks each file
-    and the merged style against the style schema (style_config.StyleConfig)."""
+    """Loads mapping configuration from YAML with inheritance support: after each file of the
+    extends chain is merged, root first, the style built so far is checked against the style
+    schema (style_config.StyleConfig)."""
 
     @staticmethod
     def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
@@ -235,15 +240,13 @@ class ConfigLoader:
         return result
 
     @staticmethod
-    def _load_merged(
-        config_path: Path, loading_stack: list[Path], problems: list[str]
-    ) -> dict[str, Any]:
-        """A style as written, merged over the styles it extends. Each file is checked
-        against the style schema alone before the merge; its mistakes are added to problems,
-        and once a file of the chain has a mistake nothing more is merged.
+    def _chain(config_path: Path, loading_stack: list[Path]) -> list[tuple[str, dict[str, Any]]]:
+        """The files of a style's extends chain as written, root first. Only extends is read
+        to find a file's parent; nothing else is checked here.
 
         Raises:
-            ValueError: Circular inheritance, or a file that is not a mapping of sections
+            ValueError: Circular inheritance, an extends that names a folder, a file that is
+                not YAML, or a file that is not a mapping of sections
             FileNotFoundError: A file of the chain does not exist
         """
         if config_path in loading_stack:
@@ -251,37 +254,26 @@ class ConfigLoader:
             raise ValueError(f"Circular inheritance detected: {cycle} -> {config_path}")
         if not config_path.exists():
             raise FileNotFoundError(f"Configuration file not found: {config_path}")
-
-        loading_stack.append(config_path)
+        if not config_path.is_file():
+            named_by = f"{loading_stack[-1].name}: extends names " if loading_stack else ""
+            raise ValueError(f"{named_by}{config_path}, which is not a file")
         try:
             with open(config_path) as f:
                 config_data = yaml.safe_load(f) or {}
-            if not isinstance(config_data, dict):
-                raise ValueError(f"{config_path.name}: a style is a mapping of sections")
-
-            merged: dict[str, Any] = {}
-            extends = extended_style(config_data)
-            if extends is not None:
-                extends_path = Path(extends)
-                # Resolve relative to current file's directory
-                if not extends_path.is_absolute():
-                    extends_path = config_path.parent / extends_path
-                merged = ConfigLoader._load_merged(extends_path, loading_stack, problems)
-                logger.debug(f"Loaded {config_path.name} extending {extends_path.name}")
-            else:
-                logger.debug(f"Loaded {config_path.name} (no inheritance)")
-
-            try:
-                validate_style(config_path.name, config_data)
-            except ValueError as mistakes:
-                problems.append(str(mistakes))
-            if problems:
-                # Only styles the schema accepts are merged; load reports the mistakes
-                return {}
-            config_data.pop("extends", None)
-            return ConfigLoader._deep_merge(merged, config_data)
-        finally:
-            loading_stack.pop()
+        except yaml.YAMLError as error:
+            # compose-go's loader does the same: "failed to parse <file>: <error>"
+            raise ValueError(f"{config_path.name}: not valid YAML: {error}") from error
+        if not isinstance(config_data, dict):
+            raise ValueError(f"{config_path.name}: a style is a mapping of sections")
+        earlier: list[tuple[str, dict[str, Any]]] = []
+        extends = extended_style(config_data)
+        if extends is not None:
+            extends_path = Path(extends)
+            # Resolve relative to current file's directory
+            if not extends_path.is_absolute():
+                extends_path = config_path.parent / extends_path
+            earlier = ConfigLoader._chain(extends_path, [*loading_stack, config_path])
+        return [*earlier, (config_path.name, config_data)]
 
     @staticmethod
     def load(config_path: Path) -> MappingConfig:
@@ -289,10 +281,11 @@ class ConfigLoader:
 
         Config files can specify 'extends: base_style.yaml' to inherit from another file.
         Child configs override parent configs. Deep merge is used for nested dictionaries.
-        Each file of the chain is checked against the style schema alone, and the mistakes
-        of every file are reported together, each with its file. When no file has a
-        mistake, the merged style is checked too; what only the files together get wrong
-        (one namespace bound in two files) is reported with the loaded file.
+        The chain is loaded root first, the order compose-go loads compose files in: each
+        file is checked alone only for a safe merge (check_mergeable), merged onto the style
+        built so far, and that style is checked against the style schema, its mistakes
+        reported with the file just merged. Loading stops at the first file with mistakes,
+        so every file a style extends is a whole style itself.
 
         Args:
             config_path: Path to the configuration file
@@ -304,11 +297,15 @@ class ConfigLoader:
             ValueError: Circular inheritance, or a style the schema refuses
             FileNotFoundError: If config file not found
         """
-        problems: list[str] = []
-        config_data = ConfigLoader._load_merged(config_path, [], problems)
-        if problems:
-            raise ValueError("\n".join(problems))
-        validate_style(config_path.name, config_data, whole_style=True)
+        config_data: dict[str, Any] = {}
+        for name, written in ConfigLoader._chain(config_path, []):
+            check_mergeable(name, written)
+            extends = {"extends": written["extends"]} if "extends" in written else {}
+            config_data = ConfigLoader._deep_merge(
+                config_data, {key: value for key, value in written.items() if key != "extends"}
+            )
+            validate_style(name, {**config_data, **extends})
+            logger.debug(f"Loaded {name}")
         return MappingConfig(
             **{
                 section.name: config_data[section.name]
