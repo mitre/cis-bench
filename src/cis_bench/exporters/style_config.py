@@ -7,9 +7,10 @@ section or key the exporter does not read is refused (never ignored), a value of
 kind is refused, and every mistake of one file is reported with the file and the dotted path
 of the key.
 
-The field mappings are checked only as JSON-like data: text keys, values that are text,
-numbers, booleans, lists and mappings, and no mapping that contains itself (pydantic's
-JsonValue).
+A field mapping takes the keys of its structure (FieldMapping, a union discriminated on
+structure): simple, composite, nested and dublin_core are typed; embedded_xml_tags,
+ident_from_list and metadata_from_config are accepted as JSON-like data (pydantic's
+JsonValue) until they are typed.
 """
 
 from collections.abc import Mapping
@@ -309,10 +310,10 @@ class ReferenceAttributes(_Section):
 
 
 class DublinCoreElement(_Section):
-    """A Dublin Core element of a reference: its prefixed name and its text."""
+    """A Dublin Core element of a reference: its prefixed name and its text (a template)."""
 
     element: PrefixedName
-    content: str
+    content: Template
 
 
 class Reference(_Section):

@@ -840,6 +840,22 @@ class TestFieldMappings:
         ):
             ConfigLoader.load(style)
 
+    def test_a_dublin_core_content_with_no_value_is_refused(self, tmp_path):
+        style = _style(
+            tmp_path,
+            "benchmark:\n  namespaces:\n    dc: urn:example:dc\n"
+            + _mapping(
+                "structure: dublin_core\nsource_field: nist_controls\n"
+                "dc_elements:\n  - element: dc:title\n    content:"
+            ),
+        )
+
+        with pytest.raises(
+            ValueError,
+            match=r"dublin_core\.dc_elements\[0\]\.content: has no value; leave the key out",
+        ):
+            ConfigLoader.load(style)
+
     def test_a_template_with_no_value_is_refused(self, tmp_path):
         style = _style(tmp_path, _mapping("attributes:\n  fixref:"))
 
