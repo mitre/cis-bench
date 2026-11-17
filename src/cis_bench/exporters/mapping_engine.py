@@ -47,6 +47,7 @@ from cis_bench.exceptions import ExportError
 from cis_bench.exporters.style_config import (
     check_mergeable,
     extended_style,
+    file_name,
     validate_style,
 )
 from cis_bench.models.benchmark import (
@@ -58,7 +59,7 @@ from cis_bench.models.benchmark import (
 
 # Import XCCDF types for element creation (XCCDF 1.2 - for type hints only)
 # Note: Engine dynamically loads version-specific types based on config
-from cis_bench.utils.cci_lookup import get_cci_service
+from cis_bench.utils.cci_lookup import CCILookupService, cci_service_for
 from cis_bench.utils.xml_utils import ncname_slug
 
 # Set up logger
@@ -240,7 +241,7 @@ class ConfigLoader:
         return result
 
     @staticmethod
-    def _chain(config_path: Path, loading_stack: list[Path]) -> list[tuple[str, dict[str, Any]]]:
+    def _chain(config_path: Path, loading_stack: list[Path]) -> list[tuple[Path, dict[str, Any]]]:
         """The files of a style's extends chain as written, root first. Only extends is read
         to find a file's parent; nothing else is checked here.
 
@@ -265,7 +266,7 @@ class ConfigLoader:
             raise ValueError(f"{config_path.name}: not valid YAML: {error}") from error
         if not isinstance(config_data, dict):
             raise ValueError(f"{config_path.name}: a style is a mapping of sections")
-        earlier: list[tuple[str, dict[str, Any]]] = []
+        earlier: list[tuple[Path, dict[str, Any]]] = []
         extends = extended_style(config_data)
         if extends is not None:
             extends_path = Path(extends)
@@ -273,7 +274,21 @@ class ConfigLoader:
             if not extends_path.is_absolute():
                 extends_path = config_path.parent / extends_path
             earlier = ConfigLoader._chain(extends_path, [*loading_stack, config_path])
-        return [*earlier, (config_path.name, config_data)]
+        return [*earlier, (config_path, config_data)]
+
+    @staticmethod
+    def _resolve_relative_paths(config_path: Path, config_data: dict[str, Any]) -> None:
+        """Make a relative CCI mapping file a field mapping names (cci_lookup.mapping_file)
+        relative to the folder of the style file that writes it, before the file is merged,
+        as extends is; compose-go resolves relative paths per file the same way. A value
+        that is no file name is left for validation to report."""
+        for mapping in (config_data.get("field_mappings") or {}).values():
+            lookup = mapping.get("cci_lookup") if isinstance(mapping, dict) else None
+            if not isinstance(lookup, dict):
+                continue
+            name = file_name(lookup.get("mapping_file"))
+            if name is not None and not Path(name).is_absolute():
+                lookup["mapping_file"] = str((config_path.parent / name).resolve())
 
     @staticmethod
     def load(config_path: Path) -> MappingConfig:
@@ -298,8 +313,10 @@ class ConfigLoader:
             FileNotFoundError: If config file not found
         """
         config_data: dict[str, Any] = {}
-        for name, written in ConfigLoader._chain(config_path, []):
+        for path, written in ConfigLoader._chain(config_path, []):
+            name = path.name
             check_mergeable(name, written)
+            ConfigLoader._resolve_relative_paths(path, written)
             extends = {"extends": written["extends"]} if "extends" in written else {}
             config_data = ConfigLoader._deep_merge(
                 config_data, {key: value for key, value in written.items() if key != "extends"}
@@ -473,7 +490,7 @@ class MappingEngine:
         self._refuse_unknown_field_names()
         self._refuse_unknown_transforms()
         self._refuse_invalid_embedded_tags()
-        self.cci_service = get_cci_service()
+        self.cci_service = self._cci_service(config_path)
 
         # Dynamically load XCCDF models based on config version
         xccdf_version = self.config.metadata.get("xccdf_version", "1.2")
@@ -849,6 +866,33 @@ class MappingEngine:
             element.text = content  # "" keeps the <Tag></Tag> form official STIGs write
             parts.append(etree.tostring(element, encoding="unicode"))
         return "".join(parts)
+
+    def _cci_service(self, config_path: Path) -> CCILookupService:
+        """The CCI lookup of the mapping file the style's ident mapping names
+        (cci_lookup.mapping_file, resolved against the style file that wrote it when the
+        style loaded), or of the bundled mapping file when it names none.
+
+        Raises:
+            ValueError: The mapping file is no file name, cannot be read, or is not a CCI
+                mapping file; the error names the style and the mapping file.
+        """
+        ident = self.config.field_mappings.get("ident")
+        lookup = ident.get("cci_lookup") if isinstance(ident, dict) else None
+        written = lookup.get("mapping_file") if isinstance(lookup, dict) else None
+        if written is None:
+            return cci_service_for()
+        name = file_name(written)
+        if name is None:
+            raise ValueError(
+                f"{config_path.name}: ident.cci_lookup.mapping_file must name a file, "
+                f"not {written!r}"
+            )
+        try:
+            return cci_service_for(Path(name))
+        except (OSError, ValueError) as error:
+            raise ValueError(
+                f"{config_path.name}: ident.cci_lookup.mapping_file {name}: {error}"
+            ) from error
 
     def get_ccis_with_deduplication(self, rec: Recommendation) -> tuple[list[str], list[str]]:
         """Get CCIs and extra NIST controls using deduplication.

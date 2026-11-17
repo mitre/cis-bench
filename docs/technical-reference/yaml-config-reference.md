@@ -361,7 +361,7 @@ multiple: true # Create multiple <ident> elements
 source_logic: "cci_lookup_with_deduplication"
 cci_lookup:
 enabled: true
-mapping_file: "data/cis-cci-mapping.json"
+mapping_file: "my-cci-mapping.json" # optional: relative to this style file
 source_field: "cis_controls"
 cis_controls_version: 8 # the CIS Controls version the mapping file is keyed by
 extract: "all" # every CCI of the safeguard, primary first ("primary": only the first)
@@ -374,6 +374,13 @@ system: "http://cyber.mil/cci"
 shipped `cis-cci-mapping.json` is keyed by v8). Only a rule's controls of that version are
 looked up: v7 reuses the same numbers for unrelated safeguards. A rule with no control of
 that version gets `fallback_cci`. Without the key, every control is looked up.
+
+`mapping_file` names the CIS-CCI mapping file the lookup reads, in the shape of the bundled
+`src/cis_bench/data/cis-cci-mapping.json` (see [XCCDF styles](xccdf-styles.md#the-mapping-file)).
+A relative path is relative to the style file that writes it, as `extends` is; an absolute
+path is used as written. Without the key, the bundled file is read; the shipped styles name
+none. A file that does not exist, or is not a list of safeguard entries, stops the export
+with an error naming the style and the file.
 
 The NIST controls no CCI on the rule covers are written as references by a field with
 `source_logic: "nist_after_cci_deduplication"` (the DISA style's `reference`); each reference carries the `dc_elements` the field names (`dc:title`

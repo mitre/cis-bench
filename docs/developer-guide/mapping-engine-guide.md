@@ -423,7 +423,7 @@ target_element: "ident"
 multiple: true
 cci_lookup:
 enabled: true
-mapping_file: "data/cis-cci-mapping.json"
+mapping_file: "my-cci-mapping.json" # optional: relative to this style file; the bundled mapping when left out
 source_field: "cis_controls" # Look up CCIs from CIS Controls
 extract: "all" # "all" or "primary"
 deduplicate_nist: true # Write cited NIST controls as references unless a CCI restates them

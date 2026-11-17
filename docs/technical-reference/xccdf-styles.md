@@ -369,6 +369,10 @@ Avoid duplicating NIST control references when CCIs already provide that mapping
 
 ### The mapping file
 
+The CCI lookup reads `src/cis_bench/data/cis-cci-mapping.json` unless the style's `ident`
+mapping names another file with `cci_lookup.mapping_file` (relative to the style file that
+writes it). A style's own file has the same shape as this one.
+
 `src/cis_bench/data/cis-cci-mapping.json` maps each CIS Controls v8 safeguard (`cis_id`,
 "4.8") to DISA CCIs: a `primary_cci` and up to three `supporting_ccis`, each with its
 `cci`, `confidence`, `reasoning` and `nist_control` (the CCI's NIST SP 800-53 Rev 5 index

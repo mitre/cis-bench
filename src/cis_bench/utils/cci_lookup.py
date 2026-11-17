@@ -1,22 +1,29 @@
 """CCI (Control Correlation Identifier) lookup service.
 
-Maps CIS Controls safeguards to DoD CCIs through the bundled CIS-CCI mapping, and tells
-which cited NIST controls a rule's CCIs already state, so only the others are written as
-references.
+Maps CIS Controls safeguards to DoD CCIs through a CIS-CCI mapping file (the bundled one
+unless a style names its own), and tells which cited NIST controls a rule's CCIs already
+state, so only the others are written as references.
 """
 
+import functools
 import json
 import logging
 import re
 from dataclasses import dataclass
 from gettext import ngettext
 from pathlib import Path
+from typing import Final
+
+from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError
 
 logger = logging.getLogger(__name__)
 
 # A NIST SP 800-53 control and its enhancement at the start of an index: "CM-8" and "(3)" in
 # "CM-8 (3) (a)"; sub-parts ("a 1", "(b)") and assessment suffixes (".1") are not part of it
 _CONTROL_KEY_RE = re.compile(r"([A-Z]{2}-\d+)\s*(?:\((\d+)\))?")
+
+# The mapping file shipped with the package, read when a style names none
+BUNDLED_MAPPING: Final = Path(__file__).parent.parent / "data" / "cis-cci-mapping.json"
 
 
 @dataclass
@@ -28,6 +35,30 @@ class CCIMapping:
     confidence: float | None = None
 
 
+class _MappedCci(BaseModel):
+    """A CCI of a mapping entry as the file writes it; the reader decides which are given."""
+
+    model_config = ConfigDict(extra="allow", strict=True)  # reasoning and the like are kept
+
+    cci: str | None = None
+    nist_control: str | None = None
+    confidence: float | None = None
+
+
+class _MappingEntry(BaseModel):
+    """A safeguard's entry of a CIS-CCI mapping file."""
+
+    model_config = ConfigDict(extra="allow", strict=True)  # cis_title and the like are kept
+
+    cis_id: str
+    mapping_status: str | None = None
+    primary_cci: _MappedCci | None = None
+    supporting_ccis: list[_MappedCci] = []
+
+
+_MAPPING_FILE: Final = TypeAdapter(list[_MappingEntry])
+
+
 class CCILookupService:
     """Service for looking up CCIs and managing NIST deduplication."""
 
@@ -35,30 +66,41 @@ class CCILookupService:
         """Initialize CCI lookup service.
 
         Args:
-            mapping_file: Path to cis-cci-mapping.json (defaults to bundled file)
+            mapping_file: Path to a CIS-CCI mapping file (defaults to the bundled file)
+
+        Raises:
+            OSError: The file cannot be read.
+            ValueError: The file is not JSON, or not a list of safeguard entries in the
+                shape of the bundled file.
         """
         if mapping_file is None:
-            # Use bundled mapping file
-            mapping_file = Path(__file__).parent.parent / "data" / "cis-cci-mapping.json"
+            mapping_file = BUNDLED_MAPPING
 
         logger.debug(f"Initializing CCI lookup service with mapping file: {mapping_file}")
 
         with open(mapping_file) as f:
             mapping_data = json.load(f)
+        try:
+            entries = _MAPPING_FILE.validate_python(mapping_data)
+        except ValidationError as error:
+            raise ValueError(
+                f"{mapping_file}: a CCI mapping file is a list of safeguard entries in the shape "
+                f"of the bundled one: {error}"
+            ) from error
 
         logger.debug(
             ngettext(
                 "Loaded {count} CCI mapping entry",
                 "Loaded {count} CCI mapping entries",
-                len(mapping_data),
-            ).format(count=len(mapping_data))
+                len(entries),
+            ).format(count=len(entries))
         )
 
         # Each safeguard's CCIs, read once through the one entry reader: only OFFICIAL
         # entries give CCIs (INFERRED and UNMAPPED entries are kept in the file as
         # research data and give none).
         self._ccis_by_safeguard: dict[str, list[CCIMapping]] = {
-            entry["cis_id"]: self._official_ccis(entry) for entry in mapping_data
+            entry.cis_id: self._official_ccis(entry) for entry in entries
         }
         # Reverse index: CCI -> the NIST control it implements (DISA's Rev 5 index)
         self._cci_to_nist: dict[str, str] = {
@@ -69,7 +111,7 @@ class CCILookupService:
         }
 
     @staticmethod
-    def _official_ccis(entry: dict) -> list[CCIMapping]:
+    def _official_ccis(entry: _MappingEntry) -> list[CCIMapping]:
         """An entry's CCIs, primary first, then its supporting CCIs; none unless the entry
         is OFFICIAL.
 
@@ -77,23 +119,24 @@ class CCILookupService:
             ValueError: An OFFICIAL entry without a primary CCI, or a CCI without its CCI
                 id or NIST control.
         """
-        if entry.get("mapping_status") != "OFFICIAL":
+        if entry.mapping_status != "OFFICIAL":
             return []
-        cis_id = entry.get("cis_id")
-        primary = entry.get("primary_cci")
+        cis_id = entry.cis_id
+        primary = entry.primary_cci
         if not primary:
             raise ValueError(f"safeguard {cis_id}: an OFFICIAL entry needs a primary_cci")
         ccis = []
-        for item in [primary, *entry.get("supporting_ccis", [])]:
-            if not item.get("cci") or not item.get("nist_control"):
+        for item in [primary, *entry.supporting_ccis]:
+            if not item.cci or not item.nist_control:
                 raise ValueError(
-                    f"safeguard {cis_id}: every CCI needs its cci and nist_control: {item!r}"
+                    f"safeguard {cis_id}: every CCI needs its cci and nist_control: "
+                    f"{item.model_dump()!r}"
                 )
             ccis.append(
                 CCIMapping(
-                    cci=item["cci"],
-                    nist_control=item["nist_control"],
-                    confidence=item.get("confidence"),
+                    cci=item.cci,
+                    nist_control=item.nist_control,
+                    confidence=item.confidence,
                 )
             )
         return ccis
@@ -201,14 +244,22 @@ class CCILookupService:
         return f"{control}({enhancement})" if enhancement else control
 
 
-# Singleton instance for easy access
-_service_instance = None
+@functools.cache
+def _service(resolved: Path) -> CCILookupService:
+    return CCILookupService(resolved)
+
+
+def cci_service_for(mapping_file: Path | None = None) -> CCILookupService:
+    """The CCI lookup of a mapping file (the bundled one when None), read once per file per
+    process: two spellings of one path give the same lookup.
+
+    Raises:
+        OSError: The file cannot be read.
+        ValueError: The file is not a CCI mapping file.
+    """
+    return _service((mapping_file or BUNDLED_MAPPING).resolve())
 
 
 def get_cci_service() -> CCILookupService:
-    """Get singleton CCI lookup service instance."""
-    global _service_instance
-    if _service_instance is None:
-        logger.debug("Creating singleton CCI lookup service instance")
-        _service_instance = CCILookupService()
-    return _service_instance
+    """The CCI lookup of the bundled mapping file."""
+    return cci_service_for()

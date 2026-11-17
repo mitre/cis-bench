@@ -440,19 +440,25 @@ def _unknown_key(location: tuple[int | str, ...]) -> str:
     )
 
 
-_EXTENDS: Final = TypeAdapter(_StyleFile)
+_FILE_NAME: Final = TypeAdapter(_StyleFile)
 _MERGEABLE: Final = TypeAdapter(dict[str, JsonValue])
 # The tags pydantic puts in a JsonValue error's place, after each mapping or list it enters
 _JSON_VALUE_TAGS: Final = frozenset({"dict", "list", "str", "int", "float", "bool", "none"})
 
 
+def file_name(value: Any) -> str | None:
+    """A file name a style writes (extends, a CCI mapping file), as written; None when the
+    value is no file name the schema accepts (validate_style reports that)."""
+    try:
+        return _FILE_NAME.validate_python(value, strict=True)
+    except ValidationError:
+        return None
+
+
 def extended_style(data: Mapping[str, Any]) -> str | None:
     """The style file a style extends, as written; None when it names none, or names it in
     a way the schema refuses (validate_style reports that)."""
-    try:
-        return _EXTENDS.validate_python(data.get("extends"), strict=True)
-    except ValidationError:
-        return None
+    return file_name(data.get("extends"))
 
 
 def _as_written(key: Any) -> str:
