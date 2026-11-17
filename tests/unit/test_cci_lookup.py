@@ -1,10 +1,11 @@
 """The CIS safeguard -> CCI lookup and its NIST coverage, read from the mapping file."""
 
 import json
+from pathlib import Path
 
 import pytest
 
-from cis_bench.utils.cci_lookup import CCILookupService
+from cis_bench.utils.cci_lookup import CCILookupService, cci_service_for, get_cci_service
 
 
 def _cci(cci, nist):
@@ -123,3 +124,39 @@ def test_an_official_cci_without_its_nist_control_is_refused(tmp_path):
 def test_an_unknown_extract_is_refused(service):
     with pytest.raises(ValueError, match="extract"):
         service.get_ccis_for_cis_control("1.1", extract="supporting")
+
+
+def test_a_mapping_file_is_read_once_however_its_path_is_written(tmp_path, monkeypatch):
+    path = tmp_path / "mapping.json"
+    path.write_text(json.dumps(ENTRIES))
+    monkeypatch.chdir(tmp_path)
+
+    assert cci_service_for(path) is cci_service_for(Path("mapping.json"))
+
+
+def test_two_mapping_files_give_two_lookups(tmp_path):
+    one, two = tmp_path / "one.json", tmp_path / "two.json"
+    one.write_text(json.dumps(ENTRIES))
+    two.write_text(json.dumps(ENTRIES[1:]))
+
+    assert [m.cci for m in cci_service_for(one).get_ccis_for_cis_control("1.1")] == [
+        "CCI-000001",
+        "CCI-000002",
+    ]
+    assert cci_service_for(two).get_ccis_for_cis_control("1.1") == []
+
+
+def test_the_default_lookup_reads_the_bundled_mapping():
+    assert cci_service_for() is get_cci_service()
+    assert get_cci_service().get_ccis_for_cis_control("4.8")
+
+
+@pytest.mark.parametrize(
+    "content", [pytest.param('{"cis_id": "1.1"}', id="object"), pytest.param("[1]", id="entry")]
+)
+def test_a_file_that_is_no_list_of_safeguard_entries_is_refused(tmp_path, content):
+    path = tmp_path / "mapping.json"
+    path.write_text(content)
+
+    with pytest.raises(ValueError, match="list of safeguard entries"):
+        CCILookupService(path)

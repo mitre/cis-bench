@@ -2538,3 +2538,81 @@ class TestTransformsAreCheckedWhenTheStyleLoads:
     ):
         for path in (cis_config_path, disa_config_path):
             MappingEngine(path)
+
+
+class TestStyleCciMappingFile:
+    """The CCI mapping file a style names is the one its CCI lookup reads."""
+
+    @staticmethod
+    def _mapping(path: Path, cci: str) -> Path:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                [
+                    {
+                        "cis_id": "4.8",
+                        "primary_cci": {"cci": cci, "nist_control": "CM-7 a"},
+                        "supporting_ccis": [],
+                        "mapping_status": "OFFICIAL",
+                    }
+                ]
+            )
+        )
+        return path
+
+    @staticmethod
+    def _style(path: Path, extends: Path, mapping_file: str) -> Path:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            f"extends: {extends}\n"
+            f"field_mappings:\n  ident:\n    cci_lookup:\n      mapping_file: {mapping_file}\n"
+        )
+        return path
+
+    def test_the_style_s_mapping_file_gives_the_ccis(
+        self, tmp_path, disa_config_path, sample_recommendation
+    ):
+        self._mapping(tmp_path / "mapping.json", "CCI-999999")
+        style = self._style(tmp_path / "mine.yaml", disa_config_path, "mapping.json")
+
+        ccis, _ = MappingEngine(style).get_ccis_with_deduplication(sample_recommendation)
+
+        assert ccis == ["CCI-999999"]
+
+    def test_a_relative_mapping_file_is_found_next_to_the_style_that_names_it(
+        self, tmp_path, disa_config_path, sample_recommendation
+    ):
+        self._mapping(tmp_path / "parent" / "mapping.json", "CCI-999998")
+        parent = self._style(tmp_path / "parent" / "parent.yaml", disa_config_path, "mapping.json")
+        child = tmp_path / "child" / "child.yaml"
+        child.parent.mkdir()
+        child.write_text(f"extends: {parent}\n")
+
+        ccis, _ = MappingEngine(child).get_ccis_with_deduplication(sample_recommendation)
+
+        assert ccis == ["CCI-999998"]
+
+    def test_a_style_naming_no_mapping_file_reads_the_bundled_one(
+        self, disa_config_path, sample_recommendation
+    ):
+        ccis, _ = MappingEngine(disa_config_path).get_ccis_with_deduplication(sample_recommendation)
+
+        bundled = CCILookupService().get_ccis_for_cis_control("4.8")
+        assert ccis == [mapping.cci for mapping in bundled]
+
+    @pytest.mark.parametrize(
+        ("content", "why"),
+        [
+            pytest.param(None, "No such file", id="missing"),
+            pytest.param("{}", "list of safeguard entries", id="not a mapping file"),
+        ],
+    )
+    def test_a_mapping_file_that_cannot_be_read_is_refused_with_both_files(
+        self, tmp_path, disa_config_path, content, why
+    ):
+        if content is not None:
+            (tmp_path / "mapping.json").write_text(content)
+        style = self._style(tmp_path / "mine.yaml", disa_config_path, "mapping.json")
+
+        with pytest.raises(ValueError, match=rf"mine\.yaml: .*mapping\.json.*{why}"):
+            MappingEngine(style)

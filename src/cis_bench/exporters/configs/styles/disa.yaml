@@ -206,7 +206,8 @@ field_mappings:
     source_logic: "cci_lookup_with_deduplication"
     cci_lookup:
       enabled: true
-      mapping_file: "data/cis-cci-mapping.json"
+      # mapping_file: the bundled CIS-CCI mapping (src/cis_bench/data/cis-cci-mapping.json)
+      # is read unless a style names its own, relative to that style's file
       source_field: "cis_controls"
       cis_controls_version: 8  # the mapping file is keyed by CIS Controls v8 only
       extract: "all"  # every CCI the mapping gives the safeguard, primary first; "primary" keeps only the first

@@ -1,22 +1,27 @@
 """CCI (Control Correlation Identifier) lookup service.
 
-Maps CIS Controls safeguards to DoD CCIs through the bundled CIS-CCI mapping, and tells
-which cited NIST controls a rule's CCIs already state, so only the others are written as
-references.
+Maps CIS Controls safeguards to DoD CCIs through a CIS-CCI mapping file (the bundled one
+unless a style names its own), and tells which cited NIST controls a rule's CCIs already
+state, so only the others are written as references.
 """
 
+import functools
 import json
 import logging
 import re
 from dataclasses import dataclass
 from gettext import ngettext
 from pathlib import Path
+from typing import Final
 
 logger = logging.getLogger(__name__)
 
 # A NIST SP 800-53 control and its enhancement at the start of an index: "CM-8" and "(3)" in
 # "CM-8 (3) (a)"; sub-parts ("a 1", "(b)") and assessment suffixes (".1") are not part of it
 _CONTROL_KEY_RE = re.compile(r"([A-Z]{2}-\d+)\s*(?:\((\d+)\))?")
+
+# The mapping file shipped with the package, read when a style names none
+BUNDLED_MAPPING: Final = Path(__file__).parent.parent / "data" / "cis-cci-mapping.json"
 
 
 @dataclass
@@ -35,16 +40,26 @@ class CCILookupService:
         """Initialize CCI lookup service.
 
         Args:
-            mapping_file: Path to cis-cci-mapping.json (defaults to bundled file)
+            mapping_file: Path to a CIS-CCI mapping file (defaults to the bundled file)
+
+        Raises:
+            OSError: The file cannot be read.
+            ValueError: The file is not JSON, or not a list of safeguard entries.
         """
         if mapping_file is None:
-            # Use bundled mapping file
-            mapping_file = Path(__file__).parent.parent / "data" / "cis-cci-mapping.json"
+            mapping_file = BUNDLED_MAPPING
 
         logger.debug(f"Initializing CCI lookup service with mapping file: {mapping_file}")
 
         with open(mapping_file) as f:
             mapping_data = json.load(f)
+        if not isinstance(mapping_data, list) or not all(
+            isinstance(entry, dict) and "cis_id" in entry for entry in mapping_data
+        ):
+            raise ValueError(
+                f"{mapping_file}: a CCI mapping file is a list of safeguard entries, each with "
+                "its cis_id"
+            )
 
         logger.debug(
             ngettext(
@@ -201,14 +216,22 @@ class CCILookupService:
         return f"{control}({enhancement})" if enhancement else control
 
 
-# Singleton instance for easy access
-_service_instance = None
+@functools.cache
+def _service(resolved: Path) -> CCILookupService:
+    return CCILookupService(resolved)
+
+
+def cci_service_for(mapping_file: Path | None = None) -> CCILookupService:
+    """The CCI lookup of a mapping file (the bundled one when None), read once per file per
+    process: two spellings of one path give the same lookup.
+
+    Raises:
+        OSError: The file cannot be read.
+        ValueError: The file is not a CCI mapping file.
+    """
+    return _service((mapping_file or BUNDLED_MAPPING).resolve())
 
 
 def get_cci_service() -> CCILookupService:
-    """Get singleton CCI lookup service instance."""
-    global _service_instance
-    if _service_instance is None:
-        logger.debug("Creating singleton CCI lookup service instance")
-        _service_instance = CCILookupService()
-    return _service_instance
+    """The CCI lookup of the bundled mapping file."""
+    return cci_service_for()
