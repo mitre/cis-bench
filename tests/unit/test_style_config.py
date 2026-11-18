@@ -657,3 +657,209 @@ class TestBenchmarkSection:
         assert ConfigLoader.load(child).benchmark["reference"]["dc_elements"] == [
             {"element": "dc:publisher", "content": "x"}
         ]
+
+
+def _mapping(body: str) -> str:
+    """A style body with one field mapping, title, written in the given lines."""
+    return "field_mappings:\n  title:\n" + "".join(f"    {line}\n" for line in body.splitlines())
+
+
+class TestFieldMappings:
+    """A field mapping takes the keys the engine reads for its structure."""
+
+    def test_a_key_of_another_structure_is_refused_with_the_mapping_and_the_key(self, tmp_path):
+        style = _style(
+            tmp_path,
+            _mapping("structure: composite\nsource_field: title\nsources:\n  - field: title"),
+        )
+
+        with pytest.raises(
+            ValueError,
+            match=r"style\.yaml: field_mappings\.title\.composite\.source_field: is not a key",
+        ):
+            ConfigLoader.load(style)
+
+    def test_an_unknown_structure_is_refused_with_the_known_ones(self, tmp_path):
+        style = _style(tmp_path, _mapping("structure: composit"))
+
+        with pytest.raises(ValueError) as refused:
+            ConfigLoader.load(style)
+
+        message = str(refused.value)
+        assert "style.yaml: field_mappings.title: Input tag 'composit'" in message
+        for known in ("simple", "composite", "nested", "dublin_core", "embedded_xml_tags"):
+            assert f"'{known}'" in message
+
+    @pytest.mark.parametrize(
+        ("body", "path"),
+        [
+            pytest.param("structure: composite", r"composite\.sources", id="composite sources"),
+            pytest.param("structure: nested", r"nested\.children", id="nested children"),
+            pytest.param(
+                "structure: nested\nchildren:\n  - element: check-content",
+                r"nested\.children\[0\]\.source_field",
+                id="nested child source",
+            ),
+            pytest.param(
+                "structure: dublin_core", r"dublin_core\.source_field", id="dublin core source"
+            ),
+            pytest.param(
+                "structure: composite\nsources:\n  - label: x",
+                r"composite\.sources\[0\]\.field",
+                id="composite source field",
+            ),
+        ],
+    )
+    def test_a_required_key_left_out_is_refused(self, tmp_path, body, path):
+        style = _style(tmp_path, _mapping(body))
+
+        with pytest.raises(ValueError, match=rf"field_mappings\.title\.{path}: Field required"):
+            ConfigLoader.load(style)
+
+    def test_a_nested_mapping_takes_one_child(self, tmp_path):
+        child = "  - source_field: audit\n    element: check-content"
+        style = _style(tmp_path, _mapping(f"structure: nested\nchildren:\n{child}\n{child}"))
+
+        with pytest.raises(
+            ValueError, match=r"field_mappings\.title\.nested\.children: List should have at most 1"
+        ):
+            ConfigLoader.load(style)
+
+    @pytest.mark.parametrize(
+        ("body", "path", "hint"),
+        [
+            pytest.param("description: words", r"simple\.description", "comment", id="description"),
+            pytest.param("optional: true", r"simple\.optional", "left out", id="optional"),
+            pytest.param("content: ''", r"simple\.content", "written empty", id="content"),
+            pytest.param(
+                "structure: dublin_core\nsource_field: nist_controls\nmultiple: true",
+                r"dublin_core\.multiple",
+                "one reference",
+                id="dublin core multiple",
+            ),
+            pytest.param(
+                "structure: composite\nsources:\n  - field: title\nmultiple: true",
+                r"composite\.multiple",
+                "simple mapping",
+                id="composite multiple",
+            ),
+            pytest.param(
+                "cci_lookup:\n  enabled: true",
+                r"simple\.cci_lookup\.enabled",
+                "source_logic",
+                id="cci lookup enabled",
+            ),
+            pytest.param(
+                "cci_lookup:\n  deduplicate_nist: true",
+                r"simple\.cci_lookup\.deduplicate_nist",
+                "cci_deduplication",
+                id="cci lookup deduplicate",
+            ),
+        ],
+    )
+    def test_a_key_nothing_reads_is_refused_with_what_happens_instead(
+        self, tmp_path, body, path, hint
+    ):
+        style = _style(tmp_path, _mapping(body))
+
+        with pytest.raises(
+            ValueError, match=rf"field_mappings\.title\.{path}: is not read \(.*{hint}"
+        ):
+            ConfigLoader.load(style)
+
+    @pytest.mark.parametrize(
+        ("body", "path"),
+        [
+            pytest.param("source_logic: nist", r"simple\.source_logic", id="simple"),
+            pytest.param(
+                "structure: dublin_core\nsource_field: nist_controls\nsource_logic: cci",
+                r"dublin_core\.source_logic",
+                id="dublin core",
+            ),
+        ],
+    )
+    def test_a_source_logic_the_structure_does_not_act_on_is_refused(self, tmp_path, body, path):
+        style = _style(tmp_path, _mapping(body))
+
+        with pytest.raises(ValueError, match=rf"field_mappings\.title\.{path}: Input should be"):
+            ConfigLoader.load(style)
+
+    @pytest.mark.parametrize(
+        ("body", "path"),
+        [
+            pytest.param(
+                "structure: nested\nchildren:\n  - source_field: audit\n    element: check-content"
+                "\nattributes:\n  href: x",
+                r"nested\.attributes\.href",
+                id="nested",
+            ),
+            pytest.param(
+                "structure: dublin_core\nsource_field: nist_controls\nattributes:\n  system: x",
+                r"dublin_core\.attributes\.system",
+                id="dublin core",
+            ),
+        ],
+    )
+    def test_an_attribute_the_structure_does_not_write_is_refused(self, tmp_path, body, path):
+        style = _style(tmp_path, _mapping(body))
+
+        with pytest.raises(ValueError, match=rf"field_mappings\.title\.{path}: is not a key"):
+            ConfigLoader.load(style)
+
+    def test_a_simple_mapping_takes_any_attribute(self, tmp_path):
+        style = _style(tmp_path, _mapping("attributes:\n  fixref: F-{ref_normalized}"))
+
+        assert ConfigLoader.load(style).field_mappings["title"]["attributes"] == {
+            "fixref": "F-{ref_normalized}"
+        }
+
+    def test_a_structure_typed_by_a_later_card_is_accepted_as_written(self, tmp_path):
+        style = _style(tmp_path, _mapping("structure: embedded_xml_tags\ncomponents: [anything]"))
+
+        assert ConfigLoader.load(style).field_mappings["title"]["components"] == ["anything"]
+
+    def test_a_child_style_may_switch_off_a_mapping_with_null(self, tmp_path):
+        parent = _style(tmp_path, _mapping("source_field: title"), name="parent.yaml")
+        child = tmp_path / "child.yaml"
+        child.write_text(f"extends: {parent}\nfield_mappings:\n  title: null\n")
+
+        assert ConfigLoader.load(child).field_mappings["title"] is None
+
+    def test_a_dublin_core_prefix_the_style_does_not_bind_is_refused(self, tmp_path):
+        style = _style(
+            tmp_path,
+            _mapping(
+                "structure: dublin_core\nsource_field: nist_controls\n"
+                "dc_elements:\n  - element: dc:title\n    content: x"
+            ),
+        )
+
+        with pytest.raises(
+            ValueError,
+            match=r"field_mappings\.title\.dublin_core\.dc_elements\[0\]\.element: the prefix 'dc'",
+        ):
+            ConfigLoader.load(style)
+
+    def test_a_dublin_core_content_with_no_value_is_refused(self, tmp_path):
+        style = _style(
+            tmp_path,
+            "benchmark:\n  namespaces:\n    dc: urn:example:dc\n"
+            + _mapping(
+                "structure: dublin_core\nsource_field: nist_controls\n"
+                "dc_elements:\n  - element: dc:title\n    content:"
+            ),
+        )
+
+        with pytest.raises(
+            ValueError,
+            match=r"dublin_core\.dc_elements\[0\]\.content: has no value; leave the key out",
+        ):
+            ConfigLoader.load(style)
+
+    def test_a_template_with_no_value_is_refused(self, tmp_path):
+        style = _style(tmp_path, _mapping("attributes:\n  fixref:"))
+
+        with pytest.raises(
+            ValueError, match=r"field_mappings\.title\.simple\.attributes\.fixref: has no value"
+        ):
+            ConfigLoader.load(style)

@@ -7,13 +7,15 @@ section or key the exporter does not read is refused (never ignored), a value of
 kind is refused, and every mistake of one file is reported with the file and the dotted path
 of the key.
 
-The field mappings are checked only as JSON-like data: text keys, values that are text,
-numbers, booleans, lists and mappings, and no mapping that contains itself (pydantic's
-JsonValue).
+A field mapping takes the keys of its structure (FieldMapping, a union discriminated on
+structure): simple, composite, nested and dublin_core are typed; embedded_xml_tags,
+ident_from_list and metadata_from_config are accepted as JSON-like data (pydantic's
+JsonValue) until they are typed.
 """
 
 from collections.abc import Mapping
-from typing import Annotated, Any, ClassVar, Final, Self, get_args, get_origin
+from types import UnionType
+from typing import Annotated, Any, ClassVar, Final, Literal, Self, Union, get_args, get_origin
 
 import yaml
 from lxml import etree
@@ -22,8 +24,10 @@ from pydantic import (
     BaseModel,
     BeforeValidator,
     ConfigDict,
+    Discriminator,
     Field,
     JsonValue,
+    Tag,
     TypeAdapter,
     ValidationError,
     model_validator,
@@ -141,6 +145,15 @@ _Text = Annotated[str | None, BeforeValidator(_given)]
 _Switch = Annotated[bool | None, BeforeValidator(_given)]
 # A number, or a number written as text ("10.0")
 _Number = Annotated[Annotated[float, Field(strict=False)] | None, BeforeValidator(_given)]
+
+Template = Annotated[str | None, BeforeValidator(_given)]
+"""Text a mapping fills with {variables} and {value|transform} filters when it writes."""
+
+TransformName = Annotated[str | None, BeforeValidator(_given)]
+"""The name of a transform registered in the engine's TransformRegistry."""
+
+# A file a style names (extends, a CCI mapping file), relative to its own file or absolute
+_StyleFile = Annotated[str, Field(min_length=1)]
 
 
 class _Section(BaseModel):
@@ -297,10 +310,10 @@ class ReferenceAttributes(_Section):
 
 
 class DublinCoreElement(_Section):
-    """A Dublin Core element of a reference: its prefixed name and its text."""
+    """A Dublin Core element of a reference: its prefixed name and its text (a template)."""
 
     element: PrefixedName
-    content: str
+    content: Template
 
 
 class Reference(_Section):
@@ -310,6 +323,160 @@ class Reference(_Section):
 
     attributes: ReferenceAttributes = Field(default_factory=ReferenceAttributes)
     dc_elements: list[DublinCoreElement] = Field(default_factory=list)
+
+
+_ONLY_SIMPLE: Final = "multiple applies to a simple mapping whose value is a list"
+
+
+class _FieldMapping(_Section):
+    """What every field mapping of the four modelled structures takes."""
+
+    removed_keys: ClassVar[Mapping[str, str]] = {
+        "description": _IN_A_COMMENT,
+        "multiple": _ONLY_SIMPLE,
+        "xccdf_type": _TYPE_FROM_MODEL,
+    }
+
+    target_element: XmlName | None = None
+
+
+class CciLookup(_Section):
+    """Where the CCIs of a cci_lookup_with_deduplication mapping come from."""
+
+    removed_keys: ClassVar[Mapping[str, str]] = {
+        "enabled": "the lookup runs for source_logic: cci_lookup_with_deduplication",
+        "deduplicate_nist": "deduplication is switched by cci_deduplication.enabled",
+    }
+
+    source_field: _Text = None
+    cis_controls_version: Annotated[int | None, BeforeValidator(_given)] = None
+    extract: Annotated[Literal["all", "primary"] | None, BeforeValidator(_given)] = None
+    fallback_cci: _Text = None
+    mapping_file: Annotated[_StyleFile | None, BeforeValidator(_given)] = None
+
+
+class SimpleMapping(_FieldMapping):
+    """A Rule element filled from one recommendation field (structure left out or simple)."""
+
+    removed_keys: ClassVar[Mapping[str, str]] = {
+        "description": _IN_A_COMMENT,
+        "xccdf_type": _TYPE_FROM_MODEL,
+        "optional": "a mapping with no value is left out already",
+        "content": "a Rule field mapping writes no fixed text; an element with attributes "
+        "and no value is written empty",
+    }
+
+    structure: Literal["simple"] | None = None
+    source_field: _Text = None
+    transform: TransformName = None
+    source_logic: Annotated[
+        Literal["cci_lookup_with_deduplication"] | None, BeforeValidator(_given)
+    ] = None
+    cci_lookup: CciLookup = Field(default_factory=CciLookup)
+    multiple: _Switch = None
+    attributes: dict[XmlName, Template] = Field(default_factory=dict)
+
+
+class CompositeSource(_Section):
+    """A field a composite mapping joins, with its label and transform."""
+
+    field: str
+    label: _Text = None
+    transform: TransformName = None
+
+
+class CompositeMapping(_FieldMapping):
+    """A Rule element whose text joins several recommendation fields."""
+
+    structure: Literal["composite"]
+    sources: Annotated[list[CompositeSource], Field(min_length=1)]
+    separator: _Text = None
+    attributes: dict[XmlName, Template] = Field(default_factory=dict)
+
+
+class NestedChild(_Section):
+    """The one child element a nested mapping writes in its element."""
+
+    source_field: str
+    element: str
+    transform: TransformName = None
+
+
+class NestedAttributes(_Section):
+    """The attribute a nested mapping writes on its element."""
+
+    system: Template = None
+
+
+class NestedMapping(_FieldMapping):
+    """A Rule element holding one child element (check and its check-content)."""
+
+    structure: Literal["nested"]
+    children: Annotated[list[NestedChild], Field(min_length=1, max_length=1)]
+    attributes: NestedAttributes = Field(default_factory=NestedAttributes)
+
+
+class DublinCoreAttributes(_Section):
+    """The attribute a Dublin Core reference mapping writes."""
+
+    href: Template = None
+
+
+class DublinCoreMapping(_FieldMapping):
+    """References with Dublin Core elements, one per NIST control of a field."""
+
+    removed_keys: ClassVar[Mapping[str, str]] = {
+        "description": _IN_A_COMMENT,
+        "xccdf_type": _TYPE_FROM_MODEL,
+        "multiple": "one reference is written per NIST control",
+    }
+
+    structure: Literal["dublin_core"]
+    source_field: str
+    source_logic: Annotated[
+        Literal["nist_after_cci_deduplication"] | None, BeforeValidator(_given)
+    ] = None
+    dc_elements: list[DublinCoreElement] = Field(default_factory=list)
+    attributes: DublinCoreAttributes = Field(default_factory=DublinCoreAttributes)
+
+
+class _NotYetTyped(BaseModel):
+    """A mapping of a structure the next schema step types: accepted as JSON-like data."""
+
+    model_config = ConfigDict(extra="allow", strict=True)
+
+    __pydantic_extra__: dict[str, JsonValue] = Field(init=False)
+
+
+class EmbeddedXmlTagsMapping(_NotYetTyped):
+    structure: Literal["embedded_xml_tags"]
+
+
+class IdentFromListMapping(_NotYetTyped):
+    structure: Literal["ident_from_list"]
+
+
+class MetadataFromConfigMapping(_NotYetTyped):
+    structure: Literal["metadata_from_config"]
+
+
+def structure(value: Any) -> str | None:
+    """The structure of a field mapping: simple when it names none; None for a value that is
+    no mapping."""
+    return (value.get("structure") or "simple") if isinstance(value, Mapping) else None
+
+
+FieldMapping = Annotated[
+    Annotated[SimpleMapping, Tag("simple")]
+    | Annotated[CompositeMapping, Tag("composite")]
+    | Annotated[NestedMapping, Tag("nested")]
+    | Annotated[DublinCoreMapping, Tag("dublin_core")]
+    | Annotated[EmbeddedXmlTagsMapping, Tag("embedded_xml_tags")]
+    | Annotated[IdentFromListMapping, Tag("ident_from_list")]
+    | Annotated[MetadataFromConfigMapping, Tag("metadata_from_config")],
+    Discriminator(structure),
+]
+"""A field mapping: the model of its structure; null switches off an inherited mapping."""
 
 
 class BenchmarkSection(_Section):
@@ -329,10 +496,6 @@ class BenchmarkSection(_Section):
     reference: Reference = Field(default_factory=Reference)
 
 
-# The style file a style extends, relative to its own file or absolute
-_StyleFile = Annotated[str, Field(min_length=1)]
-
-
 class StyleConfig(_Section):
     """One style file, or a whole style after its extends chain is merged."""
 
@@ -350,7 +513,7 @@ class StyleConfig(_Section):
     rule_defaults: RuleDefaults = Field(default_factory=RuleDefaults)
     rule_id: IdTemplate = Field(default_factory=IdTemplate)
     group_id: IdTemplate = Field(default_factory=IdTemplate)
-    field_mappings: dict[str, JsonValue] = Field(default_factory=dict)
+    field_mappings: dict[str, FieldMapping | None] = Field(default_factory=dict)
     cci_deduplication: CciDeduplication = Field(default_factory=CciDeduplication)
     group_elements: dict[XmlName, GroupElement] = Field(default_factory=dict)
     post_processing: PostProcessing = Field(default_factory=PostProcessing)
@@ -362,6 +525,14 @@ class StyleConfig(_Section):
         named = [
             (("benchmark", "reference", "dc_elements", index, "element"), element.element)
             for index, element in enumerate(self.benchmark.reference.dc_elements)
+        ] + [
+            (
+                ("field_mappings", name, "dublin_core", "dc_elements", index, "element"),
+                element.element,
+            )
+            for name, mapping in self.field_mappings.items()
+            if isinstance(mapping, DublinCoreMapping)
+            for index, element in enumerate(mapping.dc_elements)
         ]
         problems = [
             InitErrorDetails(
@@ -379,6 +550,23 @@ class StyleConfig(_Section):
         if problems:
             raise ValidationError.from_exception_data("StyleConfig", problems)
         return self
+
+
+def _variants(annotation: Any) -> dict[str, type[BaseModel]]:
+    """The models of a discriminated union by their tag (FieldMapping), through Optional and
+    Annotated; empty for any other type."""
+    found: dict[str, type[BaseModel]] = {}
+    if get_origin(annotation) in (Union, UnionType):
+        for arg in get_args(annotation):
+            found.update(_variants(arg))
+    elif get_origin(annotation) is Annotated:
+        inner, *extras = get_args(annotation)
+        tag = next((extra.tag for extra in extras if isinstance(extra, Tag)), None)
+        if tag is not None and isinstance(inner, type) and issubclass(inner, BaseModel):
+            found[tag] = inner
+        else:
+            found.update(_variants(inner))
+    return found
 
 
 def _section_at(location: tuple[int | str, ...]) -> type[BaseModel] | None:
@@ -402,6 +590,12 @@ def _section_at(location: tuple[int | str, ...]) -> type[BaseModel] | None:
                 return None
             parts.pop(0)
             annotation = get_args(annotation)[-1]
+        variants = _variants(annotation)
+        if variants:
+            # a discriminated union: the next place is the tag of the model that applies
+            if not parts:
+                return None
+            annotation = variants.get(str(parts.pop(0)))
         if not (isinstance(annotation, type) and issubclass(annotation, BaseModel)):
             return None
         model = annotation

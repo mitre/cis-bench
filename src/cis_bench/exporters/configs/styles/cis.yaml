@@ -119,7 +119,7 @@ field_mappings:
     target_element: "version"
     source_field: "ref"
     transform: "none"
-    description: "CIS reference number (3.1.1, etc.)"
+    # CIS reference number (3.1.1, etc.)
 
   title:
     target_element: "title"
@@ -142,13 +142,13 @@ field_mappings:
         label: "Default Value:"
       - field: "additional_info"
         label: "Additional Information:"
-    description: "Description, then the default value and the additional information"
+    # Description, then the default value and the additional information
 
   rationale:
     target_element: "rationale"
     source_field: "rationale"
     transform: "none"
-    description: "Separate rationale element, the stored Markdown"
+    # Separate rationale element, the stored Markdown
 
   # === IMPACT AS WARNING (XCCDF standard for caveats) ===
   warning:
@@ -157,14 +157,12 @@ field_mappings:
     transform: "none"
     attributes:
       category: "general"
-    description: "Impact statement as XCCDF warning element"
-    optional: true
+    # Impact statement as XCCDF warning element; left out when the recommendation has none
 
   # === DIRECT NIST REFERENCES (No CCI, add ALL controls) ===
   reference:
     target_element: "reference"
-    multiple: true
-    source_field: "nist_controls"
+    source_field: "nist_controls"  # one reference per NIST control
     structure: "dublin_core"
     dc_elements:
       - element: "dc:title"
@@ -173,14 +171,14 @@ field_mappings:
         content: "{nist_control_id}"
     attributes:
       href: "https://csrc.nist.gov/Projects/risk-management/sp800-53-controls"
-    description: "Direct NIST 800-53 references (all cited controls, no CCI deduplication)"
+    # Direct NIST 800-53 references (all cited controls, no CCI deduplication)
 
   # === REMEDIATION ===
   fixtext:
     target_element: "fixtext"
     source_field: "remediation"
     transform: "none"
-    description: "Remediation steps, the stored Markdown"
+    # Remediation steps, the stored Markdown
 
   # === AUDIT/CHECK ===
   check:
@@ -190,7 +188,7 @@ field_mappings:
       - element: "check-content"
         source_field: "audit"
         transform: "none"
-    description: "Audit procedure, the stored Markdown"
+    # Audit procedure, the stored Markdown
 
   # === CIS CONTROLS (Dual Representation - Official Pattern) ===
 

@@ -50,8 +50,17 @@ my_style.yaml: rule_defaults.true: is not text; write the key in quotes
 my_style.yaml: rule_defaults.again: Recursion error - cyclic reference detected
 ```
 
-The entries of `field_mappings` are checked as JSON-like data (pydantic's `JsonValue`):
-text keys, and values that are text, numbers, booleans, lists or mappings.
+A field mapping takes the keys of its `structure`: `simple` (or no `structure`),
+`composite`, `nested` or `dublin_core`, each with its required keys; an unknown `structure`
+is refused with the list of known ones, and `null` switches off a mapping a style inherits.
+A mistake there names the structure in its path:
+
+```text
+my_style.yaml: field_mappings.title.composite.source_field: is not a key the exporter reads; the keys here are: attributes, separator, sources, structure, target_element
+```
+
+`embedded_xml_tags`, `ident_from_list` and `metadata_from_config` mappings are checked as
+JSON-like data (pydantic's `JsonValue`) until their own types follow.
 
 Descriptive text (what a style is for, which tools read it) goes in YAML comments.
 
@@ -240,7 +249,7 @@ title:
 target_element: "title" # XCCDF element name
 source_field: "title" # Source field on Recommendation
 transform: "none" # Transform to apply
-description: "Rule title" # Optional documentation
+# Rule title (descriptive text about a mapping goes in a YAML comment)
 ```
 
 ### Field with Attributes
@@ -256,14 +265,15 @@ attributes:
 fixref: "F-{ref_normalized}" # Variable substitution in attributes
 ```
 
-### Static Content Field
+### Empty Element with Attributes
 
-Element with static content (no source):
+A mapping with attributes and no source writes the element empty, with its attributes
+(DISA's `fix`; the fix text itself is the `fixtext` mapping's). A Rule field mapping has no
+`content` key:
 
 ```yaml
 fix:
 target_element: "fix"
-content: "" # Empty element
 attributes:
 id: "F-{ref_normalized}"
 ```
@@ -358,14 +368,12 @@ Create multiple elements from array:
 ident:
 target_element: "ident"
 multiple: true # Create multiple <ident> elements
-source_logic: "cci_lookup_with_deduplication"
+source_logic: "cci_lookup_with_deduplication" # runs the lookup below
 cci_lookup:
-enabled: true
 mapping_file: "my-cci-mapping.json" # optional: relative to this style file
 source_field: "cis_controls"
 cis_controls_version: 8 # the CIS Controls version the mapping file is keyed by
 extract: "all" # every CCI of the safeguard, primary first ("primary": only the first)
-deduplicate_nist: true
 attributes:
 system: "http://cyber.mil/cci"
 ```
@@ -746,7 +754,7 @@ field_mappings:
 field_mappings:
 vuln_discussion:
 target_element: "VulnDiscussion"
-description: "Combined description and rationale for DISA compliance"
+# Combined description and rationale for DISA compliance
 
 # Bad
 field_mappings:
@@ -876,8 +884,7 @@ fixref: "F-{ref_normalized}"
 
 ```yaml
 fix:
-target_element: "fix"
-content: ""
+target_element: "fix" # written empty: attributes and no source
 attributes:
 id: "F-{ref_normalized}"
 ```
@@ -923,16 +930,18 @@ sources:
 - field: "additional_info"
 ```
 
-### Pattern 6: Multiple Elements from Array
+### Pattern 6: One Element per Item of a List
 
 ```yaml
 reference:
 target_element: "reference"
-multiple: true
+structure: "dublin_core" # one reference per NIST control
 source_field: "nist_controls"
+dc_elements:
+- element: "dc:identifier"
+content: "{nist_control_id}"
 attributes:
 href: "https://csrc.nist.gov/Projects/risk-management/sp800-53-controls"
-content: "{nist_control_id}"
 ```
 
 ### Pattern 7: Rule Metadata in Another Namespace

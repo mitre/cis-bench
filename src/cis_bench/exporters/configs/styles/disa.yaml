@@ -140,7 +140,7 @@ field_mappings:
     target_element: "version"
     source_field: "ref"
     transform: "none"
-    description: "CIS ref becomes STIG-style version (human-readable ID)"
+    # CIS ref becomes STIG-style version (human-readable ID)
 
   title:
     target_element: "title"
@@ -204,14 +204,12 @@ field_mappings:
     target_element: "ident"
     multiple: true
     source_logic: "cci_lookup_with_deduplication"
-    cci_lookup:
-      enabled: true
+    cci_lookup:  # used because source_logic is cci_lookup_with_deduplication
       # mapping_file: the bundled CIS-CCI mapping (src/cis_bench/data/cis-cci-mapping.json)
       # is read unless a style names its own, relative to that style's file
       source_field: "cis_controls"
       cis_controls_version: 8  # the mapping file is keyed by CIS Controls v8 only
       extract: "all"  # every CCI the mapping gives the safeguard, primary first; "primary" keeps only the first
-      deduplicate_nist: true
       fallback_cci: "CCI-000366"  # Ensures every rule has at least one ident (DISA requirement)
     attributes:
       system: "http://cyber.mil/cci"
@@ -219,8 +217,7 @@ field_mappings:
   # === NIST REFERENCES (Extras Not Covered by CCIs) ===
   reference:
     target_element: "reference"
-    multiple: true
-    source_logic: "nist_after_cci_deduplication"
+    source_logic: "nist_after_cci_deduplication"  # one reference per NIST control no CCI states
     source_field: "nist_controls"
     structure: "dublin_core"
     dc_elements:
@@ -241,7 +238,7 @@ field_mappings:
 
   fix:
     target_element: "fix"
-    content: ""  # Empty element
+    # written empty: it has attributes and no source; the fix text is in fixtext
     attributes:
       id: "F-{ref_normalized}"
 

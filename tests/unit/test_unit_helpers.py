@@ -667,7 +667,7 @@ class TestElementTypesComeFromTheModels:
         [
             pytest.param(
                 "field_mappings:\n  title:\n    xccdf_type: TextWithSubType\n",
-                r"field_mappings\.title",
+                r"field_mappings\.title\.simple",
                 id="field mapping",
             ),
             pytest.param(
@@ -2395,15 +2395,13 @@ class TestTransformsAreCheckedWhenTheStyleLoads:
                             "target_element": "reference",
                             "structure": "dublin_core",
                             "source_field": "nist_controls",
-                            "multiple": True,
                             "dc_elements": [
-                                {"element": "publisher", "content": "NIST SP 800-53"},
+                                {"element": "dc:publisher", "content": "NIST SP 800-53"},
                                 {
-                                    "element": "identifier",
+                                    "element": "dc:identifier",
                                     "content": "{nist_control_id|no_such_transform}",
                                 },
                             ],
-                            "href": "https://example.com/{nist_control_id|html_to_markdown}",
                         }
                     }
                 },
@@ -2431,7 +2429,6 @@ class TestTransformsAreCheckedWhenTheStyleLoads:
                     "target_element": "reference",
                     "structure": "dublin_core",
                     "source_field": "nist_controls",
-                    "multiple": True,
                     "dc_elements": [{"element": "dc:identifier", "content": "{nist_control_id}"}],
                     "attributes": {"href": "https://example.com/{nist_control_id|strip_html}"},
                 }
@@ -2458,7 +2455,9 @@ class TestTransformsAreCheckedWhenTheStyleLoads:
             },
         )
 
-        with pytest.raises(ValueError, match="field_mappings.title.*transform must be a name"):
+        with pytest.raises(
+            ValueError, match=r"field_mappings\.title\.simple\.transform: Input should be a valid"
+        ):
             MappingEngine(style)
 
     def test_a_composite_source_naming_no_field_is_refused(self, tmp_path, cis_config_path):
@@ -2494,7 +2493,7 @@ class TestTransformsAreCheckedWhenTheStyleLoads:
             },
         )
 
-        with pytest.raises(ValueError, match="field_mappings.folded: composite needs sources"):
+        with pytest.raises(ValueError, match=r"field_mappings\.folded\.composite\.sources: "):
             MappingEngine(style)
 
     def test_a_composite_source_without_a_field_is_refused(self, tmp_path, cis_config_path):
@@ -2511,7 +2510,8 @@ class TestTransformsAreCheckedWhenTheStyleLoads:
         )
 
         with pytest.raises(
-            ValueError, match="field_mappings.folded.sources\\[1\\]: a composite source needs field"
+            ValueError,
+            match=r"field_mappings\.folded\.composite\.sources\[1\]\.field: Field required",
         ):
             MappingEngine(style)
 
