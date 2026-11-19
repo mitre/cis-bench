@@ -12,6 +12,32 @@ This document provides a complete reference for writing MappingEngine YAML confi
 
 ## Configuration Structure
 
+### The style schema
+
+The schema of a style file is generated from `StyleConfig` when the docs are built and published
+with them: [schemas/style.json](../schemas/style.json)
+(`https://mitre.github.io/cis-bench/schemas/style.json`), JSON Schema Draft 2020-12. Point an
+editor at it to check a style while you write it. With the YAML language server (the VS Code YAML
+extension and other editors that use it), put this comment on the first line of the style:
+
+```yaml
+# yaml-language-server: $schema=https://mitre.github.io/cis-bench/schemas/style.json
+```
+
+or map style files to it in the editor's settings:
+
+```json
+{
+  "yaml.schemas": {
+    "https://mitre.github.io/cis-bench/schemas/style.json": "src/cis_bench/exporters/configs/**/*.yaml"
+  }
+}
+```
+
+The schema covers the keys and values of one file. What needs the XCCDF and Benchmark models (a
+field the style names, an element of its XCCDF version, a registered transform) is checked when
+cis-bench loads the style, and a style that extends another is checked as the merged whole.
+
 A style is checked against one schema (`StyleConfig` in
 `src/cis_bench/exporters/style_config.py`) when it loads. In the sections `metadata`,
 `rule_defaults`, `rule_id`, `group_id`, `cci_deduplication`, `group_elements`,

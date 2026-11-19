@@ -55,6 +55,9 @@ When you add a new XCCDF style:
 
 ## Step 1: Create YAML Configuration
 
+Point your editor at the published style schema first, so it marks a key a style does not take
+as you type: see [the style schema](../technical-reference/yaml-config-reference.md#the-style-schema).
+
 Create `src/cis_bench/exporters/configs/pci_dss_style.yaml`:
 
 ```yaml
