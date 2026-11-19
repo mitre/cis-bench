@@ -268,6 +268,7 @@ class TestRefusedWhenTheStyleLoads:
             pytest.param(
                 '      group_by: "item.versoin"\n', "versoin", id="grouping by no field of the item"
             ),
+            pytest.param('      group_by: ""\n', "group_by", id="an empty grouping"),
         ],
     )
     def test_a_metadata_spec_that_cannot_be_written_is_refused(
@@ -299,6 +300,18 @@ class TestRefusedWhenTheStyleLoads:
         )
 
         with pytest.raises(ValueError, match=target):
+            MappingEngine(style)
+
+    def test_a_metadata_mapping_with_an_empty_source_field_is_refused(
+        self, tmp_path, cis_config_path
+    ):
+        style = self._style(
+            tmp_path,
+            cis_config_path,
+            'field_mappings:\n  cis_controls_metadata:\n    source_field: ""\n',
+        )
+
+        with pytest.raises(ValueError, match=r"cis_controls_metadata\b.*source_field"):
             MappingEngine(style)
 
     def test_the_removed_requires_post_processing_key_is_refused(self, tmp_path, cis_config_path):

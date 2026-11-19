@@ -10,10 +10,17 @@ of the key.
 A field mapping takes the keys of its structure (FieldMapping, a union discriminated on
 structure: simple, composite, nested, dublin_core, embedded_xml_tags, ident_from_list or
 metadata_from_config), at every level of its nested specification.
+
+What needs the models is checked in the same validation, given StyleModels as pydantic
+validation context: the fields a style names against the Recommendation and Benchmark
+models, transforms and template filters against the engine's registry, the elements a
+mapping writes against the XCCDF models of the style's version, and where Rule metadata
+can go. Without that context only the shape is checked.
 """
 
-from collections.abc import Mapping
-from types import UnionType
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field, is_dataclass
+from types import ModuleType, UnionType
 from typing import Annotated, Any, ClassVar, Final, Literal, Self, Union, get_args, get_origin
 
 import yaml
@@ -29,9 +36,214 @@ from pydantic import (
     Tag,
     TypeAdapter,
     ValidationError,
+    ValidationInfo,
     model_validator,
 )
 from pydantic_core import InitErrorDetails, PydanticCustomError
+from xsdata.formats.dataclass.context import XmlContext
+from xsdata.formats.dataclass.models.elements import XmlVar
+
+
+@dataclass(frozen=True)
+class StyleModels:
+    """The models a style is checked against when it loads, given to StyleConfig as pydantic
+    validation context ({"models": StyleModels}): the generated XCCDF models of the style's
+    version, the benchmark models whose fields a style names, and the engine's transform
+    lookup and template parser (the engine passes its own, so there is one of each)."""
+
+    xccdf: ModuleType
+    xccdf_version: str
+    xccdf_namespace: str
+    recommendation: type[BaseModel]
+    benchmark: type[BaseModel]
+    cis_control: type[BaseModel]
+    # Raises ValueError for a name no transform is registered under
+    transform: Callable[[str], object]
+    # The transforms a template's filters name; raises ValueError for a filter with no name
+    template_filters: Callable[[str], list[str]]
+    xml_context: XmlContext = field(default_factory=XmlContext, compare=False)
+
+    def _meta_vars(self, clazz: type) -> list[XmlVar]:
+        """The XML fields of a model class, built with the XCCDF namespace as the parent
+        namespace, so a wildcard of ##other reads as "not the XCCDF namespace"."""
+        return list(self.xml_context.build(clazz, parent_ns=self.xccdf_namespace).get_all_vars())
+
+    def element(self, parent: str, name: str) -> XmlVar | None:
+        """The element field name of Rule, Group or Benchmark in this XCCDF version (its
+        type, whether it repeats); None when the parent has no such element."""
+        return next(
+            (
+                var
+                for var in self._meta_vars(getattr(self.xccdf, parent))
+                if var.name == name and var.is_element
+            ),
+            None,
+        )
+
+    def element_problem(self, parent: str, name: str) -> str | None:
+        """Why a mapping cannot fill the element name of parent, or None if it can."""
+        element = self.element(parent, name)
+        if element is None:
+            return f"XCCDF {self.xccdf_version} has no {name!r} element in {parent}"
+        if len(element.types) != 1 or not is_dataclass(element.types[0]):
+            return (
+                f"the {name!r} element of an XCCDF {self.xccdf_version} {parent} holds a "
+                "plain value, not an element type a mapping can fill"
+            )
+        return None
+
+    def metadata_holder(self, target: str) -> tuple[type, str] | None:
+        """The type of the Rule element target and the field of that type that holds
+        metadata content, when the Rule can repeat target and its type takes elements of any
+        namespace but XCCDF's (xsd:any namespace="##other", element-only); else None."""
+        element = self.element("Rule", target)
+        if element is None or not element.list_element or len(element.types) != 1:
+            return None
+        holder = element.types[0]
+        if not is_dataclass(holder):
+            return None
+        other = f"!{self.xccdf_namespace}"
+        wildcards = [
+            var.name
+            for var in self._meta_vars(holder)
+            if var.is_wildcard
+            and not var.mixed
+            and any(namespace in ("##any", other) for namespace in var.namespaces)
+        ]
+        return (holder, wildcards[0]) if len(wildcards) == 1 else None
+
+
+def _models(info: ValidationInfo) -> StyleModels | None:
+    """The models a validation was given as context, if any."""
+    context = info.context if isinstance(info.context, Mapping) else {}
+    models = context.get("models")
+    return models if isinstance(models, StyleModels) else None
+
+
+def _model_in(annotation: Any) -> type[BaseModel] | None:
+    """The Pydantic model a field holds, directly or inside "X | None"; None for a list or a
+    value that is not a model. A dotted path reads attributes one by one (getattr), so it
+    can pass through an optional model but not through a list."""
+    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        return annotation
+    if get_origin(annotation) is Annotated:
+        return _model_in(get_args(annotation)[0])
+    if get_origin(annotation) in (UnionType, Union):
+        for arg in get_args(annotation):
+            model = _model_in(arg)
+            if model is not None:
+                return model
+    return None
+
+
+def _missing_part(model: type[BaseModel] | None, path: str, dotted: bool) -> tuple[str, str] | None:
+    """The first name of path that is no field, and the model it was looked for in; None
+    when path names a field (with dotted, through the models the fields hold)."""
+    current = model
+    for part in path.split(".") if dotted else [path]:
+        fields = current.model_fields if current is not None else {}
+        if part not in fields:
+            holder = current if current is not None else model
+            return part, holder.__name__ if holder is not None else "the items"
+        current = _model_in(fields[part].annotation)
+    return None
+
+
+def field_path_problem(model: type[BaseModel], path: str, dotted: bool) -> str | None:
+    """Why path names no field of model, or None if it does: one field name, or with dotted
+    a path through the models the fields hold (mitre_mapping.techniques)."""
+    missing = _missing_part(model, path, dotted)
+    if missing is None:
+        return None
+    part, holder = missing
+    shown = f"{path!r}: {part!r}" if dotted and "." in path else repr(part)
+    return f"{shown} is not a field of {holder}"
+
+
+def list_item_model(model: type[BaseModel], path: str) -> type[BaseModel] | None:
+    """The model of the items the list field at a dotted path holds, or None when the field
+    is no list of models."""
+    current: Any = model
+    *parents, last = path.split(".")
+    for part in parents:
+        current = _model_in(current.model_fields[part].annotation)
+    annotation = current.model_fields[last].annotation
+    while get_origin(annotation) is Annotated or get_origin(annotation) in (UnionType, Union):
+        annotation = next(arg for arg in get_args(annotation) if arg is not type(None))
+    return _model_in(get_args(annotation)[0]) if get_origin(annotation) is list else None
+
+
+def _registered_transform(value: str | None, info: ValidationInfo) -> str | None:
+    """Refuse a transform no function is registered under (checked with the models)."""
+    models = _models(info)
+    if value is not None and models is not None:
+        try:
+            models.transform(value)
+        except ValueError as error:
+            raise PydanticCustomError(
+                "unknown_transform", "{error}", {"error": str(error)}
+            ) from error
+    return value
+
+
+def _known_filters(value: str | None, info: ValidationInfo) -> str | None:
+    """Refuse a template filter ({value|name}) that names no registered transform, or none
+    (checked with the models). Text the template parser refuses is left to the export."""
+    models = _models(info)
+    if value is not None and models is not None:
+        try:
+            for name in models.template_filters(value):
+                models.transform(name)
+        except ValueError as error:
+            raise PydanticCustomError("unknown_filter", "{error}", {"error": str(error)}) from error
+    return value
+
+
+def _field_of(model: Literal["recommendation", "benchmark"], dotted: bool = False) -> Any:
+    """A check that a name is a field of the Recommendation or Benchmark model (checked with
+    the models); an empty name names no source and is left to the structure."""
+
+    def check(value: str, info: ValidationInfo) -> str:
+        models = _models(info)
+        if value and models is not None:
+            problem = field_path_problem(getattr(models, model), value, dotted)
+            if problem is not None:
+                raise PydanticCustomError("unknown_field", "{problem}", {"problem": problem})
+        return value
+
+    return AfterValidator(check)
+
+
+RecommendationField = Annotated[str, _field_of("recommendation")]
+"""A field of the Recommendation model, by its name."""
+
+RecommendationPath = Annotated[str, _field_of("recommendation", dotted=True)]
+"""A field of the Recommendation model, or a dotted path through the models it holds."""
+
+BenchmarkField = Annotated[str, _field_of("benchmark")]
+"""A field of the Benchmark model, by its name."""
+
+
+def _cis_controls_field(value: str | None, info: ValidationInfo) -> str | None:
+    """The CCI lookup reads CIS controls, so the field must be declared to hold them; a list
+    of anything else would read as no controls (checked with the models). An empty name
+    names no field and is left to the lookup, as a missing one is."""
+    models = _models(info)
+    if value and models is not None:
+        declared = models.recommendation.model_fields.get(value)
+        holds = get_args(declared.annotation) if declared is not None else ()
+        if (
+            declared is None
+            or get_origin(declared.annotation) is not list
+            or holds != (models.cis_control,)
+        ):
+            raise PydanticCustomError(
+                "not_cis_controls",
+                "{name} is not a field of Recommendation holding CIS controls",
+                {"name": repr(value)},
+            )
+    return value
+
 
 _IN_A_COMMENT: Final = "descriptive text goes in a YAML comment"
 _TYPE_FROM_MODEL: Final = "an element's type comes from the XCCDF model; a style declares none"
@@ -145,10 +357,13 @@ _Switch = Annotated[bool | None, BeforeValidator(_given)]
 # A number, or a number written as text ("10.0")
 _Number = Annotated[Annotated[float, Field(strict=False)] | None, BeforeValidator(_given)]
 
-Template = Annotated[str | None, BeforeValidator(_given)]
-"""Text a mapping fills with {variables} and {value|transform} filters when it writes."""
+Template = Annotated[str | None, BeforeValidator(_given), AfterValidator(_known_filters)]
+"""Text the engine fills with {variables} and {value|transform} filters when it writes; its
+filters name registered transforms."""
 
-TransformName = Annotated[str | None, BeforeValidator(_given)]
+TransformName = Annotated[
+    str | None, BeforeValidator(_given), AfterValidator(_registered_transform)
+]
 """The name of a transform registered in the engine's TransformRegistry."""
 
 # A file a style names (extends, a CCI mapping file), relative to its own file or absolute
@@ -200,7 +415,7 @@ class IdTemplate(_Section):
 
     removed_keys: ClassVar[Mapping[str, str]] = {"description": _IN_A_COMMENT}
 
-    template: _Text = None
+    template: Template = None
 
 
 _DEDUPLICATION_IS_CODE: Final = (
@@ -241,8 +456,8 @@ class GroupElement(_Section):
 
     removed_keys: ClassVar[Mapping[str, str]] = {"xccdf_type": _TYPE_FROM_MODEL}
 
-    source: _Text = None
-    transform: _Text = None
+    source: Annotated[RecommendationField | None, BeforeValidator(_given)] = None
+    transform: TransformName = None
     content: _Text = None
 
 
@@ -255,8 +470,8 @@ class SourcedElement(_Section):
 
     removed_keys: ClassVar[Mapping[str, str]] = {"xccdf_type": _TYPE_FROM_MODEL}
 
-    source: str
-    transform: _Text = None
+    source: BenchmarkField
+    transform: TransformName = None
     prepend_text: _Text = None
 
 
@@ -268,16 +483,16 @@ class Notice(_Section):
         "attributes": "write the notice's id and language as id and lang",
     }
 
-    id: _Text = None
-    lang: _Text = None
-    content: _Text = None
+    id: Template = None
+    lang: Template = None
+    content: Template = None
 
 
 class PlainText(_Section):
     """One plain-text element of the Benchmark."""
 
     id: str
-    content: _Text = None
+    content: Template = None
 
 
 class ProfileMapping(_Section):
@@ -297,15 +512,15 @@ class Profiles(_Section):
     """Whether and how the Benchmark's Profile elements are written."""
 
     generate_from_rules: _Switch = None
-    id_template: _Text = None
-    description_transform: _Text = None
+    id_template: Template = None
+    description_transform: TransformName = None
     profile_mappings: list[ProfileMapping] = Field(default_factory=list)
 
 
 class ReferenceAttributes(_Section):
     """The attributes of the Benchmark's reference."""
 
-    href: _Text = None
+    href: Template = None
 
 
 class DublinCoreElement(_Section):
@@ -326,7 +541,7 @@ class Reference(_Section):
 
 _ONLY_SIMPLE: Final = "multiple applies to a simple mapping whose value is a list"
 
-NamespacePrefix = Annotated[str, Field(min_length=1)]
+NamespacePrefix = Annotated[str, Field(min_length=1), AfterValidator(_known_filters)]
 """The prefix of a namespace bound in benchmark.namespaces; an ident attribute's prefix may
 be a template filled per item (cc{item.version})."""
 
@@ -356,7 +571,9 @@ class CciLookup(_Section):
         "deduplicate_nist": "deduplication is switched by cci_deduplication.enabled",
     }
 
-    source_field: _Text = None
+    source_field: Annotated[
+        str | None, BeforeValidator(_given), AfterValidator(_cis_controls_field)
+    ] = None
     cis_controls_version: Annotated[int | None, BeforeValidator(_given)] = None
     extract: Annotated[Literal["all", "primary"] | None, BeforeValidator(_given)] = None
     fallback_cci: _Text = None
@@ -374,7 +591,7 @@ class SimpleMapping(_FieldMapping):
     }
 
     structure: Literal["simple"] | None = None
-    source_field: _Text = None
+    source_field: Annotated[RecommendationField | None, BeforeValidator(_given)] = None
     transform: TransformName = None
     source_logic: Annotated[
         Literal["cci_lookup_with_deduplication"] | None, BeforeValidator(_given)
@@ -387,7 +604,7 @@ class SimpleMapping(_FieldMapping):
 class CompositeSource(_Section):
     """A field a composite mapping joins, with its label and transform."""
 
-    field: str
+    field: Annotated[RecommendationField, Field(min_length=1)]
     label: _Text = None
     transform: TransformName = None
 
@@ -404,7 +621,7 @@ class CompositeMapping(_FieldMapping):
 class NestedChild(_Section):
     """The one child element a nested mapping writes in its element."""
 
-    source_field: str
+    source_field: RecommendationField
     element: str
     transform: TransformName = None
 
@@ -438,7 +655,7 @@ class DublinCoreMapping(_FieldMapping):
     }
 
     structure: Literal["dublin_core"]
-    source_field: str
+    source_field: RecommendationField
     source_logic: Annotated[
         Literal["nist_after_cci_deduplication"] | None, BeforeValidator(_given)
     ] = None
@@ -450,7 +667,7 @@ class TagSource(_Section):
     """A field whose text an embedded tag holds, its transform, and the text written between
     it and the next source's text."""
 
-    field: str
+    field: Annotated[RecommendationField, Field(min_length=1)]
     transform: TransformName = None
     separator: _Text = None
 
@@ -506,7 +723,7 @@ class IdentFromListMapping(_FieldMapping):
     through a transform."""
 
     structure: Literal["ident_from_list"]
-    source_field: str
+    source_field: RecommendationPath
     transform: TransformName = None
     ident_spec: IdentSpec
 
@@ -550,7 +767,7 @@ class MetadataFromConfigMapping(_FieldMapping):
     """Metadata of a Rule written as model content from a list field (a dotted path)."""
 
     structure: Literal["metadata_from_config"]
-    source_field: str
+    source_field: Annotated[RecommendationPath, Field(min_length=1)]
     metadata_spec: MetadataSpec
 
 
@@ -582,7 +799,7 @@ class BenchmarkSection(_Section):
     # The type of every other entry (pydantic's documented form)
     __pydantic_extra__: dict[str, SourcedElement] = Field(init=False)
 
-    id_template: _Text = None
+    id_template: Template = None
     namespaces: NamespaceMap = Field(default_factory=dict)
     notice: Notice = Field(default_factory=Notice)
     plain_text: list[PlainText] = Field(default_factory=list)
@@ -644,6 +861,97 @@ class StyleConfig(_Section):
         if problems:
             raise ValidationError.from_exception_data("StyleConfig", problems)
         return self
+
+    @model_validator(mode="after")
+    def _writable_with_the_models(self, info: ValidationInfo) -> Self:
+        """Refuse an element the XCCDF version does not have (a field mapping's target, a
+        Group element, a Benchmark element filled from a field), and Rule metadata the Rule
+        cannot hold as written (checked with the models)."""
+        models = _models(info)
+        if models is None:
+            return self
+        found: list[tuple[tuple[int | str, ...], str]] = []
+        for name, mapping in self.field_mappings.items():
+            if mapping is None:
+                continue
+            place: tuple[int | str, ...] = ("field_mappings", name, mapping.structure or "simple")
+            target = mapping.target_element or name
+            target_place = (*place, "target_element") if mapping.target_element else place
+            problem = models.element_problem("Rule", target)
+            if problem is not None:
+                found.append((target_place, problem))
+            elif isinstance(mapping, MetadataFromConfigMapping):
+                found.extend(self._metadata_problems(models, mapping, place, target_place, target))
+        for name in self.group_elements:
+            problem = models.element_problem("Group", name)
+            if problem is not None:
+                found.append((("group_elements", name), problem))
+        for name in self.benchmark.__pydantic_extra__ or {}:
+            problem = models.element_problem("Benchmark", name)
+            if problem is not None:
+                found.append((("benchmark", name), problem))
+        if found:
+            raise ValidationError.from_exception_data(
+                "StyleConfig",
+                [
+                    InitErrorDetails(
+                        type=PydanticCustomError("not_writable", "{problem}", {"problem": problem}),
+                        loc=location,
+                        input=None,
+                    )
+                    for location, problem in found
+                ],
+            )
+        return self
+
+    def _metadata_problems(
+        self,
+        models: StyleModels,
+        mapping: "MetadataFromConfigMapping",
+        place: tuple[int | str, ...],
+        target_place: tuple[int | str, ...],
+        target: str,
+    ) -> list[tuple[tuple[int | str, ...], str]]:
+        """Why a metadata mapping cannot be written as XCCDF allows: its namespace must be
+        declared and not XCCDF's (metadata holds only elements from another namespace), its
+        items are grouped by a field they have, and the target must be a Rule element that
+        repeats and takes elements of any namespace but XCCDF's."""
+        spec = mapping.metadata_spec
+        found: list[tuple[tuple[int | str, ...], str]] = []
+        prefix_place = (*place, "metadata_spec", "namespace_prefix")
+        namespace = self.benchmark.namespaces.get(spec.namespace_prefix)
+        if namespace is None:
+            found.append(
+                (prefix_place, f"{spec.namespace_prefix!r} is not declared in benchmark.namespaces")
+            )
+        elif namespace == models.xccdf_namespace:
+            found.append(
+                (
+                    prefix_place,
+                    f"namespace_prefix {spec.namespace_prefix!r} is the XCCDF namespace; XCCDF "
+                    "metadata holds only elements from another namespace",
+                )
+            )
+        items = list_item_model(models.recommendation, mapping.source_field)
+        missing = _missing_part(items, spec.group_by.removeprefix("item."), dotted=True)
+        if missing is not None:
+            found.append(
+                (
+                    (*place, "metadata_spec", "group_by"),
+                    f"{spec.group_by!r}: {missing[0]!r} is not a field of the items "
+                    f"{mapping.source_field!r} lists",
+                )
+            )
+        if models.metadata_holder(target) is None:
+            found.append(
+                (
+                    target_place,
+                    f"the Rule's {target!r} element cannot hold repeated elements of the "
+                    f"namespace {namespace or spec.namespace_prefix}; metadata content goes in "
+                    "metadata",
+                )
+            )
+        return found
 
 
 def _variants(annotation: Any) -> dict[str, type[BaseModel]]:
@@ -782,20 +1090,22 @@ def check_mergeable(source: str, data: Any) -> None:
         raise ValueError("\n".join(lines)) from error
 
 
-def validate_style(source: str, data: Any) -> StyleConfig:
+def validate_style(source: str, data: Any, models: StyleModels | None = None) -> StyleConfig:
     """Check a whole style against the schema: a style file with no extends, or the style
     an extends chain has built up to and including the file named source.
 
     Args:
         source: The file name the mistakes are reported with
         data: The style as built so far
+        models: The models of the style's XCCDF version, for the checks that need them;
+            without them only the shape is checked
 
     Raises:
         ValueError: One line per mistake: the file, the dotted path of the key, and what is
             wrong with it.
     """
     try:
-        return StyleConfig.model_validate(data)
+        return StyleConfig.model_validate(data, context={"models": models})
     except ValidationError as error:
         raise ValueError(
             "\n".join(

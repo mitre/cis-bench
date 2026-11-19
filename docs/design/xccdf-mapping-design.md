@@ -124,14 +124,14 @@ The type that holds the content is the one the XCCDF model gives the Rule's targ
 
 ### Checked when the style loads
 
-The style schema (`MetadataFromConfigMapping` in `style_config.py`) refuses a metadata
-mapping, with the path of the key, when it:
+The style schema (`MetadataFromConfigMapping` and `StyleConfig` in `style_config.py`)
+refuses a metadata mapping when the style loads, with the path of the key, when it:
 
 - sets a key the builder does not read, at any level (`metadata_spec`, `group_element`,
   `item_element` and each of its `children`, to any depth)
 - leaves out `source_field`, `metadata_spec`, `root_element`, `namespace_prefix`, `group_by`,
   `group_element`, or the `element` of the group, the item or a child; or gives an empty
-  `namespace_prefix`
+  `source_field` or `namespace_prefix`
 - names an element or attribute that is not an XML name without a prefix (`xsi:type`,
   `{uri}name`, `two words` and `xmlns` are refused)
 - sets a removed key: `requires_post_processing`, `metadata_spec.namespace` (the URI comes
@@ -139,15 +139,22 @@ mapping, with the path of the key, when it:
 
 XCCDF allows only elements from another namespace inside `metadata`
 (`xsd:any namespace="##other"`), and XCCDF 1.1.4 Rules have no `metadata` element. These
-checks need the XCCDF and Benchmark models, so the engine makes them when it loads the style,
-before any export; it refuses a metadata mapping that:
+checks need the models, which `ConfigLoader` gives the schema as validation context
+(`StyleModels`: the XCCDF models of the style's version, the Recommendation and Benchmark
+models); the same load refuses a metadata mapping that:
 
 - targets an element the XCCDF version's Rule does not have (any metadata mapping on 1.1.4),
-  or one that cannot hold repeated elements of the mapping's namespace (`title`, `ident`,
-  `dc_status`, `signature`)
-- has an empty `source_field`, or a `group_by` that is empty or no field of the listed items
+  or one whose type does not repeat and take elements of every namespace but XCCDF's
+  (`title`, `ident`, `signature`, and `dc_status`, whose type takes Dublin Core elements
+  only, even when the mapping's prefix is the Dublin Core one)
+- has a `source_field` that is no list field of the Recommendation, or a `group_by` that is
+  empty or no field of the listed items
 - has a `namespace_prefix` `benchmark.namespaces` does not declare, or one that resolves to
   the XCCDF namespace
+
+The wildcard of the holder's type is read with the XCCDF namespace as its parent namespace,
+so `##other` means "not the XCCDF namespace" (xsdata resolves it that way only when told the
+parent namespace).
 
 An attribute value comes from the benchmark, so it is checked at export: a value the serializer
 would write as an XML Schema type name (it starts with `{` and names a type, such as

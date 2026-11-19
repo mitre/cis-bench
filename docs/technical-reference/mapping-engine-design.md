@@ -152,8 +152,8 @@ field_name:
 - `MappingEngine.generate_metadata_from_config()` builds xsdata `AnyElement` content, held
   by a `MetadataType` on `Rule.metadata`; the serializer writes it in schema order
 - `MappingEngine._build_config_element()`
-- `MappingEngine._refuse_unwritable_metadata_mappings()` checks the mapping when the style
-  loads ([XCCDF mapping design](../design/xccdf-mapping-design.md#checked-when-the-style-loads))
+- `StyleConfig` (`style_config.py`) checks the mapping when the style loads, with the XCCDF
+  models as validation context ([XCCDF mapping design](../design/xccdf-mapping-design.md#checked-when-the-style-loads))
 
 ### 3. generate_profiles_from_rules - Profile Generation
 
