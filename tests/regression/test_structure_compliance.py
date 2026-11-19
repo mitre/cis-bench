@@ -271,7 +271,6 @@ class TestControlMappingFidelity:
                 "      - element: dc:title\n        content: '{benchmark.title}'\n",
             )
         )
-        exporter.config = exporter.engine.config
         title = "CIS Example Benchmark || Draft: 2"
         benchmark = sample_benchmark.model_copy(update={"title": title})
         output = tmp_path / "disa.xml"

@@ -15,6 +15,7 @@ from xsdata.formats.dataclass.context import XmlContext
 from cis_bench.exceptions import ExportError
 from cis_bench.exporters.base import BaseExporter, ExporterFactory
 from cis_bench.exporters.mapping_engine import MappingEngine
+from cis_bench.exporters.style_config import StyleConfig
 from cis_bench.models.benchmark import Benchmark, Recommendation
 from cis_bench.utils.xml_utils import XCCDFPostProcessor, XCCDFSerializer
 
@@ -61,9 +62,13 @@ class XCCDFExporter(BaseExporter):
 
         logger.debug(f"Initializing XCCDF exporter with style: {style}")
         self.engine = MappingEngine(config_path)
-        # One loaded config (with its extends chain) drives mapping and post-processing.
-        self.config = self.engine.config
         logger.debug(f"Loaded config: {config_filename}")
+
+    @property
+    def config(self) -> StyleConfig:
+        """The style the engine loaded (with its extends chain): one model drives mapping and
+        post-processing, so an exporter given another engine writes that engine's style."""
+        return self.engine.config
 
     @staticmethod
     def _get_available_styles():

@@ -307,7 +307,6 @@ class TestPostProcessing:
         )
         keeping_overrides = XCCDFExporter(style="cis")
         keeping_overrides.engine = MappingEngine(keeping)
-        keeping_overrides.config = keeping_overrides.engine.config
 
         assert override_attributes(XCCDFExporter(style="cis")) == []
         assert override_attributes(keeping_overrides)
@@ -321,7 +320,7 @@ def _with_namespaces(exporter: XCCDFExporter, namespaces: dict[str, str]) -> XCC
     """The exporter reading a style whose benchmark.namespaces are these, built as the model:
     a style that extends another cannot drop or rebind a namespace it inherits."""
     style = exporter.config
-    exporter.config = exporter.engine.config = style.model_copy(
+    exporter.engine.config = style.model_copy(
         update={"benchmark": style.benchmark.model_copy(update={"namespaces": namespaces})}
     )
     return exporter
