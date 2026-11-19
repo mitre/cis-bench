@@ -1500,3 +1500,208 @@ class TestChecksAgainstTheModels:
             ValueError, match=rf"field_mappings\.title\.(metadata_from_config\.)?{path}: .*{reason}"
         ):
             ConfigLoader.load(style)
+
+
+class TestTemplateVariables:
+    """A template's variables are checked when the style loads, against the values the engine
+    gives that template and the models behind them, with the template's path."""
+
+    @pytest.mark.parametrize(
+        ("body", "path", "reason"),
+        [
+            pytest.param(
+                _mapping(
+                    _changed(
+                        _IDENT,
+                        'value_template: "{item.control}"',
+                        'value_template: "{item.contrl}"',
+                    )
+                ),
+                r"field_mappings\.title\.ident_from_list\.ident_spec\.value_template",
+                "'contrl' is not a field of CISControl",
+                id="ident value, an item field",
+            ),
+            pytest.param(
+                _mapping(
+                    _changed(
+                        _IDENT,
+                        'system_template: "s{item.version}"',
+                        'system_template: "s{itm.version}"',
+                    )
+                ),
+                r"field_mappings\.title\.ident_from_list\.ident_spec\.system_template",
+                "'itm' is not a value this template can use",
+                id="ident system, the item misspelled",
+            ),
+            pytest.param(
+                _mapping(_changed(_IDENT, "template: t", "template: 't{item.versoin}'")),
+                r"ident_from_list\.ident_spec\.attributes\[0\]\.template",
+                "'versoin' is not a field of CISControl",
+                id="ident attribute",
+            ),
+            pytest.param(
+                _mapping(
+                    _changed(
+                        _IDENT,
+                        'namespace_prefix: "cc{item.version}"',
+                        'namespace_prefix: "cc{item.versoin}"',
+                    )
+                ),
+                r"ident_from_list\.ident_spec\.attributes\[0\]\.namespace_prefix",
+                "'versoin' is not a field of CISControl",
+                id="ident attribute prefix",
+            ),
+            pytest.param(
+                _mapping(
+                    "structure: ident_from_list\nsource_field: parent\nident_spec:\n  value_template: '{item.titel}'"
+                ),
+                r"ident_from_list\.ident_spec\.value_template",
+                "'titel' is not a field of ParentReference",
+                id="ident over one value, not a list",
+            ),
+            pytest.param(
+                _metadata_mapping(('content: "{item.ig1}"', 'content: "{item.ig9}"')),
+                r"metadata_from_config\.metadata_spec\.group_element\.item_element\.children\[0\]\.children\[0\]\.content",
+                "'ig9' is not a field of CISControl",
+                id="metadata item content, a child of a child",
+            ),
+            pytest.param(
+                _metadata_mapping(('urn: "u{group_key}"', 'urn: "u{group_ky}"')),
+                r"metadata_from_config\.metadata_spec\.group_element\.attributes\.urn",
+                "'group_ky' is not a value this template can use",
+                id="metadata group attribute",
+            ),
+            pytest.param(
+                _mapping("source_field: title\nattributes:\n  fixref: 'F-{rec.titel}'"),
+                r"field_mappings\.title\.simple\.attributes\.fixref",
+                "'titel' is not a field of Recommendation",
+                id="rule attribute",
+            ),
+            pytest.param(
+                _mapping(
+                    "structure: nested\nchildren:\n  - source_field: audit\n    element: check-content\nattributes:\n  system: 'C-{reff}'"
+                ),
+                r"field_mappings\.title\.nested\.attributes\.system",
+                "'reff' is not a value this template can use",
+                id="nested system",
+            ),
+            pytest.param(
+                _mapping(
+                    "structure: dublin_core\nsource_field: nist_controls\nattributes:\n  href: '{benchmark.ur}'"
+                ),
+                r"field_mappings\.title\.dublin_core\.attributes\.href",
+                "'ur' is not a field of Benchmark",
+                id="dublin core href",
+            ),
+            pytest.param(
+                "benchmark:\n  namespaces:\n    dc: http://purl.org/dc/elements/1.1/\n"
+                + _mapping(
+                    "structure: dublin_core\nsource_field: nist_controls\ndc_elements:\n  - element: dc:identifier\n    content: '{nist_id}'"
+                ),
+                r"field_mappings\.title\.dublin_core\.dc_elements\[0\]\.content",
+                "'nist_id' is not a value this template can use",
+                id="dublin core element",
+            ),
+            pytest.param(
+                "benchmark:\n  notice:\n    content: '{benchmark.titel}'\n",
+                r"benchmark\.notice\.content",
+                "'titel' is not a field of Benchmark",
+                id="notice",
+            ),
+            pytest.param(
+                "benchmark:\n  namespaces:\n    dc: http://purl.org/dc/elements/1.1/\n  reference:\n    dc_elements:\n      - element: dc:identifier\n        content: '{nist_control_id}'\n",
+                r"benchmark\.reference\.dc_elements\[0\]\.content",
+                "'nist_control_id' is not a value this template can use",
+                id="benchmark reference element",
+            ),
+            pytest.param(
+                "benchmark:\n  plain_text:\n    - id: release-info\n      content: '{download_dat}'\n",
+                r"benchmark\.plain_text\[0\]\.content",
+                "'download_dat' is not a value this template can use",
+                id="plain text",
+            ),
+            pytest.param(
+                "benchmark:\n  id_template: 'B_{benchmark_ids}'\n",
+                r"benchmark\.id_template",
+                "'benchmark_ids' is not a value this template can use",
+                id="benchmark id",
+            ),
+            pytest.param(
+                "rule_id:\n  template: 'R-{rec.title}'\n",
+                r"rule_id\.template",
+                "'rec' is not a value this template can use",
+                id="rule id, a value only rule attributes have",
+            ),
+            pytest.param(
+                "benchmark:\n  profiles:\n    id_template: 'p_{profile.titel}'\n",
+                r"benchmark\.profiles\.id_template",
+                "'titel' is not a key of profile",
+                id="profile id",
+            ),
+            pytest.param(
+                _mapping(
+                    _changed(
+                        _IDENT,
+                        'value_template: "{item.control}"',
+                        'value_template: "{item..control}"',
+                    )
+                ),
+                r"ident_from_list\.ident_spec\.value_template",
+                "empty name",
+                id="an empty name",
+            ),
+        ],
+    )
+    def test_a_variable_the_template_does_not_have_is_refused(self, tmp_path, body, path, reason):
+        style = _style(tmp_path, body)
+
+        with pytest.raises(
+            ValueError, match=rf"style\.yaml: (field_mappings\.title\.)?{path}: .*{reason}"
+        ):
+            ConfigLoader.load(style)
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            pytest.param(
+                _mapping(
+                    _changed(
+                        _IDENT,
+                        'value_template: "{item.control}"',
+                        'value_template: "{item.control|dotted_number_path:subcontrol}"',
+                    )
+                ),
+                id="a filter after a field",
+            ),
+            pytest.param(
+                _mapping(
+                    _changed(
+                        _changed(
+                            _IDENT,
+                            "source_field: cis_controls",
+                            "source_field: mitre_mapping.techniques",
+                        ),
+                        '  attributes:\n    - name: controlURI\n      template: t\n      namespace_prefix: "cc{item.version}"\n',
+                        "",
+                    )
+                ),
+                id="items that are text",
+            ),
+            pytest.param(
+                _mapping(
+                    "source_field: title\nattributes:\n  fixref: 'F-{rec.title}-{benchmark.title}-{stig_number}'"
+                ),
+                id="rule attribute values",
+            ),
+            pytest.param(
+                _mapping(
+                    "structure: ident_from_list\nsource_field: parent\nident_spec:\n  value_template: '{item.title}'"
+                ),
+                id="ident over one value, not a list",
+            ),
+        ],
+    )
+    def test_a_variable_the_template_has_loads(self, tmp_path, body):
+        style = _style(tmp_path, body)
+
+        assert ConfigLoader.load(style).field_mappings["title"]

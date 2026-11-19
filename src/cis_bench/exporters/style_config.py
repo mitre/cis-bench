@@ -63,6 +63,8 @@ class StyleModels:
     transform: Callable[[str], object]
     # The transforms a template's filters name; raises ValueError for a filter with no name
     template_filters: Callable[[str], list[str]]
+    # The dotted paths a template's variables read ("item.control")
+    template_variables: Callable[[str], list[str]]
     xml_context: XmlContext = field(default_factory=XmlContext, compare=False)
 
     def _meta_vars(self, clazz: type) -> list[XmlVar]:
@@ -162,6 +164,14 @@ def field_path_problem(model: type[BaseModel], path: str, dotted: bool) -> str |
     return f"{shown} is not a field of {holder}"
 
 
+def field_model(model: type[BaseModel], path: str) -> type[BaseModel] | None:
+    """The model the field at a dotted path holds (directly or as "X | None"), or None."""
+    current: Any = model
+    for part in path.split("."):
+        current = _model_in(current.model_fields[part].annotation) if current else None
+    return current if isinstance(current, type) else None
+
+
 def list_item_model(model: type[BaseModel], path: str) -> type[BaseModel] | None:
     """The model of the items the list field at a dotted path holds, or None when the field
     is no list of models."""
@@ -199,6 +209,146 @@ def _known_filters(value: str | None, info: ValidationInfo) -> str | None:
         except ValueError as error:
             raise PydanticCustomError("unknown_filter", "{error}", {"error": str(error)}) from error
     return value
+
+
+# The values the engine gives a template, by where the template is (measured at each place the
+# engine fills one): a name -> the model behind it, a dict of the keys the engine builds, or
+# None for a value with no fields to check (text, a list, a value a transform made).
+_TEMPLATE_VALUES: Final[dict[str, dict[str, Any]]] = {
+    "benchmark": {"benchmark": "benchmark"},
+    "plain_text": {"download_date": None, "benchmark": "benchmark"},
+    "benchmark_id": {"benchmark_id": None, "version": None, "title_slug": None},
+    "ref": {"ref": None, "ref_normalized": None, "stig_number": None},
+    "rule": {
+        "ref": None,
+        "ref_normalized": None,
+        "stig_number": None,
+        "rec": "recommendation",
+        "benchmark": "benchmark",
+    },
+    "profile": {"profile": {"title": None}},
+    "nist": {"nist_control_id": None},
+    "group": {"group_key": None},
+}
+
+
+def _values_of(kind: str, models: StyleModels) -> dict[str, Any]:
+    """The values a template of a kind is given, with model names read from the models."""
+    return {
+        name: getattr(models, value) if isinstance(value, str) else value
+        for name, value in _TEMPLATE_VALUES[kind].items()
+    }
+
+
+def variables_problem(template: str, values: Mapping[str, Any], models: StyleModels) -> str | None:
+    """Why a template names a value it is not given, or None: the first name of each variable
+    must be one of values, and each later name a field of the model before it (or a key of a
+    dict the engine builds); after a value with no fields to check, the rest is not checked."""
+    for path in models.template_variables(template):
+        parts = path.split(".")
+        if not all(parts):
+            return f"template {template!r} names {path!r}, which has an empty name"
+        if parts[0] not in values:
+            return (
+                f"template {template!r} names {path!r}; {parts[0]!r} is not a value this "
+                f"template can use (it can use {', '.join(sorted(values))})"
+            )
+        current = values[parts[0]]
+        for depth, part in enumerate(parts[1:], 1):
+            if isinstance(current, type) and issubclass(current, BaseModel):
+                declared = current.model_fields.get(part)
+                if declared is None:
+                    return (
+                        f"template {template!r} names {path!r}; {part!r} is not a field of "
+                        f"{current.__name__}"
+                    )
+                current = _model_in(declared.annotation)
+            elif isinstance(current, Mapping):
+                if part not in current:
+                    holder = ".".join(parts[:depth])
+                    return (
+                        f"template {template!r} names {path!r}; {part!r} is not a key of {holder}"
+                    )
+                current = current[part]
+            else:
+                break
+    return None
+
+
+def _variables_in(kind: str) -> Any:
+    """A check that a template names only the values the engine gives templates of a kind
+    (checked with the models)."""
+
+    def check(value: str | None, info: ValidationInfo) -> str | None:
+        models = _models(info)
+        if value is not None and models is not None:
+            problem = variables_problem(value, _values_of(kind, models), models)
+            if problem is not None:
+                raise PydanticCustomError("unknown_variable", "{problem}", {"problem": problem})
+        return value
+
+    return AfterValidator(check)
+
+
+def _template_problems(
+    templates: list[tuple[tuple[int | str, ...], str | None]],
+    values: Mapping[str, Any],
+    models: StyleModels,
+) -> list[tuple[tuple[int | str, ...], str]]:
+    """The places of templates that name values they are not given, with why."""
+    found = []
+    for place, template in templates:
+        problem = variables_problem(template, values, models) if template is not None else None
+        if problem is not None:
+            found.append((place, problem))
+    return found
+
+
+def _dc_element_problems(
+    elements: list["DublinCoreElement"], kind: str, info: ValidationInfo
+) -> list[tuple[tuple[int | str, ...], str]]:
+    """Dublin Core element contents that name values their kind of template is not given."""
+    models = _models(info)
+    if models is None:
+        return []
+    return _template_problems(
+        [
+            (("dc_elements", index, "content"), element.content)
+            for index, element in enumerate(elements)
+        ],
+        _values_of(kind, models),
+        models,
+    )
+
+
+def _item_model(
+    models: StyleModels, source_field: str, transform: str | None, one_value: bool = False
+) -> type[BaseModel] | None:
+    """The model of each item of the list a mapping reads, or with one_value the model of the
+    field's own value when it holds no list (the ident builder reads one value as one item);
+    None when the items are text, or a transform other than none makes them."""
+    if not source_field or transform not in (None, "none"):
+        return None
+    items = list_item_model(models.recommendation, source_field)
+    if items is None and one_value:
+        return field_model(models.recommendation, source_field)
+    return items
+
+
+def _raise_problems(title: str, found: list[tuple[tuple[int | str, ...], str]]) -> None:
+    """Raise one validation error with a mistake at each place, if there are any."""
+    if found:
+        raise ValidationError.from_exception_data(
+            title,
+            [
+                InitErrorDetails(
+                    type=PydanticCustomError("not_writable", "{problem}", {"problem": problem}),
+                    loc=location,
+                    input=None,
+                )
+                for location, problem in found
+            ],
+        )
 
 
 def _field_of(model: Literal["recommendation", "benchmark"], dotted: bool = False) -> Any:
@@ -388,6 +538,14 @@ TransformName = Annotated[
 ]
 """The name of a transform registered in the engine's TransformRegistry."""
 
+# Templates by the values the engine fills them with (_TEMPLATE_VALUES)
+BenchmarkTemplate = Annotated[Template, _variables_in("benchmark")]
+PlainTextTemplate = Annotated[Template, _variables_in("plain_text")]
+BenchmarkIdTemplate = Annotated[Template, _variables_in("benchmark_id")]
+RefTemplate = Annotated[Template, _variables_in("ref")]
+RuleTemplate = Annotated[Template, _variables_in("rule")]
+ProfileTemplate = Annotated[Template, _variables_in("profile")]
+
 # A file a style names (extends, a CCI mapping file), relative to its own file or absolute
 _StyleFile = Annotated[str, Field(min_length=1)]
 
@@ -437,7 +595,7 @@ class IdTemplate(_Section):
 
     removed_keys: ClassVar[Mapping[str, str]] = {"description": _IN_A_COMMENT}
 
-    template: Template = None
+    template: RefTemplate = None
 
 
 _DEDUPLICATION_IS_CODE: Final = (
@@ -505,16 +663,16 @@ class Notice(_Section):
         "attributes": "write the notice's id and language as id and lang",
     }
 
-    id: Template = None
-    lang: Template = None
-    content: Template = None
+    id: BenchmarkTemplate = None
+    lang: BenchmarkTemplate = None
+    content: BenchmarkTemplate = None
 
 
 class PlainText(_Section):
     """One plain-text element of the Benchmark."""
 
     id: str
-    content: Template = None
+    content: PlainTextTemplate = None
 
 
 class ProfileMapping(_Section):
@@ -534,7 +692,7 @@ class Profiles(_Section):
     """Whether and how the Benchmark's Profile elements are written."""
 
     generate_from_rules: _Switch = None
-    id_template: Template = None
+    id_template: ProfileTemplate = None
     description_transform: TransformName = None
     profile_mappings: list[ProfileMapping] = Field(default_factory=list)
 
@@ -542,7 +700,7 @@ class Profiles(_Section):
 class ReferenceAttributes(_Section):
     """The attributes of the Benchmark's reference."""
 
-    href: Template = None
+    href: BenchmarkTemplate = None
 
 
 class DublinCoreElement(_Section):
@@ -559,6 +717,12 @@ class Reference(_Section):
 
     attributes: ReferenceAttributes = Field(default_factory=ReferenceAttributes)
     dc_elements: list[DublinCoreElement] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _element_variables(self, info: ValidationInfo) -> Self:
+        """The Benchmark's Dublin Core elements are filled with the benchmark."""
+        _raise_problems("Reference", _dc_element_problems(self.dc_elements, "benchmark", info))
+        return self
 
 
 _ONLY_SIMPLE: Final = "multiple applies to a simple mapping whose value is a list"
@@ -620,7 +784,7 @@ class SimpleMapping(_FieldMapping):
     ] = None
     cci_lookup: CciLookup = Field(default_factory=CciLookup)
     multiple: _Switch = None
-    attributes: dict[XmlName, Template] = Field(default_factory=dict)
+    attributes: dict[XmlName, RuleTemplate] = Field(default_factory=dict)
 
 
 class CompositeSource(_Section):
@@ -637,7 +801,7 @@ class CompositeMapping(_FieldMapping):
     structure: Literal["composite"]
     sources: Annotated[list[CompositeSource], Field(min_length=1)]
     separator: _Text = None
-    attributes: dict[XmlName, Template] = Field(default_factory=dict)
+    attributes: dict[XmlName, RuleTemplate] = Field(default_factory=dict)
 
 
 class NestedChild(_Section):
@@ -651,7 +815,7 @@ class NestedChild(_Section):
 class NestedAttributes(_Section):
     """The attribute a nested mapping writes on its element."""
 
-    system: Template = None
+    system: RuleTemplate = None
 
 
 class NestedMapping(_FieldMapping):
@@ -665,7 +829,7 @@ class NestedMapping(_FieldMapping):
 class DublinCoreAttributes(_Section):
     """The attribute a Dublin Core reference mapping writes."""
 
-    href: Template = None
+    href: RuleTemplate = None
 
 
 class DublinCoreMapping(_FieldMapping):
@@ -683,6 +847,12 @@ class DublinCoreMapping(_FieldMapping):
     ] = None
     dc_elements: list[DublinCoreElement] = Field(default_factory=list)
     attributes: DublinCoreAttributes = Field(default_factory=DublinCoreAttributes)
+
+    @model_validator(mode="after")
+    def _element_variables(self, info: ValidationInfo) -> Self:
+        """A rule's Dublin Core elements are filled with each NIST control."""
+        _raise_problems("DublinCoreMapping", _dc_element_problems(self.dc_elements, "nist", info))
+        return self
 
 
 class TagSource(_Section):
@@ -720,7 +890,7 @@ class EmbeddedXmlTagsMapping(_FieldMapping):
 
     structure: Literal["embedded_xml_tags"]
     components: Annotated[list[EmbeddedTag], Field(min_length=1)]
-    attributes: dict[XmlName, Template] = Field(default_factory=dict)
+    attributes: dict[XmlName, RuleTemplate] = Field(default_factory=dict)
 
 
 class IdentAttribute(_Section):
@@ -748,6 +918,27 @@ class IdentFromListMapping(_FieldMapping):
     source_field: RecommendationPath
     transform: TransformName = None
     ident_spec: IdentSpec
+
+    @model_validator(mode="after")
+    def _item_variables(self, info: ValidationInfo) -> Self:
+        """The ident templates are filled with each item of the list."""
+        models = _models(info)
+        if models is None:
+            return self
+        values = {"item": _item_model(models, self.source_field, self.transform, one_value=True)}
+        spec = self.ident_spec
+        templates: list[tuple[tuple[int | str, ...], str | None]] = [
+            (("ident_spec", "system_template"), spec.system_template),
+            (("ident_spec", "value_template"), spec.value_template),
+        ]
+        for index, attribute in enumerate(spec.attributes):
+            place = ("ident_spec", "attributes", index)
+            templates += [
+                ((*place, "template"), attribute.template),
+                ((*place, "namespace_prefix"), attribute.namespace_prefix),
+            ]
+        _raise_problems("IdentFromListMapping", _template_problems(templates, values, models))
+        return self
 
 
 class MetadataElement(_Section):
@@ -792,6 +983,39 @@ class MetadataFromConfigMapping(_FieldMapping):
     source_field: Annotated[RecommendationPath, Field(min_length=1)]
     metadata_spec: MetadataSpec
 
+    @model_validator(mode="after")
+    def _item_variables(self, info: ValidationInfo) -> Self:
+        """A group's attributes are filled with its group_key; the item element and its
+        children with each item of the list."""
+        models = _models(info)
+        if models is None:
+            return self
+        group = self.metadata_spec.group_element
+        place: tuple[int | str, ...] = ("metadata_spec", "group_element")
+        found = _template_problems(
+            [((*place, "attributes", name), value) for name, value in group.attributes.items()],
+            _values_of("group", models),
+            models,
+        )
+        item = {"item": _item_model(models, self.source_field, None)}
+        pending = [((*place, "item_element"), group.item_element)]
+        while pending:
+            where, element = pending.pop(0)
+            found += _template_problems(
+                [((*where, "content"), element.content)]
+                + [
+                    ((*where, "attributes", name), value)
+                    for name, value in element.attributes.items()
+                ],
+                item,
+                models,
+            )
+            pending += [
+                ((*where, "children", index), child) for index, child in enumerate(element.children)
+            ]
+        _raise_problems("MetadataFromConfigMapping", found)
+        return self
+
 
 def structure(value: Any) -> str | None:
     """The structure of a field mapping: simple when it names none; None for a value that is
@@ -821,7 +1045,7 @@ class BenchmarkSection(_Section):
     # The type of every other entry (pydantic's documented form)
     __pydantic_extra__: dict[str, SourcedElement] = Field(init=False)
 
-    id_template: Template = None
+    id_template: BenchmarkIdTemplate = None
     namespaces: NamespaceMap = Field(default_factory=dict)
     notice: Notice = Field(default_factory=Notice)
     plain_text: list[PlainText] = Field(default_factory=list)

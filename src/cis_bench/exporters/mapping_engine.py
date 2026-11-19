@@ -386,8 +386,8 @@ class VariableSubstituter:
                 key or attribute of the value before it, the filter names no registered
                 transform, or the transform refuses the value.
         """
-        path, pipe, filter_spec = expression.partition("|")
-        path = path.strip()
+        path = VariableSubstituter._path(expression)
+        pipe, filter_spec = expression.partition("|")[1:]
         parts = path.split(".")
         if any(not part for part in parts):
             raise ValueError(f"template {template!r} has an empty name in {{{expression}}}")
@@ -428,6 +428,26 @@ class VariableSubstituter:
                 raise ValueError(f"{name} does not take the arguments {args}") from None
             value = transform(value, *args)
         return value
+
+    @staticmethod
+    def _path(expression: str) -> str:
+        """The dotted path a {path|filter} expression reads ("item.control")."""
+        return expression.partition("|")[0].strip()
+
+    @staticmethod
+    def variables(template: str) -> list[str]:
+        """The dotted paths a template's variables read, in order: what a style is checked
+        for when it loads. Text the parser refuses has none here; it is refused where it is
+        filled."""
+        try:
+            pieces = VariableSubstituter._pieces(template)
+        except ValueError:
+            return []
+        return [
+            VariableSubstituter._path(expression)
+            for _, expression in pieces
+            if expression is not None
+        ]
 
     @staticmethod
     def _filter_name(expression: str) -> str:
@@ -535,6 +555,7 @@ def style_models(version: str) -> StyleModels:
         cis_control=CISControl,
         transform=TransformRegistry.get,
         template_filters=VariableSubstituter.filters,
+        template_variables=VariableSubstituter.variables,
     )
 
 
