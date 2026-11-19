@@ -11,6 +11,7 @@ from lxml import etree
 from xsdata.formats.dataclass.models.generics import AnyElement
 
 from cis_bench.exporters.mapping_engine import MappingEngine
+from cis_bench.exporters.style_config import MetadataFromConfigMapping, MetadataGroup
 from cis_bench.exporters.xccdf_unified_exporter import XCCDFExporter
 from cis_bench.models.benchmark import Benchmark, CISControl, Recommendation
 
@@ -47,9 +48,18 @@ def engine(cis_config_path) -> MappingEngine:
 
 
 @pytest.fixture
-def controls_mapping(engine) -> dict:
+def controls_mapping(engine) -> MetadataFromConfigMapping:
     """The CIS style's own CIS Controls metadata mapping."""
-    return engine.config.field_mappings["cis_controls_metadata"]
+    mapping = engine.config.style.field_mappings["cis_controls_metadata"]
+    assert isinstance(mapping, MetadataFromConfigMapping)
+    return mapping
+
+
+def with_spec(mapping: MetadataFromConfigMapping, **changes: object) -> MetadataFromConfigMapping:
+    """The mapping with these metadata_spec values changed."""
+    return mapping.model_copy(
+        update={"metadata_spec": mapping.metadata_spec.model_copy(update=changes)}
+    )
 
 
 class TestBuiltContent:
@@ -117,16 +127,15 @@ class TestBuiltContent:
     def test_a_boolean_attribute_of_an_item_element_is_written_lowercase(
         self, engine, controls_mapping
     ):
-        mapping = {
-            **controls_mapping,
-            "metadata_spec": {
-                **controls_mapping["metadata_spec"],
-                "group_element": {
+        mapping = with_spec(
+            controls_mapping,
+            group_element=MetadataGroup.model_validate(
+                {
                     "element": "framework",
                     "item_element": {"element": "safeguard", "attributes": {"ig1": "{item.ig1}"}},
-                },
-            },
-        }
+                }
+            ),
+        )
 
         root = engine.generate_metadata_from_config(
             recommendation(control(8, "4.8", "t", ig1=True)), mapping
@@ -135,7 +144,7 @@ class TestBuiltContent:
         assert root.children[0].children[0].attributes == {"ig1": "true"}
 
     def test_no_data_gives_an_empty_root_when_the_mapping_allows_it(self, engine, controls_mapping):
-        assert controls_mapping["metadata_spec"]["allow_empty"] is True
+        assert controls_mapping.metadata_spec.allow_empty is True
 
         root = engine.generate_metadata_from_config(recommendation(), controls_mapping)
 
@@ -144,10 +153,7 @@ class TestBuiltContent:
     def test_no_data_gives_nothing_when_the_mapping_does_not_allow_an_empty_root(
         self, engine, controls_mapping
     ):
-        mapping = {
-            **controls_mapping,
-            "metadata_spec": {**controls_mapping["metadata_spec"], "allow_empty": False},
-        }
+        mapping = with_spec(controls_mapping, allow_empty=False)
 
         assert engine.generate_metadata_from_config(recommendation(), mapping) is None
 
@@ -156,14 +162,7 @@ class TestBuiltContent:
         self, engine, controls_mapping, allow_empty, expected
     ):
         # Grouping by a field that is false for every item gives no group.
-        mapping = {
-            **controls_mapping,
-            "metadata_spec": {
-                **controls_mapping["metadata_spec"],
-                "group_by": "item.ig1",
-                "allow_empty": allow_empty,
-            },
-        }
+        mapping = with_spec(controls_mapping, group_by="item.ig1", allow_empty=allow_empty)
 
         root = engine.generate_metadata_from_config(
             recommendation(control(8, "4.8", "t", ig1=False)), mapping

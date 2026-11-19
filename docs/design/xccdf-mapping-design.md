@@ -193,9 +193,9 @@ def build_cis_controls(self, recommendation):
 
 **After (Generic):**
 ```python
-def generate_metadata_from_config(self, recommendation, field_mapping):
+def generate_metadata_from_config(self, recommendation, field_mapping: MetadataFromConfigMapping):
     """Build ANY nested XML from YAML config."""
-    spec = field_mapping["metadata_spec"]
+    spec = field_mapping.metadata_spec
     # Generic - reads structure from config
 ```
 

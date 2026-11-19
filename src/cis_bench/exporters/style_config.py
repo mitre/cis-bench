@@ -185,10 +185,10 @@ def list_item_model(model: type[BaseModel], path: str) -> type[BaseModel] | None
     return _model_in(get_args(annotation)[0]) if get_origin(annotation) is list else None
 
 
-def _registered_transform(value: str | None, info: ValidationInfo) -> str | None:
+def _registered_transform(value: str, info: ValidationInfo) -> str:
     """Refuse a transform no function is registered under (checked with the models)."""
     models = _models(info)
-    if value is not None and models is not None:
+    if models is not None:
         try:
             models.transform(value)
         except ValueError as error:
@@ -533,10 +533,13 @@ Template = Annotated[str | None, BeforeValidator(_given), AfterValidator(_known_
 """Text the engine fills with {variables} and {value|transform} filters when it writes; its
 filters name registered transforms."""
 
-TransformName = Annotated[
-    str | None, BeforeValidator(_given), AfterValidator(_registered_transform)
-]
-"""The name of a transform registered in the engine's TransformRegistry."""
+TemplateText = Annotated[str, BeforeValidator(_given), AfterValidator(_known_filters)]
+"""A template that always has text: a value in a map of templates, or a key whose default
+is a text."""
+
+TransformName = Annotated[str, BeforeValidator(_given), AfterValidator(_registered_transform)]
+"""The name of a transform registered in the engine's TransformRegistry; a field that names
+none takes "none", which gives the value unchanged."""
 
 # Templates by the values the engine fills them with (_TEMPLATE_VALUES)
 BenchmarkTemplate = Annotated[Template, _variables_in("benchmark")]
@@ -637,7 +640,7 @@ class GroupElement(_Section):
     removed_keys: ClassVar[Mapping[str, str]] = {"xccdf_type": _TYPE_FROM_MODEL}
 
     source: Annotated[RecommendationField | None, BeforeValidator(_given)] = None
-    transform: TransformName = None
+    transform: TransformName = "none"
     content: _Text = None
 
 
@@ -651,7 +654,7 @@ class SourcedElement(_Section):
     removed_keys: ClassVar[Mapping[str, str]] = {"xccdf_type": _TYPE_FROM_MODEL}
 
     source: BenchmarkField
-    transform: TransformName = None
+    transform: TransformName = "none"
     prepend_text: _Text = None
 
 
@@ -693,7 +696,7 @@ class Profiles(_Section):
 
     generate_from_rules: _Switch = None
     id_template: ProfileTemplate = None
-    description_transform: TransformName = None
+    description_transform: TransformName = "none"
     profile_mappings: list[ProfileMapping] = Field(default_factory=list)
 
 
@@ -761,7 +764,7 @@ class CciLookup(_Section):
         str | None, BeforeValidator(_given), AfterValidator(_cis_controls_field)
     ] = None
     cis_controls_version: Annotated[int | None, BeforeValidator(_given)] = None
-    extract: Annotated[Literal["all", "primary"] | None, BeforeValidator(_given)] = None
+    extract: Annotated[Literal["all", "primary"], BeforeValidator(_given)] = "all"
     fallback_cci: _Text = None
     mapping_file: Annotated[_StyleFile | None, BeforeValidator(_given)] = None
 
@@ -778,7 +781,7 @@ class SimpleMapping(_FieldMapping):
 
     structure: Literal["simple"] | None = None
     source_field: Annotated[RecommendationField | None, BeforeValidator(_given)] = None
-    transform: TransformName = None
+    transform: TransformName = "none"
     source_logic: Annotated[
         Literal["cci_lookup_with_deduplication"] | None, BeforeValidator(_given)
     ] = None
@@ -792,7 +795,7 @@ class CompositeSource(_Section):
 
     field: Annotated[RecommendationField, Field(min_length=1)]
     label: _Text = None
-    transform: TransformName = None
+    transform: TransformName = "none"
 
 
 class CompositeMapping(_FieldMapping):
@@ -809,7 +812,7 @@ class NestedChild(_Section):
 
     source_field: RecommendationField
     element: str
-    transform: TransformName = None
+    transform: TransformName = "none"
 
 
 class NestedAttributes(_Section):
@@ -860,7 +863,7 @@ class TagSource(_Section):
     it and the next source's text."""
 
     field: Annotated[RecommendationField, Field(min_length=1)]
-    transform: TransformName = None
+    transform: TransformName = "none"
     separator: _Text = None
 
 
@@ -897,7 +900,7 @@ class IdentAttribute(_Section):
     """An attribute from another namespace an ident is written with (cc8:controlURI)."""
 
     name: XmlName
-    template: Template = None
+    template: TemplateText = ""
     namespace_prefix: NamespacePrefix
 
 
@@ -905,8 +908,8 @@ class IdentSpec(_Section):
     """How each item of the list becomes an ident: its system, its value and its attributes,
     each a template over {item}."""
 
-    system_template: Template = None
-    value_template: Template = None
+    system_template: TemplateText = ""
+    value_template: TemplateText = "{item}"
     attributes: list[IdentAttribute] = Field(default_factory=list)
 
 
@@ -916,7 +919,7 @@ class IdentFromListMapping(_FieldMapping):
 
     structure: Literal["ident_from_list"]
     source_field: RecommendationPath
-    transform: TransformName = None
+    transform: TransformName = "none"
     ident_spec: IdentSpec
 
     @model_validator(mode="after")
@@ -947,7 +950,7 @@ class MetadataElement(_Section):
 
     element: XmlName
     content: Template = None
-    attributes: dict[XmlName, Template] = Field(default_factory=dict)
+    attributes: dict[XmlName, TemplateText] = Field(default_factory=dict)
     children: list["MetadataElement"] = Field(default_factory=list)
 
 
@@ -956,7 +959,7 @@ class MetadataGroup(_Section):
     holding one item element per item."""
 
     element: XmlName
-    attributes: dict[XmlName, Template] = Field(default_factory=dict)
+    attributes: dict[XmlName, TemplateText] = Field(default_factory=dict)
     item_element: MetadataElement
 
 
@@ -1074,6 +1077,13 @@ class StyleConfig(_Section):
     cci_deduplication: CciDeduplication = Field(default_factory=CciDeduplication)
     group_elements: dict[XmlName, GroupElement] = Field(default_factory=dict)
     post_processing: PostProcessing = Field(default_factory=PostProcessing)
+
+    @property
+    def cci_lookup(self) -> CciLookup:
+        """Where the CCIs come from: the cci_lookup of the mapping named ident, or the defaults
+        when that mapping is switched off or is no simple mapping."""
+        ident = self.field_mappings.get("ident")
+        return ident.cci_lookup if isinstance(ident, SimpleMapping) else CciLookup()
 
     @model_validator(mode="after")
     def _prefixes_declared(self) -> Self:

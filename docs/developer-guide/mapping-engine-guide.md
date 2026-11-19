@@ -665,8 +665,12 @@ schema (`style_config.StyleConfig`). A top-level section, or a key of `metadata`
 `rule_id`, `group_id`, `cci_deduplication`, `group_elements`, `post_processing` or
 `benchmark`, that the exporter does not read is refused when the style loads, and so is a
 value of the wrong kind; a field mapping takes the keys of its `structure` (`simple`,
-`composite`, `nested`, `dublin_core`; the other three are checked as JSON-like data for
-now). Every mistake is listed with the dotted path of the key and the file just
+`composite`, `nested`, `dublin_core`, `embedded_xml_tags`, `ident_from_list`,
+`metadata_from_config`), and a key it leaves out takes the default the schema states
+(`transform: none`; an ident's `value_template: "{item}"`; `cci_lookup.extract: all`).
+The engine reads the model this last check built (`ConfigLoader.load(path).style`): the
+ident, CCI lookup and metadata builders take their mapping's model, not its YAML.
+Every mistake is listed with the dotted path of the key and the file just
 merged when it appeared, so a parent's mistake names the parent and one namespace URI bound
 in parent and child names the child. Loading stops at the first file with mistakes; every
 file a style extends is a valid style on its own.
