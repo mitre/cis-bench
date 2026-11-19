@@ -166,10 +166,6 @@ class TestArchitectureCompliance:
             "Missing DRY helper: _construct_typed_element"
         )
 
-        assert hasattr(engine, "_element_name_to_type_name"), (
-            "Missing DRY helper: _element_name_to_type_name"
-        )
-
         assert hasattr(engine, "_build_field_value"), "Missing DRY helper: _build_field_value"
 
     def test_new_methods_exist_and_work(self, disa_config_path, synthetic_complete_benchmark):

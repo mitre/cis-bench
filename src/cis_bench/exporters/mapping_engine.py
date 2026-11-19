@@ -942,30 +942,6 @@ class MappingEngine:
             # Fallback: try content
             return ElementType(content=[value])
 
-    def _element_name_to_type_name(self, element_name: str) -> str:
-        """Convert element name to xsdata type class name.
-
-        Examples:
-            'check-content' → 'CheckContentType'
-            'check' → 'CheckType'
-            'title' → 'TitleType'
-
-        Args:
-            element_name: Element name from config (kebab-case or lowercase)
-
-        Returns:
-            Type class name (PascalCase + 'Type' suffix)
-        """
-        # Convert kebab-case to PascalCase
-        parts = element_name.split("-")
-        pascal = "".join(word.capitalize() for word in parts)
-
-        # Add Type suffix if not present
-        if not pascal.endswith("Type"):
-            pascal += "Type"
-
-        return pascal
-
     def _build_field_value(
         self,
         field_mapping: SimpleMapping | CompositeMapping | EmbeddedXmlTagsMapping,
@@ -1163,13 +1139,16 @@ class MappingEngine:
         child_value = getattr(rec, child.source_field, None)
         if not child_value:
             return None
-        ChildType = self.get_xccdf_class(self._element_name_to_type_name(child.element))
+        # The child's field and type in the target's XCCDF type (checked when the style loaded)
+        child_element = self.style_models.child_element(FieldType, child.element)
+        if child_element is None:
+            raise ValueError(f"the {FieldType.__name__} type has no {child.element!r} element")
         child_instance = self._construct_typed_element(
-            ChildType, TransformRegistry.apply(child.transform, child_value)
+            child_element.types[0], TransformRegistry.apply(child.transform, child_value)
         )
         system = VariableSubstituter.substitute(mapping.attributes.system, template_values)
         # The child is one element, not a list (check_content)
-        return FieldType(**{"system": system, child.element.replace("-", "_"): child_instance})
+        return FieldType(**{"system": system, child_element.name: child_instance})
 
     def _references(
         self,

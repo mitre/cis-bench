@@ -84,6 +84,28 @@ class StyleModels:
             None,
         )
 
+    def child_element(self, holder: type, name: str) -> XmlVar | None:
+        """The element of a model type named name as XML writes it (check-content), with its
+        field and type; None when the type has no such element."""
+        return next(
+            (var for var in self._meta_vars(holder) if var.local_name == name and var.is_element),
+            None,
+        )
+
+    def nested_child_problem(self, target: str, name: str) -> str | None:
+        """Why a nested mapping cannot write the child element name inside the Rule element
+        target (one whose type the target problem check found), or None if it can."""
+        holder = self.element("Rule", target)
+        child = self.child_element(holder.types[0], name) if holder is not None else None
+        if child is None:
+            return f"the XCCDF {self.xccdf_version} {target!r} element has no {name!r} element"
+        if len(child.types) != 1 or not is_dataclass(child.types[0]):
+            return (
+                f"the {name!r} element of an XCCDF {self.xccdf_version} {target!r} holds a "
+                "plain value, not an element type a mapping can fill"
+            )
+        return None
+
     def element_problem(self, parent: str, name: str) -> str | None:
         """Why a mapping cannot fill the element name of parent, or None if it can."""
         element = self.element(parent, name)
@@ -1136,6 +1158,11 @@ class StyleConfig(_Section):
             problem = models.element_problem("Rule", target)
             if problem is not None:
                 found.append((target_place, problem))
+            elif isinstance(mapping, NestedMapping):
+                (child,) = mapping.children
+                problem = models.nested_child_problem(target, child.element)
+                if problem is not None:
+                    found.append(((*place, "children", 0, "element"), problem))
             elif isinstance(mapping, MetadataFromConfigMapping):
                 found.extend(self._metadata_problems(models, mapping, place, target_place, target))
         for name in self.group_elements:
