@@ -21,6 +21,7 @@ from cis_bench.exporters.mapping_engine import (
     TransformRegistry,
     VariableSubstituter,
 )
+from cis_bench.exporters.style_config import IdentFromListMapping, IdentSpec
 from cis_bench.models.benchmark import (
     CISControl,
     MITREMapping,
@@ -255,20 +256,23 @@ class TestDottedNumberPath:
 class TestIdentAttributes:
     """Namespaced ident attributes come from the style's namespaces, or the export stops."""
 
-    CONTROL_URI = {
-        "source_field": "cis_controls",
-        "ident_spec": {
-            "system_template": "http://cisecurity.org/20-cc/v{item.version}.0",
-            "value_template": "",
-            "attributes": [
-                {
-                    "name": "controlURI",
-                    "template": "u/{item.control|dotted_number_path:subcontrol}",
-                    "namespace_prefix": "cc{item.version}",
-                }
-            ],
-        },
-    }
+    CONTROL_URI = IdentFromListMapping.model_validate(
+        {
+            "structure": "ident_from_list",
+            "source_field": "cis_controls",
+            "ident_spec": {
+                "system_template": "http://cisecurity.org/20-cc/v{item.version}.0",
+                "value_template": "",
+                "attributes": [
+                    {
+                        "name": "controlURI",
+                        "template": "u/{item.control|dotted_number_path:subcontrol}",
+                        "namespace_prefix": "cc{item.version}",
+                    }
+                ],
+            },
+        }
+    )
 
     def test_the_attribute_is_written_in_the_declared_namespace(
         self, cis_config_path, sample_recommendation
@@ -284,30 +288,34 @@ class TestIdentAttributes:
     def test_an_undeclared_namespace_prefix_stops_the_export(
         self, cis_config_path, sample_recommendation
     ):
-        mapping = {
-            **self.CONTROL_URI,
-            "ident_spec": {
-                **self.CONTROL_URI["ident_spec"],
-                "attributes": [{"name": "controlURI", "template": "u", "namespace_prefix": "cc99"}],
-            },
-        }
+        spec = IdentSpec.model_validate(
+            {"attributes": [{"name": "controlURI", "template": "u", "namespace_prefix": "cc99"}]}
+        )
+        mapping = self.CONTROL_URI.model_copy(update={"ident_spec": spec})
         with pytest.raises(ValueError, match="'cc99' is not declared"):
             MappingEngine(cis_config_path).generate_idents_from_config(
                 sample_recommendation, mapping
             )
 
-    def test_an_attribute_without_a_name_is_refused(self, cis_config_path, sample_recommendation):
-        mapping = {
-            **self.CONTROL_URI,
-            "ident_spec": {
-                **self.CONTROL_URI["ident_spec"],
-                "attributes": [{"template": "u", "namespace_prefix": "cc8"}],
-            },
-        }
-        with pytest.raises(ValueError, match="ident attribute needs a name"):
-            MappingEngine(cis_config_path).generate_idents_from_config(
-                sample_recommendation, mapping
-            )
+    @pytest.mark.parametrize(
+        "mapping",
+        [
+            pytest.param(
+                {"source_field": "", "ident_spec": {"value_template": "{item}"}}, id="no source"
+            ),
+            pytest.param({"source_field": "cis_controls", "ident_spec": {}}, id="empty spec"),
+        ],
+    )
+    def test_a_mapping_with_no_source_or_an_empty_spec_writes_no_ident(
+        self, cis_config_path, sample_recommendation, mapping
+    ):
+        # Both load; the defaults of an empty spec would otherwise write one ident per item.
+        typed = IdentFromListMapping.model_validate({"structure": "ident_from_list", **mapping})
+
+        assert (
+            MappingEngine(cis_config_path).generate_idents_from_config(sample_recommendation, typed)
+            == []
+        )
 
     def test_an_xccdf_1_1_ident_cannot_carry_namespaced_attributes(
         self, disa_config_path, sample_recommendation

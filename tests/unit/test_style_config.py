@@ -7,7 +7,7 @@ import pytest
 from pydantic import TypeAdapter, ValidationError
 
 from cis_bench.exporters.mapping_engine import ConfigLoader, MappingEngine
-from cis_bench.exporters.style_config import XmlName
+from cis_bench.exporters.style_config import SimpleMapping, XmlName
 
 
 def _style(tmp_path: Path, body: str, name: str = "style.yaml") -> Path:
@@ -288,6 +288,31 @@ class TestInheritedStyles:
             ValueError, match=r"parent\.yaml: benchmark\.title\.source: Field required"
         ):
             ConfigLoader.load(child)
+
+    def test_the_loaded_style_model_is_the_whole_merged_style(self, tmp_path):
+        # The engine reads the model the last check built: a value the child replaces, a
+        # mapping only the parent writes, and a mapping the child switches off with null.
+        parent = _style(
+            tmp_path,
+            "field_mappings:\n"
+            "  title:\n    source_field: title\n"
+            "  rationale:\n    source_field: rationale\n"
+            "  description:\n    source_field: description\n",
+            name="parent.yaml",
+        )
+        child = self._child(
+            tmp_path,
+            parent,
+            "field_mappings:\n  title:\n    source_field: description\n  rationale: null\n",
+        )
+
+        mappings = ConfigLoader.load(child).style.field_mappings
+
+        assert isinstance(mappings["title"], SimpleMapping)
+        assert mappings["title"].source_field == "description"
+        assert mappings["rationale"] is None
+        assert isinstance(mappings["description"], SimpleMapping)
+        assert mappings["description"].source_field == "description"
 
     def test_a_key_the_child_adds_to_a_parent_section_is_reported_with_the_child_file(
         self, tmp_path

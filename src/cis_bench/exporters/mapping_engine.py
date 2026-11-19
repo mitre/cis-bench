@@ -28,7 +28,7 @@ import logging
 import re
 import string
 import unicodedata
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, fields
 from gettext import ngettext
 from pathlib import Path
@@ -43,6 +43,10 @@ from xsdata.formats.dataclass.serializers.mixins import EventHandler
 
 from cis_bench.exceptions import ExportError
 from cis_bench.exporters.style_config import (
+    IdentFromListMapping,
+    MetadataElement,
+    MetadataFromConfigMapping,
+    StyleConfig,
     StyleModels,
     check_mergeable,
     extended_style,
@@ -67,9 +71,10 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class MappingConfig:
-    """Loaded mapping configuration: one field per top-level section of a style's YAML.
+    """Loaded mapping configuration: one field per top-level section of a style's YAML, and
+    the merged style's model (style).
 
-    ConfigLoader fills and inherits (extends) every field the same way, so a section
+    ConfigLoader fills and inherits (extends) every section field the same way, so a section
     added here is loaded and inherited without further code.
     """
 
@@ -84,6 +89,8 @@ class MappingConfig:
     group_elements: dict[str, Any] = field(default_factory=dict)
     # How the serialized XML is finished (remove_override_attr)
     post_processing: dict[str, Any] = field(default_factory=dict)
+    # The whole style as the schema built it when it loaded (no section of the YAML)
+    style: StyleConfig = field(default_factory=StyleConfig)
 
     @property
     def namespaces(self) -> dict[str, str]:
@@ -317,13 +324,14 @@ class ConfigLoader:
             config_path: Path to the configuration file
 
         Returns:
-            MappingConfig with merged configuration
+            MappingConfig with merged configuration, and the merged style's model (style)
 
         Raises:
             ValueError: Circular inheritance, or a style the schema refuses
             FileNotFoundError: If config file not found
         """
         config_data: dict[str, Any] = {}
+        style = StyleConfig()
         for path, written in ConfigLoader._chain(config_path, []):
             name = path.name
             check_mergeable(name, written)
@@ -332,14 +340,17 @@ class ConfigLoader:
             config_data = ConfigLoader._deep_merge(
                 config_data, {key: value for key, value in written.items() if key != "extends"}
             )
-            validate_style(name, {**config_data, **extends}, ConfigLoader._models_of(config_data))
+            style = validate_style(
+                name, {**config_data, **extends}, ConfigLoader._models_of(config_data)
+            )
             logger.debug(f"Loaded {name}")
         return MappingConfig(
             **{
                 section.name: config_data[section.name]
                 for section in fields(MappingConfig)
                 if section.name in config_data
-            }
+            },
+            style=style,
         )
 
 
@@ -583,9 +594,9 @@ class MappingEngine:
         # Mapping name -> (Rule field, the type that holds the metadata content there, that
         # type's wildcard field); every metadata mapping has one (checked when it loaded)
         self._metadata_holders: dict[str, tuple[str, type, str]] = {}
-        for name, mapping in self.config.field_mappings.items():
-            if isinstance(mapping, dict) and mapping.get("structure") == "metadata_from_config":
-                target = mapping.get("target_element", name)
+        for name, mapping in self.config.style.field_mappings.items():
+            if isinstance(mapping, MetadataFromConfigMapping):
+                target = mapping.target_element or name
                 holder = self.style_models.metadata_holder(target)
                 if holder is not None:
                     self._metadata_holders[name] = (target, *holder)
@@ -696,9 +707,7 @@ class MappingEngine:
             ValueError: The mapping file is no file name, cannot be read, or is not a CCI
                 mapping file; the error names the style and the mapping file.
         """
-        ident = self.config.field_mappings.get("ident")
-        lookup = ident.get("cci_lookup") if isinstance(ident, dict) else None
-        written = lookup.get("mapping_file") if isinstance(lookup, dict) else None
+        written = self.config.style.cci_lookup.mapping_file
         if written is None:
             return cci_service_for()
         name = file_name(written)
@@ -724,21 +733,19 @@ class MappingEngine:
             # No deduplication - return empty CCIs, all NIST as extras
             return [], rec.nist_controls
 
-        # Get extract parameter from ident field mapping (default: "all")
-        ident_mapping = self.config.field_mappings.get("ident", {})
-        cci_lookup_config = ident_mapping.get("cci_lookup", {})
-        extract = cci_lookup_config.get("extract", "all")
+        # The ident mapping's lookup: which CCIs of a control to take (extract)
+        cci_lookup_config = self.config.style.cci_lookup
 
         # The CIS controls come from the field the style names. The mapping file is keyed
         # by one CIS Controls version, named in the style (cci_lookup.cis_controls_version);
         # other versions reuse the same numbers for unrelated safeguards, so only that
         # version's controls are looked up.
-        source_field = cci_lookup_config.get("source_field")
+        source_field = cci_lookup_config.source_field
         if not source_field:
             raise ValueError(
                 "ident.cci_lookup needs source_field, the field holding the CIS controls"
             )
-        controls_version = cci_lookup_config.get("cis_controls_version")
+        controls_version = cci_lookup_config.cis_controls_version
         cis_control_ids = [
             c.control
             for c in getattr(rec, source_field)
@@ -747,13 +754,13 @@ class MappingEngine:
 
         # Use CCI service for deduplication
         ccis, extra_nist = self.cci_service.deduplicate_nist_controls(
-            cis_control_ids, rec.nist_controls, extract=extract
+            cis_control_ids, rec.nist_controls, extract=cci_lookup_config.extract
         )
 
         # Fallback CCI if no CCIs (even if NIST exists)
         # CRITICAL: DISA STIGs require at least one ident element per rule
         if not ccis:
-            fallback_cci = cci_lookup_config.get("fallback_cci")
+            fallback_cci = cci_lookup_config.fallback_cci
             if fallback_cci:
                 ccis = [fallback_cci]
                 logger.debug(f"No CCIs for {rec.ref}, using fallback {fallback_cci}")
@@ -1161,8 +1168,9 @@ class MappingEngine:
 
             # Metadata is model content in the type the XCCDF model gives the target element
             # (checked when the style loaded): one metadata element per mapping, in order
-            if field_mapping.get("structure") == "metadata_from_config":
-                metadata_root = self.generate_metadata_from_config(rec, field_mapping)
+            typed = self.config.style.field_mappings[field_name]
+            if isinstance(typed, MetadataFromConfigMapping):
+                metadata_root = self.generate_metadata_from_config(rec, typed)
                 if metadata_root is not None:
                     target, MetadataHolder, content_field = self._metadata_holders[field_name]
                     rule_fields.setdefault(target, []).append(
@@ -1260,9 +1268,9 @@ class MappingEngine:
                 continue
 
             # For ident_from_list structure - generic ident generation (CIS, MITRE, PCI-DSS, etc.)
-            if structure == "ident_from_list":
+            if isinstance(typed, IdentFromListMapping):
                 logger.debug(f"Generating idents from config for {field_name}")
-                idents = self.generate_idents_from_config(rec, field_mapping)
+                idents = self.generate_idents_from_config(rec, typed)
 
                 if idents:
                     # Append to existing idents if any
@@ -1509,7 +1517,7 @@ class MappingEngine:
         return XCCDFBenchmark(**benchmark_fields)
 
     def generate_idents_from_config(
-        self, recommendation: "Recommendation", field_mapping: dict
+        self, recommendation: "Recommendation", field_mapping: IdentFromListMapping
     ) -> list:
         """Generic ident generation from YAML config - works for ANY organization.
 
@@ -1529,7 +1537,7 @@ class MappingEngine:
 
         Args:
             recommendation: Source recommendation data
-            field_mapping: YAML field mapping config with ident_spec
+            field_mapping: The style's ident_from_list mapping
 
         Returns:
             List of xsdata IdentType objects
@@ -1549,18 +1557,18 @@ class MappingEngine:
         """
         IdentType = self.get_xccdf_class("IdentType")
 
-        source_field = field_mapping.get("source_field")
-        ident_spec = field_mapping.get("ident_spec", {})
+        source_field = field_mapping.source_field
+        ident_spec = field_mapping.ident_spec
 
-        if not source_field or not ident_spec:
+        # An empty source field, or an ident_spec written with no key, writes nothing
+        if not source_field or not ident_spec.model_fields_set:
             logger.warning("ident_from_list missing source_field or ident_spec")
             return []
 
         # Get source data (supports nested paths like "mitre_mapping.techniques"); a
         # transform turns a text field into the list to read (lines: one ident per line)
         source_data = TransformRegistry.apply(
-            field_mapping.get("transform", "none"),
-            self._get_nested_field(recommendation, source_field),
+            field_mapping.transform, self._get_nested_field(recommendation, source_field)
         )
         if not source_data:
             return []
@@ -1569,13 +1577,13 @@ class MappingEngine:
         items = source_data if isinstance(source_data, list) else [source_data]
 
         idents = []
-        system_template = ident_spec.get("system_template", "")
-        value_template = ident_spec.get("value_template", "{item}")
-        custom_attrs = ident_spec.get("attributes", [])
+        system_template = ident_spec.system_template
+        value_template = ident_spec.value_template
+        custom_attrs = ident_spec.attributes
         # Checked before any prefix is resolved: declaring the attributes' namespaces would
         # not help a version whose ident takes no attributes from other namespaces.
         if custom_attrs and "other_attributes" not in {f.name for f in fields(IdentType)}:
-            names = sorted(str(attr.get("name")) for attr in custom_attrs)
+            names = sorted(attr.name for attr in custom_attrs)
             raise ValueError(
                 f"ident attributes {names} need an XCCDF version whose "
                 "ident allows attributes from other namespaces"
@@ -1594,16 +1602,11 @@ class MappingEngine:
             # attribute field, keyed by qualified name, so xsdata writes them.
             other_attributes: dict[str, str] = {}
             for attr_config in custom_attrs:
-                attr_name = attr_config.get("name")
-                if not attr_name:
-                    raise ValueError(f"an ident attribute needs a name: {attr_config!r}")
-                attr_value = VariableSubstituter.substitute(
-                    attr_config.get("template", ""), context
+                attr_value = VariableSubstituter.substitute(attr_config.template, context)
+                prefix = VariableSubstituter.substitute(attr_config.namespace_prefix, context)
+                other_attributes[f"{{{self._namespace_uri(prefix)}}}{attr_config.name}"] = str(
+                    attr_value
                 )
-                prefix = VariableSubstituter.substitute(
-                    attr_config.get("namespace_prefix", ""), context
-                )
-                other_attributes[f"{{{self._namespace_uri(prefix)}}}{attr_name}"] = str(attr_value)
 
             if other_attributes:
                 idents.append(
@@ -1875,7 +1878,7 @@ class MappingEngine:
         return names
 
     def generate_metadata_from_config(
-        self, recommendation: "Recommendation", field_mapping: dict
+        self, recommendation: "Recommendation", field_mapping: MetadataFromConfigMapping
     ) -> AnyElement | None:
         """Build a metadata root element from a metadata_from_config mapping.
 
@@ -1886,7 +1889,7 @@ class MappingEngine:
 
         Args:
             recommendation: Source recommendation data
-            field_mapping: YAML field mapping with metadata_spec
+            field_mapping: The style's metadata_from_config mapping
 
         Returns:
             The root element, an empty root when the source list is empty and allow_empty is
@@ -1895,14 +1898,14 @@ class MappingEngine:
         Raises:
             ValueError: An attribute value would be rewritten by the XML serializer.
         """
-        spec = field_mapping["metadata_spec"]
-        namespace = self._namespace_uri(spec["namespace_prefix"])
+        spec = field_mapping.metadata_spec
+        namespace = self._namespace_uri(spec.namespace_prefix)
 
         def qname(name: str) -> str:
             return f"{{{namespace}}}{name}"
 
-        source_data = self._get_nested_field(recommendation, field_mapping["source_field"])
-        group_by = spec["group_by"].removeprefix("item.")
+        source_data = self._get_nested_field(recommendation, field_mapping.source_field)
+        group_by = spec.group_by.removeprefix("item.")
         groups: dict[Any, list[Any]] = {}
         for item in source_data or []:
             group_key = self._get_nested_field(item, group_by)
@@ -1910,21 +1913,19 @@ class MappingEngine:
                 groups.setdefault(group_key, []).append(item)
         if not groups:
             # No data, or no item in any group: the same case, decided by allow_empty
-            return (
-                AnyElement(qname=qname(spec["root_element"])) if spec.get("allow_empty") else None
-            )
+            return AnyElement(qname=qname(spec.root_element)) if spec.allow_empty else None
 
-        group_spec = spec["group_element"]
+        group_spec = spec.group_element
         return AnyElement(
-            qname=qname(spec["root_element"]),
+            qname=qname(spec.root_element),
             children=[
                 AnyElement(
-                    qname=qname(group_spec["element"]),
+                    qname=qname(group_spec.element),
                     attributes=self._metadata_attributes(
-                        group_spec.get("attributes") or {}, {"group_key": group_key}
+                        group_spec.attributes, {"group_key": group_key}
                     ),
                     children=[
-                        self._build_config_element(item, group_spec["item_element"], qname)
+                        self._build_config_element(item, group_spec.item_element, qname)
                         for item in items
                     ],
                 )
@@ -1933,26 +1934,24 @@ class MappingEngine:
         )
 
     def _build_config_element(
-        self, item: Any, spec: dict, qname: Callable[[str], str]
+        self, item: Any, spec: MetadataElement, qname: Callable[[str], str]
     ) -> AnyElement:
         """An item element, or one of its children, with its own children, from config."""
-        content = spec.get("content")
         text = None
-        if content:
-            value = VariableSubstituter.substitute(content, {"item": item})
+        if spec.content:
+            value = VariableSubstituter.substitute(spec.content, {"item": item})
             text = None if value is None else str(value)
         return AnyElement(
-            qname=qname(spec["element"]),
+            qname=qname(spec.element),
             text=text,
-            attributes=self._metadata_attributes(spec.get("attributes") or {}, {"item": item}),
-            children=[
-                self._build_config_element(item, child, qname)
-                for child in spec.get("children") or []
-            ],
+            attributes=self._metadata_attributes(spec.attributes, {"item": item}),
+            children=[self._build_config_element(item, child, qname) for child in spec.children],
         )
 
     @staticmethod
-    def _metadata_attributes(templates: dict[str, Any], context: dict[str, Any]) -> dict[str, str]:
+    def _metadata_attributes(
+        templates: Mapping[str, str], context: dict[str, Any]
+    ) -> dict[str, str]:
         """Attribute values as text: booleans lowercase (XML Schema boolean), anything else
         as str().
 
