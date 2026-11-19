@@ -667,9 +667,10 @@ schema (`style_config.StyleConfig`). A top-level section, or a key of `metadata`
 value of the wrong kind; a field mapping takes the keys of its `structure` (`simple`,
 `composite`, `nested`, `dublin_core`, `embedded_xml_tags`, `ident_from_list`,
 `metadata_from_config`), and a key it leaves out takes the default the schema states
-(`transform: none`; an ident's `value_template: "{item}"`; `cci_lookup.extract: all`).
-The engine reads the model this last check built (`ConfigLoader.load(path).style`): the
-ident, CCI lookup and metadata builders take their mapping's model, not its YAML.
+(`transform: none`; a composite's `separator`, a blank line; an ident's
+`value_template: "{item}"`; `cci_lookup.extract: all`). The engine reads the model this last
+check built (`ConfigLoader.load(path).style`): `map_rule` and every field-mapping builder take
+the mapping's model, not its YAML.
 Every mistake is listed with the dotted path of the key and the file just
 merged when it appeared, so a parent's mistake names the parent and one namespace URI bound
 in parent and child names the child. Loading stops at the first file with mistakes; every
@@ -1168,36 +1169,34 @@ recommendation.profiles = ["Level 1 - Server", "Level 2 - Workstation"]
 
 ```python
 class MappingEngine:
-def __init__(self, config: dict):
-"""Initialize with loaded YAML config."""
+    def __init__(self, config_path: Path):
+        """Load the style (ConfigLoader.load) and keep its model, self.config.style."""
 
-def map_benchmark(self, benchmark: Benchmark) -> XCCDFBenchmark:
-"""Map Pydantic Benchmark to xsdata Benchmark."""
+    def map_benchmark(self, benchmark: Benchmark, groups: list, context: dict): ...
+    def map_group(self, rec: Recommendation, rule, context: dict): ...
 
-def map_recommendation(self, rec: Recommendation) -> Rule:
-"""Map Pydantic Recommendation to xsdata Rule."""
-# THIS IS THE CORE METHOD
-# Loops through field_mappings and applies each
-
-def apply_field_mapping(self, rec, field_config):
-"""Apply single field mapping based on config."""
-
-def apply_transformation(self, value, transform_name):
-"""Apply named transformation from config."""
+    def map_rule(self, rec: Recommendation, context: dict):
+        """One Rule element per field mapping of the style, built by its structure."""
 ```
 
-**Critical loop (line ~150):**
+**The loop in `map_rule`:** each field mapping is the model of its `structure`
+(`style_config.StyleConfig.field_mappings`), and `map_rule` matches on that model; mypy
+reports a structure with no case.
+
 ```python
-def map_recommendation(self, recommendation):
-"""Map recommendation using config."""
-rule = Rule(id=self.generate_rule_id(recommendation))
-
-# LOOP-DRIVEN ARCHITECTURE (DO NOT HARD-CODE FIELDS!)
-for field_name, mapping in self.config['field_mappings'].items():
-value = self.apply_field_mapping(recommendation, mapping)
-setattr(rule, field_name, value)
-
-return rule
+for field_name, mapping in self.config.style.field_mappings.items():
+    if mapping is None:  # switched off with null
+        continue
+    target_element = mapping.target_element or field_name
+    match mapping:
+        case MetadataFromConfigMapping(): ...  # generate_metadata_from_config
+        case NestedMapping(): ...  # _nested_element (check and check-content)
+        case DublinCoreMapping(): ...  # _references, one per NIST control
+        case IdentFromListMapping(): ...  # generate_idents_from_config
+        case SimpleMapping() | CompositeMapping() | EmbeddedXmlTagsMapping():
+            ...  # _build_field_value, then _element_from_value
+        case _:
+            assert_never(mapping)
 ```
 
 **This is why config-driven works:**

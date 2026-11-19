@@ -23,6 +23,13 @@ FALLBACK_CCI = "CCI-000366"
 DC = "{http://purl.org/dc/elements/1.1/}"
 
 
+def _disa_with(tmp_path, disa_config_path, body):
+    """A style file that extends the DISA style with body (YAML)."""
+    style = tmp_path / "disa_changed.yaml"
+    style.write_text(f"extends: {disa_config_path}\n{body}")
+    return style
+
+
 def _v8_control_ids(rec):
     return [c.control for c in rec.cis_controls if c.version == CCI_CONTROLS_VERSION]
 
@@ -99,16 +106,19 @@ class TestControlMappingFidelity:
 
         assert href == f"https://example.invalid/?from={sample_benchmark.url}"
 
-    def test_a_reference_with_an_unknown_source_logic_is_refused(
-        self, sample_benchmark, disa_config_path
-    ):
+    def test_a_reference_with_an_unknown_source_logic_is_refused(self, tmp_path, disa_config_path):
         from cis_bench.exporters.mapping_engine import MappingEngine
 
-        engine = MappingEngine(disa_config_path)
-        engine.config.field_mappings["reference"]["source_logic"] = "nist_after_everything"
+        style = _disa_with(
+            tmp_path,
+            disa_config_path,
+            "field_mappings:\n  reference:\n    source_logic: nist_after_everything\n",
+        )
 
-        with pytest.raises(ValueError, match="nist_after_everything"):
-            engine.map_rule(sample_benchmark.recommendations[0], {})
+        with pytest.raises(
+            ValueError, match=r"field_mappings\.reference\.dublin_core\.source_logic"
+        ):
+            MappingEngine(style)
 
     def test_a_rule_id_template_that_gives_no_id_is_refused(
         self, sample_benchmark, disa_config_path
@@ -143,45 +153,53 @@ class TestControlMappingFidelity:
             engine.map_rule(sample_benchmark.recommendations[0], {"platform": "ubuntu"})
 
     def test_a_rule_attribute_template_naming_an_unknown_variable_is_refused(
-        self, sample_benchmark, disa_config_path
+        self, tmp_path, disa_config_path
     ):
         # Every template is checked, not only the id templates: a typo here would write
         # <fix id="F-_fix"/> on every rule.
         from cis_bench.exporters.mapping_engine import MappingEngine
 
-        engine = MappingEngine(disa_config_path)
-        engine.config.field_mappings["fix"]["attributes"]["id"] = "F-{ref_norm}_fix"
+        style = _disa_with(
+            tmp_path,
+            disa_config_path,
+            "field_mappings:\n  fix:\n    attributes:\n      id: F-{ref_norm}_fix\n",
+        )
 
-        with pytest.raises(ValueError, match="ref_norm"):
-            engine.map_rule(sample_benchmark.recommendations[0], {})
+        with pytest.raises(
+            ValueError, match=r"field_mappings\.fix\.simple\.attributes\.id: .*ref_norm"
+        ):
+            MappingEngine(style)
 
-    def test_a_rule_attribute_template_sees_only_the_rule_values(
-        self, sample_benchmark, disa_config_path
-    ):
+    def test_a_rule_attribute_template_sees_only_the_rule_values(self, tmp_path, disa_config_path):
         # The engine's working dictionary (its CCI cache, the recommendation list) is not
         # the template's namespace: a template naming such a key is refused, and the
         # message lists only the values a rule template can use.
         from cis_bench.exporters.mapping_engine import MappingEngine
 
-        engine = MappingEngine(disa_config_path)
-        engine.config.field_mappings["fix"]["attributes"]["id"] = "F-{recommendations}"
-        context = {
-            "benchmark": sample_benchmark,
-            "recommendations": sample_benchmark.recommendations,
-        }
+        style = _disa_with(
+            tmp_path,
+            disa_config_path,
+            "field_mappings:\n  fix:\n    attributes:\n      id: F-{recommendations}\n",
+        )
 
         with pytest.raises(ValueError, match="recommendations") as refused:
-            engine.map_rule(sample_benchmark.recommendations[0], context)
+            MappingEngine(style)
         assert "cci_split" not in str(refused.value)
         assert "it can use benchmark, rec, ref, ref_normalized, stig_number" in str(refused.value)
 
-    def test_a_rule_reference_href_is_a_template_too(self, sample_benchmark, disa_config_path):
+    def test_a_rule_reference_href_is_a_template_too(
+        self, sample_benchmark, tmp_path, disa_config_path
+    ):
         # Every attribute of a rule's elements is a template, the reference's href included.
         from cis_bench.exporters.mapping_engine import MappingEngine
 
-        engine = MappingEngine(disa_config_path)
-        engine.config.field_mappings["reference"]["attributes"]["href"] = (
-            "https://example.invalid/{ref}"
+        engine = MappingEngine(
+            _disa_with(
+                tmp_path,
+                disa_config_path,
+                "field_mappings:\n  reference:\n    attributes:\n"
+                "      href: https://example.invalid/{ref}\n",
+            )
         )
         rec = next(r for r in sample_benchmark.recommendations if r.nist_controls)
 
@@ -223,14 +241,23 @@ class TestControlMappingFidelity:
         assert [(etree.QName(child).localname, child.text) for child in reference] == dc_elements
         assert not (reference.text or "").strip()
 
-    def test_a_dublin_core_value_is_written_whole(self, sample_benchmark, tmp_path):
+    def test_a_dublin_core_value_is_written_whole(
+        self, sample_benchmark, tmp_path, disa_config_path
+    ):
         # Dublin Core content is built as elements, so no separator in a value can cut it.
+        from cis_bench.exporters.mapping_engine import MappingEngine
         from cis_bench.exporters.xccdf_unified_exporter import XCCDFExporter
 
         exporter = XCCDFExporter(style="disa")
-        exporter.config.benchmark["reference"]["dc_elements"] = [
-            {"element": "dc:title", "content": "{benchmark.title}"}
-        ]
+        exporter.engine = MappingEngine(
+            _disa_with(
+                tmp_path,
+                disa_config_path,
+                "benchmark:\n  reference:\n    dc_elements:\n"
+                "      - element: dc:title\n        content: '{benchmark.title}'\n",
+            )
+        )
+        exporter.config = exporter.engine.config
         title = "CIS Example Benchmark || Draft: 2"
         benchmark = sample_benchmark.model_copy(update={"title": title})
         output = tmp_path / "disa.xml"

@@ -546,7 +546,7 @@ BenchmarkTemplate = Annotated[Template, _variables_in("benchmark")]
 PlainTextTemplate = Annotated[Template, _variables_in("plain_text")]
 BenchmarkIdTemplate = Annotated[Template, _variables_in("benchmark_id")]
 RefTemplate = Annotated[Template, _variables_in("ref")]
-RuleTemplate = Annotated[Template, _variables_in("rule")]
+RuleTemplateText = Annotated[TemplateText, _variables_in("rule")]
 ProfileTemplate = Annotated[Template, _variables_in("profile")]
 
 # A file a style names (extends, a CCI mapping file), relative to its own file or absolute
@@ -710,7 +710,7 @@ class DublinCoreElement(_Section):
     """A Dublin Core element of a reference: its prefixed name and its text (a template)."""
 
     element: PrefixedName
-    content: Template
+    content: TemplateText
 
 
 class Reference(_Section):
@@ -786,8 +786,8 @@ class SimpleMapping(_FieldMapping):
         Literal["cci_lookup_with_deduplication"] | None, BeforeValidator(_given)
     ] = None
     cci_lookup: CciLookup = Field(default_factory=CciLookup)
-    multiple: _Switch = None
-    attributes: dict[XmlName, RuleTemplate] = Field(default_factory=dict)
+    multiple: Annotated[bool, BeforeValidator(_given)] = False
+    attributes: dict[XmlName, RuleTemplateText] = Field(default_factory=dict)
 
 
 class CompositeSource(_Section):
@@ -803,8 +803,8 @@ class CompositeMapping(_FieldMapping):
 
     structure: Literal["composite"]
     sources: Annotated[list[CompositeSource], Field(min_length=1)]
-    separator: _Text = None
-    attributes: dict[XmlName, RuleTemplate] = Field(default_factory=dict)
+    separator: Annotated[str, BeforeValidator(_given)] = "\n\n"
+    attributes: dict[XmlName, RuleTemplateText] = Field(default_factory=dict)
 
 
 class NestedChild(_Section):
@@ -818,7 +818,7 @@ class NestedChild(_Section):
 class NestedAttributes(_Section):
     """The attribute a nested mapping writes on its element."""
 
-    system: RuleTemplate = None
+    system: RuleTemplateText = ""
 
 
 class NestedMapping(_FieldMapping):
@@ -832,7 +832,7 @@ class NestedMapping(_FieldMapping):
 class DublinCoreAttributes(_Section):
     """The attribute a Dublin Core reference mapping writes."""
 
-    href: RuleTemplate = None
+    href: RuleTemplateText = ""
 
 
 class DublinCoreMapping(_FieldMapping):
@@ -864,7 +864,7 @@ class TagSource(_Section):
 
     field: Annotated[RecommendationField, Field(min_length=1)]
     transform: TransformName = "none"
-    separator: _Text = None
+    separator: Annotated[str, BeforeValidator(_given)] = ""
 
 
 class EmbeddedTag(_Section):
@@ -874,13 +874,13 @@ class EmbeddedTag(_Section):
     tag: XmlName
     # No sources (sources: []) write the tag empty, as content: "" does
     sources: Annotated[list[TagSource] | None, BeforeValidator(_given)] = None
-    content: _Text = None
+    content: Annotated[str, BeforeValidator(_given)] = ""
 
     @model_validator(mode="after")
     def _one_text(self) -> Self:
         """The engine writes the sources' texts when a tag has sources, so content beside
         them would never be written."""
-        if self.sources is not None and self.content is not None:
+        if self.sources is not None and "content" in self.model_fields_set:
             raise PydanticCustomError(
                 "one_text", "a tag takes its text from sources or content, not both"
             )
@@ -893,7 +893,7 @@ class EmbeddedXmlTagsMapping(_FieldMapping):
 
     structure: Literal["embedded_xml_tags"]
     components: Annotated[list[EmbeddedTag], Field(min_length=1)]
-    attributes: dict[XmlName, RuleTemplate] = Field(default_factory=dict)
+    attributes: dict[XmlName, RuleTemplateText] = Field(default_factory=dict)
 
 
 class IdentAttribute(_Section):
