@@ -33,7 +33,7 @@ from dataclasses import dataclass, field, fields
 from gettext import ngettext
 from pathlib import Path
 from types import ModuleType
-from typing import Any
+from typing import Any, assert_never
 
 import yaml
 from lxml import etree
@@ -43,9 +43,16 @@ from xsdata.formats.dataclass.serializers.mixins import EventHandler
 
 from cis_bench.exceptions import ExportError
 from cis_bench.exporters.style_config import (
+    CompositeMapping,
+    DublinCoreElement,
+    DublinCoreMapping,
+    EmbeddedTag,
+    EmbeddedXmlTagsMapping,
     IdentFromListMapping,
     MetadataElement,
     MetadataFromConfigMapping,
+    NestedMapping,
+    SimpleMapping,
     StyleConfig,
     StyleModels,
     check_mergeable,
@@ -287,14 +294,19 @@ class ConfigLoader:
         """Make a relative CCI mapping file a field mapping names (cci_lookup.mapping_file)
         relative to the folder of the style file that writes it, before the file is merged,
         as extends is; compose-go resolves relative paths per file the same way. A value
-        that is no file name is left for validation to report."""
-        for mapping in (config_data.get("field_mappings") or {}).values():
-            lookup = mapping.get("cci_lookup") if isinstance(mapping, dict) else None
-            if not isinstance(lookup, dict):
-                continue
-            name = file_name(lookup.get("mapping_file"))
-            if name is not None and not Path(name).is_absolute():
-                lookup["mapping_file"] = str((config_path.parent / name).resolve())
+        that is no file name is left for validation to report. The file is still YAML as
+        written (the schema checks it after the merge), so its shape is matched here."""
+        match config_data:
+            case {"field_mappings": dict(mappings)}:
+                pass
+            case _:
+                return
+        for mapping in mappings.values():
+            match mapping:
+                case {"cci_lookup": {"mapping_file": written} as lookup}:
+                    name = file_name(written)
+                    if name is not None and not Path(name).is_absolute():
+                        lookup["mapping_file"] = str((config_path.parent / name).resolve())
 
     @staticmethod
     def _models_of(config_data: dict[str, Any]) -> StyleModels | None:
@@ -660,9 +672,7 @@ class MappingEngine:
         padded = "".join(p.zfill(2) for p in parts)
         return padded
 
-    def create_embedded_xml_tags(
-        self, components: list[dict[str, Any]], rec: Recommendation
-    ) -> str:
+    def create_embedded_xml_tags(self, components: list[EmbeddedTag], rec: Recommendation) -> str:
         """The text of an element that carries tags inside it (a STIG rule description:
         VulnDiscussion and the tags after it), built from the style's components.
 
@@ -676,14 +686,13 @@ class MappingEngine:
         """
         parts = []
         for component in components:
-            tag = component["tag"]
-            if "sources" in component:
+            if component.sources is not None:
                 texts: list[tuple[str, str]] = [
-                    (text, source.get("separator", ""))
-                    for source in component["sources"]
+                    (text, source.separator)
+                    for source in component.sources
                     if (
                         text := TransformRegistry.apply(
-                            source.get("transform", "none"), getattr(rec, source["field"])
+                            source.transform, getattr(rec, source.field)
                         )
                     )
                 ]
@@ -692,8 +701,8 @@ class MappingEngine:
                     for i, (text, separator) in enumerate(texts)
                 )
             else:
-                content = component.get("content", "")
-            element = etree.Element(tag)
+                content = component.content
+            element = etree.Element(component.tag)
             element.text = content  # "" keeps the <Tag></Tag> form official STIGs write
             parts.append(etree.tostring(element, encoding="unicode"))
         return "".join(parts)
@@ -767,36 +776,6 @@ class MappingEngine:
 
         return ccis, extra_nist
 
-    def apply_field_mapping(
-        self, field_name: str, rec: Recommendation, context: dict[str, Any]
-    ) -> Any:
-        """Apply a single field mapping from config.
-
-        Args:
-            field_name: Name of field in config
-            rec: Source recommendation
-            context: Variable substitution context
-
-        Returns:
-            Transformed value(s) for XCCDF
-        """
-        mapping = self.config.field_mappings.get(field_name)
-        if not mapping:
-            return None
-
-        # Get source field value
-        source_field = mapping.get("source_field")
-        if source_field:
-            value = getattr(rec, source_field, None)
-
-            # Apply transformation
-            transform_name = mapping.get("transform", "none")
-            return TransformRegistry.apply(transform_name, value)
-
-        return None
-
-    # ===== Benchmark-Level Element Creation (from config) =====
-
     def create_notice(self, benchmark: Benchmark):
         """Create notice element from config (version-agnostic).
 
@@ -853,7 +832,7 @@ class MappingEngine:
         return RearMatterType(content=[])
 
     def dublin_core_elements(
-        self, dc_elements_config: list[dict], values: dict[str, Any]
+        self, dc_elements_config: list[DublinCoreElement], values: dict[str, Any]
     ) -> list[AnyElement]:
         """A reference's Dublin Core elements as xsdata content, from the style's dc_elements
         (element "dc:title", content template): the namespace is the one the style declares
@@ -865,14 +844,14 @@ class MappingEngine:
         """
         elements = []
         for dc in dc_elements_config:
-            prefix, _, local_name = dc["element"].partition(":")
+            prefix, _, local_name = dc.element.partition(":")
             namespace = self.config.namespaces.get(prefix)
             if not namespace:
                 raise ValueError(
-                    f"dc_elements names {dc['element']!r} but benchmark.namespaces declares "
+                    f"dc_elements names {dc.element!r} but benchmark.namespaces declares "
                     f"no {prefix!r} namespace"
                 )
-            text = str(VariableSubstituter.substitute(dc["content"], values))
+            text = str(VariableSubstituter.substitute(dc.content, values))
             elements.append(AnyElement(qname=f"{{{namespace}}}{local_name}", text=text))
         return elements
 
@@ -889,8 +868,9 @@ class MappingEngine:
             if href_template
             else str(benchmark.url)
         )
-        dc_elements_config = reference_config.get("dc_elements", [])
-        return href, self.dublin_core_elements(dc_elements_config, values)
+        return href, self.dublin_core_elements(
+            self.config.style.benchmark.reference.dc_elements, values
+        )
 
     def create_plain_texts(self, benchmark: Benchmark):
         """Create plain-text elements from config (version-agnostic).
@@ -987,66 +967,36 @@ class MappingEngine:
         return pascal
 
     def _build_field_value(
-        self, field_name: str, field_mapping: dict, rec: Recommendation, context: dict
+        self,
+        field_mapping: SimpleMapping | CompositeMapping | EmbeddedXmlTagsMapping,
+        rec: Recommendation,
+        context: dict,
     ) -> Any:
-        """Build field value from config specification (DRY helper).
-
-        Handles different field structures:
-        - Simple fields (source + transform)
-        - Embedded XML (VulnDiscussion structure)
-        - CCI lookup with deduplication
-        - Nested structures (check/check-content)
-
-        Args:
-            field_name: Field name in config
-            field_mapping: Field mapping specification from config
-            rec: Source Recommendation
-            context: Variable substitution context
-
-        Returns:
-            Transformed value ready for xsdata type wrapping, or None
+        """The value a simple, composite or embedded_xml_tags mapping writes: the text with
+        tags of an embedded mapping, the joined text of a composite, the rule's CCIs for a
+        simple mapping with source_logic cci_lookup_with_deduplication, or the source field
+        after its transform; None when a simple mapping names no source field.
         """
-        structure = field_mapping.get("structure")
-
-        # Handle special structures
-        if structure == "embedded_xml_tags":
-            components = field_mapping.get("components")
-            if not components:
-                raise ValueError(
-                    f"field_mappings.{field_name}: embedded_xml_tags needs components, the "
-                    "tags to write and their sources"
+        match field_mapping:
+            case EmbeddedXmlTagsMapping():
+                return self.create_embedded_xml_tags(field_mapping.components, rec)
+            case CompositeMapping():
+                return self._composite_text(field_mapping, rec)
+            case SimpleMapping(source_logic="cci_lookup_with_deduplication"):
+                # A list; the caller writes one ident per CCI
+                ccis, _ = self._cci_split(rec, context)
+                return ccis
+            case SimpleMapping():
+                if not field_mapping.source_field:
+                    return None
+                return TransformRegistry.apply(
+                    field_mapping.transform, getattr(rec, field_mapping.source_field, None)
                 )
-            return self.create_embedded_xml_tags(components, rec)
-
-        elif field_mapping.get("source_logic") == "cci_lookup_with_deduplication":
-            # CCI lookup - returns list of CCIs
-            ccis, _ = self._cci_split(rec, context)
-            return ccis  # Return raw list, caller will wrap in IdentType
-
-        elif structure == "nested":
-            # Handle nested structures (like check/check-content)
-            # For now, return None - handle in specialized method
-            return None
-
-        elif structure == "composite":
-            return self._composite_text(field_name, field_mapping, rec)
-
-        # Simple field mapping
-        source_field = field_mapping.get("source_field")
-        if source_field:
-            # Get value from recommendation
-            value = getattr(rec, source_field, None)
-
-            # Apply transformation
-            transform = field_mapping.get("transform", "none")
-            transformed_value = TransformRegistry.apply(transform, value)
-
-            return transformed_value
-
-        return None
+            case _:
+                assert_never(field_mapping)
 
     @staticmethod
-    def _composite_text(field_name: str, field_mapping: dict, rec: Recommendation) -> str | None:
+    def _composite_text(field_mapping: CompositeMapping, rec: Recommendation) -> str | None:
         """The text of a composite mapping: its sources' texts, each after its transform, joined
         by the separator (a blank line unless the mapping says otherwise); a source with a
         label writes the label, the separator and the text; a source without text adds
@@ -1060,25 +1010,14 @@ class MappingEngine:
               - field: "default_value"
                 label: "Default Value:"
                 transform: "none"
-
-        Raises:
-            ValueError: The mapping has no sources.
         """
-        sources = field_mapping.get("sources")
-        if not sources:
-            raise ValueError(
-                f"field_mappings.{field_name}: composite needs sources, the fields to join"
-            )
-        separator = field_mapping.get("separator", "\n\n")
+        separator = field_mapping.separator
         parts = []
-        for source in sources:
-            text = TransformRegistry.apply(
-                source.get("transform", "none"), getattr(rec, source["field"])
-            )
+        for source in field_mapping.sources:
+            text = TransformRegistry.apply(source.transform, getattr(rec, source.field))
             if not text:
                 continue
-            label = source.get("label")
-            parts.append(f"{label}{separator}{text}" if label else text)
+            parts.append(f"{source.label}{separator}{text}" if source.label else text)
         return separator.join(parts) or None
 
     def ref_values(self, ref: str) -> dict[str, str]:
@@ -1160,200 +1099,159 @@ class MappingEngine:
             "weight": float(self.config.rule_defaults.get("weight", "10.0")),
         }
 
-        # THE KEY: Loop through config.field_mappings (NO HARD-CODED FIELD LIST)
-        for field_name, field_mapping in self.config.field_mappings.items():
-            # Skip null/disabled field mappings (used to override parent config)
-            if field_mapping is None:
+        # One element per field mapping, in the style's order, built the way its structure
+        # says; the style was checked against the XCCDF models when it loaded, and a mapping
+        # set to null is switched off
+        for field_name, mapping in self.config.style.field_mappings.items():
+            if mapping is None:
                 continue
-
-            # Metadata is model content in the type the XCCDF model gives the target element
-            # (checked when the style loaded): one metadata element per mapping, in order
-            typed = self.config.style.field_mappings[field_name]
-            if isinstance(typed, MetadataFromConfigMapping):
-                metadata_root = self.generate_metadata_from_config(rec, typed)
-                if metadata_root is not None:
-                    target, MetadataHolder, content_field = self._metadata_holders[field_name]
-                    rule_fields.setdefault(target, []).append(
-                        MetadataHolder(**{content_field: [metadata_root]})
-                    )
-                continue
-
-            # The target element and the type the XCCDF model gives it (checked at load)
-            target_element = field_mapping.get("target_element", field_name)
-            FieldType = self.element_type("Rule", target_element)
-
-            # Determine construction pattern based on CONFIG, not field name
-            attributes_config = field_mapping.get("attributes", {})
-            structure = field_mapping.get("structure")
-            is_multiple = field_mapping.get("multiple", False)
-
-            # For nested structures, handle specially (don't use _build_field_value)
-            if structure == "nested":
-                # Build nested structure from config
-                children_config = field_mapping.get("children", [])
-                if children_config:
-                    child_config = children_config[0]
-                    child_source = child_config.get("source_field")
-                    child_transform = child_config.get("transform", "none")
-                    child_element_name = child_config.get("element")
-
-                    # Get source value
-                    if child_source:
-                        child_value = getattr(rec, child_source, None)
-                        if child_value:
-                            # Apply transform
-                            transformed = TransformRegistry.apply(child_transform, child_value)
-
-                            # Get child type dynamically
-                            child_type_name = self._element_name_to_type_name(child_element_name)
-                            ChildType = self.get_xccdf_class(child_type_name)
-
-                            # Construct child element (DRY helper)
-                            child_instance = self._construct_typed_element(ChildType, transformed)
-
-                            # Get parent attributes
-                            system_val = VariableSubstituter.substitute(
-                                attributes_config.get("system", ""), template_values
-                            )
-
-                            # Construct nested structure
-                            child_field_name = child_element_name.replace("-", "_")
-
-                            # Check if child is single or list (check_content is single)
-                            rule_fields[target_element] = [
-                                FieldType(
-                                    **{
-                                        "system": system_val,
-                                        child_field_name: child_instance,  # Single, not list
-                                    }
-                                )
-                            ]
-                continue
-
-            # For dublin_core structures (NIST references), handle specially
-            if structure == "dublin_core":
-                # Build NIST references with Dublin Core elements
-                source_field = field_mapping.get("source_field")
-                source_logic = field_mapping.get("source_logic")
-                if source_field:
-                    nist_controls: list[str] | None
-                    if source_logic == "nist_after_cci_deduplication":
-                        # Only the NIST controls no CCI ident on this rule already covers
-                        _, nist_controls = self._cci_split(rec, context)
-                    elif source_logic is None:
-                        nist_controls = getattr(rec, source_field, None)
-                    else:
-                        raise ValueError(
-                            f"field {field_name!r}: unknown source_logic {source_logic!r} "
-                            "for a dublin_core reference"
+            target_element = mapping.target_element or field_name
+            match mapping:
+                case MetadataFromConfigMapping():
+                    # Metadata is model content in the type the XCCDF model gives the target
+                    # element: one metadata element per mapping, in order
+                    metadata_root = self.generate_metadata_from_config(rec, mapping)
+                    if metadata_root is not None:
+                        target, MetadataHolder, content_field = self._metadata_holders[field_name]
+                        rule_fields.setdefault(target, []).append(
+                            MetadataHolder(**{content_field: [metadata_root]})
                         )
-                    if nist_controls and isinstance(nist_controls, list):
-                        dc_elements_config = field_mapping.get("dc_elements", [])
-                        href = str(
-                            VariableSubstituter.substitute(
-                                field_mapping.get("attributes", {}).get("href", ""),
-                                template_values,
-                            )
+                case NestedMapping():
+                    FieldType = self.element_type("Rule", target_element)
+                    nested = self._nested_element(mapping, FieldType, rec, template_values)
+                    if nested is not None:
+                        rule_fields[target_element] = [nested]
+                case DublinCoreMapping():
+                    FieldType = self.element_type("Rule", target_element)
+                    references = self._references(mapping, FieldType, rec, context, template_values)
+                    if references:
+                        rule_fields[target_element] = references
+                case IdentFromListMapping():
+                    logger.debug(f"Generating idents from config for {field_name}")
+                    idents = self.generate_idents_from_config(rec, mapping)
+                    if idents:
+                        # After the idents an earlier mapping wrote, if any
+                        rule_fields.setdefault(target_element, []).extend(idents)
+                        logger.debug(
+                            ngettext(
+                                "Added {count} ident to rule_fields[{target}]",
+                                "Added {count} idents to rule_fields[{target}]",
+                                len(idents),
+                            ).format(count=len(idents), target=target_element)
                         )
-                        # One reference per NIST control
-                        rule_fields[target_element] = [
-                            FieldType(
-                                href=href,
-                                content=self.dublin_core_elements(
-                                    dc_elements_config, {"nist_control_id": nist_id}
-                                ),
-                            )
-                            for nist_id in nist_controls
-                        ]
-                continue
-
-            # For ident_from_list structure - generic ident generation (CIS, MITRE, PCI-DSS, etc.)
-            if isinstance(typed, IdentFromListMapping):
-                logger.debug(f"Generating idents from config for {field_name}")
-                idents = self.generate_idents_from_config(rec, typed)
-
-                if idents:
-                    # Append to existing idents if any
-                    existing_idents = rule_fields.get(target_element, [])
-                    rule_fields[target_element] = existing_idents + idents
-                    logger.debug(
-                        ngettext(
-                            "Added {count} ident to rule_fields[{target}]",
-                            "Added {count} idents to rule_fields[{target}]",
-                            len(idents),
-                        ).format(count=len(idents), target=target_element)
+                case SimpleMapping() | CompositeMapping() | EmbeddedXmlTagsMapping():
+                    element = self._element_from_value(
+                        mapping,
+                        target_element,
+                        self._build_field_value(mapping, rec, context),
+                        template_values,
                     )
-                continue
-
-            # Get field value using config
-            value = self._build_field_value(field_name, field_mapping, rec, context)
-
-            # Skip only if no value AND no attributes (empty elements with attributes are OK)
-            if value is None and not attributes_config:
-                continue
-
-            # Pattern 1: Multiple values (like CCIs)
-            if is_multiple and isinstance(value, list):
-                # Build list of typed elements
-                # Check what attributes this type needs
-                if attributes_config:
-                    # Substitute variables in attributes
-                    attr_template = dict(attributes_config.items())
-                    # For list items, need to handle per-item
-                    if "system" in attr_template:
-                        # ident case: system attribute
-                        system_val = VariableSubstituter.substitute(
-                            attr_template["system"], template_values
-                        )
-                        rule_fields[target_element] = [
-                            FieldType(system=system_val, value=item) for item in value
-                        ]
-                    else:
-                        rule_fields[target_element] = [FieldType(value=item) for item in value]
-                else:
-                    rule_fields[target_element] = [FieldType(value=item) for item in value]
-                continue
-
-            # Pattern 2: Has attributes (like fixtext/@fixref or fix/@id with empty content)
-            if attributes_config:
-                # Substitute variables in attributes
-                attr_values = {
-                    k: VariableSubstituter.substitute(v, template_values)
-                    for k, v in attributes_config.items()
-                }
-
-                # Construct with attributes
-                # NOTE: Can't use _construct_typed_element because we need to pass attributes
-                # Handle empty elements (like <fix id="..." />) - value can be None or ""
-                if hasattr(FieldType, "__dataclass_fields__"):
-                    field_def = FieldType.__dataclass_fields__
-                    if "content" in field_def:
-                        # Use empty list if value is None/empty (for self-closing elements)
-                        content_value = [value] if value else []
-                        rule_fields[target_element] = [
-                            FieldType(content=content_value, **attr_values)
-                        ]
-                    elif "value" in field_def:
-                        # Use empty string if value is None
-                        value_to_use = value if value is not None else ""
-                        rule_fields[target_element] = [FieldType(value=value_to_use, **attr_values)]
-                    else:
-                        # Just attributes, no content field (rare)
-                        rule_fields[target_element] = [FieldType(**attr_values)]
-                continue
-
-            # Pattern 3: Simple field (default)
-            if value:
-                # Construct element (DRY helper)
-                elem_instance = self._construct_typed_element(FieldType, value)
-
-                if elem_instance:
-                    rule_fields[target_element] = (
-                        [elem_instance] if self._repeats("Rule", target_element) else elem_instance
-                    )
+                    if element is not None:
+                        rule_fields[target_element] = element
+                case _:
+                    assert_never(mapping)
 
         # Construct Rule dynamically from config
         return Rule(**rule_fields)
+
+    def _nested_element(
+        self, mapping: NestedMapping, FieldType: type, rec: Recommendation, template_values: dict
+    ) -> Any:
+        """The element of a nested mapping (check) holding its one child (check-content), or
+        None when the child's field has no value."""
+        (child,) = mapping.children
+        child_value = getattr(rec, child.source_field, None)
+        if not child_value:
+            return None
+        ChildType = self.get_xccdf_class(self._element_name_to_type_name(child.element))
+        child_instance = self._construct_typed_element(
+            ChildType, TransformRegistry.apply(child.transform, child_value)
+        )
+        system = VariableSubstituter.substitute(mapping.attributes.system, template_values)
+        # The child is one element, not a list (check_content)
+        return FieldType(**{"system": system, child.element.replace("-", "_"): child_instance})
+
+    def _references(
+        self,
+        mapping: DublinCoreMapping,
+        FieldType: type,
+        rec: Recommendation,
+        context: dict,
+        template_values: dict,
+    ) -> list:
+        """One reference per NIST control of a dublin_core mapping, each holding its Dublin
+        Core elements; none when the mapping names no source field or there are no controls."""
+        if not mapping.source_field:
+            return []
+        nist_controls: list[str] | None
+        match mapping.source_logic:
+            case "nist_after_cci_deduplication":
+                # Only the NIST controls no CCI ident on this rule already covers
+                _, nist_controls = self._cci_split(rec, context)
+            case None:
+                nist_controls = getattr(rec, mapping.source_field, None)
+            case _:
+                assert_never(mapping.source_logic)
+        if not (nist_controls and isinstance(nist_controls, list)):
+            return []
+        href = str(VariableSubstituter.substitute(mapping.attributes.href, template_values))
+        return [
+            FieldType(
+                href=href,
+                content=self.dublin_core_elements(
+                    mapping.dc_elements, {"nist_control_id": nist_id}
+                ),
+            )
+            for nist_id in nist_controls
+        ]
+
+    def _element_from_value(
+        self,
+        mapping: SimpleMapping | CompositeMapping | EmbeddedXmlTagsMapping,
+        target_element: str,
+        value: Any,
+        template_values: dict,
+    ) -> Any:
+        """What a simple, composite or embedded_xml_tags mapping writes on the Rule for its
+        value, in the type the XCCDF model gives its element; None for nothing.
+
+        A list value of a mapping with multiple gives one element per item (CCI idents, with
+        the mapping's system); a mapping with attributes writes its element even with no
+        value (fix/@id, fixtext/@fixref); otherwise a value gives one element.
+        """
+        FieldType = self.element_type("Rule", target_element)
+        attributes = mapping.attributes
+        if value is None and not attributes:
+            return None
+
+        if isinstance(mapping, SimpleMapping) and mapping.multiple and isinstance(value, list):
+            if "system" in attributes:
+                system = VariableSubstituter.substitute(attributes["system"], template_values)
+                return [FieldType(system=system, value=item) for item in value]
+            return [FieldType(value=item) for item in value]
+
+        if attributes:
+            attr_values = {
+                name: VariableSubstituter.substitute(template, template_values)
+                for name, template in attributes.items()
+            }
+            if not hasattr(FieldType, "__dataclass_fields__"):
+                return None
+            field_def = FieldType.__dataclass_fields__
+            if "content" in field_def:
+                # An empty list writes the element self-closing
+                return [FieldType(content=[value] if value else [], **attr_values)]
+            if "value" in field_def:
+                return [FieldType(value=value if value is not None else "", **attr_values)]
+            # Just attributes, no content field (rare)
+            return [FieldType(**attr_values)]
+
+        if not value:
+            return None
+        element = self._construct_typed_element(FieldType, value)
+        if not element:
+            return None
+        return [element] if self._repeats("Rule", target_element) else element
 
     def map_group(self, rec: Recommendation, rule, context: dict):
         """Map Recommendation + Rule to Group using config (LOOP-DRIVEN).

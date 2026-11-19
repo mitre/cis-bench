@@ -44,11 +44,9 @@ class TestArchitectureCompliance:
         """MappingEngine must construct elements by looping config, not listing fields."""
         source = mapping_engine_file.read_text()
 
-        # Check for loop patterns in new methods
-        assert "for field_name, field_mapping in self.config.field_mappings.items()" in source, (
-            "map_rule() doesn't loop through config.field_mappings"
-        )
-
+        # map_rule's loop over the field mappings is checked by what it writes: a rule from a
+        # style with one mapping of each structure (test_unit_helpers TestEveryStructure), and
+        # a mapping changed in a style file (test_config_driven_field_addition below)
         assert "for element_name, element_config in self.config.group_elements.items()" in source, (
             "map_group() doesn't loop through config.group_elements"
         )

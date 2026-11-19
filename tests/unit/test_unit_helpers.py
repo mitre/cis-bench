@@ -11,6 +11,7 @@ Tests the core helper functions that power the mapping engine:
 
 import json
 import re
+from html import escape
 from pathlib import Path
 
 import pytest
@@ -21,7 +22,12 @@ from cis_bench.exporters.mapping_engine import (
     TransformRegistry,
     VariableSubstituter,
 )
-from cis_bench.exporters.style_config import IdentFromListMapping, IdentSpec
+from cis_bench.exporters.style_config import (
+    EmbeddedTag,
+    IdentFromListMapping,
+    IdentSpec,
+    SimpleMapping,
+)
 from cis_bench.models.benchmark import (
     CISControl,
     MITREMapping,
@@ -251,6 +257,41 @@ class TestDottedNumberPath:
         # "{item.control|dotted_number_path:subcontrol,}" must not make "1/subcontrol/2//3".
         with pytest.raises(ValueError, match="empty label"):
             TransformRegistry.get("dotted_number_path")(value, *labels)
+
+
+class TestEveryStructure:
+    """map_rule writes one element per field mapping, each built the way its structure says."""
+
+    def test_a_rule_is_built_from_one_mapping_of_each_structure(
+        self, tmp_path, cis_config_path, sample_recommendation_complete
+    ):
+        # The CIS style has six of the seven structures; an embedded_xml_tags mapping takes
+        # the place of its rationale mapping.
+        style = tmp_path / "every.yaml"
+        style.write_text(
+            f"extends: {cis_config_path}\n"
+            "field_mappings:\n"
+            "  rationale: null\n"
+            "  rationale_tags:\n"
+            "    structure: embedded_xml_tags\n"
+            "    target_element: rationale\n"
+            "    components:\n"
+            "      - tag: Why\n"
+            "        sources:\n"
+            "          - field: rationale\n"
+        )
+        engine = MappingEngine(style)
+        rec = sample_recommendation_complete
+        rule = engine.map_rule(rec, {"recommendations": [rec]})
+
+        assert rule.title[0].content == [rec.title]  # simple
+        assert rec.description in rule.description[0].content[0]  # composite
+        # embedded tags: the tag's text is escaped once
+        assert rule.rationale[0].content == [f"<Why>{escape(rec.rationale, quote=False)}</Why>"]
+        assert [r.content[1].text for r in rule.reference] == rec.nist_controls  # dublin core
+        assert rule.check[0].check_content.content == [rec.audit]  # nested
+        assert rule.metadata[0].other_element[0].qname.endswith("}cis_controls")  # metadata
+        assert "http://cisecurity.org/20-cc/v8.0" in {i.system for i in rule.ident}  # ident list
 
 
 class TestIdentAttributes:
@@ -1072,10 +1113,10 @@ class TestDRYHelpers:
 
     def test_build_field_value_simple_field(self, engine, sample_recommendation):
         """Test _build_field_value with simple field mapping."""
-        field_mapping = {"source_field": "title", "transform": "none"}
+        field_mapping = SimpleMapping.model_validate({"source_field": "title"})
         context = {"ref_normalized": "3_1_1"}
 
-        value = engine._build_field_value("title", field_mapping, sample_recommendation, context)
+        value = engine._build_field_value(field_mapping, sample_recommendation, context)
 
         # Should return the title as stored
         assert value is not None
@@ -1084,39 +1125,33 @@ class TestDRYHelpers:
 
     def test_build_field_value_embedded_xml(self, engine, sample_recommendation):
         """Test _build_field_value with embedded_xml_tags structure."""
-        field_mapping = engine.config.field_mappings["description"]
+        field_mapping = engine.config.style.field_mappings["description"]
         context = {"ref_normalized": "3_1_1"}
 
-        value = engine._build_field_value(
-            "description", field_mapping, sample_recommendation, context
-        )
+        value = engine._build_field_value(field_mapping, sample_recommendation, context)
 
         # Should return VulnDiscussion XML
         assert value is not None
         assert "<VulnDiscussion>" in value
 
-    def test_embedded_xml_tags_without_components_is_refused(self, engine, sample_recommendation):
-        with pytest.raises(ValueError, match="embedded_xml_tags needs components"):
-            engine._build_field_value(
-                "description", {"structure": "embedded_xml_tags"}, sample_recommendation, {}
-            )
-
     def test_build_field_value_cci_lookup(self, engine, sample_recommendation):
         """Test _build_field_value with CCI lookup."""
-        field_mapping = {"source_logic": "cci_lookup_with_deduplication"}
+        field_mapping = SimpleMapping.model_validate(
+            {"source_logic": "cci_lookup_with_deduplication"}
+        )
         context = {"ref_normalized": "3_1_1"}
 
-        value = engine._build_field_value("ident", field_mapping, sample_recommendation, context)
+        value = engine._build_field_value(field_mapping, sample_recommendation, context)
 
         # Should return list of CCIs
         assert isinstance(value, list)
 
     def test_build_field_value_missing_source_field(self, engine, sample_recommendation):
         """Test _build_field_value with no source_field specified."""
-        field_mapping = {}  # Empty mapping
+        field_mapping = SimpleMapping()  # No source field
         context = {"ref_normalized": "3_1_1"}
 
-        value = engine._build_field_value("unknown", field_mapping, sample_recommendation, context)
+        value = engine._build_field_value(field_mapping, sample_recommendation, context)
 
         assert value is None
 
@@ -1352,12 +1387,12 @@ class TestIntegrationScenarios:
         tags gets the stored text."""
         from html import unescape
 
-        components = engine.config.field_mappings["description"]["components"]
+        components = engine.config.style.field_mappings["description"].components
 
         result = engine.create_embedded_xml_tags(components, sample_recommendation)
 
         tags = re.findall(r"<([A-Za-z]+)>", result)
-        assert tags == [component["tag"] for component in components]
+        assert tags == [component.tag for component in components]
         vuln = re.search(r"<VulnDiscussion>(.*)</VulnDiscussion>", result, re.S).group(1)
         assert unescape(vuln) == (
             f"{sample_recommendation.description}\n\n{sample_recommendation.rationale}"
@@ -1373,9 +1408,12 @@ class TestIntegrationScenarios:
             impact=None,
         )
         components = [
-            {"tag": "VulnDiscussion", "sources": [{"field": "description"}]},
-            {"tag": "PotentialImpacts", "sources": [{"field": "impact"}]},
-            {"tag": "Documentable", "content": "false"},
+            EmbeddedTag.model_validate(tag)
+            for tag in (
+                {"tag": "VulnDiscussion", "sources": [{"field": "description"}]},
+                {"tag": "PotentialImpacts", "sources": [{"field": "impact"}]},
+                {"tag": "Documentable", "content": "false"},
+            )
         ]
 
         result = engine.create_embedded_xml_tags(components, rec)
@@ -1395,13 +1433,15 @@ class TestIntegrationScenarios:
             rationale=None,
         )
         components = [
-            {
-                "tag": "VulnDiscussion",
-                "sources": [
-                    {"field": "description", "separator": "\n\n"},
-                    {"field": "rationale"},
-                ],
-            }
+            EmbeddedTag.model_validate(
+                {
+                    "tag": "VulnDiscussion",
+                    "sources": [
+                        {"field": "description", "separator": "\n\n"},
+                        {"field": "rationale"},
+                    ],
+                }
+            )
         ]
 
         assert engine.create_embedded_xml_tags(components, rec) == (
@@ -2238,7 +2278,7 @@ class TestEmbeddedTagsAreCheckedWhenTheStyleLoads:
     def test_the_shipped_disa_style_passes_the_checks(self, disa_config_path):
         engine = MappingEngine(disa_config_path)
 
-        tags = [c["tag"] for c in engine.config.field_mappings["description"]["components"]]
+        tags = [c.tag for c in engine.config.style.field_mappings["description"].components]
         assert tags[0] == "VulnDiscussion" and len(tags) == 11
 
 
