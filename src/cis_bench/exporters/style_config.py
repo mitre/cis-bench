@@ -37,6 +37,8 @@ from pydantic import (
     TypeAdapter,
     ValidationError,
     ValidationInfo,
+    ValidatorFunctionWrapHandler,
+    WrapValidator,
     model_validator,
 )
 from pydantic_core import InitErrorDetails, PydanticCustomError
@@ -354,8 +356,28 @@ def _given(value: Any) -> Any:
 
 _Text = Annotated[str | None, BeforeValidator(_given)]
 _Switch = Annotated[bool | None, BeforeValidator(_given)]
-# A number, or a number written as text ("10.0")
-_Number = Annotated[Annotated[float, Field(strict=False)] | None, BeforeValidator(_given)]
+# A number, or a decimal number written as text ("10.0"); declared as both so the published
+# JSON Schema states what the style accepts
+_DecimalText = Annotated[
+    str, Field(pattern=r"^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$")
+]
+
+
+def _one_number_error(value: Any, handler: ValidatorFunctionWrapHandler) -> Any:
+    """One error for a value that is neither form of a number, not one per form."""
+    try:
+        return handler(value)
+    except ValidationError as error:
+        raise PydanticCustomError(
+            "not_a_number",
+            '{value} is not a number (write 10 or "10.0")',
+            {"value": repr(value)},
+        ) from error
+
+
+_Number = Annotated[
+    float | _DecimalText | None, WrapValidator(_one_number_error), BeforeValidator(_given)
+]
 
 Template = Annotated[str | None, BeforeValidator(_given), AfterValidator(_known_filters)]
 """Text the engine fills with {variables} and {value|transform} filters when it writes; its
