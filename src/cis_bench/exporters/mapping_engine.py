@@ -29,22 +29,21 @@ import re
 import string
 import unicodedata
 from collections.abc import Callable
-from dataclasses import dataclass, field, fields, is_dataclass
+from dataclasses import dataclass, field, fields
 from gettext import ngettext
 from pathlib import Path
-from types import ModuleType, UnionType
-from typing import Annotated, Any, Final, Union, get_args, get_origin
+from types import ModuleType
+from typing import Any
 
 import yaml
 from lxml import etree
-from pydantic import BaseModel
-from xsdata.formats.dataclass.context import XmlContext
 from xsdata.formats.dataclass.models.elements import XmlVar
 from xsdata.formats.dataclass.models.generics import AnyElement
 from xsdata.formats.dataclass.serializers.mixins import EventHandler
 
 from cis_bench.exceptions import ExportError
 from cis_bench.exporters.style_config import (
+    StyleModels,
     check_mergeable,
     extended_style,
     file_name,
@@ -291,6 +290,18 @@ class ConfigLoader:
                 lookup["mapping_file"] = str((config_path.parent / name).resolve())
 
     @staticmethod
+    def _models_of(config_data: dict[str, Any]) -> StyleModels | None:
+        """The models of the XCCDF version a style names (1.2 when it names none), for the
+        checks that need them; None for a version with no models, which MappingEngine
+        refuses when it starts."""
+        metadata = config_data.get("metadata")
+        version = metadata.get("xccdf_version", "1.2") if isinstance(metadata, dict) else "1.2"
+        try:
+            return style_models(str(version))
+        except ValueError:
+            return None
+
+    @staticmethod
     def load(config_path: Path) -> MappingConfig:
         """Load mapping configuration from YAML file with inheritance support.
 
@@ -321,7 +332,7 @@ class ConfigLoader:
             config_data = ConfigLoader._deep_merge(
                 config_data, {key: value for key, value in written.items() if key != "extends"}
             )
-            validate_style(name, {**config_data, **extends})
+            validate_style(name, {**config_data, **extends}, ConfigLoader._models_of(config_data))
             logger.debug(f"Loaded {name}")
         return MappingConfig(
             **{
@@ -330,22 +341,6 @@ class ConfigLoader:
                 if section.name in config_data
             }
         )
-
-
-def _model_in(annotation: Any) -> type[BaseModel] | None:
-    """The Pydantic model a field holds, directly or inside "X | None"; None for a list or a
-    value that is not a model. A dotted path reads attributes one by one (getattr), so it
-    can pass through an optional model but not through a list."""
-    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
-        return annotation
-    if get_origin(annotation) is Annotated:
-        return _model_in(get_args(annotation)[0])
-    if get_origin(annotation) in (UnionType, Union):
-        for arg in get_args(annotation):
-            model = _model_in(arg)
-            if model is not None:
-                return model
-    return None
 
 
 class VariableSubstituter:
@@ -423,10 +418,8 @@ class VariableSubstituter:
         if pipe:
             # "name" or "name:arg1, arg2"; the transform itself is called, so it decides
             # what an empty value means.
-            raw_name, _, raw_args = filter_spec.partition(":")
-            name = raw_name.strip()
-            if not name:
-                raise ValueError(f"filter without a transform name in {{{expression}}}")
+            name = VariableSubstituter._filter_name(expression)
+            raw_args = filter_spec.partition(":")[2]
             args = [arg.strip() for arg in raw_args.split(",")] if raw_args.strip() else []
             transform = TransformRegistry.get(name)
             try:
@@ -435,6 +428,37 @@ class VariableSubstituter:
                 raise ValueError(f"{name} does not take the arguments {args}") from None
             value = transform(value, *args)
         return value
+
+    @staticmethod
+    def _filter_name(expression: str) -> str:
+        """The transform a {value|name:args} expression's filter names.
+
+        Raises:
+            ValueError: The filter names no transform.
+        """
+        name = expression.partition("|")[2].partition(":")[0].strip()
+        if not name:
+            raise ValueError(f"filter without a transform name in {{{expression}}}")
+        return name
+
+    @staticmethod
+    def filters(template: str) -> list[str]:
+        """The transforms a template's filters name, in order: what a style is checked for
+        when it loads. Text the parser refuses has none here; it is refused where it is
+        filled.
+
+        Raises:
+            ValueError: A filter names no transform.
+        """
+        try:
+            pieces = VariableSubstituter._pieces(template)
+        except ValueError:
+            return []
+        return [
+            VariableSubstituter._filter_name(expression)
+            for _, expression in pieces
+            if expression is not None and "|" in expression
+        ]
 
     @staticmethod
     def substitute(template: str, context: dict[str, Any]) -> Any:
@@ -477,255 +501,73 @@ class VariableSubstituter:
         return "".join(out)
 
 
+def xccdf_models(version: str) -> tuple[ModuleType, str]:
+    """The generated XCCDF models of a version and the version's namespace.
+
+    Raises:
+        ValueError: No models are generated for the version.
+    """
+    if version == "1.1.4":
+        from cis_bench.models.xccdf_v1_1 import xccdf_1_1_4
+
+        return xccdf_1_1_4, "http://checklists.nist.gov/xccdf/1.1"
+    if version == "1.2":
+        from cis_bench.models.xccdf import xccdf_1_2
+
+        return xccdf_1_2, "http://checklists.nist.gov/xccdf/1.2"
+    raise ValueError(f"Unsupported XCCDF version: {version}")
+
+
+def style_models(version: str) -> StyleModels:
+    """The models a style of an XCCDF version is checked against: the version's XCCDF
+    models, the benchmark models, and the engine's own transform lookup and template parser.
+
+    Raises:
+        ValueError: No models are generated for the version.
+    """
+    module, namespace = xccdf_models(version)
+    return StyleModels(
+        xccdf=module,
+        xccdf_version=version,
+        xccdf_namespace=namespace,
+        recommendation=Recommendation,
+        benchmark=Benchmark,
+        cis_control=CISControl,
+        transform=TransformRegistry.get,
+        template_filters=VariableSubstituter.filters,
+    )
+
+
 class MappingEngine:
     """Main engine that applies config-based mappings."""
 
     def __init__(self, config_path: Path):
         """Initialize mapping engine with config.
 
+        The style is checked against the schema and the models of its XCCDF version when
+        ConfigLoader loads it, so what follows reads a style that can be written.
+
         Args:
             config_path: Path to YAML configuration file
+
+        Raises:
+            ValueError: The style is refused, or names an XCCDF version with no models.
         """
         self.config = ConfigLoader.load(config_path)
-        self._refuse_unknown_field_names()
-        self._refuse_unknown_transforms()
-        self._refuse_invalid_embedded_tags()
         self.cci_service = self._cci_service(config_path)
-
-        # Dynamically load XCCDF models based on config version
-        xccdf_version = self.config.metadata.get("xccdf_version", "1.2")
-        self._load_xccdf_models(xccdf_version)
-
-        self._refuse_unwritable_elements()
-        self._refuse_unwritable_metadata_mappings()
-
-    # Structures whose source_field is read as a dotted path (_get_nested_field); every
-    # other reader takes one field name.
-    _DOTTED_PATH_STRUCTURES = frozenset({"ident_from_list", "metadata_from_config"})
-
-    def _refuse_unknown_transforms(self) -> None:
-        """Refuse a style that names a transform no function is registered under.
-
-        A transform is looked up when a value reaches it, so a misspelled or withdrawn name
-        would fail the first export that has a value for the field, not the style's load.
-
-        Raises:
-            ValueError: A transform (field_mappings, their children, a component source,
-                group_elements, benchmark elements), benchmark.profiles.description_transform
-                or a filter ({value|transform}) in any string the style holds names no
-                registered transform, or is not a name.
-        """
-        named: list[tuple[str, Any]] = []
+        self.style_models = style_models(self.config.metadata.get("xccdf_version", "1.2"))
+        self.xccdf_models: ModuleType = self.style_models.xccdf
+        self.xccdf_version = self.style_models.xccdf_version
+        self.xccdf_namespace = self.style_models.xccdf_namespace
+        # Mapping name -> (Rule field, the type that holds the metadata content there, that
+        # type's wildcard field); every metadata mapping has one (checked when it loaded)
+        self._metadata_holders: dict[str, tuple[str, type, str]] = {}
         for name, mapping in self.config.field_mappings.items():
-            if not isinstance(mapping, dict):
-                continue
-            named.append((f"field_mappings.{name}", mapping.get("transform")))
-            for i, child in enumerate(mapping.get("children") or []):
-                if isinstance(child, dict):
-                    named.append((f"field_mappings.{name}.children[{i}]", child.get("transform")))
-            for i, component in enumerate(mapping.get("components") or []):
-                if not isinstance(component, dict):
-                    continue
-                for j, source in enumerate(component.get("sources") or []):
-                    if isinstance(source, dict):
-                        named.append(
-                            (
-                                f"field_mappings.{name}.components[{i}].sources[{j}]",
-                                source.get("transform"),
-                            )
-                        )
-            for j, source in enumerate(mapping.get("sources") or []):
-                if isinstance(source, dict):
-                    named.append((f"field_mappings.{name}.sources[{j}]", source.get("transform")))
-        for section in ("group_elements", "benchmark"):
-            for name, element in getattr(self.config, section).items():
-                if isinstance(element, dict):
-                    named.append((f"{section}.{name}", element.get("transform")))
-        profiles = self.config.benchmark.get("profiles")
-        if isinstance(profiles, dict):
-            named.append(
-                ("benchmark.profiles.description_transform", profiles.get("description_transform"))
-            )
-        for where, transform in named:
-            if transform is None:
-                continue
-            if not isinstance(transform, str):
-                raise ValueError(f"{where}: transform must be a name, got {transform!r}")
-            try:
-                TransformRegistry.get(transform)
-            except ValueError as error:
-                raise ValueError(f"{where}: {error}") from error
-        for config_section in fields(MappingConfig):
-            self._refuse_unknown_template_filters(
-                config_section.name, getattr(self.config, config_section.name)
-            )
-
-    @classmethod
-    def _refuse_unknown_template_filters(cls, where: str, value: Any) -> None:
-        """Refuse a filter ({value|transform}) that names no registered transform, or names
-        none, in any string the style holds; walks nested sections.
-
-        The engine substitutes strings under many keys (templates, content, href, system,
-        attributes, prefixes), so every string is read as a template; one the template
-        parser refuses is left alone here (it is refused where it is used, if it is used).
-
-        Raises:
-            ValueError: A filter names no registered transform, or has no name.
-        """
-        if isinstance(value, dict):
-            for key, inner in value.items():
-                cls._refuse_unknown_template_filters(f"{where}.{key}", inner)
-        elif isinstance(value, list):
-            for index, inner in enumerate(value):
-                cls._refuse_unknown_template_filters(f"{where}[{index}]", inner)
-        elif isinstance(value, str):
-            try:
-                pieces = VariableSubstituter._pieces(value)
-            except ValueError:
-                return
-            for _, expression in pieces:
-                if expression is None or "|" not in expression:
-                    continue
-                name = expression.partition("|")[2].partition(":")[0].strip()
-                if not name:
-                    raise ValueError(
-                        f"{where}: filter without a transform name in {{{expression}}}"
-                    )
-                try:
-                    TransformRegistry.get(name)
-                except ValueError as error:
-                    raise ValueError(f"{where}: {error}") from error
-
-    def _refuse_invalid_embedded_tags(self) -> None:
-        """Refuse a style whose embedded_xml_tags component names a tag that is no XML name.
-
-        Such a tag would be written into an element's text and only fail for the reader that
-        parses the tags, long after the export.
-
-        Raises:
-            ValueError: A component's tag is missing or is not a valid XML element name.
-        """
-        for name, mapping in self.config.field_mappings.items():
-            if not isinstance(mapping, dict) or mapping.get("structure") != "embedded_xml_tags":
-                continue
-            for i, component in enumerate(mapping.get("components") or []):
-                tag = component.get("tag") if isinstance(component, dict) else None
-                try:
-                    etree.Element(tag)
-                except (ValueError, TypeError) as error:
-                    raise ValueError(
-                        f"field_mappings.{name}.components[{i}]: {tag!r} is not a valid XML tag "
-                        f"name ({error})"
-                    ) from error
-
-    def _refuse_unknown_field_names(self) -> None:
-        """Refuse a style that names a recommendation or benchmark field that does not exist.
-
-        A name that is no field reads as empty, and an empty element is left out, so a
-        misspelled name would drop the element without a word.
-
-        Raises:
-            ValueError: A source_field (field_mappings, their children, a cci_lookup), a
-                component source's field (embedded_xml_tags) or a source (group_elements,
-                benchmark elements) names no field.
-        """
-        named: list[tuple[str, str, type[BaseModel], bool]] = []
-        for name, mapping in self.config.field_mappings.items():
-            if not isinstance(mapping, dict):
-                continue
-            dotted = mapping.get("structure") in self._DOTTED_PATH_STRUCTURES
-            if mapping.get("source_field"):
-                named.append(
-                    (f"field_mappings.{name}", mapping["source_field"], Recommendation, dotted)
-                )
-            lookup = mapping.get("cci_lookup")
-            if isinstance(lookup, dict) and lookup.get("source_field"):
-                # The CCI lookup reads CIS controls, so the field must be declared to hold
-                # them; a list of anything else would read as no controls.
-                field_info = Recommendation.model_fields.get(lookup["source_field"])
-                if field_info is None or field_info.annotation != list[CISControl]:
-                    raise ValueError(
-                        f"field_mappings.{name}.cci_lookup names {lookup['source_field']!r}, "
-                        f"which is not a field of Recommendation holding CIS controls"
-                    )
-            for i, child in enumerate(mapping.get("children") or []):
-                if isinstance(child, dict) and child.get("source_field"):
-                    named.append(
-                        (
-                            f"field_mappings.{name}.children[{i}]",
-                            child["source_field"],
-                            Recommendation,
-                            False,
-                        )
-                    )
-            for i, component in enumerate(mapping.get("components") or []):
-                if not isinstance(component, dict):
-                    continue
-                for j, source in enumerate(component.get("sources") or []):
-                    where = f"field_mappings.{name}.components[{i}].sources[{j}]"
-                    if not isinstance(source, dict) or not source.get("field"):
-                        raise ValueError(
-                            f"{where}: a component source needs field, the field it reads"
-                        )
-                    named.append((where, source["field"], Recommendation, False))
-            if mapping.get("structure") == "composite" and not (
-                isinstance(mapping.get("sources"), list) and mapping["sources"]
-            ):
-                raise ValueError(
-                    f"field_mappings.{name}: composite needs sources, the fields to join"
-                )
-            for j, source in enumerate(mapping.get("sources") or []):
-                where = f"field_mappings.{name}.sources[{j}]"
-                if not isinstance(source, dict) or not source.get("field"):
-                    raise ValueError(f"{where}: a composite source needs field, the field it reads")
-                named.append((where, source["field"], Recommendation, False))
-        for name, element in self.config.group_elements.items():
-            if isinstance(element, dict) and element.get("source"):
-                named.append((f"group_elements.{name}", element["source"], Recommendation, False))
-        for name, element in self.config.benchmark.items():
-            if isinstance(element, dict) and element.get("source"):
-                named.append((f"benchmark.{name}", element["source"], Benchmark, False))
-
-        for where, path, model, dotted in named:
-            parts = path.split(".") if dotted else [path]
-            current: Any = model
-            for part in parts:
-                fields = (
-                    current.model_fields
-                    if isinstance(current, type) and issubclass(current, BaseModel)
-                    else {}
-                )
-                if part not in fields:
-                    holder = current.__name__ if isinstance(current, type) else model.__name__
-                    raise ValueError(f"{where} names {path!r}: {part!r} is not a field of {holder}")
-                current = _model_in(fields[part].annotation)
-
-    def _load_xccdf_models(self, version: str):
-        """Dynamically import XCCDF models based on version.
-
-        Args:
-            version: XCCDF version ('1.1.4' or '1.2')
-        """
-        self.xccdf_models: ModuleType
-        if version == "1.1.4":
-            # Import XCCDF 1.1.4 models
-            from cis_bench.models.xccdf_v1_1 import xccdf_1_1_4
-
-            self.xccdf_models = xccdf_1_1_4
-            self.xccdf_namespace = "http://checklists.nist.gov/xccdf/1.1"
-
-        elif version == "1.2":
-            # Import XCCDF 1.2 models
-            from cis_bench.models.xccdf import xccdf_1_2
-
-            self.xccdf_models = xccdf_1_2
-            self.xccdf_namespace = "http://checklists.nist.gov/xccdf/1.2"
-
-        else:
-            raise ValueError(f"Unsupported XCCDF version: {version}")
-
-        self.xccdf_version = version
-        self._xml_context = XmlContext()
+            if isinstance(mapping, dict) and mapping.get("structure") == "metadata_from_config":
+                target = mapping.get("target_element", name)
+                holder = self.style_models.metadata_holder(target)
+                if holder is not None:
+                    self._metadata_holders[name] = (target, *holder)
 
     def get_xccdf_class(self, class_name: str):
         """Get XCCDF class by name (version-agnostic).
@@ -742,10 +584,7 @@ class MappingEngine:
         """The XCCDF model's description of the element field `target` of Rule, Group or
         Benchmark (its type, whether it repeats), read from the xsdata model of this style's
         XCCDF version; None when the parent has no such element."""
-        for var in self._xml_context.build(self.get_xccdf_class(parent)).get_all_vars():
-            if var.name == target and var.is_element:
-                return var
-        return None
+        return self.style_models.element(parent, target)
 
     def element_type(self, parent: str, target: str) -> type:
         """The type the XCCDF model gives the element field `target` of Rule, Group or
@@ -755,56 +594,16 @@ class MappingEngine:
             ValueError: The parent has no such element in this XCCDF version, or the element
                 holds a plain value, not an element type.
         """
+        problem = self.style_models.element_problem(parent, target)
         element = self.model_element(parent, target)
-        if element is None:
-            raise ValueError(f"XCCDF {self.xccdf_version} has no {target!r} element in {parent}")
-        if len(element.types) != 1 or not is_dataclass(element.types[0]):
-            raise ValueError(
-                f"the {target!r} element of an XCCDF {self.xccdf_version} {parent} holds a "
-                "plain value, not an element type a mapping can fill"
-            )
+        if problem is not None or element is None:
+            raise ValueError(problem)
         return element.types[0]
 
     def _repeats(self, parent: str, target: str) -> bool:
         """Whether the XCCDF model lets `parent` hold more than one `target` element."""
         element = self.model_element(parent, target)
         return element is not None and element.list_element
-
-    def _refuse_unwritable_elements(self) -> None:
-        """Refuse a style that declares an element type or maps to an element the XCCDF
-        version does not have, so no mapping is skipped without a word at export.
-
-        Raises:
-            ValueError: An xccdf_type is set (field mappings, group_elements, benchmark
-                elements); a field mapping's target is no element of Rule; a group_elements
-                name is no element of Group; a benchmark element with a source is no element
-                of Benchmark.
-        """
-        targets: list[tuple[str, str, str]] = []
-        for section, parent, elements in (
-            ("field_mappings", "Rule", self.config.field_mappings),
-            ("group_elements", "Group", self.config.group_elements),
-            ("benchmark", "Benchmark", self.config.benchmark),
-        ):
-            for name, element in elements.items():
-                if not isinstance(element, dict):
-                    continue
-                if "xccdf_type" in element:
-                    raise ValueError(
-                        f"{section}.{name}.xccdf_type is no longer read: an element's type "
-                        "comes from the XCCDF model"
-                    )
-                if section == "field_mappings":
-                    targets.append(
-                        (f"{section}.{name}", parent, element.get("target_element", name))
-                    )
-                elif section == "group_elements" or "source" in element:
-                    targets.append((f"{section}.{name}", parent, name))
-        for where, parent, target in targets:
-            try:
-                self.element_type(parent, target)
-            except ValueError as error:
-                raise ValueError(f"{where}: {error}") from error
 
     def normalize_ref(self, ref: str) -> str:
         """Normalize CIS ref for IDs (3.1.1 → 3_1_1)."""
@@ -2053,157 +1852,6 @@ class MappingEngine:
 
         visit(name, [])
         return names
-
-    # The metadata_spec keys a removed setting used, and where it went.
-    _REMOVED_METADATA_KEYS: Final[dict[str, str]] = {
-        "requires_post_processing": "the Rule holds the metadata as model content; nothing "
-        "is added after serialization",
-        "metadata_spec.namespace": "the namespace comes from benchmark.namespaces by "
-        "metadata_spec.namespace_prefix",
-    }
-
-    def _refuse_unwritable_metadata_mappings(self) -> None:
-        """Refuse a metadata_from_config mapping that could not be written as XCCDF allows.
-
-        XCCDF metadata holds only elements from another namespace than XCCDF's own
-        (metadataType: xsd:any namespace="##other"), and only some XCCDF versions give a
-        Rule a metadata element. Both are known from the style and the XCCDF models alone,
-        so they are checked before any benchmark is exported.
-
-        Raises:
-            ValueError: A removed key is set; the XCCDF version's Rule has no element for the
-                mapping's target; the mapping has no source_field; its namespace prefix is
-                missing, undeclared or the XCCDF namespace; it has no group_by; or an element
-                or attribute name is no XML name without a prefix.
-        """
-        # Mapping name -> (Rule field, the model type that holds the metadata content there,
-        # that type's wildcard field)
-        self._metadata_holders: dict[str, tuple[str, type, str]] = {}
-        for name, mapping in self.config.field_mappings.items():
-            if not isinstance(mapping, dict):
-                continue
-            where = f"field_mappings.{name}"
-            if "requires_post_processing" in mapping:
-                raise ValueError(
-                    f"{where}.requires_post_processing is no longer read "
-                    f"({self._REMOVED_METADATA_KEYS['requires_post_processing']})"
-                )
-            if mapping.get("structure") != "metadata_from_config":
-                continue
-            target = mapping.get("target_element", name)
-            element = self.model_element("Rule", target)
-            if element is None:
-                raise ValueError(
-                    f"{where}: XCCDF {self.xccdf_version} Rules have no {target!r} element, so "
-                    f"this metadata mapping cannot be written"
-                )
-            if not mapping.get("source_field"):
-                raise ValueError(f"{where}: a metadata mapping needs a source_field")
-            spec = mapping.get("metadata_spec") or {}
-            where = f"{where}.metadata_spec"
-            if "namespace" in spec:
-                raise ValueError(
-                    f"{where}.namespace is no longer read "
-                    f"({self._REMOVED_METADATA_KEYS['metadata_spec.namespace']})"
-                )
-            prefix = spec.get("namespace_prefix")
-            if not prefix:
-                raise ValueError(f"{where}: a metadata mapping needs a namespace_prefix")
-            try:
-                namespace = self._namespace_uri(prefix)
-            except ValueError as error:
-                raise ValueError(f"{where}: {error}") from error
-            if namespace == self.xccdf_namespace:
-                raise ValueError(
-                    f"{where}: namespace_prefix {prefix!r} is the XCCDF namespace; XCCDF "
-                    "metadata holds only elements from another namespace"
-                )
-            if not spec.get("group_by"):
-                raise ValueError(
-                    f"{where}: a metadata mapping needs group_by (the builder writes items "
-                    "only inside group elements)"
-                )
-            self._refuse_unknown_group_field(where, mapping["source_field"], spec["group_by"])
-            # The content goes in the element-only wildcard of the target's type (text types
-            # have a mixed one), which must take elements of the mapping's namespace; the
-            # Rule must be able to repeat the target, one per mapping.
-            holder = element.types[0] if len(element.types) == 1 else None
-            wildcards = (
-                [
-                    var.name
-                    for var in self._xml_context.build(holder).get_all_vars()
-                    if var.is_wildcard
-                    and not var.mixed
-                    and var.match_namespace(f"{{{namespace}}}{spec.get('root_element')}")
-                ]
-                if holder is not None and is_dataclass(holder) and element.list_element
-                else []
-            )
-            if holder is None or len(wildcards) != 1:
-                raise ValueError(
-                    f"field_mappings.{name}: the Rule's {target!r} element cannot hold "
-                    f"repeated elements of the namespace {namespace}; metadata content goes "
-                    "in metadata"
-                )
-            self._metadata_holders[name] = (target, holder, wildcards[0])
-            group = spec.get("group_element") or {}
-            self._refuse_invalid_metadata_names(
-                where,
-                [
-                    ("root_element", spec.get("root_element"), {}),
-                    ("group_element", group.get("element"), group.get("attributes") or {}),
-                ],
-            )
-            self._refuse_invalid_metadata_element(
-                f"{where}.group_element.item_element", group.get("item_element") or {}
-            )
-
-    @staticmethod
-    def _refuse_unknown_group_field(where: str, source_field: str, group_by: str) -> None:
-        """group_by names a field of the items source_field lists; a name that is no field
-        would read as empty for every item and leave the metadata without groups."""
-        current: Any = Recommendation
-        *parents, last = source_field.split(".")
-        for part in parents:
-            current = _model_in(current.model_fields[part].annotation)
-        annotation = current.model_fields[last].annotation
-        while get_origin(annotation) is Annotated or get_origin(annotation) in (UnionType, Union):
-            annotation = next(a for a in get_args(annotation) if a is not type(None))
-        item = _model_in(get_args(annotation)[0]) if get_origin(annotation) is list else None
-        for part in group_by.removeprefix("item.").split("."):
-            if item is None or part not in item.model_fields:
-                raise ValueError(
-                    f"{where}.group_by names {group_by!r}: {part!r} is not a field of the "
-                    f"items {source_field!r} lists"
-                )
-            item = _model_in(item.model_fields[part].annotation)
-
-    def _refuse_invalid_metadata_element(self, where: str, spec: dict) -> None:
-        """Check an item or child element spec and its children, recursively."""
-        self._refuse_invalid_metadata_names(
-            where, [("element", spec.get("element"), spec.get("attributes") or {})]
-        )
-        for i, child in enumerate(spec.get("children") or []):
-            self._refuse_invalid_metadata_element(f"{where}.children[{i}]", child or {})
-
-    @staticmethod
-    def _refuse_invalid_metadata_names(
-        where: str, elements: list[tuple[str, Any, dict[str, Any]]]
-    ) -> None:
-        """Each element name and attribute name must be an XML name without a prefix: the
-        element takes the mapping's namespace, and an attribute has none."""
-        for key, element, attributes in elements:
-            for kind, name in [(key, element)] + [
-                (f"{key} attribute", attribute) for attribute in attributes
-            ]:
-                try:
-                    if not isinstance(name, str) or name.startswith("{") or name == "xmlns":
-                        raise ValueError("an XML name without a prefix or namespace is needed")
-                    etree.QName(None, name)
-                except ValueError as error:
-                    raise ValueError(
-                        f"{where}: {kind} {name!r} is not an XML name ({error})"
-                    ) from error
 
     def generate_metadata_from_config(
         self, recommendation: "Recommendation", field_mapping: dict

@@ -136,7 +136,7 @@ field_name:
 
 - `MappingEngine.generate_metadata_from_config()`
 - `MappingEngine._build_config_element()`
-- `MappingEngine._refuse_unwritable_metadata_mappings()` (when the style loads)
+- `StyleConfig` in `style_config.py` checks the mapping when the style loads, with the XCCDF models as validation context
 
 ---
 

@@ -777,7 +777,7 @@ xsdata writes it with the rest of the Rule, so its place among the Rule's childr
 the schema the models were generated from, and its prefix is the one the root declares.
 Nothing is inserted after serialization.
 
-The engine checks every metadata mapping when the style loads (see
+Every metadata mapping is checked when the style loads (see
 [XCCDF mapping design](../design/xccdf-mapping-design.md#checked-when-the-style-loads)).
 XCCDF 1.1.4 allows `<metadata>` only on the Benchmark, not inside a Rule, so a metadata
 mapping on a 1.1.4 style (such as DISA) is refused with an error naming the version.
@@ -1225,7 +1225,7 @@ EOF
 **Symptom:** the style is refused when it loads, naming the place and the transform:
 
 ```text
-ValueError: field_mappings.title: Unknown transformation: strip_html
+ValueError: my_style.yaml: field_mappings.title.simple.transform: Unknown transformation: strip_html
 ```
 
 **Cause:** the mapping (or a `{value|filter}` in a template) names a transform no function is

@@ -2151,7 +2151,7 @@ class TestStyleFieldNames:
     def test_a_dotted_path_sees_through_an_annotated_optional_model(self):
         from typing import Annotated
 
-        from cis_bench.exporters.mapping_engine import _model_in
+        from cis_bench.exporters.style_config import _model_in
 
         assert _model_in(Annotated[MITREMapping, "constraint"] | None) is MITREMapping
         assert _model_in(list[MITREMapping]) is None
@@ -2190,6 +2190,14 @@ class TestEmbeddedTagsAreCheckedWhenTheStyleLoads:
         )
 
         with pytest.raises(ValueError, match="components\\[0\\].sources\\[0\\].*descriptoin"):
+            MappingEngine(style)
+
+    def test_a_source_with_an_empty_field_is_refused(self, tmp_path, disa_config_path):
+        style = self._style(
+            tmp_path, disa_config_path, [{"tag": "VulnDiscussion", "sources": [{"field": ""}]}]
+        )
+
+        with pytest.raises(ValueError, match=r"components\[0\]\.sources\[0\]"):
             MappingEngine(style)
 
     def test_a_source_without_a_field_is_refused(self, tmp_path, disa_config_path):
@@ -2281,7 +2289,7 @@ class TestTransformsAreCheckedWhenTheStyleLoads:
         )
 
         with pytest.raises(
-            ValueError, match="field_mappings.check.children\\[0\\].*no_such_transform"
+            ValueError, match="field_mappings.check.nested.children\\[0\\].*no_such_transform"
         ):
             MappingEngine(style)
 
@@ -2305,7 +2313,7 @@ class TestTransformsAreCheckedWhenTheStyleLoads:
 
         with pytest.raises(
             ValueError,
-            match="field_mappings.description.components\\[0\\].sources\\[0\\].*strip_html",
+            match="field_mappings.description.embedded_xml_tags.components\\[0\\].sources\\[0\\].*strip_html",
         ):
             MappingEngine(style)
 
@@ -2375,7 +2383,7 @@ class TestTransformsAreCheckedWhenTheStyleLoads:
                         }
                     }
                 },
-                "field_mappings.mitre_techniques.ident_spec.value_template",
+                "field_mappings.mitre_techniques.ident_from_list.ident_spec.value_template",
             ),
         ],
     )
@@ -2415,7 +2423,7 @@ class TestTransformsAreCheckedWhenTheStyleLoads:
                         }
                     }
                 },
-                "field_mappings.nist_reference.dc_elements\\[1\\].content",
+                "field_mappings.nist_reference.dublin_core.dc_elements\\[1\\].content",
             ),
         ],
     )
@@ -2446,7 +2454,8 @@ class TestTransformsAreCheckedWhenTheStyleLoads:
         )
 
         with pytest.raises(
-            ValueError, match="field_mappings.nist_reference.attributes.href.*strip_html"
+            ValueError,
+            match="field_mappings.nist_reference.dublin_core.attributes.href.*strip_html",
         ):
             MappingEngine(style)
 
@@ -2484,8 +2493,24 @@ class TestTransformsAreCheckedWhenTheStyleLoads:
         )
 
         with pytest.raises(
-            ValueError, match="field_mappings.description.sources\\[1\\].*defualt_value"
+            ValueError, match="field_mappings.description.composite.sources\\[1\\].*defualt_value"
         ):
+            MappingEngine(style)
+
+    def test_a_composite_source_with_an_empty_field_is_refused(self, tmp_path, cis_config_path):
+        style = self._style(
+            tmp_path,
+            cis_config_path,
+            field_mappings={
+                "description": {
+                    "target_element": "description",
+                    "structure": "composite",
+                    "sources": [{"field": "description"}, {"field": ""}],
+                }
+            },
+        )
+
+        with pytest.raises(ValueError, match=r"field_mappings\.description\..*sources\[1\]"):
             MappingEngine(style)
 
     @pytest.mark.parametrize("mapping", [{}, {"sources": []}, {"sources": "description"}])
@@ -2539,7 +2564,7 @@ class TestTransformsAreCheckedWhenTheStyleLoads:
         )
 
         with pytest.raises(
-            ValueError, match="field_mappings.description.sources\\[0\\].*strip_html"
+            ValueError, match="field_mappings.description.composite.sources\\[0\\].*strip_html"
         ):
             MappingEngine(style)
 

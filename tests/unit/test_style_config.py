@@ -916,6 +916,27 @@ def _changed(body: str, old: str, new: str) -> str:
     return body.replace(old, new)
 
 
+_NAMESPACES = """benchmark:
+  namespaces:
+    default: http://checklists.nist.gov/xccdf/1.2
+    controls: urn:example:controls
+    dc: http://purl.org/dc/elements/1.1/
+"""
+
+
+def _metadata_mapping(*changes: tuple[str, str]) -> str:
+    """A style body with the declared namespaces and one metadata mapping aimed at the Rule's
+    metadata element, with the given line changes."""
+    body = _changed(
+        _METADATA,
+        "structure: metadata_from_config",
+        "structure: metadata_from_config\ntarget_element: metadata",
+    )
+    for old, new in changes:
+        body = _changed(body, old, new)
+    return _NAMESPACES + _mapping(body)
+
+
 class TestNestedFieldMappings:
     """The mappings with nested specifications (embedded tags, idents from a list, metadata)
     take the keys the engine reads at every level."""
@@ -923,17 +944,17 @@ class TestNestedFieldMappings:
     @pytest.mark.parametrize(
         "body",
         [
-            pytest.param(_EMBEDDED, id="embedded tags"),
-            pytest.param(_IDENT, id="idents"),
-            pytest.param(_METADATA, id="metadata"),
+            pytest.param(_mapping(_EMBEDDED), id="embedded tags"),
+            pytest.param(_mapping(_IDENT), id="idents"),
+            pytest.param(_metadata_mapping(), id="metadata"),
             pytest.param(
-                _changed(_EMBEDDED, '    content: "false"', "    sources: []"),
+                _mapping(_changed(_EMBEDDED, '    content: "false"', "    sources: []")),
                 id="a tag with no sources, written empty",
             ),
         ],
     )
     def test_a_mapping_the_engine_can_write_loads(self, tmp_path, body):
-        style = _style(tmp_path, _mapping(body))
+        style = _style(tmp_path, body)
 
         assert ConfigLoader.load(style).field_mappings["title"]["structure"] in body
 
@@ -1211,5 +1232,257 @@ class TestNestedFieldMappings:
 
         with pytest.raises(
             ValueError, match=rf"field_mappings\.title\.{path}: is not read \(.*{hint}"
+        ):
+            ConfigLoader.load(style)
+
+
+class TestChecksAgainstTheModels:
+    """What needs the XCCDF and Benchmark models is checked when the style loads, with the
+    path of the key: the fields a style names, the transforms and filters, the elements a
+    mapping writes, and where Rule metadata can go."""
+
+    @pytest.mark.parametrize(
+        ("body", "path", "reason"),
+        [
+            pytest.param(
+                _mapping("source_field: titel"),
+                r"field_mappings\.title\.simple\.source_field",
+                "'titel' is not a field of Recommendation",
+                id="simple",
+            ),
+            pytest.param(
+                _mapping("source_field: mitre_mapping.techniques"),
+                r"field_mappings\.title\.simple\.source_field",
+                "'mitre_mapping.techniques' is not a field of Recommendation",
+                id="a dotted path where one field is read",
+            ),
+            pytest.param(
+                _mapping(
+                    "structure: nested\nchildren:\n  - source_field: audt\n    element: check-content"
+                ),
+                r"field_mappings\.title\.nested\.children\[0\]\.source_field",
+                "'audt' is not a field of Recommendation",
+                id="nested child",
+            ),
+            pytest.param(
+                _mapping("structure: composite\nsources:\n  - field: defualt_value"),
+                r"field_mappings\.title\.composite\.sources\[0\]\.field",
+                "'defualt_value' is not a field of Recommendation",
+                id="composite source",
+            ),
+            pytest.param(
+                _mapping(_changed(_EMBEDDED, "field: rationale", "field: rationle")),
+                r"field_mappings\.title\.embedded_xml_tags\.components\[0\]\.sources\[1\]\.field",
+                "'rationle' is not a field of Recommendation",
+                id="embedded tag source",
+            ),
+            pytest.param(
+                _mapping(
+                    _changed(
+                        _IDENT,
+                        "source_field: cis_controls",
+                        "source_field: mitre_mapping.techiques",
+                    )
+                ),
+                r"field_mappings\.title\.ident_from_list\.source_field",
+                "'techiques' is not a field of MITREMapping",
+                id="ident list, a dotted path",
+            ),
+            pytest.param(
+                _mapping("structure: dublin_core\nsource_field: nist_contrls"),
+                r"field_mappings\.title\.dublin_core\.source_field",
+                "'nist_contrls' is not a field of Recommendation",
+                id="dublin core",
+            ),
+            pytest.param(
+                _mapping("cci_lookup:\n  source_field: artifacts"),
+                r"field_mappings\.title\.simple\.cci_lookup\.source_field",
+                "'artifacts' is not a field of Recommendation holding CIS controls",
+                id="cci lookup",
+            ),
+            pytest.param(
+                "group_elements:\n  title:\n    source: titel\n",
+                r"group_elements\.title\.source",
+                "'titel' is not a field of Recommendation",
+                id="group element",
+            ),
+            pytest.param(
+                "benchmark:\n  title:\n    source: titel\n",
+                r"benchmark\.title\.source",
+                "'titel' is not a field of Benchmark",
+                id="benchmark element",
+            ),
+        ],
+    )
+    def test_a_field_the_models_do_not_have_is_refused(self, tmp_path, body, path, reason):
+        style = _style(tmp_path, body)
+
+        with pytest.raises(ValueError, match=rf"style\.yaml: {path}: .*{reason}"):
+            ConfigLoader.load(style)
+
+    @pytest.mark.parametrize(
+        ("body", "path"),
+        [
+            pytest.param(
+                _mapping("source_field: title\ntransform: nope"),
+                r"field_mappings\.title\.simple\.transform",
+                id="field mapping",
+            ),
+            pytest.param(
+                "group_elements:\n  title:\n    source: title\n    transform: nope\n",
+                r"group_elements\.title\.transform",
+                id="group element",
+            ),
+            pytest.param(
+                "benchmark:\n  title:\n    source: title\n    transform: nope\n",
+                r"benchmark\.title\.transform",
+                id="benchmark element",
+            ),
+            pytest.param(
+                "benchmark:\n  profiles:\n    description_transform: nope\n",
+                r"benchmark\.profiles\.description_transform",
+                id="profile description",
+            ),
+            pytest.param(
+                "rule_id:\n  template: 'R-{ref|nope}'\n",
+                r"rule_id\.template",
+                id="a filter in a rule id template",
+            ),
+            pytest.param(
+                "benchmark:\n  notice:\n    content: '{benchmark.url|nope}'\n",
+                r"benchmark\.notice\.content",
+                id="a filter in the notice",
+            ),
+            pytest.param(
+                _mapping(
+                    _changed(
+                        _IDENT,
+                        'value_template: "{item.control}"',
+                        'value_template: "{item.control|nope}"',
+                    )
+                ),
+                r"field_mappings\.title\.ident_from_list\.ident_spec\.value_template",
+                id="a filter in an ident template",
+            ),
+        ],
+    )
+    def test_a_transform_no_function_is_registered_under_is_refused(self, tmp_path, body, path):
+        style = _style(tmp_path, body)
+
+        with pytest.raises(
+            ValueError, match=rf"style\.yaml: {path}: .*Unknown transformation: nope"
+        ):
+            ConfigLoader.load(style)
+
+    def test_a_filter_without_a_name_is_refused(self, tmp_path):
+        style = _style(tmp_path, "rule_id:\n  template: 'R-{ref|}'\n")
+
+        with pytest.raises(ValueError, match=r"rule_id\.template: filter without a transform name"):
+            ConfigLoader.load(style)
+
+    def test_a_string_nothing_fills_is_text(self, tmp_path):
+        style = _style(tmp_path, "rule_defaults:\n  severity: '{x|nope}'\n")
+
+        assert ConfigLoader.load(style).rule_defaults["severity"] == "{x|nope}"
+
+    @pytest.mark.parametrize(
+        ("body", "path", "reason"),
+        [
+            pytest.param(
+                "field_mappings:\n  bogus:\n    source_field: title\n",
+                r"field_mappings\.bogus\.simple",
+                r"XCCDF 1\.2 has no 'bogus' element in Rule",
+                id="a mapping named after no Rule element",
+            ),
+            pytest.param(
+                _mapping("source_field: title\ntarget_element: bogus"),
+                r"field_mappings\.title\.simple\.target_element",
+                r"XCCDF 1\.2 has no 'bogus' element in Rule",
+                id="a target that is no Rule element",
+            ),
+            pytest.param(
+                _mapping("source_field: title\ntarget_element: impact_metric"),
+                r"field_mappings\.title\.simple\.target_element",
+                ".*holds a plain value",
+                id="a target that holds a plain value",
+            ),
+            pytest.param(
+                "group_elements:\n  bogus:\n    source: title\n",
+                r"group_elements\.bogus",
+                r"XCCDF 1\.2 has no 'bogus' element in Group",
+                id="group element",
+            ),
+            pytest.param(
+                "benchmark:\n  bogus:\n    source: title\n",
+                r"benchmark\.bogus",
+                r"XCCDF 1\.2 has no 'bogus' element in Benchmark",
+                id="benchmark element",
+            ),
+        ],
+    )
+    def test_an_element_the_xccdf_version_does_not_have_is_refused(
+        self, tmp_path, body, path, reason
+    ):
+        style = _style(tmp_path, body)
+
+        with pytest.raises(ValueError, match=rf"style\.yaml: {path}: {reason}"):
+            ConfigLoader.load(style)
+
+    def test_a_metadata_mapping_the_rule_can_hold_loads(self, tmp_path):
+        style = _style(tmp_path, _metadata_mapping())
+
+        assert ConfigLoader.load(style).field_mappings["title"]["target_element"] == "metadata"
+
+    @pytest.mark.parametrize(
+        ("changes", "path", "reason"),
+        [
+            pytest.param(
+                [("namespace_prefix: controls", "namespace_prefix: nope")],
+                r"metadata_spec\.namespace_prefix",
+                "'nope' is not declared in benchmark.namespaces",
+                id="undeclared prefix",
+            ),
+            pytest.param(
+                [("namespace_prefix: controls", "namespace_prefix: default")],
+                r"metadata_spec\.namespace_prefix",
+                "is the XCCDF namespace",
+                id="the XCCDF namespace",
+            ),
+            pytest.param(
+                [("group_by: item.version", "group_by: item.versoin")],
+                r"metadata_spec\.group_by",
+                "'versoin' is not a field of the items 'cis_controls' lists",
+                id="grouping by no field of the items",
+            ),
+            pytest.param(
+                [("target_element: metadata", "target_element: title")],
+                r"metadata_from_config\.target_element",
+                "cannot hold repeated elements of the namespace",
+                id="an element with text content",
+            ),
+            pytest.param(
+                [
+                    ("target_element: metadata", "target_element: dc_status"),
+                    ("namespace_prefix: controls", "namespace_prefix: dc"),
+                ],
+                r"metadata_from_config\.target_element",
+                "cannot hold repeated elements of the namespace",
+                id="an element of Dublin Core elements only, with the Dublin Core prefix",
+            ),
+            pytest.param(
+                [("target_element: metadata", "target_element: signature")],
+                r"metadata_from_config\.target_element",
+                "cannot hold repeated elements of the namespace",
+                id="a single element",
+            ),
+        ],
+    )
+    def test_metadata_the_rule_cannot_hold_as_written_is_refused(
+        self, tmp_path, changes, path, reason
+    ):
+        style = _style(tmp_path, _metadata_mapping(*changes))
+
+        with pytest.raises(
+            ValueError, match=rf"field_mappings\.title\.(metadata_from_config\.)?{path}: .*{reason}"
         ):
             ConfigLoader.load(style)
