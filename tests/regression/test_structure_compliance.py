@@ -93,13 +93,17 @@ class TestControlMappingFidelity:
         assert written > 0, "the fixture has NIST controls no CCI covers"
 
     def test_the_benchmark_reference_takes_its_href_from_the_style(
-        self, sample_benchmark, disa_config_path
+        self, sample_benchmark, tmp_path, disa_config_path
     ):
         from cis_bench.exporters.mapping_engine import MappingEngine
 
-        engine = MappingEngine(disa_config_path)
-        engine.config.benchmark["reference"]["attributes"]["href"] = (
-            "https://example.invalid/?from={benchmark.url}"
+        engine = MappingEngine(
+            _disa_with(
+                tmp_path,
+                disa_config_path,
+                "benchmark:\n  reference:\n    attributes:\n"
+                "      href: 'https://example.invalid/?from={benchmark.url}'\n",
+            )
         )
 
         href, _ = engine.create_reference(sample_benchmark)
@@ -273,8 +277,14 @@ class TestControlMappingFidelity:
         # The elements need the namespace URI the style declares; there is no built-in one.
         from cis_bench.exporters.mapping_engine import MappingEngine
 
+        # Built as the model: a style with dc_elements and no dc namespace is refused when it
+        # loads, so the export's own check is reached only this way.
         engine = MappingEngine(disa_config_path)
-        del engine.config.benchmark["namespaces"]["dc"]
+        style = engine.config.style
+        namespaces = {p: uri for p, uri in style.benchmark.namespaces.items() if p != "dc"}
+        engine.config.style = style.model_copy(
+            update={"benchmark": style.benchmark.model_copy(update={"namespaces": namespaces})}
+        )
 
         with pytest.raises(ValueError, match="dc"):
             engine.create_reference(sample_benchmark)
