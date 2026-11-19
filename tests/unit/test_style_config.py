@@ -1385,6 +1385,13 @@ class TestChecksAgainstTheModels:
 
         assert ConfigLoader.load(style).rule_defaults["severity"] == "{x|nope}"
 
+    def test_an_empty_cci_lookup_field_names_no_field_and_loads(self, tmp_path):
+        style = _style(tmp_path, _mapping("source_field: title\ncci_lookup:\n  source_field: ''"))
+
+        assert ConfigLoader.load(style).field_mappings["title"]["cci_lookup"] == {
+            "source_field": ""
+        }
+
     @pytest.mark.parametrize(
         ("body", "path", "reason"),
         [

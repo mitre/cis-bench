@@ -226,9 +226,10 @@ BenchmarkField = Annotated[str, _field_of("benchmark")]
 
 def _cis_controls_field(value: str | None, info: ValidationInfo) -> str | None:
     """The CCI lookup reads CIS controls, so the field must be declared to hold them; a list
-    of anything else would read as no controls (checked with the models)."""
+    of anything else would read as no controls (checked with the models). An empty name
+    names no field and is left to the lookup, as a missing one is."""
     models = _models(info)
-    if value is not None and models is not None:
+    if value and models is not None:
         declared = models.recommendation.model_fields.get(value)
         holds = get_args(declared.annotation) if declared is not None else ()
         if (
