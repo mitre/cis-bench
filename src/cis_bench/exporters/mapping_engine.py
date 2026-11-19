@@ -52,6 +52,8 @@ from cis_bench.exporters.style_config import (
     MetadataElement,
     MetadataFromConfigMapping,
     NestedMapping,
+    ProfileMapping,
+    Profiles,
     SimpleMapping,
     StyleConfig,
     StyleModels,
@@ -102,7 +104,7 @@ class MappingConfig:
     @property
     def namespaces(self) -> dict[str, str]:
         """Prefix -> namespace URI, declared in benchmark.namespaces."""
-        return dict(self.benchmark.get("namespaces") or {})
+        return dict(self.style.benchmark.namespaces)
 
 
 class TransformRegistry:
@@ -783,28 +785,27 @@ class MappingEngine:
         (lang, written as xml:lang) and its variable-substituted text from the style's
         benchmark.notice, keeping the content empty when it is left out or blank.
         """
-        raw_notice = self.config.benchmark.get("notice")
-        notice_config = raw_notice if isinstance(raw_notice, dict) else {}
+        notice_config = self.config.style.benchmark.notice
 
         NoticeType = self.element_type("Benchmark", "notice")
 
         substitution_context = {"benchmark": benchmark}
 
-        raw_id = notice_config.get("id") or "terms-of-use"
-        notice_id = str(VariableSubstituter.substitute(str(raw_id), substitution_context))
+        # XCCDF requires a notice id; "terms-of-use" is the engine's own name when the style
+        # gives none or an empty one
+        raw_id = notice_config.id or "terms-of-use"
+        notice_id = str(VariableSubstituter.substitute(raw_id, substitution_context))
 
-        raw_lang = notice_config.get("lang")
         notice_lang = (
-            str(VariableSubstituter.substitute(str(raw_lang), substitution_context))
-            if raw_lang
+            str(VariableSubstituter.substitute(notice_config.lang, substitution_context))
+            if notice_config.lang
             else None
         )
 
-        raw_content = notice_config.get("content")
         content: list[object] = []
-        if isinstance(raw_content, str) and raw_content.strip():
+        if notice_config.content and notice_config.content.strip():
             resolved = str(
-                VariableSubstituter.substitute(raw_content, substitution_context)
+                VariableSubstituter.substitute(notice_config.content, substitution_context)
             ).strip()
             if resolved:
                 content = [resolved]
@@ -845,7 +846,8 @@ class MappingEngine:
         elements = []
         for dc in dc_elements_config:
             prefix, _, local_name = dc.element.partition(":")
-            namespace = self.config.namespaces.get(prefix)
+            namespaces = self.config.style.benchmark.namespaces
+            namespace = namespaces[prefix] if prefix in namespaces else None
             if not namespace:
                 raise ValueError(
                     f"dc_elements names {dc.element!r} but benchmark.namespaces declares "
@@ -860,24 +862,22 @@ class MappingEngine:
         benchmark.reference.attributes.href (the benchmark's URL when the style names none)
         and the Dublin Core elements of benchmark.reference.dc_elements (none when the style
         declares none)."""
-        reference_config = self.config.benchmark.get("reference", {})
-        href_template = (reference_config.get("attributes") or {}).get("href")
+        reference_config = self.config.style.benchmark.reference
+        href_template = reference_config.attributes.href
         values = {"benchmark": benchmark}
         href = (
             str(VariableSubstituter.substitute(href_template, values))
             if href_template
             else str(benchmark.url)
         )
-        return href, self.dublin_core_elements(
-            self.config.style.benchmark.reference.dc_elements, values
-        )
+        return href, self.dublin_core_elements(reference_config.dc_elements, values)
 
     def create_plain_texts(self, benchmark: Benchmark):
         """Create plain-text elements from config (version-agnostic).
 
         Per DISA conventions: release-info, generator, conventionsVersion
         """
-        plain_text_configs = self.config.benchmark.get("plain_text", [])
+        plain_text_configs = self.config.style.benchmark.plain_text
         PlainTextType = self.get_xccdf_class("PlainTextType")
         plain_texts = []
 
@@ -890,8 +890,8 @@ class MappingEngine:
         )
 
         for pt_config in plain_text_configs:
-            pt_id = pt_config.get("id")
-            content_template = pt_config.get("content", "")
+            pt_id = pt_config.id
+            content_template = pt_config.content
 
             # Substitute variables
             content = VariableSubstituter.substitute(
@@ -1302,7 +1302,7 @@ class MappingEngine:
         # that come from free text are reduced to NCName-safe segments so the
         # result satisfies XCCDF's benchmarkIdType whatever the title or
         # version contains.
-        bench_id_template = self.config.benchmark.get("id_template")
+        bench_id_template = self.config.style.benchmark.id_template
         if not bench_id_template:
             raise ExportError(
                 f"Style '{self.config.metadata.get('style_name', '?')}' has no "
@@ -1324,28 +1324,21 @@ class MappingEngine:
             "group": groups,  # Add all Groups
         }
 
-        # Loop through benchmark config elements
-        for element_name, element_config in self.config.benchmark.items():
-            if not isinstance(element_config, dict):
-                continue
-
-            # Skip special elements (handled by dedicated methods)
-            if element_name in ["id_template", "namespaces"]:
-                continue
-
-            # Elements read from a benchmark field; the others (notice, front_matter,
-            # profiles, reference) are built by their own methods below
-            source = element_config.get("source")
+        # The Benchmark elements read from a benchmark field (every entry of the benchmark
+        # section but its named keys); notice, matter, reference, plain text and profiles
+        # are built by their own methods below
+        for element_name, element_config in (
+            self.config.style.benchmark.__pydantic_extra__ or {}
+        ).items():
+            source = element_config.source
             if source:
                 ElementType = self.element_type("Benchmark", element_name)
                 value = getattr(benchmark, source, None)
 
-                # Apply transform
-                transform = element_config.get("transform", "none")
-                transformed = TransformRegistry.apply(transform, value)
+                transformed = TransformRegistry.apply(element_config.transform, value)
 
                 # Apply prepend text if specified
-                prepend = element_config.get("prepend_text")
+                prepend = element_config.prepend_text
                 if prepend and transformed:
                     transformed = prepend + transformed
 
@@ -1372,8 +1365,8 @@ class MappingEngine:
         benchmark_fields["reference"] = [ReferenceType(href=ref_href, content=ref_content)]
 
         # Generate Profile elements if configured
-        profile_config = self.config.benchmark.get("profiles")
-        if profile_config:
+        profile_config = self.config.style.benchmark.profiles
+        if profile_config.generate_from_rules:
             # Need to pass all recommendations to build profile select lists
             # Get recommendations from context (passed by exporter)
             recommendations = context.get("recommendations", [])
@@ -1542,7 +1535,7 @@ class MappingEngine:
     def generate_profiles_from_rules(
         self,
         recommendations: list["Recommendation"],
-        profile_config: dict,
+        profile_config: Profiles,
         profile_definitions: list[ProfileDefinition] | None = None,
     ) -> list:
         """XCCDF Profile elements at Benchmark level, each with a select for every rule in it.
@@ -1565,32 +1558,27 @@ class MappingEngine:
                 includes: ["Level 1 - Server"]
 
         Raises:
-            ValueError: No id_template, a mapping without a match or with its own id, two
-                mappings for one name, an include or parent that names no profile, profiles
-                that include each other, or two profiles that get one id.
+            ValueError: No id_template, a mapping with an empty match, two mappings for one
+                name, an include or parent that names no profile, profiles that include each
+                other, or two profiles that get one id.
         """
         Profile = self.get_xccdf_class("Profile")
         ProfileSelectType = self.get_xccdf_class("ProfileSelectType")
         TextWithSubType = self.get_xccdf_class("TextWithSubType")
         HtmlTextWithSubType = self.get_xccdf_class("HtmlTextWithSubType")
 
-        if not profile_config.get("generate_from_rules"):
+        if not profile_config.generate_from_rules:
             return []
 
-        mappings = profile_config.get("profile_mappings", [])
-        id_template = profile_config.get("id_template")
+        mappings = profile_config.profile_mappings
+        id_template = profile_config.id_template
         if not id_template:
             raise ValueError("benchmark.profiles needs an id_template (a Profile id per title)")
-        by_match: dict[str, dict] = {}
+        by_match: dict[str, ProfileMapping] = {}
         for mapping in mappings:
-            name = mapping.get("match")
-            if not isinstance(name, str) or not name:
+            name = mapping.match
+            if not name:
                 raise ValueError(f"a profile mapping needs a match: {mapping!r}")
-            if "id" in mapping:
-                raise ValueError(
-                    f"profile mapping {name!r} sets an id; profile ids come from "
-                    "benchmark.profiles.id_template"
-                )
             if name in by_match:
                 raise ValueError(f"profile {name!r} has more than one profile mapping")
             by_match[name] = mapping
@@ -1662,7 +1650,7 @@ class MappingEngine:
         return profiles
 
     def _defined_profiles(
-        self, definitions: list[ProfileDefinition], profile_config: dict
+        self, definitions: list[ProfileDefinition], profile_config: Profiles
     ) -> list[tuple[str, str | None, set[str]]]:
         """(title, description, profile names it selects) for each profile the benchmark's
         page defines; a profile selects its own name and every ancestor's, by parent. The
@@ -1678,7 +1666,7 @@ class MappingEngine:
                     f"profile {definition.title!r} extends {definition.parent!r}, which is not "
                     "one of the benchmark's profiles"
                 )
-        transform = TransformRegistry.get(profile_config.get("description_transform", "none"))
+        transform = TransformRegistry.get(profile_config.description_transform)
 
         def parents(title: str) -> list[str]:
             parent = by_title[title].parent
@@ -1696,8 +1684,8 @@ class MappingEngine:
     def _profiles_named_on_rules(
         self,
         recommendations: list["Recommendation"],
-        mappings: list[dict],
-        by_match: dict[str, dict],
+        mappings: list[ProfileMapping],
+        by_match: dict[str, ProfileMapping],
     ) -> list[tuple[str, str | None, set[str]]]:
         """(title, description, profile names it selects) for a copy saved without the
         page's definitions: one entry per profile name its rules use, mapped names in the
@@ -1712,7 +1700,7 @@ class MappingEngine:
         def includes(name: str) -> list[str]:
             if name not in by_match:
                 return []
-            listed = by_match[name].get("includes", [])
+            listed = by_match[name].includes
             for included in listed:
                 if included not in by_match:
                     raise ValueError(
@@ -1723,14 +1711,10 @@ class MappingEngine:
         named = dict.fromkeys(name for rec in recommendations for name in rec.profiles)
         entries = []
         for mapping in mappings:
-            included = self._included_profiles(mapping["match"], includes)
-            if mapping["match"] in named:
+            included = self._included_profiles(mapping.match, includes)
+            if mapping.match in named:
                 entries.append(
-                    (
-                        mapping.get("title") or mapping["match"],
-                        mapping.get("description") or None,
-                        included,
-                    )
+                    (mapping.title or mapping.match, mapping.description or None, included)
                 )
         entries.extend((name, None, {name}) for name in named if name not in by_match)
         return entries

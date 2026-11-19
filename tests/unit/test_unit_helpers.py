@@ -26,6 +26,7 @@ from cis_bench.exporters.style_config import (
     EmbeddedTag,
     IdentFromListMapping,
     IdentSpec,
+    Profiles,
     SimpleMapping,
 )
 from cis_bench.models.benchmark import (
@@ -259,6 +260,18 @@ class TestDottedNumberPath:
             TransformRegistry.get("dotted_number_path")(value, *labels)
 
 
+def _with_benchmark(engine: MappingEngine, **entries: dict) -> MappingEngine:
+    """The engine reading a style whose benchmark section has these entries, each built as
+    its model and replacing the style's entry whole (a style file written without extends)."""
+    style = engine.config.style
+    fields = type(style.benchmark).model_fields
+    built = {name: fields[name].annotation.model_validate(value) for name, value in entries.items()}
+    engine.config.style = style.model_copy(
+        update={"benchmark": style.benchmark.model_copy(update=built)}
+    )
+    return engine
+
+
 class TestEveryStructure:
     """map_rule writes one element per field mapping, each built the way its structure says."""
 
@@ -407,12 +420,14 @@ class TestProfileGeneration:
         return "".join(str(part) for part in elements[0].content) if elements else None
 
     def _generate(self, cis_config_path, recs, mappings, definitions=None):
-        config = {
-            "generate_from_rules": True,
-            "id_template": "p_{profile.title|slug:_}",
-            "description_transform": "none",
-            "profile_mappings": mappings,
-        }
+        config = Profiles.model_validate(
+            {
+                "generate_from_rules": True,
+                "id_template": "p_{profile.title|slug:_}",
+                "description_transform": "none",
+                "profile_mappings": mappings,
+            }
+        )
         return MappingEngine(cis_config_path).generate_profiles_from_rules(
             recs, config, definitions or []
         )
@@ -531,19 +546,12 @@ class TestProfileGeneration:
         with pytest.raises(ValueError, match="'Level 9 - Server'"):
             self._generate(cis_config_path, recs, mappings)
 
-    def test_a_profile_mapping_without_a_match_is_refused(self, cis_config_path):
-        mappings = [{"title": "Level 1 - Server"}]
+    def test_a_profile_mapping_with_an_empty_match_is_refused(self, cis_config_path):
+        # A mapping without match is refused when the style loads; an empty one loads.
+        mappings = [{"match": "", "title": "Level 1 - Server"}]
         recs = self._recs(("1.1", ["Level 1 - Server"]))
 
         with pytest.raises(ValueError, match="profile mapping needs a match"):
-            self._generate(cis_config_path, recs, mappings)
-
-    def test_a_profile_mapping_with_its_own_id_is_refused(self, cis_config_path):
-        # Profile ids come from the style's id_template, one rule for every profile.
-        mappings = [{**self.MAPPINGS[0], "id": "l1s"}]
-        recs = self._recs(("1.1", ["Level 1 - Server"]))
-
-        with pytest.raises(ValueError, match="id_template"):
             self._generate(cis_config_path, recs, mappings)
 
     def test_two_mappings_for_one_profile_name_are_refused(self, cis_config_path):
@@ -1760,8 +1768,7 @@ class TestIDFormatValidation:
 
     def test_disa_profile_selects_use_sv_rule_ids(self, disa_engine, synthetic_complete_benchmark):
         """Profile select elements should reference SV- rule IDs in DISA style."""
-        # Get profile config from engine config (not context)
-        profile_config = disa_engine.config.benchmark.get("profiles", {})
+        profile_config = disa_engine.config.style.benchmark.profiles
 
         # Generate profiles
         profiles = disa_engine.generate_profiles_from_rules(
@@ -1782,8 +1789,7 @@ class TestIDFormatValidation:
         self, cis_engine, synthetic_complete_benchmark
     ):
         """Profile select elements should reference cisecurity.benchmarks rule IDs in CIS style."""
-        # Get profile config from engine config (not context)
-        profile_config = cis_engine.config.benchmark.get("profiles", {})
+        profile_config = cis_engine.config.style.benchmark.profiles
 
         # Generate profiles
         profiles = cis_engine.generate_profiles_from_rules(
@@ -1839,7 +1845,7 @@ class TestDISAVulcanCompatibility:
     def test_disa_benchmark_id_is_short_format(self, disa_config_path):
         """DISA benchmark ID template should produce short IDs for Vulcan."""
         engine = MappingEngine(disa_config_path)
-        id_template = engine.config.benchmark.get("id_template", "")
+        id_template = engine.config.style.benchmark.id_template or ""
 
         # Template should NOT contain full xccdf namespace
         assert "xccdf_org.cisecurity_benchmark" not in id_template, (
@@ -1857,9 +1863,9 @@ class TestDISAVulcanCompatibility:
     def test_disa_version_transform_strips_v_prefix(self, disa_config_path):
         """DISA version config should use strip_version_prefix transform."""
         engine = MappingEngine(disa_config_path)
-        version_config = engine.config.benchmark.get("version", {})
+        version_config = (engine.config.style.benchmark.__pydantic_extra__ or {})["version"]
 
-        transform = version_config.get("transform")
+        transform = version_config.transform
         assert transform == "strip_version_prefix", (
             f"DISA version should use strip_version_prefix, got: {transform}"
         )
@@ -1992,12 +1998,14 @@ class TestNoticeCreation:
         self, cis_config_path, synthetic_complete_benchmark
     ):
         """create_notice resolves direct id, lang, and variable-substituted content."""
-        engine = MappingEngine(cis_config_path)
-        engine.config.benchmark["notice"] = {
-            "id": "custom-notice",
-            "lang": "en-US",
-            "content": "Exported from {benchmark.title} ({benchmark.url})",
-        }
+        engine = _with_benchmark(
+            MappingEngine(cis_config_path),
+            notice={
+                "id": "custom-notice",
+                "lang": "en-US",
+                "content": "Exported from {benchmark.title} ({benchmark.url})",
+            },
+        )
 
         notice = engine.create_notice(synthetic_complete_benchmark)
 
@@ -2012,17 +2020,16 @@ class TestNoticeCreation:
     ):
         """create_notice fills the benchmark URL in as text, and takes terms-of-use as the id
         and no language when the style names none."""
-        engine = MappingEngine(disa_config_path)
-        engine.config.benchmark["notice"] = {"content": "{benchmark.url}"}
+        engine = _with_benchmark(
+            MappingEngine(disa_config_path), notice={"content": "{benchmark.url}"}
+        )
 
         notice = engine.create_notice(synthetic_complete_benchmark)
 
         assert notice.content == [str(synthetic_complete_benchmark.url)]
         assert isinstance(notice.content[0], str)
 
-        engine.config.benchmark["notice"] = {
-            "content": "Plain notice without explicit id or lang",
-        }
+        _with_benchmark(engine, notice={"content": "Plain notice without explicit id or lang"})
         fallback_notice = engine.create_notice(synthetic_complete_benchmark)
         assert fallback_notice.id == "terms-of-use"
         assert fallback_notice.lang is None
@@ -2032,29 +2039,46 @@ class TestNoticeCreation:
         self, cis_config_path, synthetic_complete_benchmark
     ):
         """Custom styles with empty or omitted notice content preserve content=[]."""
-        engine = MappingEngine(cis_config_path)
-
-        engine.config.benchmark["notice"] = {
-            "id": "empty-str",
-            "lang": "en",
-            "content": "",
-        }
+        engine = _with_benchmark(
+            MappingEngine(cis_config_path), notice={"id": "empty-str", "lang": "en", "content": ""}
+        )
         empty_notice = engine.create_notice(synthetic_complete_benchmark)
         assert empty_notice.id == "empty-str"
         assert empty_notice.lang == "en"
         assert empty_notice.content == []
 
-        engine.config.benchmark["notice"] = {"id": "omitted-content"}
+        _with_benchmark(engine, notice={"id": "omitted-content"})
         omitted_notice = engine.create_notice(synthetic_complete_benchmark)
         assert omitted_notice.id == "omitted-content"
         assert omitted_notice.lang is None
         assert omitted_notice.content == []
 
-        engine.config.benchmark.pop("notice", None)
+        _with_benchmark(engine, notice={})
         missing_section_notice = engine.create_notice(synthetic_complete_benchmark)
         assert missing_section_notice.id == "terms-of-use"
         assert missing_section_notice.lang is None
         assert missing_section_notice.content == []
+
+
+class TestBenchmarkElements:
+    """The Benchmark elements a style fills from a benchmark field are written from the
+    style, each after its transform and with its prepended text."""
+
+    def test_a_benchmark_element_the_style_changes_is_written_as_changed(
+        self, tmp_path, cis_config_path, synthetic_complete_benchmark
+    ):
+        style = tmp_path / "prefixed_title.yaml"
+        style.write_text(
+            f"extends: {cis_config_path}\n"
+            "benchmark:\n  title:\n    source: title\n    prepend_text: 'Draft: '\n"
+        )
+        benchmark = synthetic_complete_benchmark
+
+        xccdf = MappingEngine(style).map_benchmark(
+            benchmark, [], {"benchmark": benchmark, "recommendations": []}
+        )
+
+        assert [title.value for title in xccdf.title] == [f"Draft: {benchmark.title}"]
 
 
 class TestBenchmarkIdTemplate:
@@ -2078,32 +2102,27 @@ class TestBenchmarkIdTemplate:
                 synthetic_complete_benchmark, [], {"benchmark": synthetic_complete_benchmark}
             )
 
-    def test_an_id_template_naming_an_unknown_variable_is_refused(
-        self, cis_config_path, synthetic_complete_benchmark
-    ):
+    def test_an_id_template_naming_an_unknown_variable_is_refused(self, cis_config_path, tmp_path):
         # The variable is benchmark_id; a typo would write id="CIS-" without a word.
-        engine = MappingEngine(cis_config_path)
-        engine.config.benchmark["id_template"] = "CIS-{bench_id}"
+        style = tmp_path / "bench_id.yaml"
+        style.write_text(
+            f"extends: {cis_config_path}\nbenchmark:\n  id_template: CIS-{{bench_id}}\n"
+        )
 
-        with pytest.raises(ValueError, match="bench_id"):
-            engine.map_benchmark(
-                synthetic_complete_benchmark,
-                [],
-                {"benchmark": synthetic_complete_benchmark, "recommendations": []},
-            )
+        with pytest.raises(ValueError, match=r"benchmark\.id_template: .*bench_id"):
+            MappingEngine(style)
 
     def test_a_profile_id_template_naming_an_unknown_variable_is_refused(
-        self, cis_config_path, synthetic_complete_benchmark
+        self, cis_config_path, tmp_path
     ):
-        engine = MappingEngine(cis_config_path)
-        engine.config.benchmark["profiles"]["id_template"] = "{profile.name|slug:-}"
-        context = {
-            "benchmark": synthetic_complete_benchmark,
-            "recommendations": synthetic_complete_benchmark.recommendations,
-        }
+        style = tmp_path / "profile_id.yaml"
+        style.write_text(
+            f"extends: {cis_config_path}\n"
+            "benchmark:\n  profiles:\n    id_template: '{profile.name|slug:-}'\n"
+        )
 
-        with pytest.raises(ValueError, match="profile.name"):
-            engine.map_benchmark(synthetic_complete_benchmark, [], context)
+        with pytest.raises(ValueError, match=r"benchmark\.profiles\.id_template: .*profile\.name"):
+            MappingEngine(style)
 
     def test_cis_template_substitutes_version_and_title_slug(
         self, cis_config_path, synthetic_complete_benchmark

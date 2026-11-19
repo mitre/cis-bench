@@ -565,7 +565,7 @@ none takes "none", which gives the value unchanged."""
 
 # Templates by the values the engine fills them with (_TEMPLATE_VALUES)
 BenchmarkTemplate = Annotated[Template, _variables_in("benchmark")]
-PlainTextTemplate = Annotated[Template, _variables_in("plain_text")]
+PlainTextTemplateText = Annotated[TemplateText, _variables_in("plain_text")]
 BenchmarkIdTemplate = Annotated[Template, _variables_in("benchmark_id")]
 RefTemplate = Annotated[Template, _variables_in("ref")]
 RuleTemplateText = Annotated[TemplateText, _variables_in("rule")]
@@ -697,7 +697,7 @@ class PlainText(_Section):
     """One plain-text element of the Benchmark."""
 
     id: str
-    content: PlainTextTemplate = None
+    content: PlainTextTemplateText = ""
 
 
 class ProfileMapping(_Section):
@@ -1202,7 +1202,10 @@ class StyleConfig(_Section):
         spec = mapping.metadata_spec
         found: list[tuple[tuple[int | str, ...], str]] = []
         prefix_place = (*place, "metadata_spec", "namespace_prefix")
-        namespace = self.benchmark.namespaces.get(spec.namespace_prefix)
+        namespaces = self.benchmark.namespaces
+        namespace = (
+            namespaces[spec.namespace_prefix] if spec.namespace_prefix in namespaces else None
+        )
         if namespace is None:
             found.append(
                 (prefix_place, f"{spec.namespace_prefix!r} is not declared in benchmark.namespaces")

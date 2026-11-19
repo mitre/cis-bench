@@ -51,9 +51,8 @@ class TestArchitectureCompliance:
             "map_group() doesn't loop through config.group_elements"
         )
 
-        assert "for element_name, element_config in self.config.benchmark.items()" in source, (
-            "map_benchmark() doesn't loop through config.benchmark"
-        )
+        # map_benchmark's loop over the benchmark elements is checked by what it writes: a
+        # title the style changes (test_unit_helpers TestBenchmarkElements)
 
     def test_no_hard_coded_field_checks_in_new_methods(self, mapping_engine_file):
         """New methods must NOT check field names like 'if field_name == title'.

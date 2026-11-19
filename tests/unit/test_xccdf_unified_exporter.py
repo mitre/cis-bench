@@ -285,7 +285,9 @@ class TestPostProcessing:
         self, tmp_path, minimal_benchmark
     ):
         exporter = XCCDFExporter(style="cis")
-        exporter.config.benchmark["namespaces"]["ex"] = "urn:example"
+        _with_namespaces(
+            exporter, {**exporter.config.style.benchmark.namespaces, "ex": "urn:example"}
+        )
         output_file = tmp_path / "out.xml"
 
         exporter.export(minimal_benchmark, str(output_file))
@@ -307,6 +309,16 @@ class TestPostProcessing:
 
 XCCDF_1_1 = "http://checklists.nist.gov/xccdf/1.1"
 DUBLIN_CORE = "http://purl.org/dc/elements/1.1/"
+
+
+def _with_namespaces(exporter: XCCDFExporter, namespaces: dict[str, str]) -> XCCDFExporter:
+    """The exporter reading a style whose benchmark.namespaces are these, built as the model:
+    a style that extends another cannot drop or rebind a namespace it inherits."""
+    style = exporter.config.style
+    exporter.config.style = style.model_copy(
+        update={"benchmark": style.benchmark.model_copy(update={"namespaces": namespaces})}
+    )
+    return exporter
 
 
 def _declared(exporter: XCCDFExporter) -> dict[str | None, str]:
@@ -334,14 +346,22 @@ class TestRendering:
     def test_a_style_that_does_not_declare_its_xccdf_namespace_is_refused(self, minimal_benchmark):
         # xsdata would make up a prefix (ns0) for it; the style must name the namespace.
         exporter = XCCDFExporter(style="disa")
-        del exporter.config.benchmark["namespaces"]["default"]
+        _with_namespaces(
+            exporter,
+            {
+                p: uri
+                for p, uri in exporter.config.style.benchmark.namespaces.items()
+                if p != "default"
+            },
+        )
 
         with pytest.raises(ValueError, match=f"{XCCDF_1_1}.*benchmark.namespaces"):
             _rendered_root(exporter, minimal_benchmark)
 
     def test_a_style_may_declare_its_xccdf_namespace_with_a_prefix(self, minimal_benchmark):
-        exporter = XCCDFExporter(style="disa")
-        exporter.config.benchmark["namespaces"] = {"xccdf": XCCDF_1_1, "dc": DUBLIN_CORE}
+        exporter = _with_namespaces(
+            XCCDFExporter(style="disa"), {"xccdf": XCCDF_1_1, "dc": DUBLIN_CORE}
+        )
 
         root = _rendered_root(exporter, minimal_benchmark)
 
@@ -355,8 +375,9 @@ class TestRendering:
 
         xccdf_1_2 = "http://checklists.nist.gov/xccdf/1.2"
         exporter = XCCDFExporter(style="cis")
-        namespaces = exporter.config.benchmark["namespaces"]
+        namespaces = dict(exporter.config.style.benchmark.namespaces)
         namespaces["xccdf"] = namespaces.pop("default")
+        _with_namespaces(exporter, namespaces)
         output_file = tmp_path / "out.xml"
 
         exporter.export(sample_benchmark, str(output_file))
