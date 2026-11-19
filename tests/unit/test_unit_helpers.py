@@ -297,6 +297,26 @@ class TestIdentAttributes:
                 sample_recommendation, mapping
             )
 
+    @pytest.mark.parametrize(
+        "mapping",
+        [
+            pytest.param(
+                {"source_field": "", "ident_spec": {"value_template": "{item}"}}, id="no source"
+            ),
+            pytest.param({"source_field": "cis_controls", "ident_spec": {}}, id="empty spec"),
+        ],
+    )
+    def test_a_mapping_with_no_source_or_an_empty_spec_writes_no_ident(
+        self, cis_config_path, sample_recommendation, mapping
+    ):
+        # Both load; the defaults of an empty spec would otherwise write one ident per item.
+        typed = IdentFromListMapping.model_validate({"structure": "ident_from_list", **mapping})
+
+        assert (
+            MappingEngine(cis_config_path).generate_idents_from_config(sample_recommendation, typed)
+            == []
+        )
+
     def test_an_xccdf_1_1_ident_cannot_carry_namespaced_attributes(
         self, disa_config_path, sample_recommendation
     ):
