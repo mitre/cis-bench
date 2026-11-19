@@ -1095,22 +1095,6 @@ class TestDRYHelpers:
     def test_the_model_has_no_element_of_an_unknown_name(self, engine):
         assert engine.model_element("Rule", "nonexistent_field") is None
 
-    def test_element_name_to_type_name_kebab_case(self, engine):
-        """Test _element_name_to_type_name with kebab-case."""
-        type_name = engine._element_name_to_type_name("check-content")
-        assert type_name == "CheckContentType"
-
-    def test_element_name_to_type_name_lowercase(self, engine):
-        """Test _element_name_to_type_name with lowercase."""
-        type_name = engine._element_name_to_type_name("title")
-        assert type_name == "TitleType"
-
-    def test_element_name_to_type_name_already_has_type_suffix(self, engine):
-        """Test _element_name_to_type_name when name already ends with 'Type'."""
-        type_name = engine._element_name_to_type_name("TextType")
-        # Should not double-add Type
-        assert type_name == "TexttypeType" or type_name == "TextType"
-
     def test_build_field_value_simple_field(self, engine, sample_recommendation):
         """Test _build_field_value with simple field mapping."""
         field_mapping = SimpleMapping.model_validate({"source_field": "title"})

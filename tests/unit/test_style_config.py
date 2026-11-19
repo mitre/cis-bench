@@ -1446,6 +1446,23 @@ class TestChecksAgainstTheModels:
                 id="a target that holds a plain value",
             ),
             pytest.param(
+                _mapping(
+                    "structure: nested\ntarget_element: check\nchildren:\n"
+                    "  - source_field: audit\n    element: check-contnet"
+                ),
+                r"field_mappings\.title\.nested\.children\[0\]\.element",
+                r"the XCCDF 1\.2 'check' element has no 'check-contnet' element",
+                id="a nested child the target's type does not have",
+            ),
+            pytest.param(
+                _mapping(
+                    "structure: nested\nchildren:\n  - source_field: audit\n    element: check-content"
+                ),
+                r"field_mappings\.title\.nested\.children\[0\]\.element",
+                r"the XCCDF 1\.2 'title' element has no 'check-content' element",
+                id="a nested child in a target that holds no such element",
+            ),
+            pytest.param(
                 "group_elements:\n  bogus:\n    source: title\n",
                 r"group_elements\.bogus",
                 r"XCCDF 1\.2 has no 'bogus' element in Group",

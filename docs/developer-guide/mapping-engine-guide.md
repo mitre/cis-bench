@@ -697,34 +697,34 @@ transform: "none" # left out of a rule whose impact has no text
 
 ### Nested Structures
 
-Create nested XCCDF elements:
+A nested mapping writes one element holding one child element, the child filled from a
+recommendation field:
 
 ```yaml
 check:
-target_element: "check"
-structure: "nested"
-attributes:
-system: "C-{ref_normalized}"
-children:
-
-- element: "check-content-ref"
-attributes:
-name: "oval:check:{ref_normalized}:def:1"
-href: "oval-definitions.xml"
-
-- element: "check-content"
-source_field: "audit"
-transform: "none"
+  target_element: "check"
+  structure: "nested"
+  attributes:
+    system: "C-{ref_normalized}"
+  children:
+    - element: "check-content"
+      source_field: "audit"
+      transform: "none"
 ```
 
 **Output:**
 ```xml
 <check system="C-1_1_1">
-<check-content-ref
-name="oval:check:1_1_1:def:1"
-href="oval-definitions.xml"/>
-<check-content>Run: modprobe -n -v cramfs</check-content>
+  <check-content>Run: modprobe -n -v cramfs</check-content>
 </check>
+```
+
+The child's field and type come from the target's type in the XCCDF model of the style's
+version (the `check-content` element of `check`). A child the target's type does not have is
+refused when the style loads; a style that extends `cis.yaml` and misspells the child gets:
+
+```text
+style.yaml: field_mappings.check.nested.children[0].element: the XCCDF 1.2 'check' element has no 'check-contnet' element
 ```
 
 ### Custom Metadata Blocks
