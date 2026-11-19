@@ -388,7 +388,6 @@ class TestTheExportedMetadata:
         title = "Long <text> & more " + "y" * 5000
         exporter = XCCDFExporter(style="cis")
         exporter.engine = MappingEngine(style)
-        exporter.config = exporter.engine.config
         output = tmp_path / "cis.xml"
 
         exporter.export(benchmark(recommendation(control(8, "4.8", title))), str(output))
