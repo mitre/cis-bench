@@ -460,9 +460,8 @@ class EmbeddedTag(_Section):
     sources' texts, or is fixed content, and is empty when it gives neither."""
 
     tag: XmlName
-    sources: Annotated[
-        Annotated[list[TagSource], Field(min_length=1)] | None, BeforeValidator(_given)
-    ] = None
+    # No sources (sources: []) write the tag empty, as content: "" does
+    sources: Annotated[list[TagSource] | None, BeforeValidator(_given)] = None
     content: _Text = None
 
     @model_validator(mode="after")

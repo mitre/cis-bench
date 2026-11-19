@@ -920,7 +920,18 @@ class TestNestedFieldMappings:
     """The mappings with nested specifications (embedded tags, idents from a list, metadata)
     take the keys the engine reads at every level."""
 
-    @pytest.mark.parametrize("body", [_EMBEDDED, _IDENT, _METADATA])
+    @pytest.mark.parametrize(
+        "body",
+        [
+            pytest.param(_EMBEDDED, id="embedded tags"),
+            pytest.param(_IDENT, id="idents"),
+            pytest.param(_METADATA, id="metadata"),
+            pytest.param(
+                _changed(_EMBEDDED, '    content: "false"', "    sources: []"),
+                id="a tag with no sources, written empty",
+            ),
+        ],
+    )
     def test_a_mapping_the_engine_can_write_loads(self, tmp_path, body):
         style = _style(tmp_path, _mapping(body))
 
