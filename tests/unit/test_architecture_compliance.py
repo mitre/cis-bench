@@ -47,9 +47,8 @@ class TestArchitectureCompliance:
         # map_rule's loop over the field mappings is checked by what it writes: a rule from a
         # style with one mapping of each structure (test_unit_helpers TestEveryStructure), and
         # a mapping changed in a style file (test_config_driven_field_addition below)
-        assert "for element_name, element_config in self.config.group_elements.items()" in source, (
-            "map_group() doesn't loop through config.group_elements"
-        )
+        # map_group's loop over the group elements is checked by what it writes: the DISA
+        # Group title from the ref (test_unit_helpers test_disa_map_group_uses_ref_as_title)
 
         # map_benchmark's loop over the benchmark elements is checked by what it writes: a
         # title the style changes (test_unit_helpers TestBenchmarkElements)

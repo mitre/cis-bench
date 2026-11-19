@@ -50,7 +50,7 @@ def engine(cis_config_path) -> MappingEngine:
 @pytest.fixture
 def controls_mapping(engine) -> MetadataFromConfigMapping:
     """The CIS style's own CIS Controls metadata mapping."""
-    mapping = engine.config.style.field_mappings["cis_controls_metadata"]
+    mapping = engine.config.field_mappings["cis_controls_metadata"]
     assert isinstance(mapping, MetadataFromConfigMapping)
     return mapping
 

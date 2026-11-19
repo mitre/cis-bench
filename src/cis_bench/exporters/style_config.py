@@ -547,9 +547,7 @@ def _one_number_error(value: Any, handler: ValidatorFunctionWrapHandler) -> Any:
         ) from error
 
 
-_Number = Annotated[
-    float | _DecimalText | None, WrapValidator(_one_number_error), BeforeValidator(_given)
-]
+_Number = Annotated[float | _DecimalText, WrapValidator(_one_number_error), BeforeValidator(_given)]
 
 Template = Annotated[str | None, BeforeValidator(_given), AfterValidator(_known_filters)]
 """Text the engine fills with {variables} and {value|transform} filters when it writes; its
@@ -595,7 +593,7 @@ class Metadata(_Section):
     }
 
     style_name: _Text = None
-    xccdf_version: _Text = None
+    xccdf_version: Annotated[str, BeforeValidator(_given)] = "1.2"
 
 
 _RULE_ATTRIBUTE_FROM_MODEL: Final = (
@@ -611,8 +609,8 @@ class RuleDefaults(_Section):
         "role": _RULE_ATTRIBUTE_FROM_MODEL,
     }
 
-    severity: _Text = None
-    weight: _Number = None
+    severity: Annotated[str, BeforeValidator(_given)] = "medium"
+    weight: _Number = 10.0
 
 
 class IdTemplate(_Section):
@@ -638,7 +636,7 @@ class CciDeduplication(_Section):
         "rationale": _IN_A_COMMENT,
     }
 
-    enabled: _Switch = None
+    enabled: Annotated[bool, BeforeValidator(_given)] = False
 
 
 class PostProcessing(_Section):
@@ -653,7 +651,7 @@ class PostProcessing(_Section):
         "benchmark.namespaces, and all of them are declared on the root",
     }
 
-    remove_override_attr: _Switch = None
+    remove_override_attr: Annotated[bool, BeforeValidator(_given)] = True
 
 
 class GroupElement(_Section):
@@ -1045,7 +1043,13 @@ class MetadataFromConfigMapping(_FieldMapping):
 def structure(value: Any) -> str | None:
     """The structure of a field mapping: simple when it names none; None for a value that is
     no mapping."""
-    return (value.get("structure") or "simple") if isinstance(value, Mapping) else None
+    match value:
+        case {"structure": named} if named:
+            return str(named)
+        case Mapping():
+            return "simple"
+        case _:
+            return None
 
 
 FieldMapping = Annotated[
@@ -1104,8 +1108,11 @@ class StyleConfig(_Section):
     def cci_lookup(self) -> CciLookup:
         """Where the CCIs come from: the cci_lookup of the mapping named ident, or the defaults
         when that mapping is switched off or is no simple mapping."""
-        ident = self.field_mappings.get("ident")
-        return ident.cci_lookup if isinstance(ident, SimpleMapping) else CciLookup()
+        match self.field_mappings:
+            case {"ident": SimpleMapping() as ident}:
+                return ident.cci_lookup
+            case _:
+                return CciLookup()
 
     @model_validator(mode="after")
     def _prefixes_declared(self) -> Self:
@@ -1340,7 +1347,11 @@ def file_name(value: Any) -> str | None:
 def extended_style(data: Mapping[str, Any]) -> str | None:
     """The style file a style extends, as written; None when it names none, or names it in
     a way the schema refuses (validate_style reports that)."""
-    return file_name(data.get("extends"))
+    match data:
+        case {"extends": written}:
+            return file_name(written)
+        case _:
+            return None
 
 
 def _as_written(key: Any) -> str:

@@ -128,7 +128,7 @@ class TestXCCDFPostProcessor:
 
         root = etree.fromstring(self.DOCUMENT)
 
-        XCCDFPostProcessor.process(root, {"remove_override_attr": False})
+        XCCDFPostProcessor.process(root, remove_override_attr=False)
 
         assert root.find(f"{{{XCCDF_1_2}}}Rule").get("override") == "true"
 

@@ -96,7 +96,9 @@ class XCCDFExporter(BaseExporter):
 
         # Step 2: Render to a tree, apply the style's post-processing on it, write it once
         root = self._render(xccdf_benchmark)
-        XCCDFPostProcessor.process(root, self.config.post_processing)
+        XCCDFPostProcessor.process(
+            root, remove_override_attr=self.config.post_processing.remove_override_attr
+        )
         xml_output = XCCDFSerializer.tree_to_string(root)
         logger.debug(
             ngettext(
@@ -118,7 +120,7 @@ class XCCDFExporter(BaseExporter):
         namespaces (benchmark.namespaces; "default" is the default namespace) on the root."""
         ns_map = {
             (None if prefix == "default" else prefix): uri
-            for prefix, uri in self.config.namespaces.items()
+            for prefix, uri in self.config.benchmark.namespaces.items()
         }
         # The Benchmark's own namespace must be one the style names; xsdata would otherwise
         # make up a prefix (ns0) for every XCCDF element.

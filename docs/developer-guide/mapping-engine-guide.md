@@ -669,7 +669,7 @@ value of the wrong kind; a field mapping takes the keys of its `structure` (`sim
 `metadata_from_config`), and a key it leaves out takes the default the schema states
 (`transform: none`; a composite's `separator`, a blank line; an ident's
 `value_template: "{item}"`; `cci_lookup.extract: all`). The engine reads the model this last
-check built (`ConfigLoader.load(path).style`): `map_rule` and every field-mapping builder take
+check built (`ConfigLoader.load(path)` returns it): `map_rule` and every field-mapping builder take
 the mapping's model, not its YAML, and the notice, matter, reference, plain text, Benchmark
 elements, Benchmark id and profiles are built from the model's `benchmark` section. A notice
 with no `id` (or an empty one) is written with the id `terms-of-use`.
@@ -930,10 +930,10 @@ ERROR: Namespace prefix 'controls' not defined
 
 def test_load_custom_style():
 """Test loading custom style config."""
-config = load_yaml_config('configs/my_custom_style.yaml')
+config = ConfigLoader.load(Path('configs/my_custom_style.yaml'))
 
-assert config['metadata']['style_name'] == 'custom'
-assert 'title' in config['field_mappings']
+assert config.metadata.style_name == 'custom'
+assert 'title' in config.field_mappings
 ```
 
 ### Integration Test Export
@@ -1172,7 +1172,7 @@ recommendation.profiles = ["Level 1 - Server", "Level 2 - Workstation"]
 ```python
 class MappingEngine:
     def __init__(self, config_path: Path):
-        """Load the style (ConfigLoader.load) and keep its model, self.config.style."""
+        """Load the style (ConfigLoader.load) and keep its model, self.config."""
 
     def map_benchmark(self, benchmark: Benchmark, groups: list, context: dict): ...
     def map_group(self, rec: Recommendation, rule, context: dict): ...
@@ -1186,7 +1186,7 @@ class MappingEngine:
 reports a structure with no case.
 
 ```python
-for field_name, mapping in self.config.style.field_mappings.items():
+for field_name, mapping in self.config.field_mappings.items():
     if mapping is None:  # switched off with null
         continue
     target_element = mapping.target_element or field_name

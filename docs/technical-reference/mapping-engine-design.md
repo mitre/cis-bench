@@ -311,18 +311,9 @@ engine = MappingEngine.from_config('disa_style.yaml')
 xccdf_benchmark = engine.map_benchmark(pydantic_benchmark)
 """
 
-def __init__(self, config: MappingConfig):
-"""Initialize engine with loaded configuration."""
-self.config = config
-self.field_mapper = FieldMapper(config.field_mappings)
-self.transform_registry = TransformRegistry()
-self.variable_substituter = VariableSubstituter()
-
-@classmethod
-def from_config(cls, config_path: str) -> 'MappingEngine':
-"""Factory method: Load config and create engine."""
-config = ConfigLoader.load(config_path)
-return cls(config)
+def __init__(self, config_path: Path):
+"""Load the style (ConfigLoader.load) and keep its model."""
+self.config = ConfigLoader.load(config_path)  # StyleConfig, checked when it loaded
 
 def map_benchmark(self, benchmark: Benchmark) -> XCCDFBenchmark:
 """Map Pydantic Benchmark to XCCDF Benchmark.
@@ -346,54 +337,26 @@ xsdata XCCDF Rule
 """
 ```
 
-### 2. Configuration: ConfigLoader and MappingConfig
+### 2. Configuration: ConfigLoader and StyleConfig
+
+A style is one pydantic model, `StyleConfig` (`src/cis_bench/exporters/style_config.py`):
+one typed section per top-level key of the YAML (`metadata`, `benchmark`, `rule_defaults`,
+`rule_id`, `group_id`, `field_mappings`, `cci_deduplication`, `group_elements`,
+`post_processing`), each field mapping the model of its `structure`. A key the exporter does
+not read, or a value of the wrong kind, is refused when the style loads.
 
 ```python
-@dataclass
-class MappingConfig:
-"""Parsed YAML configuration.
-
-Structure matches YAML file:
-
-- metadata: Style info
-- benchmark: Benchmark-level mappings
-- rule_defaults: Default rule attributes
-- rule_id: ID generation template
-- field_mappings: Core field mapping definitions
-"""
-
-style_name: str
-xccdf_version: str
-
-benchmark_mappings: Dict[str, FieldMapping]
-rule_defaults: Dict[str, Any]
-rule_id_template: str
-
-field_mappings: Dict[str, FieldMapping]
-
-cci_lookup: Optional[CCILookupConfig] = None
-
 class ConfigLoader:
-"""Load and validate YAML configuration files."""
+    @staticmethod
+    def load(config_path: Path) -> StyleConfig:
+        """Load a style and its extends chain, root first: each file is merged onto the
+        style built so far and that style is checked against the schema and the XCCDF models
+        of its version; the model of the last check is returned.
 
-@staticmethod
-def load(config_path: str) -> MappingConfig:
-"""Load YAML and parse into MappingConfig.
-
-Validates:
-
-- YAML syntax
-- Required sections present
-- Field mapping structure
-- Transform definitions valid
-
-Raises:
-ConfigValidationError: If config is invalid
-"""
-
-@staticmethod
-def validate_config(config_dict: dict) -> None:
-"""Validate configuration structure."""
+        Raises:
+            ValueError: Circular inheritance, or a style the schema refuses (one line per
+                mistake: the file, the dotted path of the key, what is wrong).
+        """
 ```
 
 ### 3. Field Mapping: FieldMapper
@@ -1041,8 +1004,9 @@ return "".join(xml_parts)
 with open('disa_style.yaml') as f:
 config_dict = yaml.safe_load(f)
 
-# 2. Parse into structured objects
-config = MappingConfig(
+# 2. Parse into structured objects (illustration; ConfigLoader.load(path) returns the
+#    checked StyleConfig model that holds these)
+config = dict(
 style_name=config_dict['metadata']['style_name'],
 benchmark_mappings={
 'id': FieldMapping(
@@ -1415,8 +1379,8 @@ assert 'unknown_transform' in str(exc.value)
 class MappingEngine:
 """Engine with caching for expensive operations."""
 
-def __init__(self, config: MappingConfig):
-self.config = config
+def __init__(self, config_path: Path):
+self.config = ConfigLoader.load(config_path)
 self._platform_cache = {}
 self._cci_cache = {}
 
@@ -1449,25 +1413,18 @@ for rec in benchmark.recommendations:
 cis_bench/
 ├── exporters/
 │ ├── configs/
-│ │ ├── disa_style.yaml
-│ │ ├── cis_native_style.yaml
-│ │ └── custom_style.yaml
+│ │ ├── base.yaml # what every style extends
+│ │ └── styles/
+│ │     ├── disa.yaml
+│ │     └── cis.yaml
 │ │
-│ ├── mapping/
-│ │ ├── __init__.py
-│ │ ├── engine.py # MappingEngine
-│ │ ├── config.py # ConfigLoader, MappingConfig
-│ │ ├── field_mapper.py # FieldMapper
-│ │ ├── transforms.py # TransformRegistry, built-in transforms
-│ │ ├── variables.py # VariableSubstituter, MappingContext
-│ │ ├── strategies.py # Mapping strategies
-│ │ └── errors.py # Exception classes
-│ │
-│ └── xccdf_exporter.py # Uses MappingEngine
+│ ├── mapping_engine.py # ConfigLoader, TransformRegistry, VariableSubstituter, MappingEngine
+│ ├── style_config.py # StyleConfig (the style schema), StyleModels
+│ └── xccdf_unified_exporter.py # XCCDFExporter, uses MappingEngine
 │
 └── utils/
 ├── html_parser.py # HTMLCleaner (HTML table and reference parsers)
-└── cci_lookup.py # CCILookupService (used by strategies)
+└── cci_lookup.py # CCILookupService
 ```
 
 ## Summary
