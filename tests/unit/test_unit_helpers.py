@@ -263,12 +263,10 @@ class TestDottedNumberPath:
 def _with_benchmark(engine: MappingEngine, **entries: dict) -> MappingEngine:
     """The engine reading a style whose benchmark section has these entries, each built as
     its model and replacing the style's entry whole (a style file written without extends)."""
-    style = engine.config.style
+    style = engine.config
     fields = type(style.benchmark).model_fields
     built = {name: fields[name].annotation.model_validate(value) for name, value in entries.items()}
-    engine.config.style = style.model_copy(
-        update={"benchmark": style.benchmark.model_copy(update=built)}
-    )
+    engine.config = style.model_copy(update={"benchmark": style.benchmark.model_copy(update=built)})
     return engine
 
 
@@ -618,8 +616,8 @@ class TestStyleInheritance:
 
         child = self._child(tmp_path, cis_config_path)
 
-        assert child.namespaces == parent.namespaces
-        assert child.namespaces["cc8"] == "http://cisecurity.org/20-cc/v8.0"
+        assert child.benchmark.namespaces == parent.benchmark.namespaces
+        assert child.benchmark.namespaces["cc8"] == "http://cisecurity.org/20-cc/v8.0"
 
     def test_a_child_adds_and_overrides_namespaces(self, tmp_path, cis_config_path):
         child = self._child(
@@ -628,9 +626,9 @@ class TestStyleInheritance:
             "benchmark:\n  namespaces:\n    cc8: urn:example:cc8\n    ex: urn:example\n",
         )
 
-        assert child.namespaces["cc8"] == "urn:example:cc8"
-        assert child.namespaces["ex"] == "urn:example"
-        assert child.namespaces["cc7"] == "http://cisecurity.org/20-cc/v7.0"
+        assert child.benchmark.namespaces["cc8"] == "urn:example:cc8"
+        assert child.benchmark.namespaces["ex"] == "urn:example"
+        assert child.benchmark.namespaces["cc7"] == "http://cisecurity.org/20-cc/v7.0"
 
     def test_a_top_level_namespaces_section_is_refused(self, tmp_path):
         # Namespaces live in benchmark.namespaces; a top-level section would be ignored.
@@ -667,8 +665,8 @@ class TestStyleInheritance:
             tmp_path, cis_config_path, "post_processing:\n  remove_override_attr: false\n"
         )
 
-        assert parent.post_processing == {"remove_override_attr": True}
-        assert child.post_processing == {"remove_override_attr": False}
+        assert parent.post_processing.remove_override_attr is True
+        assert child.post_processing.remove_override_attr is False
 
 
 class TestElementTypesComeFromTheModels:
@@ -795,7 +793,7 @@ class TestDeclaredNamespaces:
             'benchmark:\n  namespaces:\n    ex: "urn:example"\n'
         )
 
-        assert ConfigLoader.load(style).namespaces["ex"] == "urn:example"
+        assert ConfigLoader.load(style).benchmark.namespaces["ex"] == "urn:example"
 
 
 class TestPostProcessingSettings:
@@ -831,7 +829,7 @@ class TestPostProcessingSettings:
     def test_the_settings_the_exporter_reads_load(self, tmp_path):
         style = self._style(tmp_path, "  remove_override_attr: false\n")
 
-        assert ConfigLoader.load(style).post_processing == {"remove_override_attr": False}
+        assert ConfigLoader.load(style).post_processing.remove_override_attr is False
 
 
 class TestVariableSubstituter:
@@ -1117,7 +1115,7 @@ class TestDRYHelpers:
 
     def test_build_field_value_embedded_xml(self, engine, sample_recommendation):
         """Test _build_field_value with embedded_xml_tags structure."""
-        field_mapping = engine.config.style.field_mappings["description"]
+        field_mapping = engine.config.field_mappings["description"]
         context = {"ref_normalized": "3_1_1"}
 
         value = engine._build_field_value(field_mapping, sample_recommendation, context)
@@ -1379,7 +1377,7 @@ class TestIntegrationScenarios:
         tags gets the stored text."""
         from html import unescape
 
-        components = engine.config.style.field_mappings["description"].components
+        components = engine.config.field_mappings["description"].components
 
         result = engine.create_embedded_xml_tags(components, sample_recommendation)
 
@@ -1458,7 +1456,7 @@ class TestIntegrationScenarios:
 
     def test_variable_substitution_in_rule_id(self, engine, sample_context):
         """Test that rule ID template substitution works correctly."""
-        template = engine.config.rule_id.get("template", "CIS-{ref_normalized}_rule")
+        template = engine.config.rule_id.template or "CIS-{ref_normalized}_rule"
         result = VariableSubstituter.substitute(template, sample_context)
 
         # DISA style uses stig_number (030101), CIS style uses ref_normalized (3_1_1)
@@ -1522,7 +1520,7 @@ class TestIDFormatValidation:
 
     def test_disa_group_id_format_v_prefix(self, disa_engine):
         """DISA Group ID must start with V- prefix."""
-        template = disa_engine.config.group_id.get("template", "")
+        template = disa_engine.config.group_id.template or ""
         context = {"stig_number": "030101", "ref_normalized": "3_1_1", "platform": "eks"}
         group_id = VariableSubstituter.substitute(template, context)
 
@@ -1532,7 +1530,7 @@ class TestIDFormatValidation:
         """DISA Group ID must have numeric portion after V-."""
         import re
 
-        template = disa_engine.config.group_id.get("template", "")
+        template = disa_engine.config.group_id.template or ""
         context = {"stig_number": "030101", "ref_normalized": "3_1_1", "platform": "eks"}
         group_id = VariableSubstituter.substitute(template, context)
 
@@ -1542,7 +1540,7 @@ class TestIDFormatValidation:
 
     def test_disa_rule_id_format_sv_prefix(self, disa_engine):
         """DISA Rule ID must start with SV- prefix."""
-        template = disa_engine.config.rule_id.get("template", "")
+        template = disa_engine.config.rule_id.template or ""
         context = {"stig_number": "030101", "ref_normalized": "3_1_1", "platform": "eks"}
         rule_id = VariableSubstituter.substitute(template, context)
 
@@ -1552,7 +1550,7 @@ class TestIDFormatValidation:
         """DISA Rule ID must have rN_rule suffix."""
         import re
 
-        template = disa_engine.config.rule_id.get("template", "")
+        template = disa_engine.config.rule_id.template or ""
         context = {"stig_number": "030101", "ref_normalized": "3_1_1", "platform": "eks"}
         rule_id = VariableSubstituter.substitute(template, context)
 
@@ -1578,8 +1576,8 @@ class TestIDFormatValidation:
     def test_disa_ids_are_unique_for_different_refs(self, disa_engine):
         """Different CIS refs should produce different DISA IDs."""
         refs = ["1.1.1", "1.1.2", "2.1.1", "3.2.1"]
-        group_template = disa_engine.config.group_id.get("template", "")
-        rule_template = disa_engine.config.rule_id.get("template", "")
+        group_template = disa_engine.config.group_id.template or ""
+        rule_template = disa_engine.config.rule_id.template or ""
 
         group_ids = set()
         rule_ids = set()
@@ -1601,7 +1599,7 @@ class TestIDFormatValidation:
 
     def test_cis_group_id_format_prefix(self, cis_engine):
         """CIS Group ID must have cisecurity.benchmarks prefix."""
-        template = cis_engine.config.group_id.get("template", "")
+        template = cis_engine.config.group_id.template or ""
         context = {"stig_number": "030101", "ref_normalized": "3_1_1", "platform": "eks"}
         group_id = VariableSubstituter.substitute(template, context)
 
@@ -1612,7 +1610,7 @@ class TestIDFormatValidation:
 
     def test_cis_group_id_format_contains_ref(self, cis_engine):
         """CIS Group ID must contain the normalized ref."""
-        template = cis_engine.config.group_id.get("template", "")
+        template = cis_engine.config.group_id.template or ""
         context = {"stig_number": "030101", "ref_normalized": "3_1_1", "platform": "eks"}
         group_id = VariableSubstituter.substitute(template, context)
 
@@ -1622,7 +1620,7 @@ class TestIDFormatValidation:
 
     def test_cis_rule_id_format_prefix(self, cis_engine):
         """CIS Rule ID must have cisecurity.benchmarks prefix."""
-        template = cis_engine.config.rule_id.get("template", "")
+        template = cis_engine.config.rule_id.template or ""
         context = {"stig_number": "030101", "ref_normalized": "3_1_1", "platform": "eks"}
         rule_id = VariableSubstituter.substitute(template, context)
 
@@ -1633,7 +1631,7 @@ class TestIDFormatValidation:
 
     def test_cis_rule_id_format_contains_ref(self, cis_engine):
         """CIS Rule ID must contain the normalized ref."""
-        template = cis_engine.config.rule_id.get("template", "")
+        template = cis_engine.config.rule_id.template or ""
         context = {"stig_number": "030101", "ref_normalized": "3_1_1", "platform": "eks"}
         rule_id = VariableSubstituter.substitute(template, context)
 
@@ -1644,8 +1642,8 @@ class TestIDFormatValidation:
     def test_cis_ids_are_unique_for_different_refs(self, cis_engine):
         """Different CIS refs should produce different CIS IDs."""
         refs = ["1.1.1", "1.1.2", "2.1.1", "3.2.1"]
-        group_template = cis_engine.config.group_id.get("template", "")
-        rule_template = cis_engine.config.rule_id.get("template", "")
+        group_template = cis_engine.config.group_id.template or ""
+        rule_template = cis_engine.config.rule_id.template or ""
 
         group_ids = set()
         rule_ids = set()
@@ -1768,7 +1766,7 @@ class TestIDFormatValidation:
 
     def test_disa_profile_selects_use_sv_rule_ids(self, disa_engine, synthetic_complete_benchmark):
         """Profile select elements should reference SV- rule IDs in DISA style."""
-        profile_config = disa_engine.config.style.benchmark.profiles
+        profile_config = disa_engine.config.benchmark.profiles
 
         # Generate profiles
         profiles = disa_engine.generate_profiles_from_rules(
@@ -1789,7 +1787,7 @@ class TestIDFormatValidation:
         self, cis_engine, synthetic_complete_benchmark
     ):
         """Profile select elements should reference cisecurity.benchmarks rule IDs in CIS style."""
-        profile_config = cis_engine.config.style.benchmark.profiles
+        profile_config = cis_engine.config.benchmark.profiles
 
         # Generate profiles
         profiles = cis_engine.generate_profiles_from_rules(
@@ -1813,10 +1811,10 @@ class TestIDFormatValidation:
         context = {"stig_number": "030101", "ref_normalized": "3_1_1", "platform": "eks"}
 
         disa_group = VariableSubstituter.substitute(
-            disa_engine.config.group_id.get("template", ""), context
+            (disa_engine.config.group_id.template or ""), context
         )
         cis_group = VariableSubstituter.substitute(
-            cis_engine.config.group_id.get("template", ""), context
+            (cis_engine.config.group_id.template or ""), context
         )
 
         # They should be different
@@ -1845,7 +1843,7 @@ class TestDISAVulcanCompatibility:
     def test_disa_benchmark_id_is_short_format(self, disa_config_path):
         """DISA benchmark ID template should produce short IDs for Vulcan."""
         engine = MappingEngine(disa_config_path)
-        id_template = engine.config.style.benchmark.id_template or ""
+        id_template = engine.config.benchmark.id_template or ""
 
         # Template should NOT contain full xccdf namespace
         assert "xccdf_org.cisecurity_benchmark" not in id_template, (
@@ -1863,7 +1861,7 @@ class TestDISAVulcanCompatibility:
     def test_disa_version_transform_strips_v_prefix(self, disa_config_path):
         """DISA version config should use strip_version_prefix transform."""
         engine = MappingEngine(disa_config_path)
-        version_config = (engine.config.style.benchmark.__pydantic_extra__ or {})["version"]
+        version_config = (engine.config.benchmark.__pydantic_extra__ or {})["version"]
 
         transform = version_config.transform
         assert transform == "strip_version_prefix", (
@@ -1873,18 +1871,14 @@ class TestDISAVulcanCompatibility:
     def test_disa_group_title_has_source(self, disa_config_path):
         """DISA group title should have a source field (not default placeholder)."""
         engine = MappingEngine(disa_config_path)
-        title_config = engine.config.group_elements.get("title", {})
-
-        source = title_config.get("source")
+        source = engine.config.group_elements["title"].source
         assert source is not None, "DISA group title should have a source field"
         assert source == "ref", "DISA group title source should be 'ref'"
 
     def test_disa_group_description_has_source(self, disa_config_path):
         """DISA group description should have a source field."""
         engine = MappingEngine(disa_config_path)
-        desc_config = engine.config.group_elements.get("description", {})
-
-        source = desc_config.get("source")
+        source = engine.config.group_elements["description"].source
         assert source is not None, "DISA group description should have a source field"
         assert source == "title", "DISA group description source should be 'title'"
 
@@ -2281,7 +2275,7 @@ class TestEmbeddedTagsAreCheckedWhenTheStyleLoads:
     def test_the_shipped_disa_style_passes_the_checks(self, disa_config_path):
         engine = MappingEngine(disa_config_path)
 
-        tags = [c.tag for c in engine.config.style.field_mappings["description"].components]
+        tags = [c.tag for c in engine.config.field_mappings["description"].components]
         assert tags[0] == "VulnDiscussion" and len(tags) == 11
 
 

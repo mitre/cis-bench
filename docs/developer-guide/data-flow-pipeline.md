@@ -280,16 +280,16 @@ system_uri: "http://cyber.mil/cci"
 
 **Step 1: Load Configuration**
 ```python
-config = load_yaml_config('disa_style.yaml')
-engine = MappingEngine(config)
+engine = MappingEngine(Path("src/cis_bench/exporters/configs/styles/disa.yaml"))
+# engine.config is the StyleConfig model ConfigLoader.load built and checked
 ```
 
 **Step 2: Loop Through Field Mappings**
 ```python
-for field_name, field_config in config['field_mappings'].items():
-strategy = FieldMappingStrategy.create(field_config)
-value = strategy.apply(recommendation, field_config)
-xccdf_rule[field_name] = value
+for field_name, mapping in engine.config.field_mappings.items():
+    # each mapping is the model of its structure; map_rule matches on it
+    # (SimpleMapping, CompositeMapping, NestedMapping, DublinCoreMapping, ...)
+    ...
 ```
 
 **Step 3: Apply Transformations**

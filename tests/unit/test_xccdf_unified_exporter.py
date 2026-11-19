@@ -11,6 +11,7 @@ Tests for XCCDFExporter class covering:
 import pytest
 from lxml import etree
 
+from cis_bench.exporters.mapping_engine import MappingEngine
 from cis_bench.exporters.xccdf_unified_exporter import XCCDFExporter
 from cis_bench.models.benchmark import Benchmark, CISControl, Recommendation
 
@@ -285,23 +286,28 @@ class TestPostProcessing:
         self, tmp_path, minimal_benchmark
     ):
         exporter = XCCDFExporter(style="cis")
-        _with_namespaces(
-            exporter, {**exporter.config.style.benchmark.namespaces, "ex": "urn:example"}
-        )
+        _with_namespaces(exporter, {**exporter.config.benchmark.namespaces, "ex": "urn:example"})
         output_file = tmp_path / "out.xml"
 
         exporter.export(minimal_benchmark, str(output_file))
 
         assert etree.parse(str(output_file)).getroot().nsmap.get("ex") == "urn:example"
 
-    def test_post_processing_follows_the_loaded_config(self, tmp_path, sample_benchmark):
+    def test_post_processing_follows_the_loaded_config(
+        self, tmp_path, sample_benchmark, cis_config_path
+    ):
         def override_attributes(exporter):
             output_file = tmp_path / "out.xml"
             exporter.export(sample_benchmark, str(output_file))
             return etree.parse(str(output_file)).getroot().xpath("//@override")
 
+        keeping = tmp_path / "keeping_overrides.yaml"
+        keeping.write_text(
+            f"extends: {cis_config_path}\npost_processing:\n  remove_override_attr: false\n"
+        )
         keeping_overrides = XCCDFExporter(style="cis")
-        keeping_overrides.config.post_processing["remove_override_attr"] = False
+        keeping_overrides.engine = MappingEngine(keeping)
+        keeping_overrides.config = keeping_overrides.engine.config
 
         assert override_attributes(XCCDFExporter(style="cis")) == []
         assert override_attributes(keeping_overrides)
@@ -314,8 +320,8 @@ DUBLIN_CORE = "http://purl.org/dc/elements/1.1/"
 def _with_namespaces(exporter: XCCDFExporter, namespaces: dict[str, str]) -> XCCDFExporter:
     """The exporter reading a style whose benchmark.namespaces are these, built as the model:
     a style that extends another cannot drop or rebind a namespace it inherits."""
-    style = exporter.config.style
-    exporter.config.style = style.model_copy(
+    style = exporter.config
+    exporter.config = exporter.engine.config = style.model_copy(
         update={"benchmark": style.benchmark.model_copy(update={"namespaces": namespaces})}
     )
     return exporter
@@ -325,7 +331,7 @@ def _declared(exporter: XCCDFExporter) -> dict[str | None, str]:
     """The style's namespaces as an lxml nsmap ("default" is the default namespace)."""
     return {
         (None if prefix == "default" else prefix): uri
-        for prefix, uri in exporter.config.namespaces.items()
+        for prefix, uri in exporter.config.benchmark.namespaces.items()
     }
 
 
@@ -348,11 +354,7 @@ class TestRendering:
         exporter = XCCDFExporter(style="disa")
         _with_namespaces(
             exporter,
-            {
-                p: uri
-                for p, uri in exporter.config.style.benchmark.namespaces.items()
-                if p != "default"
-            },
+            {p: uri for p, uri in exporter.config.benchmark.namespaces.items() if p != "default"},
         )
 
         with pytest.raises(ValueError, match=f"{XCCDF_1_1}.*benchmark.namespaces"):
@@ -375,7 +377,7 @@ class TestRendering:
 
         xccdf_1_2 = "http://checklists.nist.gov/xccdf/1.2"
         exporter = XCCDFExporter(style="cis")
-        namespaces = dict(exporter.config.style.benchmark.namespaces)
+        namespaces = dict(exporter.config.benchmark.namespaces)
         namespaces["xccdf"] = namespaces.pop("default")
         _with_namespaces(exporter, namespaces)
         output_file = tmp_path / "out.xml"

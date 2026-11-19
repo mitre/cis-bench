@@ -29,7 +29,7 @@ import re
 import string
 import unicodedata
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field, fields
+from dataclasses import fields
 from gettext import ngettext
 from pathlib import Path
 from types import ModuleType
@@ -49,6 +49,8 @@ from cis_bench.exporters.style_config import (
     EmbeddedTag,
     EmbeddedXmlTagsMapping,
     IdentFromListMapping,
+    IdTemplate,
+    Metadata,
     MetadataElement,
     MetadataFromConfigMapping,
     NestedMapping,
@@ -76,35 +78,6 @@ from cis_bench.utils.xml_utils import ncname_slug
 
 # Set up logger
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class MappingConfig:
-    """Loaded mapping configuration: one field per top-level section of a style's YAML, and
-    the merged style's model (style).
-
-    ConfigLoader fills and inherits (extends) every section field the same way, so a section
-    added here is loaded and inherited without further code.
-    """
-
-    metadata: dict[str, Any] = field(default_factory=dict)
-    benchmark: dict[str, Any] = field(default_factory=dict)
-    rule_defaults: dict[str, Any] = field(default_factory=dict)
-    rule_id: dict[str, str] = field(default_factory=dict)
-    group_id: dict[str, str] = field(default_factory=dict)  # Group ID template configuration
-    field_mappings: dict[str, Any] = field(default_factory=dict)
-    cci_deduplication: dict[str, Any] = field(default_factory=dict)
-    # What each Group element is filled from (its type comes from the XCCDF model)
-    group_elements: dict[str, Any] = field(default_factory=dict)
-    # How the serialized XML is finished (remove_override_attr)
-    post_processing: dict[str, Any] = field(default_factory=dict)
-    # The whole style as the schema built it when it loaded (no section of the YAML)
-    style: StyleConfig = field(default_factory=StyleConfig)
-
-    @property
-    def namespaces(self) -> dict[str, str]:
-        """Prefix -> namespace URI, declared in benchmark.namespaces."""
-        return dict(self.style.benchmark.namespaces)
 
 
 class TransformRegistry:
@@ -315,15 +288,19 @@ class ConfigLoader:
         """The models of the XCCDF version a style names (1.2 when it names none), for the
         checks that need them; None for a version with no models, which MappingEngine
         refuses when it starts."""
-        metadata = config_data.get("metadata")
-        version = metadata.get("xccdf_version", "1.2") if isinstance(metadata, dict) else "1.2"
+        # Still YAML as written: the schema checks it after this file is merged
+        match config_data:
+            case {"metadata": {"xccdf_version": version}}:
+                pass
+            case _:
+                version = Metadata.model_fields["xccdf_version"].default
         try:
             return style_models(str(version))
         except ValueError:
             return None
 
     @staticmethod
-    def load(config_path: Path) -> MappingConfig:
+    def load(config_path: Path) -> StyleConfig:
         """Load mapping configuration from YAML file with inheritance support.
 
         Config files can specify 'extends: base_style.yaml' to inherit from another file.
@@ -338,7 +315,7 @@ class ConfigLoader:
             config_path: Path to the configuration file
 
         Returns:
-            MappingConfig with merged configuration, and the merged style's model (style)
+            The merged style as the schema built it (the model of the last file's check)
 
         Raises:
             ValueError: Circular inheritance, or a style the schema refuses
@@ -358,14 +335,7 @@ class ConfigLoader:
                 name, {**config_data, **extends}, ConfigLoader._models_of(config_data)
             )
             logger.debug(f"Loaded {name}")
-        return MappingConfig(
-            **{
-                section.name: config_data[section.name]
-                for section in fields(MappingConfig)
-                if section.name in config_data
-            },
-            style=style,
-        )
+        return style
 
 
 class VariableSubstituter:
@@ -601,14 +571,14 @@ class MappingEngine:
         """
         self.config = ConfigLoader.load(config_path)
         self.cci_service = self._cci_service(config_path)
-        self.style_models = style_models(self.config.metadata.get("xccdf_version", "1.2"))
+        self.style_models = style_models(self.config.metadata.xccdf_version)
         self.xccdf_models: ModuleType = self.style_models.xccdf
         self.xccdf_version = self.style_models.xccdf_version
         self.xccdf_namespace = self.style_models.xccdf_namespace
         # Mapping name -> (Rule field, the type that holds the metadata content there, that
         # type's wildcard field); every metadata mapping has one (checked when it loaded)
         self._metadata_holders: dict[str, tuple[str, type, str]] = {}
-        for name, mapping in self.config.style.field_mappings.items():
+        for name, mapping in self.config.field_mappings.items():
             if isinstance(mapping, MetadataFromConfigMapping):
                 target = mapping.target_element or name
                 holder = self.style_models.metadata_holder(target)
@@ -718,7 +688,7 @@ class MappingEngine:
             ValueError: The mapping file is no file name, cannot be read, or is not a CCI
                 mapping file; the error names the style and the mapping file.
         """
-        written = self.config.style.cci_lookup.mapping_file
+        written = self.config.cci_lookup.mapping_file
         if written is None:
             return cci_service_for()
         name = file_name(written)
@@ -740,12 +710,12 @@ class MappingEngine:
         Returns:
             Tuple of (cci_list, extra_nist_list)
         """
-        if not self.config.cci_deduplication.get("enabled"):
+        if not self.config.cci_deduplication.enabled:
             # No deduplication - return empty CCIs, all NIST as extras
             return [], rec.nist_controls
 
         # The ident mapping's lookup: which CCIs of a control to take (extract)
-        cci_lookup_config = self.config.style.cci_lookup
+        cci_lookup_config = self.config.cci_lookup
 
         # The CIS controls come from the field the style names. The mapping file is keyed
         # by one CIS Controls version, named in the style (cci_lookup.cis_controls_version);
@@ -785,7 +755,7 @@ class MappingEngine:
         (lang, written as xml:lang) and its variable-substituted text from the style's
         benchmark.notice, keeping the content empty when it is left out or blank.
         """
-        notice_config = self.config.style.benchmark.notice
+        notice_config = self.config.benchmark.notice
 
         NoticeType = self.element_type("Benchmark", "notice")
 
@@ -846,7 +816,7 @@ class MappingEngine:
         elements = []
         for dc in dc_elements_config:
             prefix, _, local_name = dc.element.partition(":")
-            namespaces = self.config.style.benchmark.namespaces
+            namespaces = self.config.benchmark.namespaces
             namespace = namespaces[prefix] if prefix in namespaces else None
             if not namespace:
                 raise ValueError(
@@ -862,7 +832,7 @@ class MappingEngine:
         benchmark.reference.attributes.href (the benchmark's URL when the style names none)
         and the Dublin Core elements of benchmark.reference.dc_elements (none when the style
         declares none)."""
-        reference_config = self.config.style.benchmark.reference
+        reference_config = self.config.benchmark.reference
         href_template = reference_config.attributes.href
         values = {"benchmark": benchmark}
         href = (
@@ -877,7 +847,7 @@ class MappingEngine:
 
         Per DISA conventions: release-info, generator, conventionsVersion
         """
-        plain_text_configs = self.config.style.benchmark.plain_text
+        plain_text_configs = self.config.benchmark.plain_text
         PlainTextType = self.get_xccdf_class("PlainTextType")
         plain_texts = []
 
@@ -1012,7 +982,8 @@ class MappingEngine:
             ValueError: The style has no template, the template names a value the ref does
                 not give (VariableSubstituter refuses it), or the template gives no id.
         """
-        template = (getattr(self.config, section) or {}).get("template")
+        id_template: IdTemplate = getattr(self.config, section)
+        template = id_template.template
         if not template:
             raise ValueError(f"the style has no {section}.template")
         made = VariableSubstituter.substitute(template, self.ref_values(ref))
@@ -1069,16 +1040,16 @@ class MappingEngine:
 
         # Start with required fields and defaults
         # Note: status belongs at Benchmark level, not Rule level
-        rule_fields = {
+        rule_fields: dict[str, Any] = {
             "id": rule_id,
-            "severity": self.config.rule_defaults.get("severity", "medium"),
-            "weight": float(self.config.rule_defaults.get("weight", "10.0")),
+            "severity": self.config.rule_defaults.severity,
+            "weight": float(self.config.rule_defaults.weight),
         }
 
         # One element per field mapping, in the style's order, built the way its structure
         # says; the style was checked against the XCCDF models when it loaded, and a mapping
         # set to null is switched off
-        for field_name, mapping in self.config.style.field_mappings.items():
+        for field_name, mapping in self.config.field_mappings.items():
             if mapping is None:
                 continue
             target_element = mapping.target_element or field_name
@@ -1261,16 +1232,20 @@ class MappingEngine:
             ElementType = self.element_type("Group", element_name)
 
             # Get source value
-            source = element_config.get("source")
+            source = element_config.source
             if source:
                 # Source from rec - use getattr for all fields including 'ref'
                 value = getattr(rec, source, None)
             else:
-                # Static content (like GroupDescription)
-                value = element_config.get("content", "<GroupDescription></GroupDescription>")
+                # Fixed content; with none, the engine writes a placeholder of its own
+                value = (
+                    element_config.content
+                    if element_config.content is not None
+                    else "<GroupDescription></GroupDescription>"
+                )
 
             # Apply transform if specified
-            transform = element_config.get("transform", "none")
+            transform = element_config.transform
             if transform != "none" and value:
                 value = TransformRegistry.apply(transform, value)
 
@@ -1302,10 +1277,10 @@ class MappingEngine:
         # that come from free text are reduced to NCName-safe segments so the
         # result satisfies XCCDF's benchmarkIdType whatever the title or
         # version contains.
-        bench_id_template = self.config.style.benchmark.id_template
+        bench_id_template = self.config.benchmark.id_template
         if not bench_id_template:
             raise ExportError(
-                f"Style '{self.config.metadata.get('style_name', '?')}' has no "
+                f"Style '{self.config.metadata.style_name or '?'}' has no "
                 "benchmark.id_template; every style must name its Benchmark"
             )
         bench_id = VariableSubstituter.substitute(
@@ -1328,7 +1303,7 @@ class MappingEngine:
         # section but its named keys); notice, matter, reference, plain text and profiles
         # are built by their own methods below
         for element_name, element_config in (
-            self.config.style.benchmark.__pydantic_extra__ or {}
+            self.config.benchmark.__pydantic_extra__ or {}
         ).items():
             source = element_config.source
             if source:
@@ -1365,7 +1340,7 @@ class MappingEngine:
         benchmark_fields["reference"] = [ReferenceType(href=ref_href, content=ref_content)]
 
         # Generate Profile elements if configured
-        profile_config = self.config.style.benchmark.profiles
+        profile_config = self.config.benchmark.profiles
         if profile_config.generate_from_rules:
             # Need to pass all recommendations to build profile select lists
             # Get recommendations from context (passed by exporter)
@@ -1501,7 +1476,7 @@ class MappingEngine:
             ValueError: The prefix is not declared, so the attribute could not be written
                 in a namespace a reader would recognise.
         """
-        declared = self.config.namespaces
+        declared = self.config.benchmark.namespaces
         if prefix not in declared:
             raise ValueError(
                 f"namespace prefix {prefix!r} is not declared in the style's namespaces"

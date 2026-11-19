@@ -77,16 +77,14 @@ class XCCDFPostProcessor:
     post_processing settings. It changes attributes only; namespaces are the serializer's."""
 
     @staticmethod
-    def process(root: etree._Element, post_processing_config: dict | None = None) -> None:
+    def process(root: etree._Element, remove_override_attr: bool = True) -> None:
         """Apply the style's post-processing to the rendered tree, in place.
 
         Args:
             root: The root of the tree as xsdata rendered it
-            post_processing_config: The style's post_processing settings
-                - remove_override_attr: bool (default: True)
+            remove_override_attr: The style's post_processing.remove_override_attr
         """
-        config = post_processing_config or {}
-        if config.get("remove_override_attr", True):
+        if remove_override_attr:
             # override is an XCCDF attribute: only the document's own XCCDF elements lose it,
             # never content of another namespace (a Rule's metadata)
             xccdf_namespace = etree.QName(root).namespace or ""

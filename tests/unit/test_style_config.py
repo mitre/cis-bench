@@ -193,8 +193,8 @@ class TestValueKinds:
         as_text = _style(tmp_path, 'rule_defaults:\n  weight: "10.0"\n', name="text.yaml")
         as_number = _style(tmp_path, "rule_defaults:\n  weight: 10.0\n", name="number.yaml")
 
-        assert ConfigLoader.load(as_text).rule_defaults == {"weight": "10.0"}
-        assert ConfigLoader.load(as_number).rule_defaults == {"weight": 10.0}
+        assert ConfigLoader.load(as_text).rule_defaults.weight == "10.0"
+        assert ConfigLoader.load(as_number).rule_defaults.weight == 10.0
 
 
 class TestXmlName:
@@ -231,7 +231,7 @@ class TestStylesInTheRepository:
     def test_the_style_loads(self, project_root, relative):
         config = ConfigLoader.load(project_root / relative)
 
-        assert config.rule_defaults["severity"] == "medium"
+        assert config.rule_defaults.severity == "medium"
 
 
 class TestInheritedStyles:
@@ -306,7 +306,7 @@ class TestInheritedStyles:
             "field_mappings:\n  title:\n    source_field: description\n  rationale: null\n",
         )
 
-        mappings = ConfigLoader.load(child).style.field_mappings
+        mappings = ConfigLoader.load(child).field_mappings
 
         assert isinstance(mappings["title"], SimpleMapping)
         assert mappings["title"].source_field == "description"
@@ -587,10 +587,8 @@ class TestBenchmarkSection:
         child = tmp_path / "child.yaml"
         child.write_text(f"extends: {parent}\nbenchmark:\n  title:\n    prepend_text: 'CIS: '\n")
 
-        assert ConfigLoader.load(child).benchmark["title"] == {
-            "source": "title",
-            "prepend_text": "CIS: ",
-        }
+        title = (ConfigLoader.load(child).benchmark.__pydantic_extra__ or {})["title"]
+        assert (title.source, title.prepend_text) == ("title", "CIS: ")
 
     def test_an_element_no_file_of_the_chain_gives_a_source_is_refused_with_its_file(
         self, tmp_path
@@ -679,9 +677,10 @@ class TestBenchmarkSection:
             "      - element: dc:publisher\n        content: x\n"
         )
 
-        assert ConfigLoader.load(child).benchmark["reference"]["dc_elements"] == [
-            {"element": "dc:publisher", "content": "x"}
-        ]
+        assert [
+            (dc.element, dc.content)
+            for dc in ConfigLoader.load(child).benchmark.reference.dc_elements
+        ] == [("dc:publisher", "x")]
 
 
 def _mapping(body: str) -> str:
@@ -834,9 +833,9 @@ class TestFieldMappings:
     def test_a_simple_mapping_takes_any_attribute(self, tmp_path):
         style = _style(tmp_path, _mapping("attributes:\n  fixref: F-{ref_normalized}"))
 
-        assert ConfigLoader.load(style).field_mappings["title"]["attributes"] == {
-            "fixref": "F-{ref_normalized}"
-        }
+        mapping = ConfigLoader.load(style).field_mappings["title"]
+        assert isinstance(mapping, SimpleMapping)
+        assert mapping.attributes == {"fixref": "F-{ref_normalized}"}
 
     def test_a_mapping_of_any_structure_is_checked_against_its_keys(self, tmp_path):
         style = _style(tmp_path, _mapping("structure: embedded_xml_tags\ncomponents: [anything]"))
@@ -981,7 +980,8 @@ class TestNestedFieldMappings:
     def test_a_mapping_the_engine_can_write_loads(self, tmp_path, body):
         style = _style(tmp_path, body)
 
-        assert ConfigLoader.load(style).field_mappings["title"]["structure"] in body
+        mapping = ConfigLoader.load(style).field_mappings["title"]
+        assert mapping is not None and f"structure: {mapping.structure}" in body
 
     @pytest.mark.parametrize(
         ("body", "path"),
@@ -1408,7 +1408,7 @@ class TestChecksAgainstTheModels:
     def test_a_string_nothing_fills_is_text(self, tmp_path):
         style = _style(tmp_path, "rule_defaults:\n  severity: '{x|nope}'\n")
 
-        assert ConfigLoader.load(style).rule_defaults["severity"] == "{x|nope}"
+        assert ConfigLoader.load(style).rule_defaults.severity == "{x|nope}"
 
     def test_an_empty_cci_lookup_field_names_no_field_and_the_mapping_writes(
         self, tmp_path, sample_recommendation_minimal
@@ -1487,7 +1487,8 @@ class TestChecksAgainstTheModels:
     def test_a_metadata_mapping_the_rule_can_hold_loads(self, tmp_path):
         style = _style(tmp_path, _metadata_mapping())
 
-        assert ConfigLoader.load(style).field_mappings["title"]["target_element"] == "metadata"
+        mapping = ConfigLoader.load(style).field_mappings["title"]
+        assert mapping is not None and mapping.target_element == "metadata"
 
     @pytest.mark.parametrize(
         ("changes", "path", "reason"),

@@ -86,7 +86,7 @@ src/cis_bench/
 
 ### Key Design Patterns
 
-**Config-Driven XCCDF Export**: XCCDF field mappings defined in YAML configs (`src/cis_bench/exporters/configs/styles/`), not hard-coded. MappingEngine reads config and drives all transformations.
+**Config-Driven XCCDF Export**: XCCDF field mappings defined in YAML configs (`src/cis_bench/exporters/configs/styles/`), not hard-coded. A style loads as one pydantic model, `StyleConfig` (`src/cis_bench/exporters/style_config.py`), checked against the schema and the XCCDF models when it loads; MappingEngine reads that model's typed attributes, never the YAML, and drives all transformations.
 
 **Strategy Pattern (Fetcher)**: HTML parsing strategies adapt to CIS WorkBench HTML changes. Auto-detection chooses correct strategy. Add new strategy class when HTML structure changes.
 

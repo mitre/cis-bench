@@ -125,7 +125,7 @@ class TestControlMappingFidelity:
             MappingEngine(style)
 
     def test_a_rule_id_template_that_gives_no_id_is_refused(
-        self, sample_benchmark, disa_config_path
+        self, sample_benchmark, tmp_path, disa_config_path
     ):
         # A filter can turn a ref value into something that is not text: a registered
         # transform that gives XML elements stands in for one here.
@@ -135,8 +135,13 @@ class TestControlMappingFidelity:
 
         TransformRegistry.register("as_elements", lambda value: [etree.Element("p")])
         try:
-            engine = MappingEngine(disa_config_path)
-            engine.config.rule_id["template"] = "{ref_normalized|as_elements}"
+            engine = MappingEngine(
+                _disa_with(
+                    tmp_path,
+                    disa_config_path,
+                    "rule_id:\n  template: '{ref_normalized|as_elements}'\n",
+                )
+            )
 
             with pytest.raises(ValueError, match="gives no id"):
                 engine.map_rule(sample_benchmark.recommendations[0], {})
@@ -144,17 +149,18 @@ class TestControlMappingFidelity:
             del TransformRegistry._transforms["as_elements"]
 
     def test_a_rule_id_template_naming_a_value_the_ref_does_not_give_is_refused(
-        self, sample_benchmark, disa_config_path
+        self, tmp_path, disa_config_path
     ):
         # Text around the unknown variable still makes a non-empty id ("SV--030101"),
         # so the id would be wrong without being empty.
         from cis_bench.exporters.mapping_engine import MappingEngine
 
-        engine = MappingEngine(disa_config_path)
-        engine.config.rule_id["template"] = "SV-{platform}-{stig_number}"
+        style = _disa_with(
+            tmp_path, disa_config_path, "rule_id:\n  template: SV-{platform}-{stig_number}\n"
+        )
 
-        with pytest.raises(ValueError, match="platform"):
-            engine.map_rule(sample_benchmark.recommendations[0], {"platform": "ubuntu"})
+        with pytest.raises(ValueError, match=r"rule_id\.template: .*platform"):
+            MappingEngine(style)
 
     def test_a_rule_attribute_template_naming_an_unknown_variable_is_refused(
         self, tmp_path, disa_config_path
@@ -214,13 +220,17 @@ class TestControlMappingFidelity:
         }
 
     def test_a_rule_id_template_reading_an_attribute_of_a_ref_value_is_refused(
-        self, sample_benchmark, disa_config_path
+        self, sample_benchmark, tmp_path, disa_config_path
     ):
-        # The ref's values are plain text; an attribute of one reads as "" ("SV-").
+        # The ref's values are plain text; an attribute of one reads as "" ("SV-"). The
+        # style loads (a dotted name after a text value is checked when it is filled).
         from cis_bench.exporters.mapping_engine import MappingEngine
 
-        engine = MappingEngine(disa_config_path)
-        engine.config.rule_id["template"] = "SV-{ref_normalized.foo}"
+        engine = MappingEngine(
+            _disa_with(
+                tmp_path, disa_config_path, "rule_id:\n  template: SV-{ref_normalized.foo}\n"
+            )
+        )
 
         with pytest.raises(ValueError, match="ref_normalized.foo"):
             engine.map_rule(sample_benchmark.recommendations[0], {})
@@ -280,9 +290,9 @@ class TestControlMappingFidelity:
         # Built as the model: a style with dc_elements and no dc namespace is refused when it
         # loads, so the export's own check is reached only this way.
         engine = MappingEngine(disa_config_path)
-        style = engine.config.style
+        style = engine.config
         namespaces = {p: uri for p, uri in style.benchmark.namespaces.items() if p != "dc"}
-        engine.config.style = style.model_copy(
+        engine.config = style.model_copy(
             update={"benchmark": style.benchmark.model_copy(update={"namespaces": namespaces})}
         )
 
