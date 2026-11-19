@@ -2199,14 +2199,24 @@ class TestEmbeddedTagsAreCheckedWhenTheStyleLoads:
             [{"tag": "VulnDiscussion", "sources": [{"source_field": "description"}]}],
         )
 
-        with pytest.raises(ValueError, match="a component source needs field"):
+        with pytest.raises(
+            ValueError, match=r"components\[0\]\.sources\[0\]\.field: Field required"
+        ):
             MappingEngine(style)
 
-    @pytest.mark.parametrize("tag", ["bad tag", "1st", "", None])
-    def test_a_tag_that_is_no_xml_name_is_refused(self, tmp_path, disa_config_path, tag):
+    @pytest.mark.parametrize(
+        ("tag", "reason"),
+        [
+            ("bad tag", "is not an XML name"),
+            ("1st", "is not an XML name"),
+            ("", "is not an XML name"),
+            (None, "Input should be a valid string"),
+        ],
+    )
+    def test_a_tag_that_is_no_xml_name_is_refused(self, tmp_path, disa_config_path, tag, reason):
         style = self._style(tmp_path, disa_config_path, [{"tag": tag, "content": ""}])
 
-        with pytest.raises(ValueError, match="is not a valid XML tag name"):
+        with pytest.raises(ValueError, match=rf"components\[0\]\.tag: .*{reason}"):
             MappingEngine(style)
 
     def test_the_shipped_disa_style_passes_the_checks(self, disa_config_path):
