@@ -813,10 +813,13 @@ class TestFieldMappings:
             "fixref": "F-{ref_normalized}"
         }
 
-    def test_a_structure_typed_by_a_later_card_is_accepted_as_written(self, tmp_path):
+    def test_a_mapping_of_any_structure_is_checked_against_its_keys(self, tmp_path):
         style = _style(tmp_path, _mapping("structure: embedded_xml_tags\ncomponents: [anything]"))
 
-        assert ConfigLoader.load(style).field_mappings["title"]["components"] == ["anything"]
+        with pytest.raises(
+            ValueError, match=r"embedded_xml_tags\.components\[0\]: Input should be"
+        ):
+            ConfigLoader.load(style)
 
     def test_a_child_style_may_switch_off_a_mapping_with_null(self, tmp_path):
         parent = _style(tmp_path, _mapping("source_field: title"), name="parent.yaml")
@@ -861,5 +864,341 @@ class TestFieldMappings:
 
         with pytest.raises(
             ValueError, match=r"field_mappings\.title\.simple\.attributes\.fixref: has no value"
+        ):
+            ConfigLoader.load(style)
+
+
+_EMBEDDED = """structure: embedded_xml_tags
+components:
+  - tag: VulnDiscussion
+    sources:
+      - field: description
+        separator: "x"
+      - field: rationale
+  - tag: Documentable
+    content: "false"
+"""
+
+_IDENT = """structure: ident_from_list
+source_field: cis_controls
+ident_spec:
+  system_template: "s{item.version}"
+  value_template: "{item.control}"
+  attributes:
+    - name: controlURI
+      template: t
+      namespace_prefix: "cc{item.version}"
+"""
+
+_METADATA = """structure: metadata_from_config
+source_field: cis_controls
+metadata_spec:
+  root_element: cis_controls
+  namespace_prefix: controls
+  group_by: item.version
+  group_element:
+    element: framework
+    attributes:
+      urn: "u{group_key}"
+    item_element:
+      element: safeguard
+      children:
+        - element: groups
+          children:
+            - element: group
+              content: "{item.ig1}"
+"""
+
+
+def _changed(body: str, old: str, new: str) -> str:
+    """A mapping body with one exact line (or block of lines) replaced."""
+    assert body.count(old) == 1, old
+    return body.replace(old, new)
+
+
+class TestNestedFieldMappings:
+    """The mappings with nested specifications (embedded tags, idents from a list, metadata)
+    take the keys the engine reads at every level."""
+
+    @pytest.mark.parametrize("body", [_EMBEDDED, _IDENT, _METADATA])
+    def test_a_mapping_the_engine_can_write_loads(self, tmp_path, body):
+        style = _style(tmp_path, _mapping(body))
+
+        assert ConfigLoader.load(style).field_mappings["title"]["structure"] in body
+
+    @pytest.mark.parametrize(
+        ("body", "path"),
+        [
+            pytest.param(
+                _changed(_METADATA, "  group_by:", "  attributes:\n    a: b\n  group_by:"),
+                r"metadata_from_config\.metadata_spec\.attributes",
+                id="metadata spec",
+            ),
+            pytest.param(
+                _changed(_METADATA, "    element: framework", "    element: framework\n    x: y"),
+                r"metadata_from_config\.metadata_spec\.group_element\.x",
+                id="group element",
+            ),
+            pytest.param(
+                _changed(
+                    _METADATA, "      element: safeguard", "      element: safeguard\n      x: y"
+                ),
+                r"metadata_from_config\.metadata_spec\.group_element\.item_element\.x",
+                id="item element",
+            ),
+            pytest.param(
+                _changed(
+                    _METADATA,
+                    "              content:",
+                    "              x: y\n              content:",
+                ),
+                r"metadata_from_config\.metadata_spec\.group_element\.item_element\.children\[0\]\.children\[0\]\.x",
+                id="a child of a child",
+            ),
+            pytest.param(
+                _METADATA + "transform: none",
+                r"metadata_from_config\.transform",
+                id="metadata mapping",
+            ),
+            pytest.param(
+                _changed(_EMBEDDED, "  - tag: Documentable", "  - tag: Documentable\n    x: y"),
+                r"embedded_xml_tags\.components\[1\]\.x",
+                id="component",
+            ),
+            pytest.param(
+                _changed(
+                    _EMBEDDED, "      - field: rationale", "      - field: rationale\n        x: y"
+                ),
+                r"embedded_xml_tags\.components\[0\]\.sources\[1\]\.x",
+                id="component source",
+            ),
+            pytest.param(
+                _EMBEDDED + "source_field: title",
+                r"embedded_xml_tags\.source_field",
+                id="embedded mapping",
+            ),
+            pytest.param(
+                _changed(_IDENT, "  value_template:", "  x: y\n  value_template:"),
+                r"ident_from_list\.ident_spec\.x",
+                id="ident spec",
+            ),
+            pytest.param(
+                _changed(_IDENT, "      template: t", "      template: t\n      x: y"),
+                r"ident_from_list\.ident_spec\.attributes\[0\]\.x",
+                id="ident attribute",
+            ),
+            pytest.param(
+                _IDENT + "attributes:\n  a: b",
+                r"ident_from_list\.attributes",
+                id="ident mapping",
+            ),
+        ],
+    )
+    def test_a_key_nothing_reads_is_refused_with_its_path(self, tmp_path, body, path):
+        style = _style(tmp_path, _mapping(body))
+
+        with pytest.raises(ValueError, match=rf"field_mappings\.title\.{path}: is not a key"):
+            ConfigLoader.load(style)
+
+    @pytest.mark.parametrize(
+        ("body", "path"),
+        [
+            pytest.param(
+                "structure: embedded_xml_tags", r"embedded_xml_tags\.components", id="components"
+            ),
+            pytest.param(
+                _changed(_EMBEDDED, "  - tag: Documentable\n", "  - "),
+                r"embedded_xml_tags\.components\[1\]\.tag",
+                id="tag",
+            ),
+            pytest.param(
+                _changed(_EMBEDDED, "      - field: rationale", "      - separator: x"),
+                r"embedded_xml_tags\.components\[0\]\.sources\[1\]\.field",
+                id="source field",
+            ),
+            pytest.param(
+                _changed(_IDENT, "source_field: cis_controls\n", ""),
+                r"ident_from_list\.source_field",
+                id="ident source",
+            ),
+            pytest.param(
+                "structure: ident_from_list\nsource_field: cis_controls",
+                r"ident_from_list\.ident_spec",
+                id="ident spec",
+            ),
+            pytest.param(
+                _changed(_IDENT, "    - name: controlURI\n      template: t", "    - template: t"),
+                r"ident_from_list\.ident_spec\.attributes\[0\]\.name",
+                id="ident attribute name",
+            ),
+            pytest.param(
+                _changed(_IDENT, '      namespace_prefix: "cc{item.version}"\n', ""),
+                r"ident_from_list\.ident_spec\.attributes\[0\]\.namespace_prefix",
+                id="ident attribute prefix",
+            ),
+            pytest.param(
+                _changed(_METADATA, "source_field: cis_controls\n", ""),
+                r"metadata_from_config\.source_field",
+                id="metadata source",
+            ),
+            pytest.param(
+                "structure: metadata_from_config\nsource_field: cis_controls",
+                r"metadata_from_config\.metadata_spec",
+                id="metadata spec",
+            ),
+        ]
+        + [
+            pytest.param(
+                _changed(_METADATA, line, replacement),
+                rf"metadata_from_config\.metadata_spec\.{path}",
+                id=path,
+            )
+            for line, replacement, path in [
+                ("  root_element: cis_controls\n", "", "root_element"),
+                ("  namespace_prefix: controls\n", "", "namespace_prefix"),
+                ("  group_by: item.version\n", "", "group_by"),
+                ("    element: framework\n", "", r"group_element\.element"),
+                ("      element: safeguard\n", "", r"group_element\.item_element\.element"),
+                (
+                    "        - element: groups\n",
+                    "        - content: x\n",
+                    r"group_element\.item_element\.children\[0\]\.element",
+                ),
+                (
+                    "    item_element:\n      element: safeguard\n      children:\n",
+                    "    x_element:\n      children:\n",
+                    r"group_element\.item_element",
+                ),
+            ]
+        ],
+    )
+    def test_a_required_key_left_out_is_refused(self, tmp_path, body, path):
+        style = _style(tmp_path, _mapping(body))
+
+        with pytest.raises(ValueError, match=rf"field_mappings\.title\.{path}: Field required"):
+            ConfigLoader.load(style)
+
+    def test_a_metadata_spec_without_a_group_element_is_refused(self, tmp_path):
+        body = _METADATA.split("  group_element:")[0]
+        style = _style(tmp_path, _mapping(body))
+
+        with pytest.raises(
+            ValueError, match=r"metadata_from_config\.metadata_spec\.group_element: Field required"
+        ):
+            ConfigLoader.load(style)
+
+    @pytest.mark.parametrize(
+        ("body", "path"),
+        [
+            pytest.param(
+                _changed(_EMBEDDED, "tag: VulnDiscussion", "tag: Vuln Discussion"),
+                r"embedded_xml_tags\.components\[0\]\.tag",
+                id="tag",
+            ),
+            pytest.param(
+                _changed(_IDENT, "name: controlURI", "name: cc8:controlURI"),
+                r"ident_from_list\.ident_spec\.attributes\[0\]\.name",
+                id="ident attribute",
+            ),
+            pytest.param(
+                _changed(_METADATA, "root_element: cis_controls", "root_element: xmlns"),
+                r"metadata_from_config\.metadata_spec\.root_element",
+                id="root element",
+            ),
+            pytest.param(
+                _changed(_METADATA, "    element: framework", "    element: '{urn:x}framework'"),
+                r"metadata_from_config\.metadata_spec\.group_element\.element",
+                id="group element",
+            ),
+            pytest.param(
+                _changed(_METADATA, '      urn: "u{group_key}"', '      "xsi:type": x'),
+                r"metadata_from_config\.metadata_spec\.group_element\.attributes\.xsi:type",
+                id="group attribute",
+            ),
+            pytest.param(
+                _changed(
+                    _METADATA, "            - element: group", "            - element: 1group"
+                ),
+                r"metadata_from_config\.metadata_spec\.group_element\.item_element\.children\[0\]\.children\[0\]\.element",
+                id="a child of a child",
+            ),
+        ],
+    )
+    def test_a_name_that_is_no_xml_name_is_refused(self, tmp_path, body, path):
+        style = _style(tmp_path, _mapping(body))
+
+        with pytest.raises(
+            ValueError, match=rf"field_mappings\.title\.{path}: .* is not an XML name"
+        ):
+            ConfigLoader.load(style)
+
+    @pytest.mark.parametrize(
+        ("body", "path"),
+        [
+            pytest.param(
+                _changed(_METADATA, "namespace_prefix: controls", 'namespace_prefix: ""'),
+                r"metadata_from_config\.metadata_spec\.namespace_prefix",
+                id="metadata",
+            ),
+            pytest.param(
+                _changed(_IDENT, 'namespace_prefix: "cc{item.version}"', 'namespace_prefix: ""'),
+                r"ident_from_list\.ident_spec\.attributes\[0\]\.namespace_prefix",
+                id="ident attribute",
+            ),
+        ],
+    )
+    def test_an_empty_namespace_prefix_is_refused(self, tmp_path, body, path):
+        style = _style(tmp_path, _mapping(body))
+
+        with pytest.raises(ValueError, match=rf"field_mappings\.title\.{path}: String should have"):
+            ConfigLoader.load(style)
+
+    def test_a_component_gives_its_text_from_sources_or_content_not_both(self, tmp_path):
+        body = _changed(
+            _EMBEDDED,
+            '    content: "false"',
+            '    content: "false"\n    sources:\n      - field: title',
+        )
+        style = _style(tmp_path, _mapping(body))
+
+        with pytest.raises(
+            ValueError, match=r"embedded_xml_tags\.components\[1\]: .*sources or content"
+        ):
+            ConfigLoader.load(style)
+
+    @pytest.mark.parametrize(
+        ("body", "path", "hint"),
+        [
+            pytest.param(
+                _METADATA + "requires_post_processing: true",
+                r"metadata_from_config\.requires_post_processing",
+                "model content",
+                id="metadata",
+            ),
+            pytest.param(
+                "source_field: title\nrequires_post_processing: true",
+                r"simple\.requires_post_processing",
+                "model content",
+                id="simple",
+            ),
+            pytest.param(
+                _IDENT + "requires_post_processing: true",
+                r"ident_from_list\.requires_post_processing",
+                "model content",
+                id="ident",
+            ),
+            pytest.param(
+                _changed(_METADATA, "  group_by:", "  namespace: urn:x\n  group_by:"),
+                r"metadata_from_config\.metadata_spec\.namespace",
+                r"benchmark\.namespaces",
+                id="metadata namespace",
+            ),
+        ],
+    )
+    def test_a_removed_key_is_refused_with_what_happens_instead(self, tmp_path, body, path, hint):
+        style = _style(tmp_path, _mapping(body))
+
+        with pytest.raises(
+            ValueError, match=rf"field_mappings\.title\.{path}: is not read \(.*{hint}"
         ):
             ConfigLoader.load(style)

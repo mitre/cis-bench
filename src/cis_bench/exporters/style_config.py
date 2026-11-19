@@ -8,9 +8,8 @@ kind is refused, and every mistake of one file is reported with the file and the
 of the key.
 
 A field mapping takes the keys of its structure (FieldMapping, a union discriminated on
-structure): simple, composite, nested and dublin_core are typed; embedded_xml_tags,
-ident_from_list and metadata_from_config are accepted as JSON-like data (pydantic's
-JsonValue) until they are typed.
+structure: simple, composite, nested, dublin_core, embedded_xml_tags, ident_from_list or
+metadata_from_config), at every level of its nested specification.
 """
 
 from collections.abc import Mapping
@@ -327,15 +326,24 @@ class Reference(_Section):
 
 _ONLY_SIMPLE: Final = "multiple applies to a simple mapping whose value is a list"
 
+NamespacePrefix = Annotated[str, Field(min_length=1)]
+"""The prefix of a namespace bound in benchmark.namespaces; an ident attribute's prefix may
+be a template filled per item (cc{item.version})."""
+
+
+# The keys no field mapping reads any more, whatever its structure
+_REMOVED_MAPPING_KEYS: Final[Mapping[str, str]] = {
+    "description": _IN_A_COMMENT,
+    "xccdf_type": _TYPE_FROM_MODEL,
+    "requires_post_processing": "the Rule holds the metadata as model content; nothing "
+    "is added after serialization",
+}
+
 
 class _FieldMapping(_Section):
-    """What every field mapping of the four modelled structures takes."""
+    """What every field mapping takes."""
 
-    removed_keys: ClassVar[Mapping[str, str]] = {
-        "description": _IN_A_COMMENT,
-        "multiple": _ONLY_SIMPLE,
-        "xccdf_type": _TYPE_FROM_MODEL,
-    }
+    removed_keys: ClassVar[Mapping[str, str]] = {**_REMOVED_MAPPING_KEYS, "multiple": _ONLY_SIMPLE}
 
     target_element: XmlName | None = None
 
@@ -359,8 +367,7 @@ class SimpleMapping(_FieldMapping):
     """A Rule element filled from one recommendation field (structure left out or simple)."""
 
     removed_keys: ClassVar[Mapping[str, str]] = {
-        "description": _IN_A_COMMENT,
-        "xccdf_type": _TYPE_FROM_MODEL,
+        **_REMOVED_MAPPING_KEYS,
         "optional": "a mapping with no value is left out already",
         "content": "a Rule field mapping writes no fixed text; an element with attributes "
         "and no value is written empty",
@@ -426,8 +433,7 @@ class DublinCoreMapping(_FieldMapping):
     """References with Dublin Core elements, one per NIST control of a field."""
 
     removed_keys: ClassVar[Mapping[str, str]] = {
-        "description": _IN_A_COMMENT,
-        "xccdf_type": _TYPE_FROM_MODEL,
+        **_REMOVED_MAPPING_KEYS,
         "multiple": "one reference is written per NIST control",
     }
 
@@ -440,24 +446,113 @@ class DublinCoreMapping(_FieldMapping):
     attributes: DublinCoreAttributes = Field(default_factory=DublinCoreAttributes)
 
 
-class _NotYetTyped(BaseModel):
-    """A mapping of a structure the next schema step types: accepted as JSON-like data."""
+class TagSource(_Section):
+    """A field whose text an embedded tag holds, its transform, and the text written between
+    it and the next source's text."""
 
-    model_config = ConfigDict(extra="allow", strict=True)
+    field: str
+    transform: TransformName = None
+    separator: _Text = None
 
-    __pydantic_extra__: dict[str, JsonValue] = Field(init=False)
+
+class EmbeddedTag(_Section):
+    """One tag an embedded_xml_tags mapping writes in its element's text: its text joins its
+    sources' texts, or is fixed content, and is empty when it gives neither."""
+
+    tag: XmlName
+    sources: Annotated[
+        Annotated[list[TagSource], Field(min_length=1)] | None, BeforeValidator(_given)
+    ] = None
+    content: _Text = None
+
+    @model_validator(mode="after")
+    def _one_text(self) -> Self:
+        """The engine writes the sources' texts when a tag has sources, so content beside
+        them would never be written."""
+        if self.sources is not None and self.content is not None:
+            raise PydanticCustomError(
+                "one_text", "a tag takes its text from sources or content, not both"
+            )
+        return self
 
 
-class EmbeddedXmlTagsMapping(_NotYetTyped):
+class EmbeddedXmlTagsMapping(_FieldMapping):
+    """A Rule element whose text holds tags (a STIG description: VulnDiscussion and the tags
+    after it), written in the order given."""
+
     structure: Literal["embedded_xml_tags"]
+    components: Annotated[list[EmbeddedTag], Field(min_length=1)]
+    attributes: dict[XmlName, Template] = Field(default_factory=dict)
 
 
-class IdentFromListMapping(_NotYetTyped):
+class IdentAttribute(_Section):
+    """An attribute from another namespace an ident is written with (cc8:controlURI)."""
+
+    name: XmlName
+    template: Template = None
+    namespace_prefix: NamespacePrefix
+
+
+class IdentSpec(_Section):
+    """How each item of the list becomes an ident: its system, its value and its attributes,
+    each a template over {item}."""
+
+    system_template: Template = None
+    value_template: Template = None
+    attributes: list[IdentAttribute] = Field(default_factory=list)
+
+
+class IdentFromListMapping(_FieldMapping):
+    """One ident per item of a list field (a dotted path), or per line of a text field read
+    through a transform."""
+
     structure: Literal["ident_from_list"]
+    source_field: str
+    transform: TransformName = None
+    ident_spec: IdentSpec
 
 
-class MetadataFromConfigMapping(_NotYetTyped):
+class MetadataElement(_Section):
+    """The element written per item inside a group, or a child of it: its name, its text and
+    attributes (templates over {item}), and its own children."""
+
+    element: XmlName
+    content: Template = None
+    attributes: dict[XmlName, Template] = Field(default_factory=dict)
+    children: list["MetadataElement"] = Field(default_factory=list)
+
+
+class MetadataGroup(_Section):
+    """The element written per group of items (attributes are templates over {group_key}),
+    holding one item element per item."""
+
+    element: XmlName
+    attributes: dict[XmlName, Template] = Field(default_factory=dict)
+    item_element: MetadataElement
+
+
+class MetadataSpec(_Section):
+    """The metadata a mapping writes: a root element in the namespace of namespace_prefix,
+    holding one group element per value of group_by among the items."""
+
+    removed_keys: ClassVar[Mapping[str, str]] = {
+        "namespace": "the namespace comes from benchmark.namespaces by "
+        "metadata_spec.namespace_prefix",
+    }
+
+    root_element: XmlName
+    namespace_prefix: NamespacePrefix
+    allow_empty: _Switch = None
+    group_by: str
+    group_element: MetadataGroup
+
+
+class MetadataFromConfigMapping(_FieldMapping):
+    """Metadata of a Rule written as model content from a list field (a dotted path)."""
+
     structure: Literal["metadata_from_config"]
+    source_field: str
+    metadata_spec: MetadataSpec
 
 
 def structure(value: Any) -> str | None:

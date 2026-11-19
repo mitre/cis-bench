@@ -51,16 +51,24 @@ my_style.yaml: rule_defaults.again: Recursion error - cyclic reference detected
 ```
 
 A field mapping takes the keys of its `structure`: `simple` (or no `structure`),
-`composite`, `nested` or `dublin_core`, each with its required keys; an unknown `structure`
-is refused with the list of known ones, and `null` switches off a mapping a style inherits.
-A mistake there names the structure in its path:
+`composite`, `nested`, `dublin_core`, `embedded_xml_tags`, `ident_from_list` or
+`metadata_from_config`, each with its required keys, at every level of a nested
+specification; an unknown `structure` is refused with the list of known ones, and `null`
+switches off a mapping a style inherits. A mistake there names the structure in its path:
 
 ```text
 my_style.yaml: field_mappings.title.composite.source_field: is not a key the exporter reads; the keys here are: attributes, separator, sources, structure, target_element
+my_style.yaml: field_mappings.cis_controls_metadata.metadata_from_config.metadata_spec.group_element.item_element.element: Field required
 ```
 
-`embedded_xml_tags`, `ident_from_list` and `metadata_from_config` mappings are checked as
-JSON-like data (pydantic's `JsonValue`) until their own types follow.
+The required keys of the nested structures:
+
+- `embedded_xml_tags`: `components`, each with a `tag`; a source of a component needs its `field`
+- `ident_from_list`: `source_field` and `ident_spec`; an attribute in `ident_spec.attributes` needs its `name` and `namespace_prefix`
+- `metadata_from_config`: `source_field` and `metadata_spec` with `root_element`, `namespace_prefix`, `group_by` and `group_element`; `group_element` needs its `element` and `item_element`, and the item element and each of its `children` an `element`
+
+Tag, element and attribute names there are XML names without a prefix (the namespace comes
+from `namespace_prefix`), and a `namespace_prefix` is never empty.
 
 Descriptive text (what a style is for, which tools read it) goes in YAML comments.
 
@@ -305,7 +313,8 @@ in the order given and always present (empty when the rule has no text for it); 
 that follows a source's text when another's comes after it). Each tag is built and written by
 the XML library (lxml), which escapes its text, so a reader that unescapes the element once and
 parses the tags gets the stored text, placeholders included; a tag name that is no XML name is
-refused when the style loads:
+refused when the style loads. A component gives `sources` or `content`, not both; one with
+neither is written empty:
 
 ```yaml
 description:
@@ -431,7 +440,8 @@ content: "Unknown"
 ```
 
 Items are grouped by `group_by` (required); every element is in the prefix's namespace, which
-must not be the XCCDF namespace. XCCDF 1.1.4 Rules have no metadata element, so such a mapping
+must not be the XCCDF namespace. An item element's `children` take the same keys as the item
+element (`element`, `content`, `attributes`, `children`), at any depth. XCCDF 1.1.4 Rules have no metadata element, so such a mapping
 is refused there. The full rules: [XCCDF mapping design](../design/xccdf-mapping-design.md#metadata_from_config-specification).
 
 ## Component Mapping Options
@@ -464,16 +474,11 @@ sources:
 
 - field: "additional_info"
 transform: "none"
-
-# Component with attributes
-
-- element: "reference" # Element name (custom namespace)
-source_field: "nist_controls"
-multiple: true # Loop over array
-attributes:
-href: "https://csrc.nist.gov/..."
-content: "{nist_control_id}" # Variable substitution
 ```
+
+A component takes only `tag`, and `sources` or `content`; a source takes `field`,
+`transform` and `separator`. A reference with Dublin Core elements is a `dublin_core`
+mapping, not a component (Pattern 6 below).
 
 ## Transforms
 

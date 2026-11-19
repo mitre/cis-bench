@@ -124,20 +124,30 @@ The type that holds the content is the one the XCCDF model gives the Rule's targ
 
 ### Checked when the style loads
 
-XCCDF allows only elements from another namespace inside `metadata`
-(`xsd:any namespace="##other"`), and XCCDF 1.1.4 Rules have no `metadata` element. The engine
-refuses a style, before any export, when a metadata mapping:
+The style schema (`MetadataFromConfigMapping` in `style_config.py`) refuses a metadata
+mapping, with the path of the key, when it:
 
-- targets an element the XCCDF version's Rule does not have (any metadata mapping on 1.1.4),
-  or one that cannot hold repeated elements of the mapping's namespace (`title`, `ident`,
-  `dc_status`, `signature`)
-- has no `source_field`, or no `group_by`, or a `group_by` that is no field of the listed items
-- has no `namespace_prefix`, a prefix `benchmark.namespaces` does not declare, or a prefix
-  that resolves to the XCCDF namespace
+- sets a key the builder does not read, at any level (`metadata_spec`, `group_element`,
+  `item_element` and each of its `children`, to any depth)
+- leaves out `source_field`, `metadata_spec`, `root_element`, `namespace_prefix`, `group_by`,
+  `group_element`, or the `element` of the group, the item or a child; or gives an empty
+  `namespace_prefix`
 - names an element or attribute that is not an XML name without a prefix (`xsi:type`,
   `{uri}name`, `two words` and `xmlns` are refused)
 - sets a removed key: `requires_post_processing`, `metadata_spec.namespace` (the URI comes
   from `benchmark.namespaces`)
+
+XCCDF allows only elements from another namespace inside `metadata`
+(`xsd:any namespace="##other"`), and XCCDF 1.1.4 Rules have no `metadata` element. These
+checks need the XCCDF and Benchmark models, so the engine makes them when it loads the style,
+before any export; it refuses a metadata mapping that:
+
+- targets an element the XCCDF version's Rule does not have (any metadata mapping on 1.1.4),
+  or one that cannot hold repeated elements of the mapping's namespace (`title`, `ident`,
+  `dc_status`, `signature`)
+- has an empty `source_field`, or a `group_by` that is empty or no field of the listed items
+- has a `namespace_prefix` `benchmark.namespaces` does not declare, or one that resolves to
+  the XCCDF namespace
 
 An attribute value comes from the benchmark, so it is checked at export: a value the serializer
 would write as an XML Schema type name (it starts with `{` and names a type, such as
