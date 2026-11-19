@@ -525,14 +525,24 @@ a tag.
 
 ## Variables Reference
 
-Every template is filled by one strict substituter. A variable the template's context
-does not have, an attribute or key a value does not have, or a stray or unclosed brace
-stops the export with an error naming the template and the variable, so a typo in a style
-cannot write an empty part; an empty name in a path (`{item..control}`) is refused too. A
-known variable whose value is empty substitutes as empty
-text; a `None` value, met along a dotted path or at its end (a recommendation without a
-MITRE mapping, say), reads as empty text too. `{{` and `}}` write a literal brace. Each template sees the
-variables of its own context:
+Every template is filled by one strict substituter. When the style loads, each template's
+variables are checked against the values that template is given (the lists below) and the
+models behind them: a first name the template is not given, a later name that is no field
+of the model before it (`{rec.titel}`, `{item.contrl}` for a list of CIS controls), or an
+empty name (`{item..control}`) is refused with the path of the template:
+
+```text
+my_style.yaml: field_mappings.cis_controls_ident.ident_from_list.ident_spec.value_template: template '{item.contrl}' names 'item.contrl'; 'contrl' is not a field of CISControl
+```
+
+A name after a value with no fields to check (text such as `{ref}`, an item of a list of
+text such as `mitre_mapping.techniques`, an item a transform made, `{group_key}`) is
+checked when the template is filled. There, a name or key a value does not have, or a stray
+or unclosed brace, stops the export with an error naming the template and the variable, so
+a typo in a style cannot write an empty part. A known variable whose value is empty
+substitutes as empty text; a `None` value, met along a dotted path or at its end (a
+recommendation without a MITRE mapping, say), reads as empty text too. `{{` and `}}` write a
+literal brace. Each template sees the variables of its own context:
 
 ### Benchmark-Level Variables
 
