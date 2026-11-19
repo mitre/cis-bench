@@ -568,7 +568,8 @@ literal brace. Each template sees the variables of its own context:
 ### Per-Item Variables (ident_from_list, metadata_from_config)
 
 ```yaml
-# Each item of the source list, e.g. a CISControl or a MITRE technique string
+# Each item of the source list, e.g. a CISControl or a MITRE technique string; an
+# ident_from_list mapping reads a field holding one value (parent) as one item
 {item} # The item itself, for a list of strings (e.g., "T1068")
 {item.version} # A field of the item (e.g., CIS Controls version 7 or 8)
 {item.control} # Control ID (e.g., "4.8"); filters apply: {item.control|dotted_number_path:subcontrol}

@@ -1552,6 +1552,14 @@ class TestTemplateVariables:
                 id="ident attribute prefix",
             ),
             pytest.param(
+                _mapping(
+                    "structure: ident_from_list\nsource_field: parent\nident_spec:\n  value_template: '{item.titel}'"
+                ),
+                r"ident_from_list\.ident_spec\.value_template",
+                "'titel' is not a field of ParentReference",
+                id="ident over one value, not a list",
+            ),
+            pytest.param(
                 _metadata_mapping(('content: "{item.ig1}"', 'content: "{item.ig9}"')),
                 r"metadata_from_config\.metadata_spec\.group_element\.item_element\.children\[0\]\.children\[0\]\.content",
                 "'ig9' is not a field of CISControl",
@@ -1684,6 +1692,12 @@ class TestTemplateVariables:
                     "source_field: title\nattributes:\n  fixref: 'F-{rec.title}-{benchmark.title}-{stig_number}'"
                 ),
                 id="rule attribute values",
+            ),
+            pytest.param(
+                _mapping(
+                    "structure: ident_from_list\nsource_field: parent\nident_spec:\n  value_template: '{item.title}'"
+                ),
+                id="ident over one value, not a list",
             ),
         ],
     )

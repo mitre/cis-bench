@@ -164,6 +164,14 @@ def field_path_problem(model: type[BaseModel], path: str, dotted: bool) -> str |
     return f"{shown} is not a field of {holder}"
 
 
+def field_model(model: type[BaseModel], path: str) -> type[BaseModel] | None:
+    """The model the field at a dotted path holds (directly or as "X | None"), or None."""
+    current: Any = model
+    for part in path.split("."):
+        current = _model_in(current.model_fields[part].annotation) if current else None
+    return current if isinstance(current, type) else None
+
+
 def list_item_model(model: type[BaseModel], path: str) -> type[BaseModel] | None:
     """The model of the items the list field at a dotted path holds, or None when the field
     is no list of models."""
@@ -314,13 +322,17 @@ def _dc_element_problems(
 
 
 def _item_model(
-    models: StyleModels, source_field: str, transform: str | None
+    models: StyleModels, source_field: str, transform: str | None, one_value: bool = False
 ) -> type[BaseModel] | None:
-    """The model of each item of the list a mapping reads (None when the items are text, or a
-    transform other than none makes them)."""
+    """The model of each item of the list a mapping reads, or with one_value the model of the
+    field's own value when it holds no list (the ident builder reads one value as one item);
+    None when the items are text, or a transform other than none makes them."""
     if not source_field or transform not in (None, "none"):
         return None
-    return list_item_model(models.recommendation, source_field)
+    items = list_item_model(models.recommendation, source_field)
+    if items is None and one_value:
+        return field_model(models.recommendation, source_field)
+    return items
 
 
 def _raise_problems(title: str, found: list[tuple[tuple[int | str, ...], str]]) -> None:
@@ -913,7 +925,7 @@ class IdentFromListMapping(_FieldMapping):
         models = _models(info)
         if models is None:
             return self
-        values = {"item": _item_model(models, self.source_field, self.transform)}
+        values = {"item": _item_model(models, self.source_field, self.transform, one_value=True)}
         spec = self.ident_spec
         templates: list[tuple[tuple[int | str, ...], str | None]] = [
             (("ident_spec", "system_template"), spec.system_template),
