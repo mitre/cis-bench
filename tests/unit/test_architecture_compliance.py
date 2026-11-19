@@ -14,7 +14,15 @@ pytestmark = pytest.mark.architecture
 
 
 class TestArchitectureCompliance:
-    """Ensure implementation follows config-driven loop architecture."""
+    """Ensure implementation follows config-driven loop architecture.
+
+    The engine's loops over the style are checked by what they write: map_rule by a rule
+    from a style with one mapping of each structure (test_unit_helpers TestEveryStructure)
+    and by a mapping changed in a style file (test_config_driven_field_addition below),
+    map_group by the DISA Group title from the ref (test_unit_helpers
+    test_disa_map_group_uses_ref_as_title), map_benchmark by a title the style changes
+    (test_unit_helpers TestBenchmarkElements).
+    """
 
     def test_no_hard_coded_xccdf_imports_in_unified_exporter(self):
         """Unified XCCDF exporter must NOT directly import xccdf models.
@@ -39,19 +47,6 @@ class TestArchitectureCompliance:
                         f"{exporter_file.name} hard-codes XCCDF import: {node.module}\n"
                         f"  Use engine.get_xccdf_class() instead"
                     )
-
-    def test_loop_driven_construction(self, mapping_engine_file):
-        """MappingEngine must construct elements by looping config, not listing fields."""
-        source = mapping_engine_file.read_text()
-
-        # map_rule's loop over the field mappings is checked by what it writes: a rule from a
-        # style with one mapping of each structure (test_unit_helpers TestEveryStructure), and
-        # a mapping changed in a style file (test_config_driven_field_addition below)
-        # map_group's loop over the group elements is checked by what it writes: the DISA
-        # Group title from the ref (test_unit_helpers test_disa_map_group_uses_ref_as_title)
-
-        # map_benchmark's loop over the benchmark elements is checked by what it writes: a
-        # title the style changes (test_unit_helpers TestBenchmarkElements)
 
     def test_no_hard_coded_field_checks_in_new_methods(self, mapping_engine_file):
         """New methods must NOT check field names like 'if field_name == title'.
