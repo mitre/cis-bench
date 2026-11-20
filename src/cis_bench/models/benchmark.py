@@ -91,6 +91,22 @@ class ParentReference(BaseModel):
     title: str
 
 
+class Section(BaseModel):
+    """A section of a benchmark, as WorkBench's navigation tree gives it."""
+
+    id: int = Field(..., description="WorkBench's section ID")
+    number: str = Field(
+        ...,
+        description="The section's number, WorkBench's view_level (e.g. '1.1')",
+        pattern=r"^[0-9]+(\.[0-9]+)*$",
+    )
+    title: str = Field(..., description="The section's title, as WorkBench gives it", min_length=1)
+    parent_id: int | None = Field(
+        default=None, description="The ID of the section this one is nested in; None at top level"
+    )
+    order: int = Field(..., description="WorkBench's order of the section among its siblings")
+
+
 class Recommendation(BaseModel):
     """A single CIS recommendation within a benchmark.
 
@@ -131,6 +147,12 @@ class Recommendation(BaseModel):
     )
 
     # ============ Hierarchical Structure ============
+    section_id: int | None = Field(
+        default=None,
+        description="The ID of the section WorkBench lists the recommendation under; absent on a "
+        "copy saved before sections were recorded",
+    )
+
     parent: ParentReference | None = Field(None, description="Parent recommendation in hierarchy")
 
     artifacts: list[Artifact] = Field(
@@ -346,6 +368,13 @@ class Benchmark(BaseModel):
     )
     revision_history: list[RevisionHistoryEntry] = Field(
         default_factory=list, description="The page's revision history, newest first"
+    )
+
+    sections: list[Section] | None = Field(
+        default=None,
+        description="The benchmark's sections in WorkBench's order (depth first, siblings by "
+        "order); absent (null) on a copy saved before sections were recorded, which is how such a "
+        "copy is told apart from one that records them",
     )
 
     workbench_status: str | None = Field(

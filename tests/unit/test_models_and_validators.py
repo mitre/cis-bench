@@ -322,6 +322,29 @@ class TestRecommendation:
 
         assert deserialize_benchmark_json(stored).profile_definitions == []
 
+    def test_a_copy_saved_before_sections_were_recorded_is_told_apart(
+        self, minimal_benchmark_data, minimal_recommendation_data
+    ):
+        # No sections or section_id keys, as a copy saved before they were recorded
+        stored = json.dumps(
+            {
+                **minimal_benchmark_data,
+                "total_recommendations": 1,
+                "recommendations": [minimal_recommendation_data],
+            }
+        )
+
+        copy = deserialize_benchmark_json(stored)
+
+        assert copy.sections is None
+        assert {rec.section_id for rec in copy.recommendations} == {None}
+
+    def test_a_copy_that_records_sections_loads_them_as_saved(self, minimal_benchmark_data):
+        section = {"id": 7, "number": "1", "title": "Section one", "parent_id": None, "order": 1}
+        stored = json.dumps({**minimal_benchmark_data, "sections": [section]})
+
+        assert [s.model_dump() for s in deserialize_benchmark_json(stored).sections] == [section]
+
     def test_a_benchmark_defines_each_profile_title_once(self, minimal_benchmark_data):
         # Profile titles are what rules name; two definitions of one title are ambiguous.
         definition = {"title": "Level 1 - Alpha"}
