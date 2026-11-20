@@ -105,6 +105,13 @@ class Section(BaseModel):
         default=None, description="The ID of the section this one is nested in; None at top level"
     )
     order: int = Field(..., description="WorkBench's order of the section among its siblings")
+    description: str | None = Field(
+        default=None,
+        description=(
+            "The overview on the section's own WorkBench page, Markdown as the page gives it; "
+            "None when the page has none"
+        ),
+    )
 
 
 class Recommendation(BaseModel):
