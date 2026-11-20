@@ -704,6 +704,14 @@ class TestWorkbenchScraperNavtree:
         with pytest.raises(ValueError, match="order 1"):
             scraper.parse_navtree(navtree_data)
 
+    def test_an_answer_without_a_navtree_is_refused_naming_it(self, mock_session):
+        scraper = WorkbenchScraper(
+            mock_session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
+
+        with pytest.raises(ValueError, match="navtree"):
+            scraper.parse_navtree({"sections": []})
+
     def test_a_navtree_entry_without_an_order_is_refused(self, mock_session):
         navtree_data = {
             "navtree": [

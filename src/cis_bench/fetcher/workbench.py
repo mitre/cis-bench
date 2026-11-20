@@ -76,7 +76,10 @@ class _NavtreeSection(BaseModel):
     recommendations_for_nav_tree: list[_NavtreeRecommendation] | None = None
 
 
-_NAVTREE = TypeAdapter(list[_NavtreeSection])
+class _NavtreeAnswer(BaseModel):
+    """WorkBench's navigation tree answer: its sections under the key navtree."""
+
+    navtree: list[_NavtreeSection]
 
 
 def _in_order[T: (_NavtreeSection, _NavtreeRecommendation)](
@@ -426,8 +429,8 @@ class WorkbenchScraper:
             The sections and the recommendations (with their page URLs), in WorkBench's order
 
         Raises:
-            ValueError: An entry lacks a field the tree is read by (id, title, view_level, order),
-                or two siblings share an order
+            ValueError: The answer has no navtree, an entry lacks a field the tree is read by (id,
+                title, view_level, order), or two siblings share an order
         """
         sections: list[Section] = []
         recommendations: list[NavtreeRecommendation] = []
@@ -455,7 +458,7 @@ class WorkbenchScraper:
                     )
                 walk(entry.subsections_for_nav_tree or [], in_section)
 
-        walk(_NAVTREE.validate_python(navtree_data["navtree"]), "at the top level")
+        walk(_NavtreeAnswer.model_validate(navtree_data).navtree, "at the top level")
         return Navtree(sections, recommendations)
 
     def fetch_recommendation(self, rec_url: str) -> ExtractedRecommendation:
