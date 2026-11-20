@@ -6,10 +6,10 @@ Integrates catalog database with WorkbenchScraper for efficient downloads.
 import logging
 from collections.abc import Callable
 from gettext import ngettext
+from typing import NamedTuple
 
 from cis_bench.catalog.database import (
     CatalogDatabase,
-    deserialize_benchmark_json,
     serialize_benchmark_json,
     update_reason,
 )
@@ -19,6 +19,14 @@ from cis_bench.models.benchmark import Benchmark, BenchmarkPage
 from cis_bench.utils.workbench_urls import normalize_benchmark_url
 
 logger = logging.getLogger(__name__)
+
+
+class CachedCopy(NamedTuple):
+    """The copy CatalogDownloader.cache saved, and its JSON and content hash as stored."""
+
+    benchmark: Benchmark
+    content_json: str
+    content_hash: str
 
 
 class CatalogDownloader:
@@ -53,17 +61,21 @@ class CatalogDownloader:
             self._scraper = self._connect()
         return self._scraper
 
-    def cache(self, benchmark_id: str, benchmark: Benchmark) -> tuple[str, str]:
+    def cache(self, benchmark_id: str, benchmark: Benchmark) -> CachedCopy:
         """Cache a downloaded benchmark: the one place every command caches a download.
 
-        The cached row carries the copy's version and the date WorkBench showed it as
-        published. What the benchmark's page said (publish date, description) is recorded on
-        the release's catalog row (record_page), which holds what WorkBench shows now;
+        A fresh download has no WorkBench status; the copy saved takes the one the catalog
+        lists for the benchmark (CatalogDatabase.with_catalog_status), none when the catalog
+        does not list it. The cached row carries the copy's version and the date WorkBench showed it
+        as published. What the benchmark's page said (publish date, description) is recorded
+        on the release's catalog row (record_page), which holds what WorkBench shows now;
         check-updates compares the two dates.
 
         Returns:
-            The cached JSON and its content hash, as serialize_benchmark_json gives them
+            The copy saved, with its JSON and content hash as serialize_benchmark_json gives
+            them; a command that exports the download exports this copy
         """
+        benchmark = self.db.with_catalog_status(benchmark_id, benchmark)
         content_json, content_hash = serialize_benchmark_json(benchmark)
         self.db.save_downloaded(
             version=benchmark.version,
@@ -84,7 +96,7 @@ class CatalogDownloader:
             ),
         )
         logger.debug(f"Cached benchmark {benchmark_id}")
-        return content_json, content_hash
+        return CachedCopy(benchmark, content_json, content_hash)
 
     def download_by_id(
         self,
@@ -150,7 +162,7 @@ class CatalogDownloader:
         benchmark = self.scraper.download_benchmark(
             benchmark_url, progress_callback=progress_callback
         )
-        content_json, content_hash = self.cache(benchmark_id, benchmark)
+        benchmark, content_json, content_hash = self.cache(benchmark_id, benchmark)
 
         # Check if content actually changed
         is_unchanged = bool(existing and existing.get("content_hash") == content_hash and not force)
@@ -264,19 +276,3 @@ class CatalogDownloader:
             raise ValueError("Benchmark selection cancelled")
 
         return selection
-
-    def get_downloaded_benchmark(self, benchmark_id: str) -> Benchmark | None:
-        """Get downloaded benchmark from database.
-
-        Args:
-            benchmark_id: Benchmark ID
-
-        Returns:
-            Benchmark object or None if not downloaded
-        """
-        downloaded = self.db.get_downloaded(benchmark_id)
-
-        if not downloaded:
-            return None
-
-        return deserialize_benchmark_json(downloaded["content_json"])

@@ -348,6 +348,13 @@ class Benchmark(BaseModel):
         default_factory=list, description="The page's revision history, newest first"
     )
 
+    workbench_status: str | None = Field(
+        default=None,
+        description="The benchmark's status on CIS WorkBench (e.g. 'Published', 'Draft', "
+        "'Archived') as the catalog listed it when the copy was saved; absent on a copy saved "
+        "before it was recorded or of a benchmark the catalog does not list",
+    )
+
     downloaded_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC),
         description="When the benchmark was downloaded, with its zone (UTC)",

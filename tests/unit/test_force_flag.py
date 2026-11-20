@@ -8,6 +8,7 @@ from click.testing import CliRunner
 
 from cis_bench.cli.app import cli
 from cis_bench.models.benchmark import Benchmark, Recommendation
+from tests.conftest import answers_for_the_catalog
 
 
 @pytest.fixture
@@ -68,6 +69,7 @@ class TestForceFlag:
         with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
             mock_db = Mock()
             mock_db_class.return_value = mock_db
+            answers_for_the_catalog(mock_db, None)
 
             # Simulate cached benchmark
             mock_db.get_downloaded.return_value = {
@@ -99,6 +101,7 @@ class TestForceFlag:
         with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
             mock_db = Mock()
             mock_db_class.return_value = mock_db
+            answers_for_the_catalog(mock_db, None)
 
             # Simulate cached benchmark
             mock_db.get_downloaded.return_value = {
@@ -138,6 +141,7 @@ class TestForceFlag:
         with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
             mock_db = Mock()
             mock_db_class.return_value = mock_db
+            answers_for_the_catalog(mock_db, None)
 
             # Not cached
             mock_db.get_downloaded.return_value = None

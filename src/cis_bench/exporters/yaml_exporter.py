@@ -29,12 +29,13 @@ class YAMLExporter(BaseExporter):
             f"Benchmark: {benchmark.title}, Recommendations: {benchmark.total_recommendations}"
         )
 
-        # Convert Pydantic model to dict
-        data = benchmark.model_dump(mode="python", exclude_none=False)
+        # The values as JSON gives them (URLs, dates and times as strings), written as plain
+        # YAML: safe_dump refuses a Python object rather than tag it, so any YAML reader
+        # reads the file.
+        data = benchmark.model_dump(mode="json", exclude_none=False)
 
-        # Export to YAML
         with open(output_path, "w", encoding="utf-8") as f:
-            yaml.dump(data, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+            yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
 
         logger.debug(f"Successfully exported YAML to {output_path}")
         return output_path

@@ -9,6 +9,7 @@ from click.testing import CliRunner
 
 from cis_bench.cli.app import cli
 from cis_bench.models.benchmark import Benchmark, Recommendation
+from tests.conftest import answers_for_the_catalog
 
 
 @pytest.fixture
@@ -92,6 +93,7 @@ class TestDownloadDatabaseCaching:
                 with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                     mock_db = Mock()
                     mock_db_class.return_value = mock_db
+                    answers_for_the_catalog(mock_db, None)
 
                     result = runner.invoke(
                         cli,
@@ -165,6 +167,7 @@ class TestDownloadDatabaseCaching:
         ):
             mock_scraper_class.return_value.download_benchmark.return_value = sample_benchmark
             mock_db = mock_db_class.return_value
+            answers_for_the_catalog(mock_db, None)
             mock_db.get_downloaded.return_value = None
             mock_db.get_benchmark.return_value = None
             mock_db.save_downloaded.side_effect = OperationalError(
@@ -199,6 +202,7 @@ class TestDownloadDatabaseCaching:
         ):
             mock_scraper_class.return_value.download_benchmark.return_value = sample_benchmark
             mock_db = mock_db_class.return_value
+            answers_for_the_catalog(mock_db, None)
             mock_db.get_downloaded.return_value = None
             mock_db.save_downloaded.side_effect = TypeError("a bug")
 
@@ -229,6 +233,7 @@ class TestDownloadDatabaseCaching:
                 with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                     mock_db = Mock()
                     mock_db_class.return_value = mock_db
+                    answers_for_the_catalog(mock_db, None)
 
                     result = runner.invoke(
                         cli,
@@ -276,6 +281,7 @@ class TestDownloadAndExportIntegration:
                 with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                     mock_db = Mock()
                     mock_db_class.return_value = mock_db
+                    answers_for_the_catalog(mock_db, None)
 
                     # Step 1: Download
                     download_result = runner.invoke(
@@ -293,6 +299,7 @@ class TestDownloadAndExportIntegration:
                         "downloaded_at": datetime.now(),
                         "recommendation_count": 2,
                     }
+                    mock_db.load_downloaded.return_value = sample_benchmark
 
                     # Step 2: Export by ID from the same data folder
                     monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))

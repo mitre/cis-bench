@@ -352,6 +352,13 @@ def auth_manager_class():
 # ============================================================================
 
 
+def answers_for_the_catalog(mock_db, cached: Benchmark | None) -> None:
+    """A Mock CatalogDatabase's answers to the two calls a command reads a copy through: the
+    copy load_downloaded gives, and with_catalog_status leaving a benchmark as it is."""
+    mock_db.load_downloaded.return_value = cached
+    mock_db.with_catalog_status.side_effect = lambda _benchmark_id, benchmark: benchmark
+
+
 def unusable_command_hints(output: str) -> list[str]:
     """The `cis-bench ...` command lines in CLI output that Click would refuse.
 

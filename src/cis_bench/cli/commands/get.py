@@ -187,15 +187,12 @@ def get_cmd(query, export_format, style, output, verbose, debug, quiet, non_inte
 
         # Step 5: Export to requested format
         try:
-            from cis_bench.catalog.database import deserialize_benchmark_json
-
             console.print(f"[cyan]Exporting to {export_format}...[/cyan]")
 
-            # Load from database
-            downloaded = db.get_downloaded(benchmark_id)
-            if not downloaded:
+            loaded = db.load_downloaded(benchmark_id)
+            if loaded is None:
                 raise ValueError(f"Benchmark {benchmark_id} not found in catalog cache")
-            benchmark = deserialize_benchmark_json(downloaded["content_json"])
+            benchmark = loaded
 
             # Create exporter
             exporter_kwargs = {}

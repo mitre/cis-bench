@@ -8,7 +8,7 @@ from click.testing import CliRunner
 
 from cis_bench.cli.app import cli
 from cis_bench.models.benchmark import Benchmark, Recommendation
-from tests.conftest import unusable_command_hints
+from tests.conftest import answers_for_the_catalog, unusable_command_hints
 
 
 @pytest.fixture
@@ -150,6 +150,7 @@ class TestGetCommandSingleResult:
                         }
 
                 mock_db.get_downloaded.side_effect = get_downloaded_side_effect
+                answers_for_the_catalog(mock_db, sample_benchmark)
 
                 # Mock download
                 with patch("cis_bench.fetcher.auth.AuthManager") as mock_auth:
@@ -197,6 +198,7 @@ class TestGetCommandSingleResult:
                     "downloaded_at": datetime.now(),
                 },
             ]
+            answers_for_the_catalog(mock_db, sample_benchmark)
             mock_search = Mock()
             mock_search_class.return_value = mock_search
             mock_search.search.return_value = [
@@ -262,6 +264,7 @@ class TestGetCommandSingleResult:
                     "content_json": sample_benchmark.model_dump_json(),
                     "downloaded_at": datetime.now(),
                 }
+                answers_for_the_catalog(mock_db, sample_benchmark)
 
                 result = runner.invoke(
                     cli, ["get", "ubuntu", "--format", "json", "--non-interactive"]
@@ -298,6 +301,7 @@ class TestGetCommandMultipleResults:
                 "content_json": sample_benchmark.model_dump_json(),
                 "downloaded_at": datetime.now(),
             }
+            answers_for_the_catalog(mock_db, sample_benchmark)
 
             with patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class:
                 mock_search = Mock()
@@ -329,6 +333,7 @@ class TestGetCommandMultipleResults:
                 assert "1 other benchmark matched" in result.output
                 assert 'cis-bench search "ubuntu"' in result.output
                 assert mock_db.get_downloaded.call_args.args == ("1",)
+                assert mock_db.load_downloaded.call_args.args == ("1",)
 
         # Outside the patches above: resolving a hinted command imports its module.
         assert unusable_command_hints(result.output) == []
@@ -612,6 +617,15 @@ class TestGetById:
         assert "Found: CIS Kubernetes Benchmark v2.0.1" in result.output
         assert [path.name for path in working_dir.iterdir()] == ["benchmark_201.json"]
 
+    def test_a_cached_copy_saved_without_a_status_is_exported_with_the_catalogs(
+        self, runner, cached_releases, working_dir
+    ):
+        result = runner.invoke(cli, ["get", "201", "--format", "json", "--non-interactive"])
+
+        assert result.exit_code == 0, result.output
+        exported = Benchmark.from_json_file(str(working_dir / "benchmark_201.json"))
+        assert exported.workbench_status == "Published"
+
     def test_get_with_an_id_the_catalog_does_not_have_says_so(
         self, runner, cached_releases, working_dir
     ):
@@ -649,6 +663,7 @@ class TestGetForce:
         ):
             mock_db = mock_db_class.return_value
             mock_db.get_downloaded.return_value = self._cached(sample_benchmark)
+            answers_for_the_catalog(mock_db, sample_benchmark)
             mock_search_class.return_value.search.return_value = [
                 {
                     "benchmark_id": "23456",

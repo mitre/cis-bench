@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from cis_bench.catalog.database import CatalogDatabase
-from cis_bench.models.benchmark import BenchmarkPage
+from cis_bench.catalog.database import CatalogDatabase, serialize_benchmark_json
+from cis_bench.models.benchmark import Benchmark, BenchmarkPage
 
 
 @pytest.fixture
@@ -258,6 +258,14 @@ class TestBenchmarkOperations:
         assert bench is not None
         assert bench["title"] == sample_benchmark_data["title"]
         assert bench["version"] == sample_benchmark_data["version"]
+
+    def test_a_row_without_a_status_is_refused(self, temp_db, sample_benchmark_data):
+        del sample_benchmark_data["status"]
+
+        with pytest.raises(ValueError, match="23598.*no status"):
+            temp_db.insert_benchmark(sample_benchmark_data)
+
+        assert temp_db.get_benchmark("23598") is None
 
     def test_insert_creates_foreign_key_records(self, temp_db, sample_benchmark_data):
         """Test that inserting benchmark creates platform/community/owner records."""
@@ -886,6 +894,51 @@ class TestLookupTables:
             assert shared_db.get_catalog_stats()["total_benchmarks"] == 0
         finally:
             shared_db.close()
+
+
+class TestLoadingADownloadedCopy:
+    """load_downloaded is where a cached copy is read for export: a copy saved without a
+    WorkBench status takes the one the catalog lists."""
+
+    @pytest.fixture
+    def copy(self, sample_recommendation_minimal):
+        return Benchmark(
+            benchmark_id="23598",
+            title="CIS Ubuntu Linux 20.04 LTS Benchmark",
+            version="v2.0.1",
+            url="https://workbench.cisecurity.org/benchmarks/23598",
+            scraper_version="v1_2025_10",
+            total_recommendations=1,
+            recommendations=[sample_recommendation_minimal],
+        )
+
+    def _save(self, db, benchmark):
+        content_json, content_hash = serialize_benchmark_json(benchmark)
+        db.save_downloaded(benchmark.benchmark_id, content_json, content_hash, 1)
+
+    def test_a_copy_saved_without_a_status_takes_the_catalogs(
+        self, temp_db, sample_benchmark_data, copy
+    ):
+        temp_db.insert_benchmark(sample_benchmark_data)
+        self._save(temp_db, copy)
+
+        assert temp_db.load_downloaded("23598").workbench_status == "Published"
+
+    def test_a_copy_with_a_status_keeps_its_own(self, temp_db, sample_benchmark_data, copy):
+        temp_db.insert_benchmark({**sample_benchmark_data, "status": "Archived"})
+        self._save(temp_db, copy.model_copy(update={"workbench_status": "Published"}))
+
+        assert temp_db.load_downloaded("23598").workbench_status == "Published"
+
+    def test_a_copy_the_catalog_does_not_list_has_no_status(self, temp_db, copy):
+        self._save(temp_db, copy)
+
+        assert temp_db.load_downloaded("23598").workbench_status is None
+
+    def test_a_benchmark_not_downloaded_loads_nothing(self, temp_db, sample_benchmark_data):
+        temp_db.insert_benchmark(sample_benchmark_data)
+
+        assert temp_db.load_downloaded("23598") is None
 
 
 class TestDownloadedBenchmarks:

@@ -238,8 +238,9 @@ def download(
                 f"      NIST Controls: {sum(len(r.nist_controls) for r in benchmark.recommendations)}"
             )
 
-            # Into the cache when there is one (catalog.db). A failed cache write fails this
-            # benchmark, but the download is kept: the exports below are still written.
+            # Into the cache when there is one (catalog.db); the exports below write the copy
+            # cached, which carries the catalog's WorkBench status. A failed cache write fails
+            # this benchmark, but the download is kept: the exports below are still written.
             catalog_db_path = settings.catalog_db_path
             if catalog_db_path.exists():
                 from sqlalchemy.exc import SQLAlchemyError
@@ -249,7 +250,7 @@ def download(
 
                 try:
                     with closing(CatalogDatabase(catalog_db_path)) as db:
-                        CatalogDownloader(db).cache(benchmark_id, benchmark)
+                        benchmark = CatalogDownloader(db).cache(benchmark_id, benchmark).benchmark
                     console.print(f"      [green]✓[/green] Cached in database (ID: {benchmark_id})")
                 except (SQLAlchemyError, OSError) as e:
                     logger.debug("Failed to cache the benchmark", exc_info=True)
