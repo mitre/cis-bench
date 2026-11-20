@@ -134,8 +134,9 @@ times out, fails to connect, or gets a 429, 502, 503 or 504 is retried
 `CIS_BENCH_RETRY_BACKOFF_FACTOR` × 2 seconds, each plus up to
 `CIS_BENCH_RETRY_JITTER_SECONDS` of random jitter. When WorkBench sends a `Retry-After`
 header, cis-bench waits that long instead, up to 60 seconds. A request that still fails is
-reported with its URL: a download skips that recommendation, and a catalog refresh counts that
-page as failed. Other HTTP errors, such as a 404, are not retried.
+reported with its URL: a download of that benchmark fails as a whole (nothing is cached, and a
+copy already cached is kept), and a catalog refresh counts that page as failed. Other HTTP
+errors, such as a 404, are not retried.
 
 **`CIS_BENCH_BROWSER`** is the browser whose cookies log in when a command's `--browser`
 option is not given (`auth login`, `catalog refresh`, `catalog update`, `catalog download`).
