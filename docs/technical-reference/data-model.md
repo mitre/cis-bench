@@ -227,13 +227,14 @@ f.write(xml_output)
 | `acknowledgements` | string or null | | The page's acknowledgements, as Markdown |
 | `assets` | array | | The products the benchmark applies to: `title` and `cpe_id` (a CPE 2.3 name) |
 | `revision_history` | array | | The page's revision history, newest first: `revised_at` (the time the page shows, with no zone: the page names none), `author`, `modification_count`; each may be null |
+| `sections` | array or null | | The benchmark's sections as WorkBench's navigation tree gives them, in WorkBench's order (depth first, siblings by `order`): `id`, `number` (the section's number, e.g. `1.1`), `title`, `parent_id` (the section it is nested in, or null), `order`. Null on a copy saved before sections were recorded, which tells such a copy apart from one that records them |
 | `workbench_status` | string or null | | The benchmark's status on CIS WorkBench (e.g. `Published`, `Draft`, `Archived`), as the catalog listed it when the copy was saved. Null on a copy saved before it was recorded or of a benchmark the catalog does not list; such a copy takes the catalog's status when it is exported from the cache or from a file whose benchmark ID the catalog lists |
 | `downloaded_at` | string (ISO 8601) | | When it was downloaded, in UTC with its offset (`Z`); files from earlier versions carry no offset |
 | `scraper_version` | string | | Strategy version used |
 | `text_format` | `"html"` or `"markdown"` | | The form of the recommendation text fields as written. Every loaded copy holds `markdown`; a copy saved without this field is `html` when its `scraper_version` is `v1_2025_10` (the strategy that saved rendered HTML) and `markdown` otherwise |
 | `artifact_title_format` | `"html"` or `"markdown"` | | The form of the artifact titles as written. Every loaded copy holds `markdown`; a copy saved without this field holds the titles as the artifact payload gave them, HTML for some, and is `html` |
 | `total_recommendations` | integer | | Count of recommendations |
-| `recommendations` | array | | Array of recommendation objects |
+| `recommendations` | array | | Array of recommendation objects, in WorkBench's order (by section, then each recommendation's `order` in the navigation tree) |
 
 The fields from `release_type` to `revision_history` hold what the benchmark's WorkBench page says beyond its recommendations. cis-bench does not read them from the page yet, so every copy has them null or as an empty array; a copy saved before they existed loads the same way. When they are read, a field the page does not give stays null or empty: nothing is filled in.
 
@@ -249,6 +250,7 @@ The fields from `release_type` to `revision_history` hold what the benchmark's W
 | `cis_controls` | array of object | | CIS Controls v7/v8 mappings with Implementation Groups | No |
 | `mitre_mapping` | object/null | | MITRE ATT&CK techniques, tactics, mitigations (lists of IDs) | No |
 | `nist_controls` | array of string | | NIST SP 800-53 control IDs | No |
+| `section_id` | integer or null | | The ID of the section WorkBench lists the recommendation under (one of `sections`); null on a copy saved before sections were recorded | No |
 | `parent` | object/null | | Parent recommendation (url, title) | No |
 | `artifacts` | array of object | | Test artifacts: `id`, `view_level`, `title` (Markdown: the payload gives some titles as HTML, converted as the payload is read; a copy saved before that is converted once as it loads, by `artifact_title_format`), `status`, `artifact_type` | No |
 | `description` | string/null | | Detailed description | Yes |

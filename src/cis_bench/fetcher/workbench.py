@@ -11,12 +11,12 @@ import threading
 from collections.abc import Callable
 from datetime import UTC, date, datetime
 from gettext import ngettext
-from typing import Any
+from typing import Any, NamedTuple
 
 import requests
 import urllib3
 from bs4 import BeautifulSoup, Tag
-from pydantic import HttpUrl, TypeAdapter, ValidationError
+from pydantic import BaseModel, HttpUrl, TypeAdapter, ValidationError
 
 from cis_bench.exceptions import AuthenticationError, ParserError
 from cis_bench.fetcher.auth import is_workbench_login_page
@@ -30,6 +30,7 @@ from cis_bench.models.benchmark import (
     ProfileDefinition,
     ProfileDefinitions,
     Recommendation,
+    Section,
 )
 from cis_bench.utils.html_parser import attribute_text
 from cis_bench.utils.markdown_text import html_to_markdown, unix_line_breaks
@@ -51,6 +52,63 @@ _PUBLISHED_ON_RE = re.compile(r"\bago on ([A-Za-z]+) (\d+)(?:st|nd|rd|th) (\d{4}
 _OVERVIEW_PARAGRAPHS = 3
 # The page's profile list, validated by the model's own rules for it.
 _PROFILE_DEFINITIONS = TypeAdapter(ProfileDefinitions)
+
+
+class _NavtreeRecommendation(BaseModel):
+    """The fields read from a recommendation entry of WorkBench's navigation tree."""
+
+    id: int
+    section_id: int
+    title: str
+    view_level: str
+    order: int
+
+
+class _NavtreeSection(BaseModel):
+    """The fields read from a section entry of WorkBench's navigation tree."""
+
+    id: int
+    title: str
+    view_level: str
+    order: int
+    parent_section_id: int | None = None
+    subsections_for_nav_tree: list["_NavtreeSection"] | None = None
+    recommendations_for_nav_tree: list[_NavtreeRecommendation] | None = None
+
+
+class _NavtreeAnswer(BaseModel):
+    """WorkBench's navigation tree answer: its sections under the key navtree."""
+
+    navtree: list[_NavtreeSection]
+
+
+def _in_order[T: (_NavtreeSection, _NavtreeRecommendation)](
+    entries: list[T], where: str
+) -> list[T]:
+    """The entries sorted by WorkBench's order; two entries with one order are refused, since
+    their order would be a guess."""
+    orders = [entry.order for entry in entries]
+    for order in orders:
+        if orders.count(order) > 1:
+            numbers = ", ".join(entry.view_level for entry in entries if entry.order == order)
+            raise ValueError(f"The navigation tree gives {numbers} {where} the same order {order}")
+    return sorted(entries, key=lambda entry: entry.order)
+
+
+class NavtreeRecommendation(NamedTuple):
+    """A recommendation the navigation tree lists: where to fetch it and what the tree says."""
+
+    url: str
+    title: str
+    ref: str
+    section_id: int
+
+
+class Navtree(NamedTuple):
+    """A benchmark's navigation tree: its sections and recommendations in WorkBench's order."""
+
+    sections: list[Section]
+    recommendations: list[NavtreeRecommendation]
 
 
 def parse_benchmark_page(html: str) -> BenchmarkPage:
@@ -358,44 +416,50 @@ class WorkbenchScraper:
         url = navtree_url(benchmark_id, base_url=self.base_url)
         return self.fetch_json(url)
 
-    def parse_navtree(self, navtree_data: dict[str, Any]) -> list[dict[str, str]]:
-        """Parse navigation tree to extract recommendation URLs.
+    def parse_navtree(self, navtree_data: dict[str, Any]) -> Navtree:
+        """Read a navigation tree: its sections and recommendations.
 
         Args:
             navtree_data: Navigation tree JSON
 
+        WorkBench lists the tree's entries in no particular order; each entry's order field gives
+        the order WorkBench shows, so siblings are taken by it, depth first.
+
         Returns:
-            List of dicts with url, title, ref
+            The sections and the recommendations (with their page URLs), in WorkBench's order
+
+        Raises:
+            ValueError: The answer has no navtree, an entry lacks a field the tree is read by (id,
+                title, view_level, order), or two siblings share an order
         """
+        sections: list[Section] = []
+        recommendations: list[NavtreeRecommendation] = []
 
-        def generate_urls(recommendations: list[dict[str, Any]]) -> list[dict[str, str]]:
-            output: list[dict[str, str]] = []
-            for rec in recommendations:
-                rec_id = rec["id"]
-                section_id = rec["section_id"]
-                url = recommendation_url(section_id, rec_id, base_url=self.base_url)
-                output.append(
-                    {"url": url, "title": str(rec["title"]), "ref": str(rec["view_level"])}
+        def walk(entries: list[_NavtreeSection], where: str) -> None:
+            for entry in _in_order(entries, where):
+                sections.append(
+                    Section(
+                        id=entry.id,
+                        number=entry.view_level,
+                        title=entry.title,
+                        parent_id=entry.parent_section_id,
+                        order=entry.order,
+                    )
                 )
-            return output
+                in_section = f"in section {entry.view_level}"
+                for rec in _in_order(entry.recommendations_for_nav_tree or [], in_section):
+                    recommendations.append(
+                        NavtreeRecommendation(
+                            url=recommendation_url(rec.section_id, rec.id, base_url=self.base_url),
+                            title=rec.title,
+                            ref=rec.view_level,
+                            section_id=rec.section_id,
+                        )
+                    )
+                walk(entry.subsections_for_nav_tree or [], in_section)
 
-        def parse_subsections(
-            subsections: list[dict[str, Any]], result: list[dict[str, str]]
-        ) -> None:
-            for section in subsections:
-                # Process recommendations at this level
-                recommendations = section.get("recommendations_for_nav_tree", [])
-                result.extend(generate_urls(recommendations))
-
-                # Recursively process subsections
-                sub_subsections = section.get("subsections_for_nav_tree")
-                if sub_subsections:
-                    parse_subsections(sub_subsections, result)
-
-        parsed_data: list[dict[str, str]] = []
-        navtree = navtree_data["navtree"]
-        parse_subsections(navtree, parsed_data)
-        return parsed_data
+        walk(_NavtreeAnswer.model_validate(navtree_data).navtree, "at the top level")
+        return Navtree(sections, recommendations)
 
     def fetch_recommendation(self, rec_url: str) -> ExtractedRecommendation:
         """Fetch and parse a single recommendation page.
@@ -455,8 +519,8 @@ class WorkbenchScraper:
         version = version_match.group() if version_match else "v1.0.0"
 
         # Fetch navigation tree
-        navtree = self.fetch_navtree(benchmark_id)
-        recommendations_list = self.parse_navtree(navtree)
+        navtree = self.parse_navtree(self.fetch_navtree(benchmark_id))
+        recommendations_list = navtree.recommendations
         log(
             ngettext(
                 "Found {count} recommendation",
@@ -466,19 +530,20 @@ class WorkbenchScraper:
             level="debug",
         )
 
-        def build_recommendation(rec_meta: dict[str, str]) -> Recommendation:
-            rec_data = self.fetch_recommendation(rec_meta["url"])
+        def build_recommendation(rec_meta: NavtreeRecommendation) -> Recommendation:
+            rec_data = self.fetch_recommendation(rec_meta.url)
             # Pydantic validates the extracted fields
             return Recommendation(
-                ref=rec_meta["ref"],
-                title=rec_meta["title"],
-                url=HttpUrl(rec_meta["url"]),
+                ref=rec_meta.ref,
+                title=rec_meta.title,
+                url=HttpUrl(rec_meta.url),
+                section_id=rec_meta.section_id,
                 **rec_data,
             )
 
-        def report_completion(completed: int, total: int, rec_meta: dict[str, str]) -> None:
+        def report_completion(completed: int, total: int, rec_meta: NavtreeRecommendation) -> None:
             log(
-                f"[{completed}/{total}] Fetching {rec_meta['ref']}: {rec_meta['title']}",
+                f"[{completed}/{total}] Fetching {rec_meta.ref}: {rec_meta.title}",
                 level="debug",
             )
 
@@ -500,7 +565,7 @@ class WorkbenchScraper:
         for rec_meta, error in fetched.failed:
             # Several errors already name the URL (FetchError, requests.HTTPError): say it once.
             detail = str(error)
-            where = "" if rec_meta["url"] in detail else f"{rec_meta['url']}: "
+            where = "" if rec_meta.url in detail else f"{rec_meta.url}: "
             logger.error(f"Failed to fetch {where}{detail}")
         recommendations = fetched.results
 
@@ -515,6 +580,7 @@ class WorkbenchScraper:
             published_date=page.published_date,
             description=page.description,
             profile_definitions=page.profile_definitions,
+            sections=navtree.sections,
             scraper_version=scraper_version,
             text_format="html" if scraper_version in HTML_ERA_SCRAPER_VERSIONS else "markdown",
             artifact_title_format="markdown",

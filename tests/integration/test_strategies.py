@@ -924,7 +924,7 @@ class TestExtractedRecommendationContract:
     navigation tree (ref, title, url); a model field without an extraction, or an extraction
     the model cannot take, is a defect at the HTML-to-model boundary."""
 
-    NAVTREE_FIELDS = {"ref", "title", "url"}
+    NAVTREE_FIELDS = {"ref", "title", "url", "section_id"}
 
     def test_the_contract_names_every_model_field_the_navtree_does_not_supply(self):
         expected = set(Recommendation.model_fields) - self.NAVTREE_FIELDS

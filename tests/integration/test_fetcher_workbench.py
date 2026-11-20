@@ -127,11 +127,14 @@ def sample_benchmark_navtree():
                 "id": 3511915,
                 "title": "Worker Node Configuration Files",
                 "view_level": "3.1",
+                "order": 1,
                 "subsections_for_nav_tree": [
                     {
                         "id": 3511916,
                         "title": "Kubelet Configuration",
                         "view_level": "3.1.1",
+                        "order": 1,
+                        "parent_section_id": 3511915,
                         "subsections_for_nav_tree": None,
                         "recommendations_for_nav_tree": [
                             {
@@ -139,12 +142,14 @@ def sample_benchmark_navtree():
                                 "section_id": 3511915,
                                 "title": "Ensure that the kubeconfig file permissions are set to 644 or more restrictive",
                                 "view_level": "3.1.1",
+                                "order": 1,
                             },
                             {
                                 "id": 5772606,
                                 "section_id": 3511915,
                                 "title": "Ensure that the kubelet kubeconfig file ownership is set to root:root",
                                 "view_level": "3.1.2",
+                                "order": 2,
                             },
                         ],
                     }
@@ -154,6 +159,7 @@ def sample_benchmark_navtree():
                 "id": 3511923,
                 "title": "Kubelet",
                 "view_level": "3.2",
+                "order": 2,
                 "subsections_for_nav_tree": None,
                 "recommendations_for_nav_tree": [
                     {
@@ -161,6 +167,7 @@ def sample_benchmark_navtree():
                         "section_id": 3511923,
                         "title": "Ensure that the Anonymous Auth is Not Enabled",
                         "view_level": "3.2.1",
+                        "order": 1,
                     }
                 ],
             },
@@ -605,161 +612,203 @@ class TestWorkbenchScraperNavtree:
         assert str(raised.value).startswith(f"Expected JSON from {url}, ")
         assert not isinstance(raised.value, json.JSONDecodeError)
 
-    def test_parse_navtree_flat_structure(self, mock_session):
-        """Test parsing navtree with recommendations at top level."""
+    @staticmethod
+    def _rec(rec_id, section_id, ref, order):
+        return {
+            "id": rec_id,
+            "section_id": section_id,
+            "title": f"Recommendation {ref}",
+            "view_level": ref,
+            "order": order,
+        }
+
+    def test_sections_and_recommendations_come_in_workbench_order(self, mock_session):
+        """WorkBench lists the navtree out of order; each entry's order gives the real one."""
         navtree_data = {
             "navtree": [
                 {
-                    "id": 1,
+                    "id": 20,
+                    "title": "Section two",
+                    "view_level": "2",
+                    "order": 2,
+                    "subsections_for_nav_tree": None,
+                    "recommendations_for_nav_tree": [self._rec(201, 20, "2.1", 1)],
+                },
+                {
+                    "id": 10,
+                    "title": "Section one",
+                    "view_level": "1",
+                    "order": 1,
+                    "subsections_for_nav_tree": [
+                        {
+                            "id": 12,
+                            "title": "Section one two",
+                            "view_level": "1.2",
+                            "order": 2,
+                            "parent_section_id": 10,
+                            "subsections_for_nav_tree": None,
+                            "recommendations_for_nav_tree": [self._rec(121, 12, "1.2.1", 1)],
+                        },
+                        {
+                            "id": 11,
+                            "title": "Section one one",
+                            "view_level": "1.1",
+                            "order": 1,
+                            "parent_section_id": 10,
+                            "subsections_for_nav_tree": None,
+                            "recommendations_for_nav_tree": [
+                                self._rec(112, 11, "1.1.2", 2),
+                                self._rec(111, 11, "1.1.1", 1),
+                            ],
+                        },
+                    ],
+                    "recommendations_for_nav_tree": [],
+                },
+            ]
+        }
+        scraper = WorkbenchScraper(
+            mock_session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
+
+        navtree = scraper.parse_navtree(navtree_data)
+
+        assert [rec.ref for rec in navtree.recommendations] == ["1.1.1", "1.1.2", "1.2.1", "2.1"]
+        assert [rec.section_id for rec in navtree.recommendations] == [11, 11, 12, 20]
+        assert [(s.id, s.number, s.title, s.parent_id, s.order) for s in navtree.sections] == [
+            (10, "1", "Section one", None, 1),
+            (11, "1.1", "Section one one", 10, 1),
+            (12, "1.2", "Section one two", 10, 2),
+            (20, "2", "Section two", None, 2),
+        ]
+
+    def test_two_siblings_with_one_order_are_refused(self, mock_session):
+        navtree_data = {
+            "navtree": [
+                {
+                    "id": 10,
+                    "title": "Section one",
+                    "view_level": "1",
+                    "order": 1,
                     "subsections_for_nav_tree": None,
                     "recommendations_for_nav_tree": [
-                        {
-                            "id": 100,
-                            "section_id": 1,
-                            "title": "Test Recommendation",
-                            "view_level": "1.1",
-                        }
+                        self._rec(101, 10, "1.1", 1),
+                        self._rec(102, 10, "1.2", 1),
                     ],
                 }
             ]
         }
-
         scraper = WorkbenchScraper(
             mock_session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
         )
 
-        # Execute
-        parsed = scraper.parse_navtree(navtree_data)
+        with pytest.raises(ValueError, match="order 1"):
+            scraper.parse_navtree(navtree_data)
 
-        # Verify
+    def test_an_answer_without_a_navtree_is_refused_naming_it(self, mock_session):
+        scraper = WorkbenchScraper(
+            mock_session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
+
+        with pytest.raises(ValueError, match="navtree"):
+            scraper.parse_navtree({"sections": []})
+
+    def test_a_navtree_entry_without_an_order_is_refused(self, mock_session):
+        navtree_data = {
+            "navtree": [
+                {
+                    "id": 10,
+                    "title": "Section one",
+                    "view_level": "1",
+                    "subsections_for_nav_tree": None,
+                    "recommendations_for_nav_tree": [],
+                }
+            ]
+        }
+        scraper = WorkbenchScraper(
+            mock_session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
+
+        with pytest.raises(ValueError, match="order"):
+            scraper.parse_navtree(navtree_data)
+
+    @staticmethod
+    def _section(section_id, number, order, recommendations=(), subsections=None, parent=None):
+        return {
+            "id": section_id,
+            "title": f"Section {number}",
+            "view_level": number,
+            "order": order,
+            "parent_section_id": parent,
+            "subsections_for_nav_tree": subsections,
+            "recommendations_for_nav_tree": list(recommendations),
+        }
+
+    def _scraper(self, session):
+        return WorkbenchScraper(
+            session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
+
+    def test_parse_navtree_flat_structure(self, mock_session):
+        """Test parsing navtree with recommendations at top level."""
+        navtree_data = {"navtree": [self._section(1, "1", 1, [self._rec(100, 1, "1.1", 1)])]}
+
+        parsed = self._scraper(mock_session).parse_navtree(navtree_data).recommendations
+
         assert len(parsed) == 1
-        assert parsed[0]["url"] == "https://workbench.cisecurity.org/sections/1/recommendations/100"
-        assert parsed[0]["title"] == "Test Recommendation"
-        assert parsed[0]["ref"] == "1.1"
+        assert parsed[0].url == "https://workbench.cisecurity.org/sections/1/recommendations/100"
+        assert parsed[0].title == "Recommendation 1.1"
+        assert parsed[0].ref == "1.1"
 
     def test_parse_navtree_nested_structure(self, mock_session, sample_benchmark_navtree):
         """Test parsing navtree with nested subsections."""
-        scraper = WorkbenchScraper(
-            mock_session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        parsed = self._scraper(mock_session).parse_navtree(sample_benchmark_navtree).recommendations
+
+        # Should find all 3 recommendations, the nested subsection's first
+        assert [rec.ref for rec in parsed] == ["3.1.1", "3.1.2", "3.2.1"]
+        assert parsed[0].url == (
+            "https://workbench.cisecurity.org/sections/3511915/recommendations/5772605"
         )
-
-        # Execute
-        parsed = scraper.parse_navtree(sample_benchmark_navtree)
-
-        # Verify - should find all 3 recommendations
-        assert len(parsed) == 3
-
-        # Check first recommendation (from nested subsection)
-        assert parsed[0]["ref"] == "3.1.1"
-        assert (
-            parsed[0]["url"]
-            == "https://workbench.cisecurity.org/sections/3511915/recommendations/5772605"
-        )
-
-        # Check second recommendation (also from nested subsection)
-        assert parsed[1]["ref"] == "3.1.2"
-
-        # Check third recommendation (from top-level section)
-        assert parsed[2]["ref"] == "3.2.1"
-        assert (
-            parsed[2]["url"]
-            == "https://workbench.cisecurity.org/sections/3511923/recommendations/5772614"
+        assert parsed[2].url == (
+            "https://workbench.cisecurity.org/sections/3511923/recommendations/5772614"
         )
 
     def test_parse_navtree_deeply_nested(self, mock_session):
         """Test parsing deeply nested subsections."""
-        navtree_data = {
-            "navtree": [
-                {
-                    "id": 1,
-                    "subsections_for_nav_tree": [
-                        {
-                            "id": 2,
-                            "subsections_for_nav_tree": [
-                                {
-                                    "id": 3,
-                                    "subsections_for_nav_tree": None,
-                                    "recommendations_for_nav_tree": [
-                                        {
-                                            "id": 999,
-                                            "section_id": 1,
-                                            "title": "Deep Recommendation",
-                                            "view_level": "1.1.1.1",
-                                        }
-                                    ],
-                                }
-                            ],
-                        }
-                    ],
-                }
-            ]
-        }
+        deepest = self._section(3, "1.1.1", 1, [self._rec(999, 3, "1.1.1.1", 1)], parent=2)
+        middle = self._section(2, "1.1", 1, subsections=[deepest], parent=1)
+        navtree_data = {"navtree": [self._section(1, "1", 1, subsections=[middle])]}
 
-        scraper = WorkbenchScraper(
-            mock_session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
-        )
+        navtree = self._scraper(mock_session).parse_navtree(navtree_data)
 
-        # Execute
-        parsed = scraper.parse_navtree(navtree_data)
-
-        # Verify deep nesting works
-        assert len(parsed) == 1
-        assert parsed[0]["ref"] == "1.1.1.1"
+        assert [rec.ref for rec in navtree.recommendations] == ["1.1.1.1"]
+        assert [(s.number, s.parent_id) for s in navtree.sections] == [
+            ("1", None),
+            ("1.1", 1),
+            ("1.1.1", 2),
+        ]
 
     def test_parse_navtree_empty_recommendations(self, mock_session):
         """Test parsing navtree with no recommendations."""
-        navtree_data = {
-            "navtree": [
-                {"id": 1, "subsections_for_nav_tree": None, "recommendations_for_nav_tree": []}
-            ]
-        }
+        navtree_data = {"navtree": [self._section(1, "1", 1)]}
 
-        scraper = WorkbenchScraper(
-            mock_session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
-        )
+        navtree = self._scraper(mock_session).parse_navtree(navtree_data)
 
-        # Execute
-        parsed = scraper.parse_navtree(navtree_data)
-
-        # Verify
-        assert parsed == []
+        assert navtree.recommendations == []
+        assert [s.number for s in navtree.sections] == ["1"]
 
     def test_parse_navtree_mixed_structure(self, mock_session):
-        """Test parsing navtree with both subsections and recommendations at same level."""
+        """A section's own recommendations come before its sub-sections' (the navtree orders each
+        list on its own, not one against the other)."""
+        nested = self._section(2, "1.1", 1, [self._rec(100, 2, "1.1.1", 1)], parent=1)
         navtree_data = {
             "navtree": [
-                {
-                    "id": 1,
-                    "subsections_for_nav_tree": [
-                        {
-                            "id": 2,
-                            "subsections_for_nav_tree": None,
-                            "recommendations_for_nav_tree": [
-                                {
-                                    "id": 100,
-                                    "section_id": 1,
-                                    "title": "Nested Rec",
-                                    "view_level": "1.1",
-                                }
-                            ],
-                        }
-                    ],
-                    "recommendations_for_nav_tree": [
-                        {"id": 200, "section_id": 1, "title": "Top Level Rec", "view_level": "1.2"}
-                    ],
-                }
+                self._section(1, "1", 1, [self._rec(200, 1, "1.2", 1)], subsections=[nested])
             ]
         }
 
-        scraper = WorkbenchScraper(
-            mock_session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
-        )
+        parsed = self._scraper(mock_session).parse_navtree(navtree_data).recommendations
 
-        # Execute
-        parsed = scraper.parse_navtree(navtree_data)
-
-        # Verify - gets nested first, then top-level
-        assert len(parsed) == 2
+        assert [rec.ref for rec in parsed] == ["1.2", "1.1.1"]
 
     def test_navtree_urls_use_the_given_origin(self, mock_session, sample_benchmark_navtree):
         """fetch_navtree and parse_navtree build URLs on the origin the scraper is given."""
@@ -783,7 +832,7 @@ class TestWorkbenchScraperNavtree:
             timeout=(10.0, 30.0),
         )
         assert (
-            parsed[0]["url"]
+            parsed.recommendations[0].url
             == "https://workbench-staging.cisecurity.org/sections/3511915/recommendations/5772605"
         )
 
@@ -888,9 +937,16 @@ def _navtree_with(count):
                 "id": 1,
                 "title": "Section 1",
                 "view_level": "1",
+                "order": 1,
                 "subsections_for_nav_tree": None,
                 "recommendations_for_nav_tree": [
-                    {"id": 1000 + n, "section_id": 1, "title": f"Rec {n}", "view_level": f"1.{n}"}
+                    {
+                        "id": 1000 + n,
+                        "section_id": 1,
+                        "title": f"Rec {n}",
+                        "view_level": f"1.{n}",
+                        "order": n,
+                    }
                     for n in range(1, count + 1)
                 ],
             }
@@ -1546,13 +1602,18 @@ class TestWorkbenchScraperFullDownload:
     ):
         """One stalled recommendation costs that recommendation, not the whole download."""
         mock_detector.return_value = mock_strategy
-        stalled_url = WorkbenchScraper(
-            requests.Session(),
-            base_url=BASE,
-            timeout=TIMEOUT,
-            max_workers=WORKERS,
-            batch_size=BATCH,
-        ).parse_navtree(sample_benchmark_navtree)[0]["url"]
+        stalled_url = (
+            WorkbenchScraper(
+                requests.Session(),
+                base_url=BASE,
+                timeout=TIMEOUT,
+                max_workers=WORKERS,
+                batch_size=BATCH,
+            )
+            .parse_navtree(sample_benchmark_navtree)
+            .recommendations[0]
+            .url
+        )
 
         def handler(url):
             if url == stalled_url:
@@ -1605,13 +1666,18 @@ class TestWorkbenchScraperFullDownload:
         stub_session,
     ):
         mock_detector.return_value = mock_strategy
-        failed_url = WorkbenchScraper(
-            requests.Session(),
-            base_url=BASE,
-            timeout=TIMEOUT,
-            max_workers=WORKERS,
-            batch_size=BATCH,
-        ).parse_navtree(sample_benchmark_navtree)[0]["url"]
+        failed_url = (
+            WorkbenchScraper(
+                requests.Session(),
+                base_url=BASE,
+                timeout=TIMEOUT,
+                max_workers=WORKERS,
+                batch_size=BATCH,
+            )
+            .parse_navtree(sample_benchmark_navtree)
+            .recommendations[0]
+            .url
+        )
 
         def handler(url):
             if url == failed_url:
@@ -1655,14 +1721,16 @@ class TestWorkbenchScraperFullDownload:
         mock_detector.return_value = mock_strategy
         navtree = _navtree_with(25)
         rec_urls = [
-            r["url"]
+            r.url
             for r in WorkbenchScraper(
                 requests.Session(),
                 base_url=BASE,
                 timeout=TIMEOUT,
                 max_workers=WORKERS,
                 batch_size=BATCH,
-            ).parse_navtree(navtree)
+            )
+            .parse_navtree(navtree)
+            .recommendations
         ]
         expired_url = rec_urls[1]
         login_html = (
@@ -1698,14 +1766,16 @@ class TestWorkbenchScraperFullDownload:
         mock_detector.return_value = mock_strategy
         navtree = _navtree_with(12)
         rec_urls = [
-            r["url"]
+            r.url
             for r in WorkbenchScraper(
                 requests.Session(),
                 base_url=BASE,
                 timeout=TIMEOUT,
                 max_workers=WORKERS,
                 batch_size=BATCH,
-            ).parse_navtree(navtree)
+            )
+            .parse_navtree(navtree)
+            .recommendations
         ]
 
         def handler(url):
@@ -1777,14 +1847,16 @@ class TestWorkbenchScraperFullDownload:
         mock_detector.return_value = mock_strategy
         navtree = _navtree_with(12)
         rec_urls = [
-            r["url"]
+            r.url
             for r in WorkbenchScraper(
                 requests.Session(),
                 base_url=BASE,
                 timeout=TIMEOUT,
                 max_workers=WORKERS,
                 batch_size=BATCH,
-            ).parse_navtree(navtree)
+            )
+            .parse_navtree(navtree)
+            .recommendations
         ]
         broken_url = rec_urls[4]
 
@@ -2094,6 +2166,47 @@ def _profiles_component(value: object) -> str:
     from tests.conftest import vue_json_attr
 
     return f'<wb-benchmark-profiles :profiles="{vue_json_attr(value)}"></wb-benchmark-profiles>'
+
+
+class TestTheSectionTree:
+    """A download records the benchmark's sections and each recommendation's section."""
+
+    @patch("cis_bench.fetcher.workbench.StrategyDetector.detect_strategy")
+    def test_a_download_records_the_sections_and_each_recommendations_section(
+        self,
+        mock_detector,
+        mock_strategy,
+        sample_benchmark_title_html,
+        sample_benchmark_navtree,
+        sample_recommendation_html,
+        stub_session,
+    ):
+        mock_detector.return_value = mock_strategy
+
+        def handler(requested):
+            if "navtree" in requested:
+                return sample_benchmark_navtree
+            if "/benchmarks/" in requested:
+                return sample_benchmark_title_html
+            return sample_recommendation_html
+
+        session, _ = stub_session(handler)
+        scraper = WorkbenchScraper(
+            session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
+
+        benchmark = scraper.download_benchmark("https://workbench.cisecurity.org/benchmarks/18528")
+
+        assert [(s.id, s.number, s.parent_id) for s in benchmark.sections] == [
+            (3511915, "3.1", None),
+            (3511916, "3.1.1", 3511915),
+            (3511923, "3.2", None),
+        ]
+        assert [(r.ref, r.section_id) for r in benchmark.recommendations] == [
+            ("3.1.1", 3511915),
+            ("3.1.2", 3511915),
+            ("3.2.1", 3511923),
+        ]
 
 
 class TestTheProfileDefinitions:
