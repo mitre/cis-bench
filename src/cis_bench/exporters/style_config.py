@@ -563,6 +563,7 @@ none takes "none", which gives the value unchanged."""
 
 # Templates by the values the engine fills them with (_TEMPLATE_VALUES)
 BenchmarkTemplate = Annotated[Template, _variables_in("benchmark")]
+BenchmarkTemplateText = Annotated[TemplateText, _variables_in("benchmark")]
 PlainTextTemplateText = Annotated[TemplateText, _variables_in("plain_text")]
 BenchmarkIdTemplate = Annotated[Template, _variables_in("benchmark_id")]
 RefTemplate = Annotated[Template, _variables_in("ref")]
@@ -663,6 +664,18 @@ class GroupElement(_Section):
     transform: TransformName = "none"
     content: _Text = None
 
+    @model_validator(mode="after")
+    def _filled_from_something(self) -> Self:
+        """An element names where its text comes from; the exporter writes nothing of its
+        own in its place."""
+        if self.source is None and self.content is None:
+            raise PydanticCustomError(
+                "nothing_to_write",
+                "names neither source nor content; give it a source or content, or leave the "
+                "element out",
+            )
+        return self
+
 
 _ELEMENT_FROM_MODEL: Final = "the element comes from the XCCDF model; a style names none"
 
@@ -679,14 +692,15 @@ class SourcedElement(_Section):
 
 
 class Notice(_Section):
-    """The Benchmark's notice: its id (terms-of-use when left out), language and text."""
+    """The Benchmark's notice: its id (XCCDF requires one), language and text; a style that
+    declares no notice gets none."""
 
     removed_keys: ClassVar[Mapping[str, str]] = {
         "element": _ELEMENT_FROM_MODEL,
         "attributes": "write the notice's id and language as id and lang",
     }
 
-    id: BenchmarkTemplate = None
+    id: BenchmarkTemplateText
     lang: BenchmarkTemplate = None
     content: BenchmarkTemplate = None
 
@@ -1076,7 +1090,7 @@ class BenchmarkSection(_Section):
 
     id_template: BenchmarkIdTemplate = None
     namespaces: NamespaceMap = Field(default_factory=dict)
-    notice: Notice = Field(default_factory=Notice)
+    notice: Annotated[Notice | None, BeforeValidator(_given)] = None
     plain_text: list[PlainText] = Field(default_factory=list)
     profiles: Profiles = Field(default_factory=Profiles)
     reference: Reference = Field(default_factory=Reference)
@@ -1291,9 +1305,11 @@ def _section_at(location: tuple[int | str, ...]) -> type[BaseModel] | None:
             if not parts:
                 return None
             annotation = variants.get(str(parts.pop(0)))
-        if not (isinstance(annotation, type) and issubclass(annotation, BaseModel)):
+        # a section the style may leave out (benchmark.notice) is "Section | None"
+        section = _model_in(annotation)
+        if section is None:
             return None
-        model = annotation
+        model = section
     return model
 
 

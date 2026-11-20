@@ -15,6 +15,7 @@ from html import escape
 from pathlib import Path
 
 import pytest
+from pydantic import TypeAdapter
 
 from cis_bench.exporters.mapping_engine import (
     ConfigLoader,
@@ -260,12 +261,16 @@ class TestDottedNumberPath:
             TransformRegistry.get("dotted_number_path")(value, *labels)
 
 
-def _with_benchmark(engine: MappingEngine, **entries: dict) -> MappingEngine:
+def _with_benchmark(engine: MappingEngine, **entries: dict | None) -> MappingEngine:
     """The engine reading a style whose benchmark section has these entries, each built as
-    its model and replacing the style's entry whole (a style file written without extends)."""
+    its model and replacing the style's entry whole (a style file written without extends);
+    None leaves the entry out."""
     style = engine.config
     fields = type(style.benchmark).model_fields
-    built = {name: fields[name].annotation.model_validate(value) for name, value in entries.items()}
+    built = {
+        name: None if value is None else TypeAdapter(fields[name].annotation).validate_python(value)
+        for name, value in entries.items()
+    }
     engine.config = style.model_copy(update={"benchmark": style.benchmark.model_copy(update=built)})
     return engine
 
@@ -1882,6 +1887,19 @@ class TestDISAVulcanCompatibility:
         assert source is not None, "DISA group description should have a source field"
         assert source == "title", "DISA group description source should be 'title'"
 
+    def test_a_cis_group_is_written_with_no_text_nothing_gave(
+        self, cis_config_path, synthetic_complete_benchmark
+    ):
+        # The CIS style names no Group title or description (the benchmark's sections are not
+        # captured), so the Group carries none: never text of the exporter's own.
+        engine = MappingEngine(cis_config_path)
+        benchmark = synthetic_complete_benchmark
+        context = {"benchmark": benchmark}
+
+        for rec in benchmark.recommendations:
+            group = engine.map_group(rec, engine.map_rule(rec, context), context)
+            assert (group.title, group.description) == ([], []), rec.ref
+
     def test_disa_map_group_uses_ref_as_title(self, disa_config_path, synthetic_complete_benchmark):
         """map_group should use CIS ref as group title."""
         engine = MappingEngine(disa_config_path)
@@ -2009,25 +2027,21 @@ class TestNoticeCreation:
             f"Exported from {synthetic_complete_benchmark.title} ({synthetic_complete_benchmark.url})"
         ]
 
-    def test_create_notice_writes_the_url_as_text_and_defaults_the_id(
+    def test_create_notice_writes_the_url_as_text_and_no_language_when_none_is_named(
         self, disa_config_path, synthetic_complete_benchmark
     ):
-        """create_notice fills the benchmark URL in as text, and takes terms-of-use as the id
-        and no language when the style names none."""
+        """create_notice fills the benchmark URL in as text, and writes no language when the
+        style names none."""
         engine = _with_benchmark(
-            MappingEngine(disa_config_path), notice={"content": "{benchmark.url}"}
+            MappingEngine(disa_config_path), notice={"id": "n", "content": "{benchmark.url}"}
         )
 
         notice = engine.create_notice(synthetic_complete_benchmark)
 
+        assert notice.id == "n"
+        assert notice.lang is None
         assert notice.content == [str(synthetic_complete_benchmark.url)]
         assert isinstance(notice.content[0], str)
-
-        _with_benchmark(engine, notice={"content": "Plain notice without explicit id or lang"})
-        fallback_notice = engine.create_notice(synthetic_complete_benchmark)
-        assert fallback_notice.id == "terms-of-use"
-        assert fallback_notice.lang is None
-        assert fallback_notice.content == ["Plain notice without explicit id or lang"]
 
     def test_create_notice_preserves_empty_content_when_omitted_or_blank(
         self, cis_config_path, synthetic_complete_benchmark
@@ -2047,11 +2061,8 @@ class TestNoticeCreation:
         assert omitted_notice.lang is None
         assert omitted_notice.content == []
 
-        _with_benchmark(engine, notice={})
-        missing_section_notice = engine.create_notice(synthetic_complete_benchmark)
-        assert missing_section_notice.id == "terms-of-use"
-        assert missing_section_notice.lang is None
-        assert missing_section_notice.content == []
+        _with_benchmark(engine, notice=None)
+        assert engine.create_notice(synthetic_complete_benchmark) is None
 
 
 class TestBenchmarkElements:
@@ -2095,6 +2106,32 @@ class TestBenchmarkIdTemplate:
             engine.map_benchmark(
                 synthetic_complete_benchmark, [], {"benchmark": synthetic_complete_benchmark}
             )
+
+    def test_the_missing_id_template_error_names_no_made_up_style(
+        self, styles_dir, synthetic_complete_benchmark, tmp_path
+    ):
+        from cis_bench.exceptions import ExportError
+
+        config = tmp_path / "unnamed.yaml"
+        config.write_text(f"extends: {Path(styles_dir).parent / 'base.yaml'}\n")
+        engine = MappingEngine(config)
+
+        with pytest.raises(ExportError) as refused:
+            engine.map_benchmark(
+                synthetic_complete_benchmark, [], {"benchmark": synthetic_complete_benchmark}
+            )
+        assert "?" not in str(refused.value)
+        assert "benchmark.id_template" in str(refused.value)
+
+    def test_a_style_without_a_notice_writes_none(
+        self, cis_config_path, synthetic_complete_benchmark, tmp_path
+    ):
+        engine = _with_benchmark(MappingEngine(cis_config_path), notice=None)
+        benchmark = synthetic_complete_benchmark
+
+        xccdf = engine.map_benchmark(benchmark, [], {"benchmark": benchmark, "recommendations": []})
+
+        assert xccdf.notice == []
 
     def test_an_id_template_naming_an_unknown_variable_is_refused(self, cis_config_path, tmp_path):
         # The variable is benchmark_id; a typo would write id="CIS-" without a word.

@@ -531,12 +531,31 @@ class TestSelfContainingStyles:
             ConfigLoader.load(style)
 
 
+class TestNothingInvented:
+    """A style that leaves out what an element needs is refused when it loads; the exporter
+    never writes a value of its own in its place."""
+
+    def test_a_group_element_with_neither_source_nor_content_is_refused(self, tmp_path):
+        style = _style(tmp_path, "group_elements:\n  title: {}\n")
+
+        with pytest.raises(
+            ValueError, match=r"style\.yaml: group_elements\.title: .*source or content"
+        ):
+            ConfigLoader.load(style)
+
+    def test_a_notice_without_an_id_is_refused(self, tmp_path):
+        style = _style(tmp_path, "benchmark:\n  notice:\n    content: x\n")
+
+        with pytest.raises(ValueError, match=r"style\.yaml: benchmark\.notice\.id: Field required"):
+            ConfigLoader.load(style)
+
+
 class TestBenchmarkSection:
     """Each benchmark entry takes the keys the engine reads; every other entry is an element
     filled from a benchmark field."""
 
     def test_a_misspelled_notice_key_is_refused_with_its_path(self, tmp_path):
-        style = _style(tmp_path, "benchmark:\n  notice:\n    contnt: x\n")
+        style = _style(tmp_path, "benchmark:\n  notice:\n    id: n\n    contnt: x\n")
 
         with pytest.raises(
             ValueError, match=r"style\.yaml: benchmark\.notice\.contnt: .*content, id, lang"
@@ -547,13 +566,13 @@ class TestBenchmarkSection:
         ("body", "path", "hint"),
         [
             pytest.param(
-                "notice:\n    element: notice\n",
+                "notice:\n    id: n\n    element: notice\n",
                 r"notice\.element",
                 "XCCDF model",
                 id="notice element",
             ),
             pytest.param(
-                "notice:\n    attributes:\n      id: x\n",
+                "notice:\n    id: n\n    attributes:\n      id: x\n",
                 r"notice\.attributes",
                 "id and lang",
                 id="notice attributes",
