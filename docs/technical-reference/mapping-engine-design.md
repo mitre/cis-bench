@@ -790,6 +790,11 @@ self.config.benchmark_mappings['id_template'],
 context
 )
 
+# The status classes of this style's XCCDF version; xccdf_status comes from
+# cis_bench.exporters.benchmark_status
+Status = self.get_xccdf_class("Status")
+StatusType = self.get_xccdf_class("StatusType")
+
 xccdf_benchmark = XCCDFBenchmark(
 id=benchmark_id,
 status=[Status(value=StatusType(xccdf_status(benchmark)))],  # from the WorkBench status
