@@ -41,6 +41,7 @@ def sample_benchmark():
         version="v4.0.0",
         downloaded_at=datetime(2025, 10, 18, 12, 0, 0),
         scraper_version="v1_2025_10",
+        workbench_status="Published",
         total_recommendations=2,
         recommendations=[
             Recommendation(
@@ -569,30 +570,38 @@ class TestExportTakesTheCatalogStatus:
         yield db
         db.close()
 
+    @pytest.fixture
+    def unrecorded(self, sample_benchmark):
+        """The sample benchmark as a copy saved before its WorkBench status was recorded."""
+        return sample_benchmark.model_copy(update={"workbench_status": None})
+
     def _exported_status(self, runner, identifier):
         result = runner.invoke(cli, ["export", identifier, "--format", "yaml", "-o", "out.yaml"])
         assert result.exit_code == 0, result.output
         return yaml.safe_load(Path("out.yaml").read_text(encoding="utf-8"))["workbench_status"]
 
     def test_a_cached_copy_saved_without_a_status_is_exported_with_the_catalogs(
-        self, runner, sample_benchmark, catalog, working_dir
+        self, runner, unrecorded, catalog, working_dir
     ):
         from cis_bench.catalog.database import serialize_benchmark_json
 
-        catalog.save_downloaded("23598", *serialize_benchmark_json(sample_benchmark), 2)
+        catalog.save_downloaded("23598", *serialize_benchmark_json(unrecorded), 2)
 
         assert self._exported_status(runner, "23598") == "Archived"
 
     def test_a_file_of_a_benchmark_the_catalog_lists_is_exported_with_the_catalogs(
-        self, runner, sample_benchmark_json, catalog, working_dir
+        self, runner, unrecorded, catalog, tmp_path, working_dir
     ):
-        assert self._exported_status(runner, str(sample_benchmark_json)) == "Archived"
+        listed = tmp_path / "listed.json"
+        unrecorded.to_json_file(str(listed))
+
+        assert self._exported_status(runner, str(listed)) == "Archived"
 
     def test_a_file_the_catalog_does_not_list_is_exported_with_no_status(
-        self, runner, sample_benchmark, catalog, tmp_path, working_dir
+        self, runner, unrecorded, catalog, tmp_path, working_dir
     ):
         unlisted = tmp_path / "unlisted.json"
-        sample_benchmark.model_copy(update={"benchmark_id": "999"}).to_json_file(str(unlisted))
+        unrecorded.model_copy(update={"benchmark_id": "999"}).to_json_file(str(unlisted))
 
         assert self._exported_status(runner, str(unlisted)) is None
 

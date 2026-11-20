@@ -39,6 +39,7 @@ def sample_benchmark():
         version="v4.0.0",
         downloaded_at=datetime(2025, 10, 18, 12, 0, 0),
         scraper_version="1.0.0",
+        workbench_status="Published",
         total_recommendations=3,
         recommendations=[
             Recommendation(
@@ -500,6 +501,7 @@ class TestInfoCommand:
             version="v1.0.0",
             downloaded_at=datetime.now(),
             scraper_version="1.0.0",
+            workbench_status="Published",
             total_recommendations=10,
             recommendations=recs,
         )
@@ -532,6 +534,7 @@ class TestListCommand:
             version=version,
             downloaded_at=datetime.now(),
             scraper_version="1.0.0",
+            workbench_status="Published",
             total_recommendations=1,
             recommendations=[
                 Recommendation(

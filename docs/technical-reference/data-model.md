@@ -175,23 +175,24 @@ writer.writerows(rows)
 ### XCCDF Exporter
 ```python
 # Map to xsdata XCCDF models
-def export(self, data, output_path):
-from cis_bench.models.xccdf import Benchmark, Rule, Status
+def export(self, benchmark, output_path):  # benchmark: the source Benchmark model
+from cis_bench.exporters.benchmark_status import xccdf_status
+from cis_bench.models.xccdf import Benchmark, Rule, Status, StatusType
 
 # Create XCCDF Benchmark
 xccdf_benchmark = Benchmark(
-id=f"cis_benchmark_{data['benchmark_id']}",
-status=[Status(value="draft")],
-title=data['title'],
-version=data['version']
+id=f"cis_benchmark_{benchmark.benchmark_id}",
+status=[Status(value=StatusType(xccdf_status(benchmark)))],  # from the WorkBench status
+title=benchmark.title,
+version=benchmark.version
 )
 
 # Map each recommendation XCCDF Rule
-for rec in data['recommendations']:
+for rec in benchmark.recommendations:
 rule = Rule(
-id=f"rule_{rec['ref'].replace('.', '_')}",
-title=rec['title'],
-description=rec['description'], # Markdown, written as stored
+id=f"rule_{rec.ref.replace('.', '_')}",
+title=rec.title,
+description=rec.description, # Markdown, written as stored
 # ... map other fields per XCCDF spec
 )
 xccdf_benchmark.rule.append(rule)

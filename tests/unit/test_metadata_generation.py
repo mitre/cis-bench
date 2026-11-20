@@ -351,6 +351,7 @@ def benchmark(*recommendations: Recommendation) -> Benchmark:
         url="https://example.org/benchmarks/12345",
         version="v1.0.0",
         scraper_version="v2_2026_01",
+        workbench_status="Published",
         total_recommendations=len(recommendations),
         recommendations=list(recommendations),
     )

@@ -161,6 +161,22 @@ XCCDF 1.2 requires Benchmark ids to match `xccdf_<namespace>_benchmark_<name>` a
 to be an NCName, so a 1.2 style's template must start with `xccdf_`, contain
 `_benchmark_`, and use only the variables above after it.
 
+### Benchmark Status
+
+The `<status>` of the `<Benchmark>` element is the XCCDF status the benchmark's CIS WorkBench
+status (`Benchmark.workbench_status`, recorded from the catalog) maps to, in both XCCDF
+versions. The table is in `src/cis_bench/exporters/benchmark_status.py`; a style does not set it.
+
+| WorkBench status | XCCDF status |
+|------------------|--------------|
+| Published, Accepted, Final Update | `accepted` |
+| Draft | `draft` |
+| Archived, Rejected, Withdrawn | `deprecated` |
+
+A benchmark with no WorkBench status (a copy the catalog does not list), or with a status the
+table does not name, fails with `ExportError`: no status is written that the benchmark did not
+give.
+
 ---
 
 ## Field Mapping Types

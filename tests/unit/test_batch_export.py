@@ -47,6 +47,7 @@ def sample_benchmark_1():
         version="v1.0.0",
         downloaded_at=datetime(2025, 1, 1),
         scraper_version="1.0.0",
+        workbench_status="Published",
         total_recommendations=2,
         recommendations=[
             Recommendation(
@@ -87,6 +88,7 @@ def sample_benchmark_2():
         version="v1.0.0",
         downloaded_at=datetime(2025, 1, 1),
         scraper_version="1.0.0",
+        workbench_status="Published",
         total_recommendations=1,
         recommendations=[
             Recommendation(
@@ -115,6 +117,7 @@ def sample_benchmark_3():
         version="v2.0.0",
         downloaded_at=datetime(2025, 1, 1),
         scraper_version="1.0.0",
+        workbench_status="Published",
         total_recommendations=1,
         recommendations=[
             Recommendation(

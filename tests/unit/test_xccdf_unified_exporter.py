@@ -29,6 +29,7 @@ def sample_benchmark(sample_recommendation_complete):
         url="https://workbench.cisecurity.org/benchmarks/23598",
         version="v1.0.0",
         scraper_version="1.0.0",
+        workbench_status="Published",
         total_recommendations=1,
         recommendations=[sample_recommendation_complete],
     )
@@ -69,6 +70,7 @@ def benchmark_with_multiple_recs():
         url="https://workbench.cisecurity.org/benchmarks/23598",
         version="v1.0.0",
         scraper_version="1.0.0",
+        workbench_status="Published",
         total_recommendations=2,
         recommendations=recs,
     )
@@ -89,6 +91,7 @@ def minimal_benchmark():
         url="https://workbench.cisecurity.org/benchmarks/12345",
         version="v1.0.0",
         scraper_version="1.0.0",
+        workbench_status="Published",
         total_recommendations=1,
         recommendations=[rec],
     )
@@ -444,6 +447,7 @@ class TestEdgeCases:
             url="https://workbench.cisecurity.org/benchmarks/12345",
             version="v1.0.0",
             scraper_version="1.0.0",
+            workbench_status="Published",
             total_recommendations=0,
             recommendations=[],
         )
@@ -470,6 +474,7 @@ class TestEdgeCases:
             url="https://workbench.cisecurity.org/benchmarks/12345",
             version="v1.0.0",
             scraper_version="1.0.0",
+            workbench_status="Published",
             total_recommendations=1,
             recommendations=[rec],
         )
@@ -578,6 +583,7 @@ class TestDuplicateRuleIds:
             url="https://workbench.cisecurity.org/benchmarks/12345",
             version="v1.0.0",
             scraper_version="1.0.0",
+            workbench_status="Published",
             total_recommendations=3,
             recommendations=[
                 _recommendation("1.1.1", "First"),
@@ -603,6 +609,7 @@ class TestDuplicateRuleIds:
             url="https://workbench.cisecurity.org/benchmarks/12345",
             version="v1.0.0",
             scraper_version="1.0.0",
+            workbench_status="Published",
             total_recommendations=2,
             recommendations=[_recommendation("1.1.1", "First"), _recommendation("1.1.2", "Second")],
         )
@@ -631,6 +638,7 @@ def _cis_rule(tmp_path, **fields):
         url="https://workbench.cisecurity.org/benchmarks/12345",
         version="v1.0.0",
         scraper_version="v2_2026_01",
+        workbench_status="Published",
         total_recommendations=1,
         recommendations=[rec],
     )

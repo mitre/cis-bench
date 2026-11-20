@@ -3,6 +3,7 @@
   "benchmark_id": "90003",
   "url": "https://workbench.cisecurity.org/benchmarks/90003",
   "version": "v1.0.0",
+  "workbench_status": "Published",
   "downloaded_at": "2025-03-04T10:00:00Z",
   "scraper_version": "v2_2026_01",
   "total_recommendations": 12,
