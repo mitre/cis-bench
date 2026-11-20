@@ -6,7 +6,6 @@ Uses real HTML samples from actual CIS WorkBench pages.
 
 import itertools
 import json
-import logging
 import threading
 import time
 from unittest.mock import Mock, patch
@@ -1544,7 +1543,7 @@ class TestWorkbenchScraperFullDownload:
         assert any("Successfully downloaded" in msg for msg in progress_messages)
 
     @patch("cis_bench.fetcher.workbench.StrategyDetector.detect_strategy")
-    def test_download_benchmark_handles_failed_recommendations(
+    def test_a_recommendation_page_that_cannot_be_read_fails_the_download(
         self,
         mock_detector,
         mock_strategy,
@@ -1552,11 +1551,10 @@ class TestWorkbenchScraperFullDownload:
         sample_benchmark_navtree,
         stub_session,
     ):
-        """Test that benchmark download continues when individual recommendations fail."""
-        mock_detector.return_value = mock_strategy
+        """A copy without one recommendation would be incomplete: nothing is returned."""
+        from cis_bench.exceptions import IncompleteDownloadError
 
-        # Make strategy fail for some recommendations
-        # Save the original mock's return_value before replacing with function
+        mock_detector.return_value = mock_strategy
         successful_extraction = mock_strategy.extract_recommendation.return_value
         call_count = [0]
         count_lock = threading.Lock()
@@ -1566,7 +1564,6 @@ class TestWorkbenchScraperFullDownload:
                 call_count[0] += 1
                 this_call = call_count[0]
             if this_call == 2:
-                # Fail the second recommendation
                 raise Exception("Extraction failed")
             return successful_extraction
 
@@ -1584,23 +1581,23 @@ class TestWorkbenchScraperFullDownload:
             session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
         )
 
-        benchmark = scraper.download_benchmark("https://workbench.cisecurity.org/benchmarks/18528")
+        with pytest.raises(IncompleteDownloadError) as refused:
+            scraper.download_benchmark("https://workbench.cisecurity.org/benchmarks/18528")
 
-        # Verify - should have 2 recommendations (skipped the failed one)
-        assert len(benchmark.recommendations) == 2
-        assert benchmark.total_recommendations == 2
+        assert [detail for _, detail in refused.value.failures] == ["Extraction failed"]
 
     @patch("cis_bench.fetcher.workbench.StrategyDetector.detect_strategy")
-    def test_download_benchmark_skips_a_recommendation_that_keeps_timing_out(
+    def test_a_recommendation_that_keeps_timing_out_fails_the_download(
         self,
         mock_detector,
         mock_strategy,
         sample_benchmark_title_html,
         sample_benchmark_navtree,
-        caplog,
         stub_session,
     ):
-        """One stalled recommendation costs that recommendation, not the whole download."""
+        """One stalled recommendation fails the benchmark's download, naming the page."""
+        from cis_bench.exceptions import IncompleteDownloadError
+
         mock_detector.return_value = mock_strategy
         stalled_url = (
             WorkbenchScraper(
@@ -1624,22 +1621,16 @@ class TestWorkbenchScraperFullDownload:
                 return sample_benchmark_title_html
             return "<html>recommendation</html>"
 
-        session, transport = stub_session(handler)
+        session, _ = stub_session(handler)
         scraper = WorkbenchScraper(
             session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
         )
 
-        with (
-            caplog.at_level(logging.ERROR, logger="cis_bench.fetcher.workbench"),
-        ):
-            benchmark = scraper.download_benchmark(
-                "https://workbench.cisecurity.org/benchmarks/18528"
-            )
+        with pytest.raises(IncompleteDownloadError) as refused:
+            scraper.download_benchmark("https://workbench.cisecurity.org/benchmarks/18528")
 
-        assert len(benchmark.recommendations) == 2
-        assert benchmark.total_recommendations == 2
-        errors = [r.getMessage() for r in caplog.records if r.levelno == logging.ERROR]
-        assert any(stalled_url in line and "timed out" in line for line in errors), errors
+        assert [url for url, _ in refused.value.failures] == [stalled_url]
+        assert "timed out" in str(refused.value)
 
     @pytest.mark.parametrize(
         ("make_error", "detail"),
@@ -1654,7 +1645,7 @@ class TestWorkbenchScraperFullDownload:
         ids=["error-that-starts-with-the-url", "error-that-ends-with-the-url", "error-without-it"],
     )
     @patch("cis_bench.fetcher.workbench.StrategyDetector.detect_strategy")
-    def test_the_failure_line_names_the_recommendation_url_exactly_once(
+    def test_the_error_names_the_failed_page_exactly_once(
         self,
         mock_detector,
         make_error,
@@ -1662,9 +1653,10 @@ class TestWorkbenchScraperFullDownload:
         mock_strategy,
         sample_benchmark_title_html,
         sample_benchmark_navtree,
-        caplog,
         stub_session,
     ):
+        from cis_bench.exceptions import IncompleteDownloadError
+
         mock_detector.return_value = mock_strategy
         failed_url = (
             WorkbenchScraper(
@@ -1693,18 +1685,12 @@ class TestWorkbenchScraperFullDownload:
             session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
         )
 
-        with caplog.at_level(logging.ERROR, logger="cis_bench.fetcher.workbench"):
+        with pytest.raises(IncompleteDownloadError) as refused:
             scraper.download_benchmark("https://workbench.cisecurity.org/benchmarks/18528")
 
-        lines = [
-            r.getMessage()
-            for r in caplog.records
-            if r.name == "cis_bench.fetcher.workbench" and r.levelno == logging.ERROR
-        ]
-        assert len(lines) == 1, lines
-        assert lines[0].startswith("Failed to fetch ")
-        assert lines[0].count(failed_url) == 1, lines[0]
-        assert detail in lines[0]
+        message = str(refused.value)
+        assert message.count(failed_url) == 1, message
+        assert detail in message
 
     @patch("cis_bench.fetcher.workbench.StrategyDetector.detect_strategy")
     def test_download_benchmark_aborts_when_the_session_expires(
@@ -1841,9 +1827,11 @@ class TestWorkbenchScraperFullDownload:
             assert " Fetching 1." in msg
 
     @patch("cis_bench.fetcher.workbench.StrategyDetector.detect_strategy")
-    def test_a_failed_recommendation_is_logged_once_with_its_url_and_error(
-        self, mock_detector, mock_strategy, sample_benchmark_title_html, caplog, stub_session
+    def test_the_error_names_every_failed_page_in_listed_order(
+        self, mock_detector, mock_strategy, sample_benchmark_title_html, stub_session
     ):
+        from cis_bench.exceptions import IncompleteDownloadError
+
         mock_detector.return_value = mock_strategy
         navtree = _navtree_with(12)
         rec_urls = [
@@ -1858,14 +1846,14 @@ class TestWorkbenchScraperFullDownload:
             .parse_navtree(navtree)
             .recommendations
         ]
-        broken_url = rec_urls[4]
+        broken_urls = [rec_urls[4], rec_urls[9]]
 
         def handler(url):
             if "navtree" in url:
                 return navtree
             if "/benchmarks/" in url:
                 return sample_benchmark_title_html
-            if url == broken_url:
+            if url in broken_urls:
                 raise requests.ConnectionError("connection reset")
             return "<html>recommendation</html>"
 
@@ -1874,20 +1862,11 @@ class TestWorkbenchScraperFullDownload:
             session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
         )
 
-        with (
-            caplog.at_level(logging.ERROR, logger="cis_bench.fetcher.workbench"),
-        ):
-            benchmark = scraper.download_benchmark(
-                "https://workbench.cisecurity.org/benchmarks/18528"
-            )
+        with pytest.raises(IncompleteDownloadError) as refused:
+            scraper.download_benchmark("https://workbench.cisecurity.org/benchmarks/18528")
 
-        assert [r.ref for r in benchmark.recommendations] == [
-            f"1.{n}" for n in range(1, 13) if n != 5
-        ]
-        errors = [r.getMessage() for r in caplog.records if r.levelno == logging.ERROR]
-        about_broken = [line for line in errors if broken_url in line]
-        assert len(about_broken) == 1, errors
-        assert "connection reset" in about_broken[0]
+        assert [url for url, _ in refused.value.failures] == broken_urls
+        assert all("connection reset" in detail for _, detail in refused.value.failures)
 
     @patch("cis_bench.fetcher.workbench.StrategyDetector.detect_strategy")
     def test_the_cli_progress_bar_counts_every_fetched_recommendation(

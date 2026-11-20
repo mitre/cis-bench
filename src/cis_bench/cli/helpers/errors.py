@@ -10,12 +10,13 @@ from rich.markup import escape
 from cis_bench.exceptions import (
     AuthenticationError,
     FetchError,
+    IncompleteDownloadError,
     NoSavedSessionError,
     TLSVerificationError,
 )
 
 # What logging in or downloading from WorkBench can raise; report_download_error reports each.
-DOWNLOAD_ERRORS = (AuthenticationError, TLSVerificationError, FetchError)
+DOWNLOAD_ERRORS = (AuthenticationError, TLSVerificationError, FetchError, IncompleteDownloadError)
 
 
 def report_configuration_error(console: Console, error: Exception) -> None:
@@ -55,13 +56,17 @@ def report_login_required(console: Console) -> None:
 
 def report_download_error(
     console: Console,
-    error: AuthenticationError | TLSVerificationError | FetchError,
+    error: AuthenticationError | TLSVerificationError | FetchError | IncompleteDownloadError,
 ) -> None:
     """Report one of DOWNLOAD_ERRORS the way download, get and diff all report it."""
     if isinstance(error, NoSavedSessionError):
         report_login_required(console)
     elif isinstance(error, AuthenticationError):
         report_expired_session(console, error)
+    elif isinstance(error, IncompleteDownloadError):
+        # WorkBench answered, but pages failed: the benchmark is not downloaded at all.
+        console.print(f"\n[red]✗ {escape(str(error))}[/red]", soft_wrap=True)
+        console.print("Nothing was cached; any saved copy is kept. Try the download again.")
     elif isinstance(error, TLSVerificationError):
         # The server could not be trusted; the message carries the remediation.
         console.print(f"\n[red]✗ {escape(str(error))}[/red]")

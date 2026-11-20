@@ -19,7 +19,11 @@ import pytest
 from click.testing import CliRunner
 
 from cis_bench.cli.app import cli
-from cis_bench.exceptions import NoSavedSessionError, TLSVerificationError
+from cis_bench.exceptions import (
+    IncompleteDownloadError,
+    NoSavedSessionError,
+    TLSVerificationError,
+)
 from cis_bench.models.benchmark import Benchmark, Recommendation
 from tests.conftest import answers_for_the_catalog
 
@@ -445,8 +449,22 @@ class TestDownloadExportErrors:
 class TestDownloadBenchmarkErrors:
     """Test download command benchmark download errors (lines 247-253)."""
 
+    @pytest.mark.parametrize(
+        ("error", "reported"),
+        [
+            (Exception("Network error [/x]"), "Error: Network error [/x]"),
+            (
+                IncompleteDownloadError(
+                    "https://workbench.cisecurity.org/benchmarks/12345",
+                    [("https://workbench.cisecurity.org/sections/1/recommendations/2", "boom")],
+                ),
+                "recommendations/2: boom",
+            ),
+        ],
+        ids=["any-error", "incomplete-download"],
+    )
     def test_download_benchmark_failure_continues_to_next(
-        self, runner, sample_benchmark, tmp_path, monkeypatch
+        self, runner, sample_benchmark, tmp_path, monkeypatch, error, reported
     ):
         """Download continues to next benchmark after failure."""
         monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path / "nonexistent"))
@@ -460,10 +478,7 @@ class TestDownloadBenchmarkErrors:
                 mock_scraper_class.return_value = mock_scraper
 
                 # First fails, second succeeds
-                mock_scraper.download_benchmark.side_effect = [
-                    Exception("Network error [/x]"),
-                    sample_benchmark,
-                ]
+                mock_scraper.download_benchmark.side_effect = [error, sample_benchmark]
 
                 with patch("cis_bench.cli.commands.download.ExporterFactory") as mock_factory:
                     mock_exporter = Mock()
@@ -481,7 +496,7 @@ class TestDownloadBenchmarkErrors:
                     assert mock_scraper.download_benchmark.call_count == 2
                     assert result.exit_code == 1
                     assert "Error" in result.output
-                    assert result.output.count("Error: Network error [/x]") == 1
+                    assert result.output.count(reported) == 1
                     flat = " ".join(result.output.split())
                     assert "Downloading 2 benchmarks..." in flat
                     assert "1 of 2 benchmarks failed (12345)" in flat
@@ -819,7 +834,9 @@ class TestGetDownloadErrors:
                     assert "Authentication Required" in result.output
 
     @staticmethod
-    def _invoke_get_with_failing_download(runner, tmp_path, monkeypatch, global_flags=()):
+    def _invoke_get_with_failing_download(
+        runner, tmp_path, monkeypatch, global_flags=(), error=None
+    ):
         catalog_path = tmp_path / "catalog.db"
         catalog_path.touch()
         with (
@@ -835,7 +852,7 @@ class TestGetDownloadErrors:
                 {"benchmark_id": "12345", "title": "Test", "version": "v1", "status": "Published"}
             ]
             mock_auth.return_value.get_or_create_session.return_value = Mock()
-            mock_dl.side_effect = Exception("Network timeout [/x]")
+            mock_dl.side_effect = error or Exception("Network timeout [/x]")
 
             return runner.invoke(cli, [*global_flags, "get", "test", "--non-interactive"])
 
@@ -845,6 +862,25 @@ class TestGetDownloadErrors:
 
         assert result.exit_code == 1
         assert result.output.count("Download failed: Network timeout [/x]") == 1
+        assert "Traceback" not in result.output
+
+    def test_an_incomplete_download_names_the_page_and_caches_nothing(
+        self, runner, tmp_path, monkeypatch
+    ):
+        from cis_bench.exceptions import IncompleteDownloadError
+
+        page = "https://workbench.cisecurity.org/sections/1/recommendations/2"
+        error = IncompleteDownloadError(
+            "https://workbench.cisecurity.org/benchmarks/12345", [(page, "Read timed out")]
+        )
+
+        result = self._invoke_get_with_failing_download(runner, tmp_path, monkeypatch, error=error)
+
+        assert result.exit_code == 1
+        assert f"{page}: Read timed out" in result.output
+        assert "Nothing was cached" in result.output
+        assert "Could not reach WorkBench" not in result.output
+        assert "Download failed:" not in result.output
         assert "Traceback" not in result.output
 
     def test_get_download_error_traceback_is_written_with_verbose(
