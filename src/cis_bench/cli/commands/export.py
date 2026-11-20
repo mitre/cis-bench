@@ -43,20 +43,22 @@ def _load_benchmark_from_db(identifier, catalog_db_path):
     Returns:
         tuple: (Benchmark, benchmark_id) or (None, error_message)
     """
-    from cis_bench.catalog.database import CatalogDatabase, deserialize_benchmark_json
+    from cis_bench.catalog.database import CatalogDatabase
 
     with closing(CatalogDatabase(catalog_db_path)) as db:
-        downloaded = db.get_downloaded(identifier)
+        benchmark = db.load_downloaded(identifier)
 
-        if not downloaded:
+        if benchmark is None:
             return None, f"Benchmark {identifier} not downloaded"
 
-        benchmark = deserialize_benchmark_json(downloaded["content_json"])
         return benchmark, identifier
 
 
 def _load_benchmark_from_file(identifier, input_dir):
     """Load a benchmark from a JSON file.
+
+    A file without a WorkBench status takes the one the catalog lists for its benchmark id,
+    when there is a catalog that lists it.
 
     Args:
         identifier: File path
@@ -75,6 +77,12 @@ def _load_benchmark_from_file(identifier, input_dir):
         return None, f"File not found: {input_file}"
 
     benchmark = Benchmark.from_json_file(input_file)
+    catalog_db_path = settings_from().catalog_db_path
+    if catalog_db_path.exists():
+        from cis_bench.catalog.database import CatalogDatabase
+
+        with closing(CatalogDatabase(catalog_db_path)) as db:
+            benchmark = db.with_catalog_status(benchmark.benchmark_id, benchmark)
     return benchmark, None
 
 

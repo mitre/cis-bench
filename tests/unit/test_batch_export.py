@@ -24,6 +24,7 @@ from click.testing import CliRunner
 
 from cis_bench.cli.app import cli
 from cis_bench.models.benchmark import Benchmark, Recommendation
+from tests.conftest import answers_for_the_catalog
 
 # ============================================================================
 # Fixtures
@@ -149,6 +150,8 @@ def mock_db_with_benchmarks(*benchmarks):
 
     mock_db = Mock()
     mock_db.get_downloaded.side_effect = get_downloaded
+    answers_for_the_catalog(mock_db, None)
+    mock_db.load_downloaded.side_effect = benchmark_map.get
     return mock_db
 
 
@@ -368,6 +371,7 @@ class TestBatchExportErrorHandling:
         with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
             mock_db = Mock()
             mock_db.get_downloaded.return_value = None  # Nothing found
+            answers_for_the_catalog(mock_db, None)
             mock_db_class.return_value = mock_db
 
             result = runner.invoke(cli, ["export", "99998", "99999", "--format", "yaml"])

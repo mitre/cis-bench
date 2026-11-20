@@ -6,9 +6,10 @@ Tests both file-based and database-based export functionality.
 import warnings
 from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import pytest
+import yaml
 from bs4 import MarkupResemblesLocatorWarning
 from click.testing import CliRunner
 
@@ -336,56 +337,52 @@ class TestExportFromFile:
 # ============================================================================
 
 
+@pytest.fixture
+def catalog_home(tmp_path, monkeypatch):
+    """A real catalog listing benchmark 23598, in the folder CIS_BENCH_HOME points at; the
+    test saves the cached copy it needs."""
+    from cis_bench.catalog.database import CatalogDatabase
+
+    monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path))
+    db = CatalogDatabase(tmp_path / "catalog.db")
+    db.initialize_schema()
+    db.insert_benchmark(
+        {
+            "benchmark_id": "23598",
+            "title": "CIS AlmaLinux OS 8 Benchmark",
+            "url": "https://workbench.cisecurity.org/benchmarks/23598",
+            "status": "Published",
+        }
+    )
+    yield db
+    db.close()
+
+
+def _cache(db, content_json):
+    db.save_downloaded("23598", content_json, "hash", 2)
+
+
 class TestExportFromDatabase:
     """Test export command with benchmark IDs (new functionality)."""
 
-    def test_export_from_db_by_id(
-        self, runner, sample_benchmark, tmp_path, monkeypatch, working_dir
-    ):
+    def test_export_from_db_by_id(self, runner, sample_benchmark, catalog_home, working_dir):
         """Export benchmark from database by ID."""
-        # Create empty catalog file so .exists() check passes
-        catalog_path = tmp_path / "catalog.db"
-        catalog_path.touch()
+        _cache(catalog_home, sample_benchmark.model_dump_json())
 
-        monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
+        result = runner.invoke(cli, ["export", "23598", "--format", "yaml"])
 
-        # Mock CatalogDatabase (imported inside function, so patch at source)
-        with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
-            mock_db = Mock()
-            mock_db_class.return_value = mock_db
+        assert result.exit_code == 0, f"Export failed: {result.output}"
+        assert "Loaded from cache: CIS AlmaLinux OS 8 Benchmark" in result.output
+        assert "Exported 2 recommendations" in result.output
+        assert Path("benchmark_23598.yaml").exists()
 
-            # Simulate downloaded benchmark in database
-            mock_db.get_downloaded.return_value = {
-                "benchmark_id": "23598",
-                "content_json": sample_benchmark.model_dump_json(),
-                "downloaded_at": datetime.now(),
-                "recommendation_count": 2,
-            }
-
-            result = runner.invoke(cli, ["export", "23598", "--format", "yaml"])
-
-            assert result.exit_code == 0, f"Export failed: {result.output}"
-            assert "Loaded from cache: CIS AlmaLinux OS 8 Benchmark" in result.output
-            assert "Exported 2 recommendations" in result.output
-            assert Path("benchmark_23598.yaml").exists()
-
-    def test_export_from_db_benchmark_not_downloaded(self, runner, tmp_path, monkeypatch):
+    def test_export_from_db_benchmark_not_downloaded(self, runner, catalog_home):
         """Export fails when benchmark ID not in database."""
-        catalog_path = tmp_path / "catalog.db"
-        catalog_path.touch()
+        result = runner.invoke(cli, ["export", "23598", "--format", "yaml"])
 
-        monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
-
-        with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
-            mock_db = Mock()
-            mock_db_class.return_value = mock_db
-            mock_db.get_downloaded.return_value = None  # Not found
-
-            result = runner.invoke(cli, ["export", "23598", "--format", "yaml"])
-
-            assert result.exit_code == 1
-            assert "Benchmark 23598 not downloaded" in result.output
-            assert "cis-bench download 23598" in result.output
+        assert result.exit_code == 1
+        assert "Benchmark 23598 not downloaded" in result.output
+        assert "cis-bench download 23598" in result.output
 
     def test_export_from_db_catalog_not_exists(self, runner, tmp_path, monkeypatch):
         """Export fails when catalog database doesn't exist."""
@@ -401,80 +398,41 @@ class TestExportFromDatabase:
         assert "catalog refresh" in result.output
 
     def test_export_from_db_xccdf_with_style(
-        self, runner, sample_benchmark, tmp_path, monkeypatch, working_dir
+        self, runner, sample_benchmark, catalog_home, working_dir
     ):
         """Export from database to XCCDF with CIS style."""
-        catalog_path = tmp_path / "catalog.db"
-        catalog_path.touch()
+        _cache(catalog_home, sample_benchmark.model_dump_json())
 
-        monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
+        result = runner.invoke(cli, ["export", "23598", "--format", "xccdf", "--style", "cis"])
 
-        with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
-            mock_db = Mock()
-            mock_db_class.return_value = mock_db
-            mock_db.get_downloaded.return_value = {
-                "benchmark_id": "23598",
-                "content_json": sample_benchmark.model_dump_json(),
-                "downloaded_at": datetime.now(),
-                "recommendation_count": 2,
-            }
-
-            result = runner.invoke(cli, ["export", "23598", "--format", "xccdf", "--style", "cis"])
-
-            assert result.exit_code == 0
-            assert Path("benchmark_23598.xml").exists()
+        assert result.exit_code == 0
+        assert Path("benchmark_23598.xml").exists()
 
     def test_export_from_db_with_custom_output(
-        self, runner, sample_benchmark, tmp_path, monkeypatch, working_dir
+        self, runner, sample_benchmark, catalog_home, working_dir
     ):
         """Export from database with custom output filename."""
-        catalog_path = tmp_path / "catalog.db"
-        catalog_path.touch()
+        _cache(catalog_home, sample_benchmark.model_dump_json())
 
-        monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
+        result = runner.invoke(
+            cli, ["export", "23598", "--format", "yaml", "--output", "custom.yaml"]
+        )
 
-        with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
-            mock_db = Mock()
-            mock_db_class.return_value = mock_db
-            mock_db.get_downloaded.return_value = {
-                "benchmark_id": "23598",
-                "content_json": sample_benchmark.model_dump_json(),
-                "downloaded_at": datetime.now(),
-                "recommendation_count": 2,
-            }
+        assert result.exit_code == 0
+        assert Path("custom.yaml").exists()
+        assert not Path("benchmark_23598.yaml").exists()
 
-            result = runner.invoke(
-                cli, ["export", "23598", "--format", "yaml", "--output", "custom.yaml"]
-            )
-
-            assert result.exit_code == 0
-            assert Path("custom.yaml").exists()
-            assert not Path("benchmark_23598.yaml").exists()
-
-    def test_export_from_db_invalid_json_in_database(self, runner, tmp_path, monkeypatch):
+    def test_export_from_db_invalid_json_in_database(self, runner, catalog_home):
         """Export fails gracefully when database contains invalid JSON."""
-        catalog_path = tmp_path / "catalog.db"
-        catalog_path.touch()
+        _cache(catalog_home, "{invalid json}")
 
-        monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
+        result = runner.invoke(cli, ["export", "23598", "--format", "yaml"])
 
-        with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
-            mock_db = Mock()
-            mock_db_class.return_value = mock_db
-            mock_db.get_downloaded.return_value = {
-                "benchmark_id": "23598",
-                "content_json": "{invalid json}",  # Invalid JSON
-                "downloaded_at": datetime.now(),
-                "recommendation_count": 2,
-            }
-
-            result = runner.invoke(cli, ["export", "23598", "--format", "yaml"])
-
-            assert result.exit_code == 1
-            assert "Error loading from database" in result.output
-            # pydantic's message carries bracketed detail that must not be read as markup
-            assert "[type=json_invalid" in result.output
-            assert "Traceback" not in result.output
+        assert result.exit_code == 1
+        assert "Error loading from database" in result.output
+        # pydantic's message carries bracketed detail that must not be read as markup
+        assert "[type=json_invalid" in result.output
+        assert "Traceback" not in result.output
 
 
 # ============================================================================
@@ -485,26 +443,16 @@ class TestExportFromDatabase:
 class TestIdentifierDetection:
     """Test that export correctly identifies IDs vs file paths."""
 
-    def test_numeric_string_treated_as_id(self, runner, tmp_path, monkeypatch, working_dir):
+    def test_numeric_string_treated_as_id(self, runner, catalog_home, working_dir):
         """Numeric string is treated as benchmark ID, not filename."""
         # Create a file literally named "23598" to test precedence
         Path("23598").write_text("fake file")
 
-        catalog_path = tmp_path / "catalog.db"
-        catalog_path.touch()
+        result = runner.invoke(cli, ["export", "23598", "--format", "yaml"])
 
-        monkeypatch.setenv("CIS_BENCH_HOME", str(catalog_path.parent))
-
-        with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
-            mock_db = Mock()
-            mock_db_class.return_value = mock_db
-            mock_db.get_downloaded.return_value = None
-
-            result = runner.invoke(cli, ["export", "23598", "--format", "yaml"])
-
-            # Should try database, not file (even though file exists)
-            assert result.exit_code == 1
-            assert "not downloaded" in result.output
+        # Should try database, not file (even though file exists)
+        assert result.exit_code == 1
+        assert "not downloaded" in result.output
 
     def test_non_numeric_treated_as_file(self, runner, sample_benchmark_json, working_dir):
         """Non-numeric string is treated as file path."""
@@ -580,6 +528,73 @@ class TestRealDatabaseCanonicalDeserialize:
             assert "1.1.2" in exported
         finally:
             db.close()
+
+
+class TestTheYamlExportIsPlainYaml:
+    """A YAML export is read by any YAML reader: no tags for Python objects."""
+
+    def test_a_safe_yaml_reader_reads_the_export(self, runner, sample_benchmark_json, working_dir):
+        result = runner.invoke(
+            cli, ["export", str(sample_benchmark_json), "--format", "yaml", "-o", "out.yaml"]
+        )
+        assert result.exit_code == 0, result.output
+
+        exported = yaml.safe_load(Path("out.yaml").read_text(encoding="utf-8"))
+
+        assert exported["url"] == "https://workbench.cisecurity.org/benchmarks/23598"
+        assert exported["downloaded_at"] == "2025-10-18T12:00:00"
+        assert exported["recommendations"][0]["url"] == (
+            "https://workbench.cisecurity.org/sections/23598/recommendations/374956"
+        )
+
+
+class TestExportTakesTheCatalogStatus:
+    """A benchmark exported without a WorkBench status takes the one the catalog lists."""
+
+    @pytest.fixture
+    def catalog(self, sample_benchmark, tmp_path, monkeypatch):
+        from cis_bench.catalog.database import CatalogDatabase
+
+        monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path))
+        db = CatalogDatabase(tmp_path / "catalog.db")
+        db.initialize_schema()
+        db.insert_benchmark(
+            {
+                "benchmark_id": "23598",
+                "title": sample_benchmark.title,
+                "url": str(sample_benchmark.url),
+                "status": "Archived",
+            }
+        )
+        yield db
+        db.close()
+
+    def _exported_status(self, runner, identifier):
+        result = runner.invoke(cli, ["export", identifier, "--format", "yaml", "-o", "out.yaml"])
+        assert result.exit_code == 0, result.output
+        return yaml.safe_load(Path("out.yaml").read_text(encoding="utf-8"))["workbench_status"]
+
+    def test_a_cached_copy_saved_without_a_status_is_exported_with_the_catalogs(
+        self, runner, sample_benchmark, catalog, working_dir
+    ):
+        from cis_bench.catalog.database import serialize_benchmark_json
+
+        catalog.save_downloaded("23598", *serialize_benchmark_json(sample_benchmark), 2)
+
+        assert self._exported_status(runner, "23598") == "Archived"
+
+    def test_a_file_of_a_benchmark_the_catalog_lists_is_exported_with_the_catalogs(
+        self, runner, sample_benchmark_json, catalog, working_dir
+    ):
+        assert self._exported_status(runner, str(sample_benchmark_json)) == "Archived"
+
+    def test_a_file_the_catalog_does_not_list_is_exported_with_no_status(
+        self, runner, sample_benchmark, catalog, tmp_path, working_dir
+    ):
+        unlisted = tmp_path / "unlisted.json"
+        sample_benchmark.model_copy(update={"benchmark_id": "999"}).to_json_file(str(unlisted))
+
+        assert self._exported_status(runner, str(unlisted)) is None
 
 
 class TestExportLogsNothingAtInfo:

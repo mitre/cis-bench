@@ -647,6 +647,8 @@ class CatalogDatabase:
         benchmark_id = required["benchmark_id"]
         title = required["title"]
         url = required["url"]
+        if "status" not in benchmark_data:
+            raise ValueError(f"Catalog row {benchmark_id} has no status")
 
         with Session(self.engine) as session:
             # Get or create FK references
@@ -662,7 +664,7 @@ class CatalogDatabase:
             if benchmark_data.get("owner"):
                 owner = self.get_or_create_owner(benchmark_data["owner"], session)
 
-            status_id = self.get_status_id(benchmark_data.get("status", "Published"), session)
+            status_id = self.get_status_id(benchmark_data["status"], session)
 
             # Check if benchmark exists
             existing = session.get(CatalogBenchmark, benchmark_id)
@@ -1183,6 +1185,28 @@ class CatalogDatabase:
                 "version": downloaded.version,
                 "published_date": downloaded.published_date,
             }
+
+    def load_downloaded(self, benchmark_id: str) -> Benchmark | None:
+        """The cached copy of a benchmark as it is read for export, None if not downloaded.
+
+        A copy saved without a WorkBench status takes the status the catalog lists for the
+        benchmark; a copy of a benchmark the catalog does not list keeps none.
+        """
+        downloaded = self.get_downloaded(benchmark_id)
+        if downloaded is None:
+            return None
+        benchmark = deserialize_benchmark_json(downloaded["content_json"])
+        return self.with_catalog_status(benchmark_id, benchmark)
+
+    def with_catalog_status(self, benchmark_id: str, benchmark: Benchmark) -> Benchmark:
+        """The benchmark with the WorkBench status the catalog lists for benchmark_id, when
+        the benchmark has none; otherwise the benchmark as it is."""
+        if benchmark.workbench_status is not None:
+            return benchmark
+        catalog_entry = self.get_benchmark(benchmark_id)
+        if catalog_entry is None:
+            return benchmark
+        return benchmark.model_copy(update={"workbench_status": catalog_entry["status"]})
 
     def delete_downloaded(self, benchmark_id: str) -> bool:
         """Delete a benchmark's cached downloaded copy; the catalog row stays.

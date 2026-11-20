@@ -5,7 +5,7 @@ from unittest.mock import Mock, create_autospec, patch
 
 import pytest
 
-from cis_bench.catalog.database import CatalogDatabase
+from cis_bench.catalog.database import CatalogDatabase, deserialize_benchmark_json
 from cis_bench.catalog.downloader import CatalogDownloader
 from cis_bench.config import RequestPolicy
 from cis_bench.fetcher.workbench import WorkbenchScraper
@@ -317,6 +317,31 @@ class TestCache:
         assert temp_db.get_benchmark("23598")["published_date"] == date(2025, 8, 28)
         assert temp_db.get_downloaded("23598")["published_date"] is None
 
+    def test_a_cached_copy_carries_the_status_the_catalog_lists(
+        self, downloader, mock_scraper, temp_db
+    ):
+        downloader.cache("23598", mock_scraper.download_benchmark.return_value)
+
+        copy = deserialize_benchmark_json(temp_db.get_downloaded("23598")["content_json"])
+        assert copy.workbench_status == "Published"
+
+    def test_a_benchmark_the_catalog_does_not_list_is_cached_with_no_status(
+        self, downloader, mock_scraper, temp_db
+    ):
+        downloader.cache("777", mock_scraper.download_benchmark.return_value)
+
+        copy = deserialize_benchmark_json(temp_db.get_downloaded("777")["content_json"])
+        assert copy.workbench_status is None
+
+    def test_cache_gives_back_the_copy_it_saved(self, downloader, mock_scraper, temp_db):
+        cached = downloader.cache("23598", mock_scraper.download_benchmark.return_value)
+
+        assert cached.benchmark.workbench_status == "Published"
+        assert cached.content_json == temp_db.get_downloaded("23598")["content_json"]
+
+    def test_a_download_returns_the_copy_with_its_status(self, downloader):
+        assert downloader.download_by_id("23598")["benchmark"].workbench_status == "Published"
+
     def test_download_by_id_caches_through_cache(self, downloader, mock_scraper):
         with patch.object(downloader, "cache", wraps=downloader.cache) as cache:
             downloader.download_by_id("23598")
@@ -414,27 +439,6 @@ class TestDownloadByName:
         mock_scraper.download_benchmark.assert_not_called()
 
 
-class TestGetDownloaded:
-    """Test retrieving downloaded benchmarks."""
-
-    def test_get_downloaded_benchmark(self, downloader):
-        """Test getting downloaded benchmark as Benchmark object."""
-        # Download first
-        downloader.download_by_id("23598")
-
-        # Get it back
-        benchmark = downloader.get_downloaded_benchmark("23598")
-
-        assert benchmark is not None
-        assert isinstance(benchmark, Benchmark)
-
-    def test_get_nonexistent_downloaded(self, downloader):
-        """Test getting non-existent download returns None."""
-        benchmark = downloader.get_downloaded_benchmark("99999")
-
-        assert benchmark is None
-
-
 class TestChangeDetection:
     """Test change detection via content hash."""
 
@@ -525,7 +529,7 @@ class TestIntegration:
         assert result["status"] in ("downloaded", "already_current")
 
         # Retrieve
-        benchmark = downloader.get_downloaded_benchmark(benchmark_id)
+        benchmark = temp_db.load_downloaded(benchmark_id)
         assert benchmark is not None
 
     def test_save_downloaded_refreshes_downloaded_at_and_last_accessed_on_redownload(
@@ -562,8 +566,8 @@ class TestIntegration:
         assert downloaded_at > stale_ts
         assert last_accessed > stale_ts
 
-    def test_get_downloaded_benchmark_uses_model_validate_json(self, downloader, temp_db):
-        """get_downloaded_benchmark validates stored JSON directly via Benchmark.model_validate_json."""
+    def test_load_downloaded_uses_model_validate_json(self, downloader, temp_db):
+        """load_downloaded validates stored JSON directly via Benchmark.model_validate_json."""
         downloader.download_by_id("23598")
         stored = temp_db.get_downloaded("23598")
         assert stored is not None
@@ -571,7 +575,7 @@ class TestIntegration:
         with patch.object(
             Benchmark, "model_validate_json", wraps=Benchmark.model_validate_json
         ) as validate_spy:
-            loaded = downloader.get_downloaded_benchmark("23598")
+            loaded = temp_db.load_downloaded("23598")
 
         assert loaded is not None
         assert loaded.benchmark_id == "23598"

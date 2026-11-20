@@ -21,6 +21,7 @@ from click.testing import CliRunner
 from cis_bench.cli.app import cli
 from cis_bench.exceptions import NoSavedSessionError, TLSVerificationError
 from cis_bench.models.benchmark import Benchmark, Recommendation
+from tests.conftest import answers_for_the_catalog
 
 # ============================================================================
 # Shared Fixtures
@@ -348,6 +349,38 @@ class TestDownloadCacheSkip:
                     # Should NOT have called download
                     mock_scraper.download_benchmark.assert_not_called()
 
+    def test_the_files_a_download_writes_carry_the_catalogs_status(
+        self, runner, sample_benchmark, tmp_path, monkeypatch
+    ):
+        from cis_bench.catalog.database import CatalogDatabase
+
+        monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path))
+        db = CatalogDatabase(tmp_path / "catalog.db")
+        db.initialize_schema()
+        db.insert_benchmark(
+            {
+                "benchmark_id": "12345",
+                "title": sample_benchmark.title,
+                "url": "https://workbench.cisecurity.org/benchmarks/12345",
+                "status": "Draft",
+            }
+        )
+        db.close()
+
+        with (
+            patch("cis_bench.fetcher.auth.AuthManager.get_or_create_session"),
+            patch("cis_bench.fetcher.workbench.WorkbenchScraper") as mock_scraper_class,
+        ):
+            mock_scraper_class.return_value.download_benchmark.return_value = sample_benchmark
+
+            result = runner.invoke(
+                cli, ["download", "12345", "--format", "json", "-o", str(tmp_path / "out")]
+            )
+
+        assert result.exit_code == 0, result.output
+        (written,) = (tmp_path / "out").glob("*.json")
+        assert Benchmark.from_json_file(str(written)).workbench_status == "Draft"
+
     def test_download_force_overrides_cache(self, runner, sample_benchmark, tmp_path, monkeypatch):
         """Download with --force re-downloads cached benchmark."""
         catalog_path = tmp_path / "catalog.db"
@@ -367,6 +400,7 @@ class TestDownloadCacheSkip:
                 with patch("cis_bench.catalog.database.CatalogDatabase") as mock_db_class:
                     mock_db = Mock()
                     mock_db_class.return_value = mock_db
+                    answers_for_the_catalog(mock_db, None)
 
                     result = runner.invoke(cli, ["download", "12345", "--force"])
 
@@ -671,6 +705,7 @@ class TestGetInteractiveSelection:
                 "content_json": sample_benchmark.model_dump_json(),
                 "downloaded_at": datetime.now(),
             }
+            answers_for_the_catalog(mock_db, sample_benchmark)
 
             with patch("cis_bench.catalog.search.CatalogSearch") as mock_search_class:
                 mock_search = Mock()
@@ -692,6 +727,7 @@ class TestGetInteractiveSelection:
                     assert "Chose: A v1" in result.output
                     assert expected in result.output
                     assert mock_db.get_downloaded.call_args.args == ("1",)
+                    assert mock_db.load_downloaded.call_args.args == ("1",)
 
     def test_get_interactive_selection_success(
         self, runner, sample_benchmark, tmp_path, monkeypatch, working_dir
@@ -731,6 +767,7 @@ class TestGetInteractiveSelection:
                     "content_json": sample_benchmark.model_dump_json(),
                     "downloaded_at": datetime.now(),
                 }
+                answers_for_the_catalog(mock_db, sample_benchmark)
 
                 with patch("cis_bench.cli.commands.get.questionary") as mock_q:
                     mock_select = Mock()
@@ -877,6 +914,7 @@ class TestGetDownloadErrors:
                     "downloaded_at": datetime.now(),
                 },
             ]
+            answers_for_the_catalog(mock_db, sample_benchmark)
             mock_search = Mock()
             mock_search_class.return_value = mock_search
             mock_search.search.return_value = [
@@ -1182,6 +1220,7 @@ class TestOutsideTextIsPrintedVerbatim:
                 None,
                 {"benchmark_id": "23598", "content_json": sample_benchmark.model_dump_json()},
             ]
+            answers_for_the_catalog(mock_db_class.return_value, sample_benchmark)
             self._writing_exporter(mock_factory)
 
             result = runner.invoke(cli, ["get", "web", "-f", "json", "--non-interactive"])
@@ -1409,6 +1448,7 @@ class TestVerifiedTLSByDefault:
                     "downloaded_at": datetime.now(),
                 },
             ]
+            answers_for_the_catalog(mock_db, sample_benchmark)
             mock_search = Mock()
             mock_search_class.return_value = mock_search
             mock_search.search.return_value = [
