@@ -122,7 +122,8 @@ group_id: # Group ID generation
   template: "..."
 
 group_elements: # What each Group element is filled from
-  title: {...}
+  title: # each element names a source or content; leave an element out to write none
+    source: "ref"
 
 field_mappings: # Field mapping definitions
   field_name:
@@ -175,7 +176,7 @@ benchmark:
     source: "version"
 
   notice:
-    id: "terms-of-use" # optional; terms-of-use when left out
+    id: "terms-of-use" # required when the style declares a notice; no notice is written without one
     lang: "en" # optional; written as xml:lang
     content: "Exported from {benchmark.title}" # optional; empty when left out
 

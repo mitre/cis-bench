@@ -671,8 +671,10 @@ value of the wrong kind; a field mapping takes the keys of its `structure` (`sim
 `value_template: "{item}"`; `cci_lookup.extract: all`). The engine reads the model this last
 check built (`ConfigLoader.load(path)` returns it): `map_rule` and every field-mapping builder take
 the mapping's model, not its YAML, and the notice, matter, reference, plain text, Benchmark
-elements, Benchmark id and profiles are built from the model's `benchmark` section. A notice
-with no `id` (or an empty one) is written with the id `terms-of-use`.
+elements, Benchmark id and profiles are built from the model's `benchmark` section. The
+exporter writes no value of its own: a notice is written only when the style declares one,
+and then needs an `id`; a group element must name a `source` or `content` (a style that wants
+no Group title or description leaves the element out, as the CIS style does).
 Every mistake is listed with the dotted path of the key and the file just
 merged when it appeared, so a parent's mistake names the parent and one namespace URI bound
 in parent and child names the child. Loading stops at the first file with mistakes; every

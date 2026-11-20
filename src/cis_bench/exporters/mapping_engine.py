@@ -749,22 +749,26 @@ class MappingEngine:
         return ccis, extra_nist
 
     def create_notice(self, benchmark: Benchmark):
-        """Create notice element from config (version-agnostic).
+        """The notice element from the style's benchmark.notice (version-agnostic), or None
+        when the style declares no notice.
 
-        Resolves the notice's id (terms-of-use when the style names none), its language
-        (lang, written as xml:lang) and its variable-substituted text from the style's
-        benchmark.notice, keeping the content empty when it is left out or blank.
+        Resolves the notice's id (the style gives it: checked when it loaded), its language
+        (lang, written as xml:lang) and its variable-substituted text, keeping the content
+        empty when it is left out or blank.
         """
         notice_config = self.config.benchmark.notice
+        if notice_config is None:
+            return None
 
         NoticeType = self.element_type("Benchmark", "notice")
 
         substitution_context = {"benchmark": benchmark}
 
-        # XCCDF requires a notice id; "terms-of-use" is the engine's own name when the style
-        # gives none or an empty one
-        raw_id = notice_config.id or "terms-of-use"
-        notice_id = str(VariableSubstituter.substitute(raw_id, substitution_context))
+        notice_id = str(VariableSubstituter.substitute(notice_config.id, substitution_context))
+        if not notice_id:
+            raise ValueError(
+                f"the notice id template {notice_config.id!r} gives no id for this benchmark"
+            )
 
         notice_lang = (
             str(VariableSubstituter.substitute(notice_config.lang, substitution_context))
@@ -851,13 +855,7 @@ class MappingEngine:
         PlainTextType = self.get_xccdf_class("PlainTextType")
         plain_texts = []
 
-        from datetime import datetime
-
-        download_date = (
-            benchmark.downloaded_at.strftime("%d %b %Y")
-            if benchmark.downloaded_at
-            else datetime.now().strftime("%d %b %Y")
-        )
+        download_date = benchmark.downloaded_at.strftime("%d %b %Y")
 
         for pt_config in plain_text_configs:
             pt_id = pt_config.id
@@ -1237,12 +1235,8 @@ class MappingEngine:
                 # Source from rec - use getattr for all fields including 'ref'
                 value = getattr(rec, source, None)
             else:
-                # Fixed content; with none, the engine writes a placeholder of its own
-                value = (
-                    element_config.content
-                    if element_config.content is not None
-                    else "<GroupDescription></GroupDescription>"
-                )
+                # Fixed content (the style names a source or content: checked when it loaded)
+                value = element_config.content
 
             # Apply transform if specified
             transform = element_config.transform
@@ -1279,9 +1273,10 @@ class MappingEngine:
         # version contains.
         bench_id_template = self.config.benchmark.id_template
         if not bench_id_template:
+            style_name = self.config.metadata.style_name
             raise ExportError(
-                f"Style '{self.config.metadata.style_name or '?'}' has no "
-                "benchmark.id_template; every style must name its Benchmark"
+                (f"Style {style_name!r} has no" if style_name else "The style has no")
+                + " benchmark.id_template; every style must name its Benchmark"
             )
         bench_id = VariableSubstituter.substitute(
             bench_id_template,
@@ -1329,7 +1324,8 @@ class MappingEngine:
                         )
 
         # Add DISA-required elements (using existing config-driven methods)
-        benchmark_fields["notice"] = [self.create_notice(benchmark)]
+        notice = self.create_notice(benchmark)
+        benchmark_fields["notice"] = [notice] if notice is not None else []
         benchmark_fields["front_matter"] = [self.create_front_matter(benchmark)]
         benchmark_fields["rear_matter"] = [self.create_rear_matter(benchmark)]
         benchmark_fields["plain_text"] = self.create_plain_texts(benchmark)

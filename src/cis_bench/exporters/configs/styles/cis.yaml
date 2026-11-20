@@ -11,11 +11,10 @@ metadata:
   style_name: "cis"
   xccdf_version: "1.2"
 
-# Group elements. Neither names a source, so each is written with the engine's
-# placeholder text (an existing behaviour, kept as it is here).
-group_elements:
-  title: {}
-  description: {}
+# Group elements: none. A CIS Group is one of the benchmark's sections in CIS's own files,
+# with the section's title and description; the sections are not captured yet, so a Group is
+# written without a title or description (both optional in XCCDF) rather than with text
+# nothing gave.
 
 # Benchmark-level mappings
 benchmark:
