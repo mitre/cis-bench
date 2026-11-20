@@ -42,6 +42,7 @@ from xsdata.formats.dataclass.models.generics import AnyElement
 from xsdata.formats.dataclass.serializers.mixins import EventHandler
 
 from cis_bench.exceptions import ExportError
+from cis_bench.exporters.benchmark_status import xccdf_status
 from cis_bench.exporters.style_config import (
     CompositeMapping,
     DublinCoreElement,
@@ -1266,6 +1267,7 @@ class MappingEngine:
         """
         XCCDFBenchmark = self.get_xccdf_class("Benchmark")
         Status = self.get_xccdf_class("Status")
+        StatusType = self.get_xccdf_class("StatusType")
 
         # Generate Benchmark ID from the style's template. Substitution values
         # that come from free text are reduced to NCName-safe segments so the
@@ -1290,7 +1292,7 @@ class MappingEngine:
         # Start with required fields
         benchmark_fields = {
             "id": bench_id,
-            "status": [Status(value="draft")],
+            "status": [Status(value=StatusType(xccdf_status(benchmark)))],
             "group": groups,  # Add all Groups
         }
 

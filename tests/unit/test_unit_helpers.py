@@ -2099,6 +2099,38 @@ class TestBenchmarkElements:
         assert [title.value for title in xccdf.title] == [f"Draft: {benchmark.title}"]
 
 
+class TestBenchmarkStatus:
+    """Benchmark/status is the XCCDF status the benchmark's WorkBench status maps to, in
+    either XCCDF version; a benchmark with no WorkBench status is refused, not written as
+    draft."""
+
+    @pytest.mark.parametrize("style", ["cis_config_path", "disa_config_path"])
+    def test_a_published_benchmark_is_written_as_accepted(
+        self, request, style, synthetic_complete_benchmark
+    ):
+        engine = MappingEngine(request.getfixturevalue(style))
+        benchmark = synthetic_complete_benchmark.model_copy(
+            update={"workbench_status": "Published"}
+        )
+
+        xccdf = engine.map_benchmark(benchmark, [], {"benchmark": benchmark, "recommendations": []})
+
+        StatusType = engine.get_xccdf_class("StatusType")
+        assert [status.value for status in xccdf.status] == [StatusType.ACCEPTED]
+
+    def test_a_benchmark_with_no_workbench_status_is_refused(
+        self, cis_config_path, synthetic_complete_benchmark
+    ):
+        from cis_bench.exceptions import ExportError
+
+        benchmark = synthetic_complete_benchmark.model_copy(update={"workbench_status": None})
+
+        with pytest.raises(ExportError, match="no WorkBench status"):
+            MappingEngine(cis_config_path).map_benchmark(
+                benchmark, [], {"benchmark": benchmark, "recommendations": []}
+            )
+
+
 class TestBenchmarkIdTemplate:
     """Benchmark/@id comes from the style's id_template and the engine's substitution values."""
 

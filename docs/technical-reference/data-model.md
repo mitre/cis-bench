@@ -181,7 +181,7 @@ from cis_bench.models.xccdf import Benchmark, Rule, Status
 # Create XCCDF Benchmark
 xccdf_benchmark = Benchmark(
 id=f"cis_benchmark_{data['benchmark_id']}",
-status=[Status(value="draft")],
+status=[Status(value=StatusType(xccdf_status(benchmark)))],  # from the WorkBench status
 title=data['title'],
 version=data['version']
 )

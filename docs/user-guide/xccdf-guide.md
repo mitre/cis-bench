@@ -248,6 +248,15 @@ Specify: Use `-o` option
 
 ## Troubleshooting
 
+### "Benchmark ... has no WorkBench status"
+
+The XCCDF `<status>` comes from the benchmark's CIS WorkBench status (Published becomes
+`accepted`, Draft `draft`, Archived `deprecated`; the full table is in the
+[Mapping Engine Guide](../developer-guide/mapping-engine-guide.md#benchmark-status)). A copy
+downloaded with a catalog records it, and a copy saved without one takes it from the catalog.
+A JSON file of a benchmark the catalog does not list has none, so it cannot be exported as
+XCCDF. Run `cis-bench catalog refresh`, then export it again.
+
 ### "No converter registered for _Element"
 
 This is an internal error. Report if you see it.

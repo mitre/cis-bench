@@ -792,7 +792,7 @@ context
 
 xccdf_benchmark = XCCDFBenchmark(
 id=benchmark_id,
-status=[Status(value="draft")],
+status=[Status(value=StatusType(xccdf_status(benchmark)))],  # from the WorkBench status
 title=[TextType(value=benchmark.title)],
 description=[HtmlTextWithSubType(content=[benchmark.title])],
 version=VersionType(value=benchmark.version)
