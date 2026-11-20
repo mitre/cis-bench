@@ -18,7 +18,7 @@ import urllib3
 from bs4 import BeautifulSoup, Tag
 from pydantic import BaseModel, HttpUrl, TypeAdapter, ValidationError
 
-from cis_bench.exceptions import AuthenticationError, ParserError
+from cis_bench.exceptions import AuthenticationError, IncompleteDownloadError, ParserError
 from cis_bench.fetcher.auth import is_workbench_login_page
 from cis_bench.fetcher.http import ThreadSessions, get_with_retry, workbench_page_text
 from cis_bench.fetcher.strategies.base import ExtractedRecommendation, ScraperStrategy
@@ -562,11 +562,11 @@ class WorkbenchScraper:
             if isinstance(error, AuthenticationError):
                 # Every further fetch would get the login page too.
                 raise error
-        for rec_meta, error in fetched.failed:
-            # Several errors already name the URL (FetchError, requests.HTTPError): say it once.
-            detail = str(error)
-            where = "" if rec_meta.url in detail else f"{rec_meta.url}: "
-            logger.error(f"Failed to fetch {where}{detail}")
+        if fetched.failed:
+            # A copy without a page would be incomplete: the benchmark is not downloaded
+            raise IncompleteDownloadError(
+                benchmark_url, [(rec_meta.url, str(error)) for rec_meta, error in fetched.failed]
+            )
         recommendations = fetched.results
 
         # Create Benchmark (Pydantic validates automatically). A strategy that copied the

@@ -69,6 +69,30 @@ class FetchError(ScraperError):
         self.attempts = attempts
 
 
+class IncompleteDownloadError(ScraperError):
+    """Raised when pages of a benchmark could not be fetched or read: the benchmark is not
+    downloaded, since a copy without them would be incomplete.
+
+    Carries each failed page's url and what went wrong, in the order the pages were listed.
+    """
+
+    def __init__(self, benchmark_url: str, failures: list[tuple[str, str]]) -> None:
+        lines = "\n".join(
+            # Some errors already name the url (FetchError, requests.HTTPError): say it once.
+            f"  {detail}" if url in detail else f"  {url}: {detail}"
+            for url, detail in failures
+        )
+        super().__init__(
+            ngettext(
+                "{benchmark_url} was not downloaded: {count} page could not be fetched\n{lines}",
+                "{benchmark_url} was not downloaded: {count} pages could not be fetched\n{lines}",
+                len(failures),
+            ).format(benchmark_url=benchmark_url, count=len(failures), lines=lines)
+        )
+        self.benchmark_url = benchmark_url
+        self.failures = failures
+
+
 class ParserError(CISBenchError):
     """Raised when parsing HTML fails."""
 

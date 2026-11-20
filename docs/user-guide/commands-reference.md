@@ -507,8 +507,8 @@ cis-bench download --file urls.txt
 **How recommendations are fetched:**
 
 - Recommendation pages are fetched in parallel, paced by the `CIS_BENCH_MAX_CONCURRENT_REQUESTS`, `CIS_BENCH_BATCH_SIZE` and `CIS_BENCH_REQUESTS_PER_SECOND` settings (322 recommendations took about two minutes on 2026-11-04 with the defaults). `cis-bench catalog refresh` uses the same settings.
-- The progress bar counts finished pages, so it can advance out of navtree order; the saved benchmark keeps navtree order.
-- Each request has a timeout (`CIS_BENCH_REQUEST_TIMEOUT`) and is retried `CIS_BENCH_REQUEST_RETRIES` times (two by default); see [Configuration](configuration.md#settings). A page that still fails is logged with its URL and the error, and the download continues without it.
+- The progress bar counts finished pages, so it can advance out of order; the saved benchmark keeps WorkBench's order (each section's and recommendation's `order` in the navigation tree).
+- Each request has a timeout (`CIS_BENCH_REQUEST_TIMEOUT`) and is retried `CIS_BENCH_REQUEST_RETRIES` times (two by default); see [Configuration](configuration.md#settings). A download is all or nothing per benchmark: if any recommendation page still fails (or cannot be read), the benchmark is not downloaded, the error names each failed page, nothing is cached and an existing cached copy is kept. With several benchmarks, the others still download and the run exits `1` naming the failed ones; `get` and `diff` exit `1`.
 - Every request identifies itself with the User-Agent `cis-bench-cli/<version> (github.com/mitre/cis-bench)`.
 - If WorkBench answers with its login page, the saved session has expired: no further batch starts and the download stops with an authentication error. Run `cis-bench auth login` again.
 
