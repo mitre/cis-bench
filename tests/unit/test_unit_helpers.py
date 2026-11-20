@@ -2043,6 +2043,19 @@ class TestNoticeCreation:
         assert notice.content == [str(synthetic_complete_benchmark.url)]
         assert isinstance(notice.content[0], str)
 
+    def test_a_notice_id_that_fills_in_empty_is_refused(
+        self, cis_config_path, synthetic_complete_benchmark
+    ):
+        # A template id can still give nothing for a benchmark; the export stops rather than
+        # write id="".
+        engine = _with_benchmark(
+            MappingEngine(cis_config_path), notice={"id": "{benchmark.milestone_name}"}
+        )
+        benchmark = synthetic_complete_benchmark.model_copy(update={"milestone_name": None})
+
+        with pytest.raises(ValueError, match="notice id"):
+            engine.create_notice(benchmark)
+
     def test_create_notice_preserves_empty_content_when_omitted_or_blank(
         self, cis_config_path, synthetic_complete_benchmark
     ):

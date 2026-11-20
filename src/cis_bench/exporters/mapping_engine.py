@@ -765,6 +765,10 @@ class MappingEngine:
         substitution_context = {"benchmark": benchmark}
 
         notice_id = str(VariableSubstituter.substitute(notice_config.id, substitution_context))
+        if not notice_id:
+            raise ValueError(
+                f"the notice id template {notice_config.id!r} gives no id for this benchmark"
+            )
 
         notice_lang = (
             str(VariableSubstituter.substitute(notice_config.lang, substitution_context))
@@ -851,13 +855,7 @@ class MappingEngine:
         PlainTextType = self.get_xccdf_class("PlainTextType")
         plain_texts = []
 
-        from datetime import datetime
-
-        download_date = (
-            benchmark.downloaded_at.strftime("%d %b %Y")
-            if benchmark.downloaded_at
-            else datetime.now().strftime("%d %b %Y")
-        )
+        download_date = benchmark.downloaded_at.strftime("%d %b %Y")
 
         for pt_config in plain_text_configs:
             pt_id = pt_config.id

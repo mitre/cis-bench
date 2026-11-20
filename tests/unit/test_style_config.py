@@ -543,6 +543,13 @@ class TestNothingInvented:
         ):
             ConfigLoader.load(style)
 
+    def test_a_notice_with_an_empty_id_is_refused(self, tmp_path):
+        # XCCDF's notice id is an NCName: an empty one would write invalid XML.
+        style = _style(tmp_path, "benchmark:\n  notice:\n    id: ''\n")
+
+        with pytest.raises(ValueError, match=r"style\.yaml: benchmark\.notice\.id: "):
+            ConfigLoader.load(style)
+
     def test_a_notice_without_an_id_is_refused(self, tmp_path):
         style = _style(tmp_path, "benchmark:\n  notice:\n    content: x\n")
 

@@ -700,7 +700,8 @@ class Notice(_Section):
         "attributes": "write the notice's id and language as id and lang",
     }
 
-    id: BenchmarkTemplateText
+    # an NCName in XCCDF: never empty
+    id: Annotated[BenchmarkTemplateText, Field(min_length=1)]
     lang: BenchmarkTemplate = None
     content: BenchmarkTemplate = None
 
