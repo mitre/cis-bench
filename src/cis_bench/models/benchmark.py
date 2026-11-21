@@ -439,12 +439,17 @@ class Benchmark(BaseModel):
 
         text_format follows the scraper (the v1 scraper saved HTML); artifact titles were
         saved as the payload gave them, HTML for some, until the parser converted them.
+        This runs before field validation, so it reads scraper_version only when it is the
+        string the field takes; any other value is left for that validation to reject.
         """
         if not isinstance(data, dict):
             return data
         forms: dict[str, str] = {}
         if "text_format" not in data:
-            html_era = data.get("scraper_version") in HTML_ERA_SCRAPER_VERSIONS
+            scraper_version = data.get("scraper_version")
+            html_era = (
+                isinstance(scraper_version, str) and scraper_version in HTML_ERA_SCRAPER_VERSIONS
+            )
             forms["text_format"] = "html" if html_era else "markdown"
         if "artifact_title_format" not in data:
             forms["artifact_title_format"] = "html"
