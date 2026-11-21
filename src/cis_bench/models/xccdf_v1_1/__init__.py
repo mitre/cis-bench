@@ -1,3 +1,13 @@
+from cis_bench.models.xccdf_v1_1.cpe_1_0 import (
+    CheckType as Cpe0CheckType,
+)
+from cis_bench.models.xccdf_v1_1.cpe_1_0 import (
+    CpeItem,
+    CpeList,
+)
+from cis_bench.models.xccdf_v1_1.cpe_1_0 import (
+    ReferenceType as Cpe0ReferenceType,
+)
 from cis_bench.models.xccdf_v1_1.dc import (
     AnyType,
     Contributor,
@@ -18,14 +28,29 @@ from cis_bench.models.xccdf_v1_1.dc import (
     Title,
     Type,
 )
+from cis_bench.models.xccdf_v1_1.platform_0_2_3 import (
+    Application,
+    Hardware,
+    LogicalOperator,
+    LogicalOperatorOperator,
+    Os,
+    PlatformDefinitions,
+    Product,
+    ProductType,
+    Service,
+    VersionOperatorType,
+)
+from cis_bench.models.xccdf_v1_1.platform_0_2_3 import (
+    Platform as Platform023Platform,
+)
+from cis_bench.models.xccdf_v1_1.platform_0_2_3 import (
+    TextType as Platform023TextType,
+)
 from cis_bench.models.xccdf_v1_1.xccdf_1_1_4 import (
     Benchmark,
     CcOperatorEnumType,
-    CheckContentRefType,
-    CheckContentType,
     CheckExportType,
     CheckImportType,
-    CheckType,
     ComplexCheckType,
     FactType,
     FixStrategyEnumType,
@@ -62,7 +87,6 @@ from cis_bench.models.xccdf_v1_1.xccdf_1_1_4 import (
     ProfileSetValueType,
     ProfileType,
     RatingEnumType,
-    ReferenceType,
     ResultEnumType,
     RoleEnumType,
     Rule,
@@ -80,7 +104,6 @@ from cis_bench.models.xccdf_v1_1.xccdf_1_1_4 import (
     TargetFactsType,
     TestResult,
     TestResultType,
-    TextType,
     TextWithSubType,
     UriidrefType,
     UriRefType,
@@ -92,9 +115,50 @@ from cis_bench.models.xccdf_v1_1.xccdf_1_1_4 import (
     WarningCategoryEnumType,
     WarningType,
 )
+from cis_bench.models.xccdf_v1_1.xccdf_1_1_4 import (
+    CheckContentRefType as Type4CheckContentRefType,
+)
+from cis_bench.models.xccdf_v1_1.xccdf_1_1_4 import (
+    CheckContentType as Type4CheckContentType,
+)
+from cis_bench.models.xccdf_v1_1.xccdf_1_1_4 import (
+    CheckType as Type4CheckType,
+)
+from cis_bench.models.xccdf_v1_1.xccdf_1_1_4 import (
+    ReferenceType as Type4ReferenceType,
+)
+from cis_bench.models.xccdf_v1_1.xccdf_1_1_4 import (
+    TextType as Type4TextType,
+)
+from cis_bench.models.xccdf_v1_1.xccdfp_1_1 import (
+    CheckContentRefType as XccdfpCheckContentRefType,
+)
+from cis_bench.models.xccdf_v1_1.xccdfp_1_1 import (
+    CheckContentType as XccdfpCheckContentType,
+)
+from cis_bench.models.xccdf_v1_1.xccdfp_1_1 import (
+    CheckType as XccdfpCheckType,
+)
+from cis_bench.models.xccdf_v1_1.xccdfp_1_1 import (
+    Fact,
+    FactRefType,
+    LogicOperatorEnumType,
+    LogicTestType,
+    PlatformSpecification,
+)
+from cis_bench.models.xccdf_v1_1.xccdfp_1_1 import (
+    Platform as XccdfpPlatform,
+)
+from cis_bench.models.xccdf_v1_1.xccdfp_1_1 import (
+    TextType as XccdfpTextType,
+)
 from cis_bench.models.xccdf_v1_1.xml import LangValue
 
 __all__ = [
+    "Cpe0CheckType",
+    "CpeItem",
+    "CpeList",
+    "Cpe0ReferenceType",
     "SimpleLiteral",
     "AnyType",
     "Contributor",
@@ -113,6 +177,18 @@ __all__ = [
     "Subject",
     "Title",
     "Type",
+    "Application",
+    "Hardware",
+    "LogicalOperator",
+    "LogicalOperatorOperator",
+    "Os",
+    "Platform023Platform",
+    "PlatformDefinitions",
+    "Product",
+    "ProductType",
+    "Service",
+    "Platform023TextType",
+    "VersionOperatorType",
     "Benchmark",
     "Group",
     "Item",
@@ -122,11 +198,11 @@ __all__ = [
     "UriidrefType",
     "Value",
     "CcOperatorEnumType",
-    "CheckContentRefType",
-    "CheckContentType",
+    "Type4CheckContentRefType",
+    "Type4CheckContentType",
     "CheckExportType",
     "CheckImportType",
-    "CheckType",
+    "Type4CheckType",
     "ComplexCheckType",
     "FactType",
     "FixStrategyEnumType",
@@ -160,7 +236,7 @@ __all__ = [
     "ProfileSetValueType",
     "ProfileType",
     "RatingEnumType",
-    "ReferenceType",
+    "Type4ReferenceType",
     "ResultEnumType",
     "RoleEnumType",
     "RuleResultType",
@@ -176,7 +252,7 @@ __all__ = [
     "StatusType",
     "TargetFactsType",
     "TestResultType",
-    "TextType",
+    "Type4TextType",
     "TextWithSubType",
     "UriRefType",
     "ValueOperatorType",
@@ -185,5 +261,15 @@ __all__ = [
     "VersionType",
     "WarningCategoryEnumType",
     "WarningType",
+    "Fact",
+    "XccdfpPlatform",
+    "PlatformSpecification",
+    "XccdfpCheckContentRefType",
+    "XccdfpCheckContentType",
+    "XccdfpCheckType",
+    "FactRefType",
+    "LogicOperatorEnumType",
+    "LogicTestType",
+    "XccdfpTextType",
     "LangValue",
 ]

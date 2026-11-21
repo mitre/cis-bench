@@ -7,16 +7,73 @@ import pytest
 from lxml import etree
 
 from cis_bench.exporters import ExporterFactory
-from cis_bench.models.benchmark import Benchmark
+from cis_bench.models.benchmark import Benchmark, CISControl
+from cis_bench.validators.xccdf_schema import validate_xccdf
+
+CC7 = "http://cisecurity.org/20-cc/v7.0"
+CC8 = "http://cisecurity.org/20-cc/v8.0"
+CC = {7: CC7, 8: CC8}
+
+# XCCDF namespaces by style (the CIS style writes 1.2, the DISA style 1.1); lookups name
+# them, so output in no namespace fails them
+XCCDF_BY_STYLE = {
+    "cis": "http://checklists.nist.gov/xccdf/1.2",
+    "disa": "http://checklists.nist.gov/xccdf/1.1",
+}
+XCCDF = {"x": XCCDF_BY_STYLE["cis"]}
+
+
+def _xccdf(style: str) -> dict[str, str]:
+    return {"x": XCCDF_BY_STYLE[style]}
+
+
+def _rule(root, ref_slug: str):
+    return root.xpath(
+        f".//x:Rule[@id='xccdf_org.cisecurity.benchmarks_rule_{ref_slug}']", namespaces=XCCDF
+    )[0]
+
+
+def _with_cis_controls(benchmark: Benchmark, mappings: list[tuple[int, str]]) -> Benchmark:
+    """The benchmark with recommendation 3.2.1 mapped to exactly these (version, control)s."""
+    controls = [
+        CISControl(
+            version=version,
+            control=control,
+            title="Synthetic control",
+            ig1=True,
+            ig2=True,
+            ig3=True,
+        )
+        for version, control in mappings
+    ]
+    recs = [
+        rec.model_copy(update={"cis_controls": controls}) if rec.ref == "3.2.1" else rec
+        for rec in benchmark.recommendations
+    ]
+    return benchmark.model_copy(update={"recommendations": recs})
+
+
+def _cis_idents(rule) -> list[tuple[str, str, str]]:
+    """(system, controlURI namespace, controlURI) of each CIS Controls ident on a Rule."""
+    found = []
+    for ident in rule.xpath("./x:ident", namespaces=XCCDF):
+        system = ident.get("system", "")
+        if not system.startswith("http://cisecurity.org/20-cc/"):
+            continue
+        uris = [
+            (etree.QName(name).namespace, value)
+            for name, value in ident.attrib.items()
+            if etree.QName(name).localname == "controlURI"
+        ]
+        assert len(uris) == 1, f"ident {system} has controlURI attributes {uris}"
+        found.append((system, *uris[0]))
+    return found
 
 
 @pytest.fixture
-def sample_benchmark():
-    """Load test benchmark."""
-    fixture_path = (
-        Path(__file__).parent.parent / "fixtures" / "benchmarks" / "almalinux_complete.json"
-    )
-    return Benchmark.from_json_file(str(fixture_path))
+def sample_benchmark(synthetic_complete_file):
+    """Load synthetic test benchmark."""
+    return Benchmark.from_json_file(str(synthetic_complete_file))
 
 
 class TestCISXCCDFExport:
@@ -45,7 +102,7 @@ class TestCISXCCDFExport:
             tree = etree.parse(output_path)
             root = tree.getroot()
 
-            assert root.tag.endswith("Benchmark")
+            assert root.tag == f"{{{XCCDF_BY_STYLE['cis']}}}Benchmark"
 
         finally:
             Path(output_path).unlink()
@@ -124,41 +181,104 @@ class TestCISXCCDFExport:
         finally:
             Path(output_path).unlink()
 
-    def test_cis_controls_ident_elements(self, sample_benchmark):
-        """Test that ident elements have cc7/cc8 controlURI attributes."""
-        exporter = ExporterFactory.create("xccdf", style="cis")
+    def test_cis_controls_ident_elements(self, sample_benchmark, tmp_path):
+        """Each CIS Controls mapping is an ident in the CIS-CAT form: system names the
+        Controls version, the cc7/cc8 controlURI names the safeguard, the value is empty."""
+        output_path = tmp_path / "cis.xml"
+        ExporterFactory.create("xccdf", style="cis").export(sample_benchmark, str(output_path))
 
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", delete=False) as f:
-            output_path = f.name
+        root = etree.parse(str(output_path)).getroot()
+        cis_idents = root.xpath(
+            ".//x:ident[starts-with(@system, 'http://cisecurity.org/20-cc/')]", namespaces=XCCDF
+        )
+        mapped = sum(len(rec.cis_controls) for rec in sample_benchmark.recommendations)
+        assert mapped == 38
+        assert len(cis_idents) == mapped
 
-        try:
-            exporter.export(sample_benchmark, output_path)
+        rule = root.xpath(
+            ".//x:Rule[@id='xccdf_org.cisecurity.benchmarks_rule_3_2_1']", namespaces=XCCDF
+        )[0]
+        assert _cis_idents(rule) == [
+            (
+                "http://cisecurity.org/20-cc/v8.0",
+                CC8,
+                "http://cisecurity.org/20-cc/v8.0/control/13/subcontrol/1",
+            ),
+            (
+                "http://cisecurity.org/20-cc/v7.0",
+                CC7,
+                "http://cisecurity.org/20-cc/v7.0/control/12/subcontrol/4",
+            ),
+        ]
+        assert all((ident.text or "") == "" for ident in cis_idents)
 
-            # Read raw XML to check attributes
-            with open(output_path) as f:
-                xml_content = f.read()
+        xml_content = output_path.read_text()
+        assert (
+            '<ident system="http://cisecurity.org/20-cc/v8.0" '
+            'cc8:controlURI="http://cisecurity.org/20-cc/v8.0/control/13/subcontrol/1"/>'
+        ) in xml_content
 
-            # Parse and validate structure
-            tree = etree.parse(output_path)
-            root = tree.getroot()
+    @pytest.mark.parametrize(
+        ("version", "control", "control_uri"),
+        [
+            (8, "3.10", "http://cisecurity.org/20-cc/v8.0/control/3/subcontrol/10"),
+            (8, "13.1", "http://cisecurity.org/20-cc/v8.0/control/13/subcontrol/1"),
+            (8, "16", "http://cisecurity.org/20-cc/v8.0/control/16"),
+            (7, "13.6", "http://cisecurity.org/20-cc/v7.0/control/13/subcontrol/6"),
+            (7, "8.11", "http://cisecurity.org/20-cc/v7.0/control/8/subcontrol/11"),
+            (7, "13", "http://cisecurity.org/20-cc/v7.0/control/13"),
+        ],
+    )
+    def test_each_cis_controls_mapping_is_written_in_the_cis_cat_form(
+        self, sample_benchmark, tmp_path, version, control, control_uri
+    ):
+        # CIS-CAT names a safeguard as .../control/N/subcontrol/M and a whole control
+        # (WorkBench maps some recommendations to one, such as "13") as .../control/N.
+        benchmark = _with_cis_controls(sample_benchmark, [(version, control)])
+        output_path = tmp_path / "cis.xml"
 
-            # Find CIS Controls idents
-            cis_v8_idents = root.xpath(
-                ".//*[local-name()='ident'][@system='http://cisecurity.org/20-cc/v8']"
-            )
-            cis_v7_idents = root.xpath(
-                ".//*[local-name()='ident'][@system='http://cisecurity.org/20-cc/v7']"
-            )
+        ExporterFactory.create("xccdf", style="cis").export(benchmark, str(output_path))
 
-            assert len(cis_v8_idents) > 0, "Should have CIS Controls v8 idents"
-            assert len(cis_v7_idents) > 0, "Should have CIS Controls v7 idents"
+        root = etree.parse(str(output_path)).getroot()
+        assert _cis_idents(_rule(root, "3_2_1")) == [
+            (f"http://cisecurity.org/20-cc/v{version}.0", CC[version], control_uri)
+        ]
 
-            # Note: cc7:controlURI and cc8:controlURI attributes defined in config
-            # but not yet implemented in attribute injection post-processor
-            # This is a future enhancement (optional for basic compatibility)
+    def test_a_rule_mapped_to_every_form_keeps_its_order_and_validates(
+        self, sample_benchmark, tmp_path
+    ):
+        mappings = [(8, "3.10"), (8, "16"), (7, "13"), (7, "8.11")]
+        benchmark = _with_cis_controls(sample_benchmark, mappings)
+        output_path = tmp_path / "cis.xml"
 
-        finally:
-            Path(output_path).unlink()
+        ExporterFactory.create("xccdf", style="cis").export(benchmark, str(output_path))
+
+        root = etree.parse(str(output_path)).getroot()
+        assert _cis_idents(_rule(root, "3_2_1")) == [
+            (
+                "http://cisecurity.org/20-cc/v8.0",
+                CC8,
+                "http://cisecurity.org/20-cc/v8.0/control/3/subcontrol/10",
+            ),
+            (
+                "http://cisecurity.org/20-cc/v8.0",
+                CC8,
+                "http://cisecurity.org/20-cc/v8.0/control/16",
+            ),
+            (
+                "http://cisecurity.org/20-cc/v7.0",
+                CC7,
+                "http://cisecurity.org/20-cc/v7.0/control/13",
+            ),
+            (
+                "http://cisecurity.org/20-cc/v7.0",
+                CC7,
+                "http://cisecurity.org/20-cc/v7.0/control/8/subcontrol/11",
+            ),
+        ]
+        assert {root.nsmap.get("cc7"), root.nsmap.get("cc8")} == {CC7, CC8}
+        result = validate_xccdf(output_path)
+        assert result.is_valid, f"XCCDF 1.2 schema validation failed: {result.errors[:5]}"
 
     def test_mitre_as_ident_elements(self, sample_benchmark):
         """Test that MITRE ATT&CK is exported as ident elements (not metadata)."""
@@ -175,13 +295,13 @@ class TestCISXCCDFExport:
 
             # MITRE now as ident elements (cleaner, no namespace pollution)
             mitre_technique_idents = root.xpath(
-                ".//*[local-name()='ident'][@system='https://attack.mitre.org/techniques']"
+                ".//x:ident[@system='https://attack.mitre.org/techniques']", namespaces=XCCDF
             )
             mitre_tactic_idents = root.xpath(
-                ".//*[local-name()='ident'][@system='https://attack.mitre.org/tactics']"
+                ".//x:ident[@system='https://attack.mitre.org/tactics']", namespaces=XCCDF
             )
             mitre_mitigation_idents = root.xpath(
-                ".//*[local-name()='ident'][@system='https://attack.mitre.org/mitigations']"
+                ".//x:ident[@system='https://attack.mitre.org/mitigations']", namespaces=XCCDF
             )
 
             assert len(mitre_technique_idents) > 0, "Should have MITRE technique idents"
@@ -209,7 +329,7 @@ class TestCISXCCDFExport:
             root = tree.getroot()
 
             # Profiles now at Benchmark level (proper XCCDF standard)
-            profile_elements = root.xpath(".//*[local-name()='Profile']")
+            profile_elements = root.xpath(".//x:Profile", namespaces=XCCDF)
             assert len(profile_elements) > 0, "Should have Profile elements"
 
             # Verify at least 2 profiles (Level 1 Server/Workstation)
@@ -219,11 +339,109 @@ class TestCISXCCDFExport:
 
             # Verify profiles have select elements
             for profile in profile_elements:
-                selects = profile.xpath(".//*[local-name()='select']")
+                selects = profile.xpath(".//x:select", namespaces=XCCDF)
                 assert len(selects) > 0, "Profiles should have select elements"
 
         finally:
             Path(output_path).unlink()
+
+    @pytest.mark.parametrize(
+        ("style", "profile_id"),
+        [
+            ("cis", "xccdf_org.cisecurity.benchmarks_profile_{}".format),
+            ("disa", "{}".format),
+        ],
+    )
+    def test_profiles_select_their_rules_and_level_2_includes_level_1(
+        self, sample_benchmark, tmp_path, style, profile_id
+    ):
+        # Profiles as WorkBench's page gives them: one text, a Markdown line break between.
+        recs = [
+            rec.model_copy(update={"profiles": ["  \n".join(rec.profiles)]})
+            if rec.profiles
+            else rec
+            for rec in sample_benchmark.recommendations
+        ]
+        joined = Benchmark.model_validate(
+            sample_benchmark.model_copy(update={"recommendations": recs}).model_dump()
+        )
+        output_path = tmp_path / f"{style}.xml"
+
+        ExporterFactory.create("xccdf", style=style).export(joined, str(output_path))
+
+        root = etree.parse(str(output_path)).getroot()
+        counts = {
+            p.get("id"): len(p.xpath("./x:select[@selected='true']", namespaces=_xccdf(style)))
+            for p in root.xpath("./x:Profile", namespaces=_xccdf(style))
+        }
+        separator = "_" if style == "cis" else "-"
+
+        def name(level: str, kind: str) -> str:
+            return profile_id(separator.join(["level", level, kind]))
+
+        # synthetic_complete.json: 14 rules in both Level 1 profiles, 3 in both Level 2
+        # profiles, none in a Level 1 and a Level 2 profile of the same platform.
+        assert counts == {
+            name("1", "server"): 14,
+            name("2", "server"): 17,
+            name("1", "workstation"): 14,
+            name("2", "workstation"): 17,
+        }
+
+    @pytest.mark.parametrize(
+        ("style", "prefix"), [("cis", "xccdf_org.cisecurity.benchmarks_profile_"), ("disa", "")]
+    )
+    def test_the_page_profile_definitions_decide_the_profiles(
+        self, sample_benchmark, tmp_path, style, prefix
+    ):
+        from cis_bench.models.benchmark import ProfileDefinition
+
+        # The page defines two profiles under names no style mapping knows; Beta extends Alpha.
+        names = {"1.1.1": ["Alpha"], "2.1.1": ["Beta"]}
+        recs = [
+            rec.model_copy(update={"profiles": names.get(rec.ref, [])})
+            for rec in sample_benchmark.recommendations
+        ]
+        benchmark = sample_benchmark.model_copy(
+            update={
+                "recommendations": recs,
+                "profile_definitions": [
+                    ProfileDefinition(title="Alpha", description="First tier."),
+                    ProfileDefinition(title="Beta", parent="Alpha"),
+                ],
+            }
+        )
+        output_path = tmp_path / f"{style}.xml"
+
+        ExporterFactory.create("xccdf", style=style).export(benchmark, str(output_path))
+
+        root = etree.parse(str(output_path)).getroot()
+        rule_ids = {
+            "".join(rule.xpath("./x:title//text()", namespaces=_xccdf(style))).strip(): rule.get(
+                "id"
+            )
+            for rule in root.xpath("//x:Rule", namespaces=_xccdf(style))
+        }
+        rule_1_1_1, rule_2_1_1 = (
+            rule_ids[rec.title] for rec in recs if rec.ref in ("1.1.1", "2.1.1")
+        )
+        profiles = {
+            p.get("id"): (
+                [
+                    "".join(d.xpath(".//text()")).strip()
+                    for d in p.xpath("./x:description", namespaces=_xccdf(style))
+                ],
+                [
+                    (s.get("idref"), s.get("selected"))
+                    for s in p.xpath("./x:select", namespaces=_xccdf(style))
+                ],
+            )
+            for p in root.xpath("./x:Profile", namespaces=_xccdf(style))
+        }
+        assert profiles == {
+            f"{prefix}alpha": (["First tier."], [(rule_1_1_1, "true")]),
+            f"{prefix}beta": ([], [(rule_1_1_1, "true"), (rule_2_1_1, "true")]),
+        }
 
     def test_nist_references_dublin_core(self, sample_benchmark):
         """Test that NIST references use Dublin Core."""
@@ -241,15 +459,10 @@ class TestCISXCCDFExport:
                 "dc": "http://purl.org/dc/elements/1.1/",
             }
 
-            # Find references with Dublin Core (namespace-agnostic)
-            dc_titles = tree.xpath(
-                '//*[local-name()="title" and namespace-uri()="http://purl.org/dc/elements/1.1/"]'
-            )
+            dc_titles = tree.xpath("//dc:title", namespaces=ns)
             assert len(dc_titles) > 0, "Should have Dublin Core titles"
 
-            dc_identifiers = tree.xpath(
-                '//*[local-name()="identifier" and namespace-uri()="http://purl.org/dc/elements/1.1/"]'
-            )
+            dc_identifiers = tree.xpath("//dc:identifier", namespaces=ns)
             assert len(dc_identifiers) > 0, "Should have Dublin Core identifiers"
 
             # Verify content
@@ -270,13 +483,13 @@ class TestCISXCCDFExport:
 
             file_size = Path(output_path).stat().st_size
 
-            # With 322 recommendations and full metadata, should be > 1 MB
-            assert file_size > 1_000_000, (
-                f"File size {file_size} seems too small for 322 recs with metadata"
+            # With 20 synthetic recommendations and full dual metadata, should be > 25 KB
+            assert file_size > 25_000, (
+                f"File size {file_size} seems too small for 20 recs with metadata"
             )
 
-            # But not unreasonably large (< 5 MB)
-            assert file_size < 5_000_000, f"File size {file_size} seems too large"
+            # And compact (< 500 KB)
+            assert file_size < 500_000, f"File size {file_size} seems too large"
 
         finally:
             Path(output_path).unlink()
@@ -298,19 +511,200 @@ class TestCISXCCDFExport:
             assert root is not None
 
             # Verify basic structure
-            assert root.tag.endswith("Benchmark")
+            assert root.tag == f"{{{XCCDF_BY_STYLE['cis']}}}Benchmark"
 
             # Should have Groups
-            groups = tree.findall(".//Group") + tree.findall(
-                ".//{http://checklists.nist.gov/xccdf/1.2}Group"
-            )
-            assert len(groups) > 0
+            groups = tree.xpath(".//x:Group", namespaces=XCCDF)
+            assert len(groups) == 20
 
             # Should have Rules
-            rules = tree.findall(".//Rule") + tree.findall(
-                ".//{http://checklists.nist.gov/xccdf/1.2}Rule"
-            )
-            assert len(rules) == 322
+            rules = tree.xpath(".//x:Rule", namespaces=XCCDF)
+            assert len(rules) == 20
 
         finally:
             Path(output_path).unlink()
+
+    def test_cis_export_validates_nist_xccdf_1_2_schema(self, sample_benchmark, tmp_path):
+        """CIS XCCDF 1.2 export must validate against NIST XCCDF 1.2 XSD schema."""
+        output_file = tmp_path / "test_cis.xml"
+        exporter = ExporterFactory.create("xccdf", style="cis")
+        exporter.export(sample_benchmark, str(output_file))
+
+        result = validate_xccdf(output_file)
+
+        assert result.version == "1.2"
+        assert result.is_valid, f"XCCDF 1.2 schema validation failed: {result.errors[:5]}"
+
+    def test_cis_metadata_aligned_by_rule_id_and_repeatable(self, sample_benchmark, tmp_path):
+        """Metadata injection aligns 1-to-1 by Rule ID and resets across repeated exports."""
+        exporter = ExporterFactory.create("xccdf", style="cis")
+        first_out = tmp_path / "cis_first.xml"
+        second_out = tmp_path / "cis_second.xml"
+
+        exporter.export(sample_benchmark, str(first_out))
+        exporter.export(sample_benchmark, str(second_out))
+
+        tree = etree.parse(str(second_out))
+        ns = {
+            "xccdf": "http://checklists.nist.gov/xccdf/1.2",
+            "controls": "http://cisecurity.org/controls",
+        }
+
+        # Rule 6.2.1 has no CIS Controls so its allow_empty cis_controls container has zero frameworks
+        unmapped_rule = tree.xpath(
+            "//xccdf:Rule[@id='xccdf_org.cisecurity.benchmarks_rule_6_2_1']",
+            namespaces=ns,
+        )
+        assert len(unmapped_rule) == 1
+        unmapped_metas = unmapped_rule[0].xpath("./xccdf:metadata", namespaces=ns)
+        assert len(unmapped_metas) == 1
+        assert len(unmapped_metas[0].xpath(".//controls:framework", namespaces=ns)) == 0
+
+        # Mapped rules must each have exactly one metadata block with v7+v8 frameworks before ident
+        mapped_rules = tree.xpath(
+            "//xccdf:Rule[@id!='xccdf_org.cisecurity.benchmarks_rule_6_2_1']",
+            namespaces=ns,
+        )
+        assert len(mapped_rules) == 19
+        for rule in mapped_rules:
+            metas = rule.xpath("./xccdf:metadata", namespaces=ns)
+            assert len(metas) == 1
+            assert len(metas[0].xpath(".//controls:framework", namespaces=ns)) == 2
+            child_names = [etree.QName(child).localname for child in rule]
+            assert child_names.index("metadata") < child_names.index("ident")
+
+    def test_cis_export_populates_benchmark_notice_from_style_config(
+        self, sample_benchmark, tmp_path
+    ):
+        """CIS XCCDF 1.2 export emits configured <notice id='terms-of-use' xml:lang='en'>."""
+        output_file = tmp_path / "test_cis_notice.xml"
+        exporter = ExporterFactory.create("xccdf", style="cis")
+        exporter.export(sample_benchmark, str(output_file))
+
+        tree = etree.parse(str(output_file))
+        ns = {"xccdf": "http://checklists.nist.gov/xccdf/1.2"}
+        notices = tree.xpath("/xccdf:Benchmark/xccdf:notice", namespaces=ns)
+
+        assert len(notices) == 1
+        notice = notices[0]
+        assert notice.get("id") == "terms-of-use"
+        assert notice.get("{http://www.w3.org/XML/1998/namespace}lang") == "en"
+        notice_text = (notice.text or "").strip()
+        assert sample_benchmark.title in notice_text
+        assert str(sample_benchmark.url) in notice_text
+        assert "Center for Internet Security, Inc." in notice_text
+        assert "https://workbench.cisecurity.org/terms-of-use" in notice_text
+        assert "cis-bench" in notice_text
+
+
+def _benchmark_id(exporter, benchmark, output_path: Path) -> str:
+    exporter.export(benchmark, str(output_path))
+    root = etree.parse(str(output_path)).getroot()
+    assert etree.QName(root).localname == "Benchmark"
+    assert etree.QName(root).namespace in XCCDF_BY_STYLE.values()
+    return root.get("id")
+
+
+def test_benchmark_id_follows_cis_convention(sample_benchmark, tmp_path):
+    """CIS-style Benchmark/@id is the CIS-published form: namespace, version, title slug.
+
+    Reference form from CIS's own XCCDF: xccdf_org.cisecurity.benchmarks_benchmark_
+    1.0.0_CIS_Ubuntu_Linux_22.04_LTS_Benchmark. Version is the benchmark version as
+    given (NCName-safe); the title has whitespace and other non-NCName characters
+    replaced by single underscores.
+    """
+    exporter = ExporterFactory.create("xccdf", style="cis")
+
+    bench_id = _benchmark_id(exporter, sample_benchmark, tmp_path / "first.xml")
+    assert bench_id == (
+        "xccdf_org.cisecurity.benchmarks_benchmark_v1.0.0"
+        "_CIS_Synthetic_Enterprise_Platform_Benchmark_v1.0.0"
+    )
+
+    # Same input, same id.
+    assert _benchmark_id(exporter, sample_benchmark, tmp_path / "again.xml") == bench_id
+
+    # A different title is a different benchmark and must get a different id.
+    other = sample_benchmark.model_copy(update={"title": "CIS Other Platform Benchmark"})
+    other_id = _benchmark_id(exporter, other, tmp_path / "other.xml")
+    assert (
+        other_id == "xccdf_org.cisecurity.benchmarks_benchmark_v1.0.0_CIS_Other_Platform_Benchmark"
+    )
+    assert other_id != bench_id
+
+
+def test_benchmark_id_slugs_a_version_that_is_not_ncname_safe(sample_benchmark, tmp_path):
+    """WorkBench carries versions like 'v7.1.0 (vNext)'; the id stays an NCName."""
+    exporter = ExporterFactory.create("xccdf", style="cis")
+    vnext = sample_benchmark.model_copy(update={"version": "v7.1.0 (vNext)"})
+
+    bench_id = _benchmark_id(exporter, vnext, tmp_path / "vnext.xml")
+    assert bench_id == (
+        "xccdf_org.cisecurity.benchmarks_benchmark_v7.1.0_vNext"
+        "_CIS_Synthetic_Enterprise_Platform_Benchmark_v1.0.0"
+    )
+
+
+class TestTheStoredMarkdownIsWrittenAsItIs:
+    """The CIS export carries the stored Markdown; a placeholder such as <user> survives."""
+
+    @pytest.fixture
+    def benchmark_with_placeholders(self, sample_benchmark):
+        from cis_bench.models.benchmark import ProfileDefinition
+
+        first, *rest = sample_benchmark.recommendations
+        rule = first.model_copy(
+            update={
+                "title": "Ensure <path> is owned by <user>",
+                "description": "Owned by the account named in `<user>`.",
+                "rationale": "A file owned by <user> is read by <user> alone.",
+                "impact": "Users in <group> lose access.",
+                "audit": "Run:\n\n```\n# stat -c %U <path>\n```",
+                "remediation": "Run:\n\n```\n# chage --mindays <N> <user>\n```",
+                "default_value": "<path> is owned by root.",
+                "additional_info": "Check <path> after every <tool> run.",
+                "references": "GRID: <id>\nhttps://example.com/<user>",
+                "profiles": ["Alpha"],
+            }
+        )
+        return sample_benchmark.model_copy(
+            update={
+                "recommendations": [rule, *rest],
+                "profile_definitions": [
+                    ProfileDefinition(title="Alpha", description="Items for every <user>."),
+                ],
+            }
+        )
+
+    def test_every_rule_text_field_and_the_profile_description_keep_their_placeholders(
+        self, benchmark_with_placeholders, tmp_path
+    ):
+        output_path = tmp_path / "cis.xml"
+
+        ExporterFactory.create("xccdf", style="cis").export(
+            benchmark_with_placeholders, str(output_path)
+        )
+
+        root = etree.parse(str(output_path)).getroot()
+        rule = root.xpath("//x:Rule", namespaces=XCCDF)[0]
+
+        def text(element, name):
+            return "".join(element.xpath(f"./x:{name}//text()", namespaces=XCCDF))
+
+        assert text(rule, "title") == "Ensure <path> is owned by <user>"
+        assert text(rule, "description") == (
+            "Owned by the account named in `<user>`.\n\n"
+            "Default Value:\n\n<path> is owned by root.\n\n"
+            "Additional Information:\n\nCheck <path> after every <tool> run."
+        )
+        assert [i.text for i in rule.xpath("./x:ident[@system='URL']", namespaces=XCCDF)] == [
+            "GRID: <id>",
+            "https://example.com/<user>",
+        ]
+        assert text(rule, "rationale") == "A file owned by <user> is read by <user> alone."
+        assert text(rule, "warning") == "Users in <group> lose access."
+        assert text(rule, "fixtext") == "Run:\n\n```\n# chage --mindays <N> <user>\n```"
+        check = rule.xpath("./x:check", namespaces=XCCDF)[0]
+        assert text(check, "check-content") == "Run:\n\n```\n# stat -c %U <path>\n```"
+        profile = root.xpath("//x:Profile", namespaces=XCCDF)[0]
+        assert text(profile, "description") == "Items for every <user>."

@@ -1,0 +1,13 @@
+# GitGuardian (ggshield) configuration: https://docs.gitguardian.com/ggshield-docs/configuration
+# This file configures the ggshield command-line scanner. GitGuardian's GitHub check applies
+# the filepath exclusions set in the GitGuardian dashboard, not this file.
+# Required, or ggshield reads the file as the deprecated v1 format.
+version: 2
+
+secret:
+  ignored_paths:
+    # Test fixtures: synthetic benchmarks, saved pages and exports whose invented prose about
+    # passwords, keys and tokens a secret scanner reads as credentials.
+    - 'tests/fixtures/**/*'
+    # Documentation: example commands and outputs.
+    - 'docs/**/*'

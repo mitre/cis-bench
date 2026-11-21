@@ -19,7 +19,7 @@ The **MappingEngine** is a configuration-driven transformation engine that maps 
 ## Purpose
 
 - **Read YAML configurations** that define how to map our Pydantic data models to XCCDF structures
-- **Apply transformations** (strip_html, html_to_markdown, composite field assembly)
+- **Apply transformations** (none for text, strip_version_prefix, composite field assembly)
 - **Generate structures generically** using 3 core handlers (ident, metadata, profiles)
 - **Support multiple export styles** without changing code (just swap YAML config)
 - **Be extensible** for new frameworks via YAML only
@@ -89,14 +89,12 @@ field_name:
   target_element: "metadata"
   structure: "metadata_from_config"
   source_field: "cis_controls"
-  requires_post_processing: true  # lxml elements injected after xsdata serialization
   metadata_spec:
     root_element: "cis_controls"
-    namespace: "http://cisecurity.org/controls"
-    namespace_prefix: "controls"
+    namespace_prefix: "controls"  # declared in benchmark.namespaces; not the XCCDF namespace
     allow_empty: true  # Generate empty element if no data
 
-    # Grouping (optional)
+    # Grouping (required: items are written inside group elements)
     group_by: "item.version"  # Group items by this field
 
     group_element:
@@ -151,10 +149,11 @@ field_name:
 
 **Implementation:**
 
-- `MappingEngine.generate_metadata_from_config()`
-- `MappingEngine._build_config_item()`
-- `MappingEngine._build_config_child()`
-- `XCCDFUnifiedExporter._inject_metadata_from_config()`
+- `MappingEngine.generate_metadata_from_config()` builds xsdata `AnyElement` content, held
+  by a `MetadataType` on `Rule.metadata`; the serializer writes it in schema order
+- `MappingEngine._build_config_element()`
+- `StyleConfig` (`style_config.py`) checks the mapping when the style loads, with the XCCDF
+  models as validation context ([XCCDF mapping design](../design/xccdf-mapping-design.md#checked-when-the-style-loads))
 
 ### 3. generate_profiles_from_rules - Profile Generation
 
@@ -172,24 +171,25 @@ field_name:
 benchmark:
   profiles:
     generate_from_rules: true
+    id_template: "{profile.title|slug:-}"  # every Profile id, from its title
     profile_mappings:
 
       - match: "Level 1 - Server"  # String to match in rec.profiles
-        id: "level-1-server"
         title: "Level 1 - Server"
         description: "CIS Level 1 for server environments"
 
       - match: "Level 2 - Server"
-        id: "level-2-server"
         title: "Level 2 - Server"
         description: "CIS Level 2 for server environments"
+        includes: ["Level 1 - Server"]  # Profiles whose rules this one also selects
 ```
 
 **How It Works:**
-1. Scans all recommendations
-2. For each profile mapping, finds recommendations where `profile_mapping.match` is in `recommendation.profiles`
-3. Creates Profile element with select list of matching rule IDs
-4. Adds to Benchmark (not Rules)
+
+1. With the benchmark's profile definitions (read from its WorkBench page on download): one Profile per definition, selecting the rules that name it or any ancestor (`parent`); a definition that selects no rule is left out, with a warning naming it
+2. Without them (a copy saved earlier): one Profile per profile name the rules use, selecting the rules that name it or a profile it `includes`; a mapping for that name gives its title, description and `includes`
+3. Each Profile id comes from `id_template`; title and description from the definition (description through `description_transform`) or the mapping; two profiles that get one id, or two mappings for one name, stop the export
+4. Adds the Profiles to the Benchmark (not Rules), with an explicit select per rule
 
 **Output Example:**
 ```xml
@@ -263,12 +263,15 @@ flowchart LR
     style BUILDER fill:#fff9c4,stroke:#f57f17,stroke-width:2px
 ```
 
-**Available Transformers:**
+**Available Transforms** (registered in `TransformRegistry`; a style names one in a
+mapping's `transform` or after `|` in a template):
 
-- **StripHTML** - Remove HTML tags
-- **Markdown** - Convert HTML to Markdown
-- **Composite** - Combine multiple fields
-- **Custom** - User-defined transformations
+- **none** - The value as stored (every text field: the stored text is Markdown)
+- **strip_version_prefix** - "v4.0.0" becomes "4.0.0"
+- **lines** - A text as its list of lines
+- **dotted_number_path** - "1.2.3" as a path of numbers
+- **slug** - A title as an identifier
+- **composite** - A structure, not a transform: several fields joined into one text
 
 **Field Mapping Strategies:**
 
@@ -308,18 +311,9 @@ engine = MappingEngine.from_config('disa_style.yaml')
 xccdf_benchmark = engine.map_benchmark(pydantic_benchmark)
 """
 
-def __init__(self, config: MappingConfig):
-"""Initialize engine with loaded configuration."""
-self.config = config
-self.field_mapper = FieldMapper(config.field_mappings)
-self.transform_registry = TransformRegistry()
-self.variable_substituter = VariableSubstituter()
-
-@classmethod
-def from_config(cls, config_path: str) -> 'MappingEngine':
-"""Factory method: Load config and create engine."""
-config = ConfigLoader.load(config_path)
-return cls(config)
+def __init__(self, config_path: Path):
+"""Load the style (ConfigLoader.load) and keep its model."""
+self.config = ConfigLoader.load(config_path)  # StyleConfig, checked when it loaded
 
 def map_benchmark(self, benchmark: Benchmark) -> XCCDFBenchmark:
 """Map Pydantic Benchmark to XCCDF Benchmark.
@@ -343,59 +337,26 @@ xsdata XCCDF Rule
 """
 ```
 
-### 2. Configuration: ConfigLoader and MappingConfig
+### 2. Configuration: ConfigLoader and StyleConfig
+
+A style is one pydantic model, `StyleConfig` (`src/cis_bench/exporters/style_config.py`):
+one typed section per top-level key of the YAML (`metadata`, `benchmark`, `rule_defaults`,
+`rule_id`, `group_id`, `field_mappings`, `cci_deduplication`, `group_elements`,
+`post_processing`), each field mapping the model of its `structure`. A key the exporter does
+not read, or a value of the wrong kind, is refused when the style loads.
 
 ```python
-@dataclass
-class MappingConfig:
-"""Parsed YAML configuration.
-
-Structure matches YAML file:
-
-- metadata: Style info
-- benchmark: Benchmark-level mappings
-- rule_defaults: Default rule attributes
-- rule_id: ID generation template
-- field_mappings: Core field mapping definitions
-- transformations: Transform function definitions
-- validation: Validation rules
-"""
-
-style_name: str
-description: str
-xccdf_version: str
-
-benchmark_mappings: Dict[str, FieldMapping]
-rule_defaults: Dict[str, Any]
-rule_id_template: str
-
-field_mappings: Dict[str, FieldMapping]
-transformations: Dict[str, TransformDef]
-
-cci_lookup: Optional[CCILookupConfig] = None
-validation: Optional[ValidationConfig] = None
-
 class ConfigLoader:
-"""Load and validate YAML configuration files."""
+    @staticmethod
+    def load(config_path: Path) -> StyleConfig:
+        """Load a style and its extends chain, root first: each file is merged onto the
+        style built so far and that style is checked against the schema and the XCCDF models
+        of its version; the model of the last check is returned.
 
-@staticmethod
-def load(config_path: str) -> MappingConfig:
-"""Load YAML and parse into MappingConfig.
-
-Validates:
-
-- YAML syntax
-- Required sections present
-- Field mapping structure
-- Transform definitions valid
-
-Raises:
-ConfigValidationError: If config is invalid
-"""
-
-@staticmethod
-def validate_config(config_dict: dict) -> None:
-"""Validate configuration structure."""
+        Raises:
+            ValueError: Circular inheritance, or a style the schema refuses (one line per
+                mistake: the file, the dotted path of the key, what is wrong).
+        """
 ```
 
 ### 3. Field Mapping: FieldMapper
@@ -440,13 +401,10 @@ tag: Optional[str] = None # For embedded XML
 element: Optional[str] = None # For nested elements
 
 sources: Optional[List[SourceDef]] = None
-content: Optional[str] = None
-
-combine: Optional[str] = None # 'join', 'concat', etc.
-separator: str = "\n\n"
+content: Optional[str] = None # static text; a component has content or sources
 
 attributes: Optional[Dict[str, str]] = None
-optional: bool = False
+# Every component is written, in order, empty when its sources give no text
 
 @dataclass
 class SourceDef:
@@ -526,10 +484,8 @@ class TransformRegistry:
 
 Built-in transformations:
 
-- none: Pass through unchanged
-- strip_html: Remove all HTML tags
-- strip_html_keep_code: Strip HTML but preserve code blocks
-- html_to_markdown: Convert HTML to Markdown
+- none: Pass through unchanged (every text field: the stored text is Markdown)
+- strip_version_prefix: "v4.0.0" becomes "4.0.0"
 
 Extensible: Register custom transforms
 """
@@ -559,21 +515,7 @@ def apply_transform(self, transform_name: str, value: Any) -> Any:
 def apply_chain(self, transforms: List[str], value: Any) -> Any:
 """Apply chain of transformations in order."""
 
-# Built-in transformers
-class HTMLCleaner:
-"""HTML transformation utilities."""
-
-@staticmethod
-def strip_html(html: Optional[str]) -> str:
-"""Remove all HTML tags, return plain text."""
-
-@staticmethod
-def strip_html_keep_code(html: Optional[str]) -> str:
-"""Strip HTML but preserve code blocks and lists."""
-
-@staticmethod
-def html_to_markdown(html: Optional[str]) -> str:
-"""Convert HTML to Markdown format."""
+# No HTML conversion: benchmark text is stored as Markdown and written as it is.
 
 class CompositeTransformer:
 """Build composite fields from multiple sources."""
@@ -597,14 +539,14 @@ Variables:
 
 - {ref}: Original ref (e.g., "3.1.1")
 - {ref_normalized}: Normalized ref (e.g., "3_1_1")
-- {platform}: Benchmark platform
+- {version}, {title_slug}: NCName-safe benchmark version and title (Benchmark ID template only)
 - {control.version}: CIS Control version
 - {control.control}: CIS Control ID
 - {nist_control_id}: NIST control ID
 
 Used in:
 
-- ID templates: "xccdf_cis_{platform}_rule_{ref_normalized}"
+- ID templates: "xccdf_org.cisecurity.benchmarks_rule_{ref_normalized}"
 - Attributes: fixref="F-{ref_normalized}"
 - Content: "{control.title}"
 """
@@ -716,27 +658,24 @@ def apply(self, mapping: FieldMapping, source_obj: Any, context: MappingContext)
 xml_parts = []
 
 for component in mapping.components:
-tag = component.tag
+tag = component.tag # checked to be an XML name when the style loads
 
-if component.content:
-# Static content
-xml_parts.append(f"<{tag}>{component.content}</{tag}>")
-
-elif component.sources:
-# Dynamic content from sources
-values = []
+if component.sources:
+# Dynamic content: each source's separator follows its text when another text comes after it
+texts = []
 for source_def in component.sources:
-value = getattr(source_obj, source_def.field, None)
-if value and source_def.transform:
-value = transform_registry.apply(source_def.transform, value)
-if value:
-values.append(value)
+text = transform_registry.apply(source_def.transform or "none", getattr(source_obj, source_def.field))
+if text:
+texts.append((text, source_def.separator))
+content = "".join(text + (sep if i < len(texts) - 1 else "") for i, (text, sep) in enumerate(texts))
+else:
+content = component.content or ""
 
-if values or not component.optional:
-content = component.separator.join(values)
-xml_parts.append(f"<{tag}>{content}</{tag}>")
+# The XML library builds the tag and escapes its text; "" keeps the <Tag></Tag> form
+element = etree.Element(tag); element.text = content
+xml_parts.append(etree.tostring(element, encoding="unicode"))
 
-return "\n".join(xml_parts)
+return "".join(xml_parts)
 
 class CCILookupStrategy(MappingStrategy):
 """CCI lookup with NIST deduplication."""
@@ -851,9 +790,14 @@ self.config.benchmark_mappings['id_template'],
 context
 )
 
+# The status classes of this style's XCCDF version; xccdf_status comes from
+# cis_bench.exporters.benchmark_status
+Status = self.get_xccdf_class("Status")
+StatusType = self.get_xccdf_class("StatusType")
+
 xccdf_benchmark = XCCDFBenchmark(
 id=benchmark_id,
-status=[Status(value="draft")],
+status=[Status(value=StatusType(xccdf_status(benchmark)))],  # from the WorkBench status
 title=[TextType(value=benchmark.title)],
 description=[HtmlTextWithSubType(content=[benchmark.title])],
 version=VersionType(value=benchmark.version)
@@ -882,7 +826,7 @@ def map_rule(self, recommendation: Recommendation, context: MappingContext) -> R
 Algorithm:
 
 1. Generate rule ID from template
-2. Apply rule defaults (severity, weight, selected)
+2. Apply rule defaults (severity, weight)
 3. For each field in field_mappings:
 a. Determine mapping strategy (simple/composite/embedded/lookup)
 b. Apply strategy to map field
@@ -907,7 +851,6 @@ rule = Rule(
 id=rule_id,
 severity=self.config.rule_defaults.get('severity', 'medium'),
 weight=self.config.rule_defaults.get('weight', '10.0'),
-selected=self.config.rule_defaults.get('selected', True)
 )
 
 # 3. Map each field
@@ -1010,20 +953,20 @@ Build embedded XML tags within XCCDF description element.
 
 Algorithm:
 
-1. For each component:
-a. Extract tag name
-b. Get content (static or from sources)
-c. Apply transformations
-d. Build XML tag
-e. Handle optional tags (skip if no content)
+1. For each component, in order:
+a. Take the tag name (checked to be an XML name when the style loads)
+b. Get the text: the static content, or the sources' texts joined, each source's
+separator following its text when another source's text comes after it
+c. Build the tag with the XML library, which escapes the text ("" keeps <Tag></Tag>)
 
-2. Join all tags
+2. Concatenate the tags (every one is written, empty when there is no text)
 
 3. Return as single string
 
 Example output:
 <VulnDiscussion>Combined description and rationale</VulnDiscussion>
 <FalsePositives></FalsePositives>
+<Documentable>false</Documentable>
 <Mitigations>Additional info content</Mitigations>
 <IAControls></IAControls>
 """
@@ -1033,38 +976,26 @@ xml_parts = []
 for component in components:
 tag = component.tag
 
-# Static content
-if component.content is not None:
-xml_parts.append(f"<{tag}>{component.content}</{tag}>")
-continue
-
-# Dynamic content from sources
 if component.sources:
-values = []
-
+texts = []
 for source_def in component.sources:
-value = self.resolve_source_value(source_def.field, source_obj)
-
-# Transform
-if source_def.transform:
-value = self.transform_pipeline.apply_transform(
-source_def.transform,
-value
+text = self.transform_pipeline.apply_transform(
+source_def.transform or "none",
+self.resolve_source_value(source_def.field, source_obj),
 )
+if text:
+texts.append((text, source_def.separator))
+content = "".join(
+text + (sep if i < len(texts) - 1 else "") for i, (text, sep) in enumerate(texts)
+)
+else:
+content = component.content or ""
 
-if value:
-values.append(value)
+element = etree.Element(tag)
+element.text = content # the XML library escapes it
+xml_parts.append(etree.tostring(element, encoding="unicode"))
 
-# Join values
-if values:
-content = source_def.separator.join(values)
-xml_parts.append(f"<{tag}>{content}</{tag}>")
-
-elif not component.optional:
-# Required but empty
-xml_parts.append(f"<{tag}></{tag}>")
-
-return "\n".join(xml_parts)
+return "".join(xml_parts)
 ```
 
 ## Configuration Processing
@@ -1078,8 +1009,9 @@ return "\n".join(xml_parts)
 with open('disa_style.yaml') as f:
 config_dict = yaml.safe_load(f)
 
-# 2. Parse into structured objects
-config = MappingConfig(
+# 2. Parse into structured objects (illustration; ConfigLoader.load(path) returns the
+#    checked StyleConfig model that holds these)
+config = dict(
 style_name=config_dict['metadata']['style_name'],
 benchmark_mappings={
 'id': FieldMapping(
@@ -1101,10 +1033,9 @@ components=[
 ComponentMapping(
 tag='VulnDiscussion',
 sources=[
-SourceDef(field='description', transform='strip_html'),
-SourceDef(field='rationale', transform='strip_html')
-],
-separator='\n\n'
+SourceDef(field='description', transform='none', separator='\n\n'),
+SourceDef(field='rationale', transform='none')
+]
 ),
 ComponentMapping(
 tag='FalsePositives',
@@ -1116,20 +1047,13 @@ content=''
 'fixtext': FieldMapping(
 target_element='fixtext',
 source_field='remediation',
-transform='strip_html_keep_code',
+transform='none',
 attributes={
 'fixref': 'F-{ref_normalized}'
 }
 ),
 # ... more mappings
 },
-transformations={
-'strip_html': TransformDef(
-description='Remove all HTML tags',
-function='HTMLCleaner.strip_html'
-),
-# ... more transforms
-}
 )
 
 # 3. Create engine with config
@@ -1144,41 +1068,23 @@ xccdf_benchmark = engine.map_benchmark(pydantic_benchmark)
 ### How Transformations are Applied
 
 ```python
-# Example: strip_html transformation
+# Example: strip_version_prefix transformation
 
-# 1. YAML defines transform
-transformations:
-strip_html:
-description: "Remove all HTML tags, return plain text"
-function: "HTMLCleaner.strip_html"
+# 1. Transform registered in registry
+transform_registry.register('strip_version_prefix', strip_version_prefix)
 
-# 2. Transform registered in registry
-transform_registry.register('strip_html', HTMLCleaner.strip_html)
+# 2. Field mapping specifies transform
+benchmark:
+version:
+source: "version"
+transform: "strip_version_prefix"
 
-# 3. Field mapping specifies transform
-field_mappings:
-description:
-source_field: "description"
-transform: "strip_html"
+# 3. During mapping, transform is applied
+value = benchmark.version # "v4.0.0"
+transformed = transform_registry.apply('strip_version_prefix', value)
+# Result: "4.0.0"
 
-# 4. During mapping, transform is applied
-value = recommendation.description # "<p>This is <strong>text</strong></p>"
-transformed = transform_registry.apply('strip_html', value)
-# Result: "This is text"
-```
-
-### Transform Chain Example
-
-```python
-# Apply multiple transforms in sequence
-transform_pipeline.apply_chain(
-['strip_html', 'html_to_markdown'],
-value
-)
-
-# Equivalent to:
-value = strip_html(value)
-value = html_to_markdown(value)
+# Text fields name "none": the stored Markdown is written as it is.
 ```
 
 ## Variable Substitution
@@ -1190,22 +1096,21 @@ value = html_to_markdown(value)
 
 # 1. YAML template
 rule_id:
-template: "xccdf_cis_{platform}_rule_{ref_normalized}"
+template: "xccdf_org.cisecurity.benchmarks_rule_{ref_normalized}"
 
 # 2. Context has variables
 context = MappingContext(
 benchmark=benchmark,
 recommendation=rec,
-platform="eks", # Extracted from title
 ref_normalized="3_1_1" # From rec.ref "3.1.1"
 )
 
 # 3. Substitute variables
 rule_id = variable_substituter.substitute(
-"xccdf_cis_{platform}_rule_{ref_normalized}",
+"xccdf_org.cisecurity.benchmarks_rule_{ref_normalized}",
 context
 )
-# Result: "xccdf_cis_eks_rule_3_1_1"
+# Result: "xccdf_org.cisecurity.benchmarks_rule_3_1_1"
 ```
 
 ### Nested Variable Access
@@ -1348,7 +1253,6 @@ content: "{nist_control_id}"
 # cis_native_style.yaml
 metadata:
 style_name: "cis_native"
-description: "CIS native XCCDF format"
 xccdf_version: "1.2"
 
 field_mappings:
@@ -1356,7 +1260,7 @@ field_mappings:
 description:
 target_element: "description"
 source_field: "description"
-transform: "html_to_markdown" # Preserve formatting
+transform: "none" # the stored Markdown, as it is
 
 # Use it
 engine = MappingEngine.from_config('cis_native_style.yaml')
@@ -1373,10 +1277,10 @@ def test_simple_field_mapping():
 mapping = FieldMapping(
 target_element='title',
 source_field='title',
-transform='strip_html'
+transform='none'
 )
 
-rec = Recommendation(title="<p>Test</p>")
+rec = Recommendation(title="Test")
 context = MappingContext(recommendation=rec, ...)
 
 strategy = SimpleFieldStrategy()
@@ -1391,8 +1295,8 @@ structure='composite',
 components=[
 ComponentMapping(
 sources=[
-SourceDef(field='description', transform='strip_html'),
-SourceDef(field='rationale', transform='strip_html')
+SourceDef(field='description', transform='none'),
+SourceDef(field='rationale', transform='none')
 ],
 separator='\n\n'
 )
@@ -1400,8 +1304,8 @@ separator='\n\n'
 )
 
 rec = Recommendation(
-description="<p>Desc</p>",
-rationale="<p>Rationale</p>"
+description="Desc",
+rationale="Rationale"
 )
 
 strategy = CompositeFieldStrategy()
@@ -1412,17 +1316,16 @@ assert result == "Desc\n\nRationale"
 def test_variable_substitution():
 """Test variable substitution in templates."""
 context = MappingContext(
-ref_normalized="3_1_1",
-platform="eks"
+ref_normalized="3_1_1"
 )
 
 substituter = VariableSubstituter()
 result = substituter.substitute(
-"xccdf_cis_{platform}_rule_{ref_normalized}",
+"xccdf_org.cisecurity.benchmarks_rule_{ref_normalized}",
 context
 )
 
-assert result == "xccdf_cis_eks_rule_3_1_1"
+assert result == "xccdf_org.cisecurity.benchmarks_rule_3_1_1"
 ```
 
 ### Integration Tests
@@ -1481,8 +1384,8 @@ assert 'unknown_transform' in str(exc.value)
 class MappingEngine:
 """Engine with caching for expensive operations."""
 
-def __init__(self, config: MappingConfig):
-self.config = config
+def __init__(self, config_path: Path):
+self.config = ConfigLoader.load(config_path)
 self._platform_cache = {}
 self._cci_cache = {}
 
@@ -1515,25 +1418,18 @@ for rec in benchmark.recommendations:
 cis_bench/
 ├── exporters/
 │ ├── configs/
-│ │ ├── disa_style.yaml
-│ │ ├── cis_native_style.yaml
-│ │ └── custom_style.yaml
+│ │ ├── base.yaml # what every style extends
+│ │ └── styles/
+│ │     ├── disa.yaml
+│ │     └── cis.yaml
 │ │
-│ ├── mapping/
-│ │ ├── __init__.py
-│ │ ├── engine.py # MappingEngine
-│ │ ├── config.py # ConfigLoader, MappingConfig
-│ │ ├── field_mapper.py # FieldMapper
-│ │ ├── transforms.py # TransformRegistry, built-in transforms
-│ │ ├── variables.py # VariableSubstituter, MappingContext
-│ │ ├── strategies.py # Mapping strategies
-│ │ └── errors.py # Exception classes
-│ │
-│ └── xccdf_exporter.py # Uses MappingEngine
+│ ├── mapping_engine.py # ConfigLoader, TransformRegistry, VariableSubstituter, MappingEngine
+│ ├── style_config.py # StyleConfig (the style schema), StyleModels
+│ └── xccdf_unified_exporter.py # XCCDFExporter, uses MappingEngine
 │
 └── utils/
-├── html_parser.py # HTMLCleaner (used by transforms)
-└── cci_lookup.py # CCILookupService (used by strategies)
+├── html_parser.py # HTMLCleaner (HTML table and reference parsers)
+└── cci_lookup.py # CCILookupService
 ```
 
 ## Summary
@@ -1541,7 +1437,7 @@ cis_bench/
 The **MappingEngine** is a sophisticated, configuration-driven system that:
 
 1. **Loads YAML configs** defining field mappings and transformations
-2. **Applies transformations** via pluggable registry (strip_html, markdown, etc.)
+2. **Applies transformations** via pluggable registry (none, strip_version_prefix, filters)
 3. **Handles complex structures** (embedded XML, composite fields, nested elements)
 4. **Supports variable substitution** ({ref}, {ref_normalized}, etc.)
 5. **Uses strategy pattern** for different field mapping types

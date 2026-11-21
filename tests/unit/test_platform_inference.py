@@ -1,5 +1,7 @@
 """Unit tests for platform inference from benchmark titles."""
 
+import pytest
+
 from cis_bench.catalog.parser import WorkBenchCatalogParser
 
 
@@ -137,12 +139,12 @@ class TestPlatformInference:
         assert platform == "aws-eks"
 
     def test_aks_inference(self):
-        """Infer Azure AKS platform (categorized as cloud since it's Azure service)."""
+        """Infer Azure AKS platform before generic Azure cloud pattern."""
         platform_type, platform = WorkBenchCatalogParser._infer_platform(
             "CIS Azure Kubernetes Service (AKS) Benchmark"
         )
-        assert platform_type == "cloud"
-        assert platform == "azure"
+        assert platform_type == "container"
+        assert platform == "azure-aks"
 
     def test_oke_inference(self):
         """Infer Oracle OKE platform (categorized as cloud since it's Oracle Cloud service)."""
@@ -168,3 +170,39 @@ class TestPlatformInference:
         )
         assert platform_type == "os"
         assert platform == "oracle-linux"
+
+
+class TestKeywordWordBoundaries:
+    """Short keywords match whole words only; a keyword inside another word is not a platform."""
+
+    @pytest.mark.parametrize(
+        ("title", "embedded_keyword"),
+        [
+            ("CIS Oaks Appliance Benchmark", "aks"),
+            ("CIS Breaks Benchmark", "aks"),
+            ("CIS Velocity Benchmark", "oci"),
+            ("CIS Drawstring Benchmark", "aws"),
+            ("CIS Geeks Benchmark", "eks"),
+            ("CIS Spokes Benchmark", "oke"),
+        ],
+    )
+    def test_keyword_inside_a_word_does_not_classify(self, title, embedded_keyword):
+        assert embedded_keyword in title.lower()
+        assert WorkBenchCatalogParser._infer_platform(title) == (None, None)
+
+    @pytest.mark.parametrize(
+        ("title", "expected"),
+        [
+            ("CIS AKS Optimized Azure Linux Benchmark", ("container", "azure-aks")),
+            ("CIS Azure Kubernetes Service (AKS) Benchmark", ("container", "azure-aks")),
+            (
+                "CIS Oracle Cloud Infrastructure (OCI) Foundations Benchmark",
+                ("cloud", "oracle-cloud"),
+            ),
+            ("CIS Amazon Elastic Kubernetes Service (EKS) Benchmark", ("container", "aws-eks")),
+            ("CIS Google Kubernetes Engine (GKE) Benchmark", ("container", "google-gke")),
+            ("CIS Kubernetes V1.27 Benchmark", ("container", "kubernetes")),
+        ],
+    )
+    def test_whole_word_keywords_still_classify(self, title, expected):
+        assert WorkBenchCatalogParser._infer_platform(title) == expected

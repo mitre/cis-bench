@@ -255,7 +255,7 @@ Output file type for exports.
 ### Catalog
 Local SQLite database containing metadata for 1,300+ CIS benchmarks from CIS WorkBench.
 
-**Location:** `~/.cis-bench/catalog.db`
+**Location:** `~/.local/share/cis-bench/catalog.db`
 
 **Features:**
 
@@ -322,7 +322,7 @@ Configuration defining how a Pydantic field maps to an XCCDF element.
 title:
 target_element: "title" # XCCDF element name
 source_field: "title" # Pydantic field name
-transform: "strip_html" # Transformation to apply
+transform: "none" # Transformation to apply
 ```
 
 ### Transformation
@@ -330,12 +330,10 @@ A function that modifies field values during export.
 
 **Available:**
 
-- `strip_html` - Remove all HTML tags
-- `strip_html_keep_code` - Remove HTML but preserve code blocks
-- `html_to_markdown` - Convert HTML to Markdown
-- `none` - Pass through unchanged
+- `none` - Pass through unchanged (every text field: the stored text is Markdown)
+- `strip_version_prefix` - "v4.0.0" becomes "4.0.0"
 
-**Defined in:** `base_style.yaml` transformations section
+**Registered in:** `mapping_engine.py` (`TransformRegistry.register`)
 
 ---
 
@@ -344,7 +342,7 @@ A function that modifies field values during export.
 ### Session
 Authenticated connection to CIS WorkBench using cookies.
 
-**Storage:** `~/.cis-bench/session.cookies` (MozillaCookieJar format)
+**Storage:** `~/.local/state/cis-bench/session.cookies` (MozillaCookieJar format)
 
 **Created by:** `cis-bench auth login --browser chrome`
 
@@ -363,6 +361,7 @@ Process of reading authentication cookies from your browser's cookie store.
 Testing if saved cookies still work with CIS WorkBench.
 
 **Checks:**
+
 1. Cookies exist
 2. Request to /benchmarks doesn't redirect to login
 3. Response is not the login page HTML
@@ -380,12 +379,12 @@ A CLI action (download, export, search, etc.).
 
 **Top-level commands:**
 
-- auth, download, export, get, list, info, search, catalog
+- auth, download, export, get, list, info, search, catalog, remove, config
 
 ### Subcommand
 A command nested under another command.
 
-**Example:** `catalog` has subcommands (refresh, update, search, platforms, stats)
+**Example:** `catalog` has subcommands (refresh, update, search, list, info, platforms, stats, download, check-updates)
 
 **Syntax:** `cis-bench catalog refresh`
 
@@ -418,7 +417,7 @@ How data is displayed to the user.
 ### Catalog Database
 SQLite database storing benchmark metadata.
 
-**Location:** `~/.cis-bench/catalog.db`
+**Location:** `~/.local/share/cis-bench/catalog.db`
 
 **Tables:**
 
@@ -430,7 +429,7 @@ SQLite database storing benchmark metadata.
 ### FTS5
 SQLite Full-Text Search version 5 - Fast text search engine.
 
-**Usage:** Powers catalog search with fuzzy matching
+**Usage:** Powers catalog search: every query word matches the start of a word (no typo tolerance)
 
 **Example:** `cis-bench search "oracle cloud"` uses FTS5 to find matches
 
@@ -522,6 +521,7 @@ DISA tool for viewing and managing STIG checklists.
 Chef's compliance testing framework using Ruby DSL.
 
 **Relationship to this CLI:**
+
 1. Export CIS Benchmark to XCCDF
 2. Convert XCCDF to InSpec using SAF CLI
 3. Run InSpec scans with generated profile
@@ -537,7 +537,7 @@ Python library that generates dataclasses from XSD schemas.
 
 **Usage:** Generate Python classes for XCCDF elements
 
-**Command:** `xsdata schemas/xccdf_1.2.xsd --package models.xccdf`
+**Command:** `uv run python scripts/generate_xccdf_models.py` (runs xsdata, which comes with the `dev` extra, for both XCCDF versions)
 
 **Result:** Typed Python classes matching XCCDF schema
 
@@ -546,8 +546,8 @@ XML Schema Definition - Defines structure and rules for XML documents.
 
 **XCCDF schemas:**
 
-- `xccdf-1.1.4.xsd` - DISA STIG version
-- `xccdf-1.2.xsd` - Latest XCCDF version
+- `xccdf/1.1/xccdf-schema.xsd` - XCCDF 1.1.4, the version DISA-style exports use
+- `xccdf/1.2/xccdf_1.2.xsd` - XCCDF 1.2, the version CIS-style exports use (`cis-bench validate` picks it from the document)
 
 **Used for:** Generating xsdata models, validating XML output
 
@@ -626,6 +626,7 @@ Single command that searches, downloads, and exports in one step.
 **Syntax:** `cis-bench get "query" --format xccdf --style cis`
 
 **Steps:**
+
 1. Search catalog for query
 2. Interactive selection (if multiple matches)
 3. Download benchmark (or use cache)
@@ -643,6 +644,7 @@ CLI presents a menu for user selection (uses questionary library).
 Stored data to avoid re-downloading or re-processing.
 
 **Types:**
+
 1. **Session cache** - Saved authentication cookies
 2. **Catalog cache** - Benchmark metadata database
 3. **Download cache** - Full benchmark JSON in database
@@ -672,7 +674,7 @@ Two-level system for categorizing benchmarks.
 **Inferred from:** Benchmark title using pattern matching
 
 ### Full-Text Search (FTS5)
-SQLite feature enabling fast fuzzy text search.
+SQLite feature enabling fast word-prefix text search.
 
 **Usage:** Catalog search uses FTS5 on benchmark titles
 
@@ -682,21 +684,17 @@ SQLite feature enabling fast fuzzy text search.
 
 ## File and Directory Terminology
 
-### Data Directory
-Where CIS Benchmark CLI stores its data.
+### Folders
+Where CIS Benchmark CLI keeps its files: the XDG base directories, as the GitHub CLI does.
 
-**Locations:**
+**Location:** `~/.config/cis-bench/config.toml`; `~/.local/share/cis-bench/` for `catalog.db` and `benchmarks/`; `~/.local/state/cis-bench/session.cookies`.
 
-- Production: `~/.cis-bench/`
-- Development: `~/.cis-bench-dev/`
-- Test: `/tmp/cis-bench-test/`
-
-**Controlled by:** `CIS_BENCH_ENV` environment variable
+**Controlled by:** `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`; `CIS_BENCH_HOME` for one folder; `CIS_BENCH_CONFIG_DIR` for the config folder
 
 ### Session File
 MozillaCookieJar file containing authentication cookies.
 
-**Location:** `~/.cis-bench/session.cookies`
+**Location:** `~/.local/state/cis-bench/session.cookies`
 
 **Created by:** `cis-bench auth login`
 
@@ -710,6 +708,7 @@ Downloaded benchmark in JSON format with all 19 fields.
 **Contains:** Complete Pydantic Benchmark model serialized to JSON
 
 **Stored:**
+
 1. File in output directory
 2. JSON in catalog database (downloaded_benchmarks table)
 
@@ -733,7 +732,7 @@ Test of a single function/method in isolation.
 
 **Location:** `tests/unit/`
 
-**Example:** Testing that `strip_html()` removes HTML tags
+**Example:** Testing that `strip_version_prefix()` drops a leading "v"
 
 ### Integration Test
 Test of multiple components working together.

@@ -16,6 +16,7 @@ from cis_bench.validators.disa_conventions import (
     DISAConventionsValidator,
     validate_disa_conventions,
 )
+from cis_bench.validators.xccdf_schema import NotXccdfError, parse_xccdf, read_xccdf
 
 # ============================================================================
 # Test Fixtures - XML Templates for Testing
@@ -87,7 +88,7 @@ class TestDISAConventionsValidatorInit:
 
     def test_init_with_valid_file(self, valid_disa_xccdf):
         """Should initialize validator with valid XCCDF file."""
-        validator = DISAConventionsValidator(str(valid_disa_xccdf))
+        validator = DISAConventionsValidator(read_xccdf(valid_disa_xccdf))
         assert validator.tree is not None
         assert validator.root is not None
         assert validator.xccdf_ns == "http://checklists.nist.gov/xccdf/1.1"
@@ -102,21 +103,53 @@ class TestDISAConventionsValidatorInit:
         file_path = tmp_path / "xccdf12.xml"
         file_path.write_text(xml_content)
 
-        validator = DISAConventionsValidator(str(file_path))
+        validator = DISAConventionsValidator(read_xccdf(file_path))
         assert validator.xccdf_ns == "http://checklists.nist.gov/xccdf/1.2"
 
-    def test_init_fallback_namespace(self, tmp_path):
-        """Should fallback to default namespace when none detected."""
-        xml_content = """<?xml version="1.0" encoding="UTF-8"?>
-<Benchmark id="test">
-  <status>draft</status>
-</Benchmark>
-"""
+    def test_a_document_without_an_xccdf_namespace_is_not_xccdf(self, tmp_path):
+        """No namespace means no XCCDF version to check against; it is refused, not guessed."""
         file_path = tmp_path / "no_ns.xml"
-        file_path.write_text(xml_content)
+        file_path.write_text('<Benchmark id="test"><status>draft</status></Benchmark>')
 
-        validator = DISAConventionsValidator(str(file_path))
-        assert validator.xccdf_ns == "http://checklists.nist.gov/xccdf/1.1"
+        with pytest.raises(NotXccdfError, match="not an XCCDF document"):
+            validate_disa_conventions(str(file_path))
+
+    def test_a_root_outside_the_xccdf_namespace_is_refused_whatever_its_children(self, tmp_path):
+        """The root decides whether a document is XCCDF, for this check as for the schema
+        check: XCCDF children under a root with no XCCDF namespace do not make it one."""
+        file_path = tmp_path / "mixed.xml"
+        file_path.write_text(
+            '<Benchmark xmlns:x="http://checklists.nist.gov/xccdf/1.1" id="test">'
+            "<x:status>draft</x:status><x:title>Mixed</x:title></Benchmark>"
+        )
+
+        with pytest.raises(NotXccdfError, match="not an XCCDF document"):
+            validate_disa_conventions(str(file_path))
+
+    def test_a_file_that_is_not_xml_is_not_xccdf(self, tmp_path):
+        file_path = tmp_path / "notes.txt"
+        file_path.write_text("just text\n")
+
+        with pytest.raises(NotXccdfError, match="not well-formed XML"):
+            validate_disa_conventions(str(file_path))
+
+    def test_the_check_runs_on_a_document_the_shared_check_parsed(self, valid_disa_xccdf):
+        """An export is parsed once, in memory, and both checks read that one document."""
+        document = parse_xccdf(valid_disa_xccdf.read_bytes(), "export of 23598")
+
+        validator = DISAConventionsValidator(document)
+        is_valid, errors, _ = validator.validate()
+
+        assert validator.tree is document.tree
+        assert validator.root is document.root
+        assert (is_valid, errors) == (True, [])
+
+    def test_a_document_in_memory_with_a_missing_element_is_reported(self, minimal_xccdf):
+        document = parse_xccdf(minimal_xccdf.read_bytes(), "export of 23598")
+
+        _, errors, _ = DISAConventionsValidator(document).validate()
+
+        assert "Missing required element: notice" in errors
 
 
 # ============================================================================
@@ -142,7 +175,7 @@ class TestCheckRequiredBenchmarkElements:
         file_path = tmp_path / "missing_notice.xml"
         file_path.write_text(xml_content)
 
-        validator = DISAConventionsValidator(str(file_path))
+        validator = DISAConventionsValidator(read_xccdf(file_path))
         is_valid, errors, warnings = validator.validate()
 
         assert not is_valid
@@ -150,7 +183,7 @@ class TestCheckRequiredBenchmarkElements:
 
     def test_missing_multiple_elements(self, minimal_xccdf):
         """Should report errors for all missing required elements."""
-        validator = DISAConventionsValidator(str(minimal_xccdf))
+        validator = DISAConventionsValidator(read_xccdf(minimal_xccdf))
         is_valid, errors, warnings = validator.validate()
 
         assert not is_valid
@@ -190,7 +223,7 @@ class TestCheckPlainTextElements:
         file_path = tmp_path / "missing_plain_text_ids.xml"
         file_path.write_text(xml_content)
 
-        validator = DISAConventionsValidator(str(file_path))
+        validator = DISAConventionsValidator(read_xccdf(file_path))
         is_valid, errors, warnings = validator.validate()
 
         assert not is_valid
@@ -218,7 +251,7 @@ class TestCheckPlainTextElements:
         file_path = tmp_path / "wrong_version.xml"
         file_path.write_text(xml_content)
 
-        validator = DISAConventionsValidator(str(file_path))
+        validator = DISAConventionsValidator(read_xccdf(file_path))
         is_valid, errors, warnings = validator.validate()
 
         assert any("conventionsVersion is '1.9.0', expected '1.10.0'" in w for w in warnings)
@@ -241,7 +274,7 @@ class TestCheckPlainTextElements:
         file_path = tmp_path / "wrong_release_format.xml"
         file_path.write_text(xml_content)
 
-        validator = DISAConventionsValidator(str(file_path))
+        validator = DISAConventionsValidator(read_xccdf(file_path))
         is_valid, errors, warnings = validator.validate()
 
         assert any("release-info format doesn't match DISA pattern" in w for w in warnings)
@@ -272,7 +305,7 @@ class TestCheckReferenceElement:
         file_path = tmp_path / "no_reference.xml"
         file_path.write_text(xml_content)
 
-        validator = DISAConventionsValidator(str(file_path))
+        validator = DISAConventionsValidator(read_xccdf(file_path))
         is_valid, errors, warnings = validator.validate()
 
         assert not is_valid
@@ -299,7 +332,7 @@ class TestCheckReferenceElement:
         file_path = tmp_path / "no_publisher.xml"
         file_path.write_text(xml_content)
 
-        validator = DISAConventionsValidator(str(file_path))
+        validator = DISAConventionsValidator(read_xccdf(file_path))
         is_valid, errors, warnings = validator.validate()
 
         assert not is_valid
@@ -326,7 +359,7 @@ class TestCheckReferenceElement:
         file_path = tmp_path / "no_source.xml"
         file_path.write_text(xml_content)
 
-        validator = DISAConventionsValidator(str(file_path))
+        validator = DISAConventionsValidator(read_xccdf(file_path))
         is_valid, errors, warnings = validator.validate()
 
         assert not is_valid
@@ -363,7 +396,7 @@ class TestCheckGroups:
         file_path = tmp_path / "no_groups.xml"
         file_path.write_text(xml_content)
 
-        validator = DISAConventionsValidator(str(file_path))
+        validator = DISAConventionsValidator(read_xccdf(file_path))
         is_valid, errors, warnings = validator.validate()
 
         assert any("No Group elements found" in w for w in warnings)
@@ -400,7 +433,7 @@ class TestCheckGroups:
         file_path = tmp_path / "group_no_title.xml"
         file_path.write_text(xml_content)
 
-        validator = DISAConventionsValidator(str(file_path))
+        validator = DISAConventionsValidator(read_xccdf(file_path))
         is_valid, errors, warnings = validator.validate()
 
         assert not is_valid
@@ -438,7 +471,7 @@ class TestCheckGroups:
         file_path = tmp_path / "group_no_description.xml"
         file_path.write_text(xml_content)
 
-        validator = DISAConventionsValidator(str(file_path))
+        validator = DISAConventionsValidator(read_xccdf(file_path))
         is_valid, errors, warnings = validator.validate()
 
         assert not is_valid
@@ -484,7 +517,7 @@ class TestCheckGroups:
         file_path = tmp_path / "group_multiple_rules.xml"
         file_path.write_text(xml_content)
 
-        validator = DISAConventionsValidator(str(file_path))
+        validator = DISAConventionsValidator(read_xccdf(file_path))
         is_valid, errors, warnings = validator.validate()
 
         assert any("Group G-1 has 2 Rules" in w for w in warnings)
@@ -515,7 +548,7 @@ class TestCheckGroups:
         file_path = tmp_path / "group_no_rules.xml"
         file_path.write_text(xml_content)
 
-        validator = DISAConventionsValidator(str(file_path))
+        validator = DISAConventionsValidator(read_xccdf(file_path))
         is_valid, errors, warnings = validator.validate()
 
         assert any("Group G-1 has 0 Rules" in w for w in warnings)
@@ -562,7 +595,7 @@ class TestCheckRules:
         file_path = tmp_path / "rule_no_severity.xml"
         file_path.write_text(xml_content)
 
-        validator = DISAConventionsValidator(str(file_path))
+        validator = DISAConventionsValidator(read_xccdf(file_path))
         is_valid, errors, warnings = validator.validate()
 
         assert not is_valid
@@ -601,7 +634,7 @@ class TestCheckRules:
         file_path = tmp_path / "rule_invalid_severity.xml"
         file_path.write_text(xml_content)
 
-        validator = DISAConventionsValidator(str(file_path))
+        validator = DISAConventionsValidator(read_xccdf(file_path))
         is_valid, errors, warnings = validator.validate()
 
         assert not is_valid
@@ -640,7 +673,7 @@ class TestCheckRules:
         file_path = tmp_path / "rule_no_weight.xml"
         file_path.write_text(xml_content)
 
-        validator = DISAConventionsValidator(str(file_path))
+        validator = DISAConventionsValidator(read_xccdf(file_path))
         is_valid, errors, warnings = validator.validate()
 
         assert not is_valid
@@ -679,7 +712,7 @@ class TestCheckRules:
         file_path = tmp_path / "rule_nonstandard_weight.xml"
         file_path.write_text(xml_content)
 
-        validator = DISAConventionsValidator(str(file_path))
+        validator = DISAConventionsValidator(read_xccdf(file_path))
         is_valid, errors, warnings = validator.validate()
 
         assert any("Rule R-1 weight is 5.0, DISA standard is 10.0" in w for w in warnings)
@@ -714,7 +747,7 @@ class TestCheckRules:
         file_path = tmp_path / "rule_missing_elements.xml"
         file_path.write_text(xml_content)
 
-        validator = DISAConventionsValidator(str(file_path))
+        validator = DISAConventionsValidator(read_xccdf(file_path))
         is_valid, errors, warnings = validator.validate()
 
         assert not is_valid
@@ -755,7 +788,7 @@ class TestCheckRules:
         file_path = tmp_path / "rule_no_vuln_discussion.xml"
         file_path.write_text(xml_content)
 
-        validator = DISAConventionsValidator(str(file_path))
+        validator = DISAConventionsValidator(read_xccdf(file_path))
         is_valid, errors, warnings = validator.validate()
 
         assert any("Rule R-1 description missing VulnDiscussion tag" in w for w in warnings)
@@ -792,7 +825,7 @@ class TestCheckRules:
         file_path = tmp_path / "rule_no_fixtext.xml"
         file_path.write_text(xml_content)
 
-        validator = DISAConventionsValidator(str(file_path))
+        validator = DISAConventionsValidator(read_xccdf(file_path))
         is_valid, errors, warnings = validator.validate()
 
         assert any("Rule R-1 missing fixtext element" in w for w in warnings)
@@ -829,7 +862,7 @@ class TestCheckRules:
         file_path = tmp_path / "rule_no_check.xml"
         file_path.write_text(xml_content)
 
-        validator = DISAConventionsValidator(str(file_path))
+        validator = DISAConventionsValidator(read_xccdf(file_path))
         is_valid, errors, warnings = validator.validate()
 
         assert any("Rule R-1 missing check element" in w for w in warnings)
@@ -868,7 +901,7 @@ class TestCheckRules:
         file_path = tmp_path / "rule_invalid_cci.xml"
         file_path.write_text(xml_content)
 
-        validator = DISAConventionsValidator(str(file_path))
+        validator = DISAConventionsValidator(read_xccdf(file_path))
         is_valid, errors, warnings = validator.validate()
 
         assert not is_valid
@@ -909,7 +942,7 @@ class TestCheckRules:
         file_path = tmp_path / "rule_valid_cci.xml"
         file_path.write_text(xml_content)
 
-        validator = DISAConventionsValidator(str(file_path))
+        validator = DISAConventionsValidator(read_xccdf(file_path))
         is_valid, errors, warnings = validator.validate()
 
         # Should not have any CCI format errors
@@ -1036,7 +1069,7 @@ class TestEdgeCases:
         file_path = tmp_path / "empty_description.xml"
         file_path.write_text(xml_content)
 
-        validator = DISAConventionsValidator(str(file_path))
+        validator = DISAConventionsValidator(read_xccdf(file_path))
         is_valid, errors, warnings = validator.validate()
 
         # Empty description text skips VulnDiscussion check (intentional behavior)
@@ -1076,7 +1109,7 @@ class TestEdgeCases:
         file_path = tmp_path / "rule_no_id.xml"
         file_path.write_text(xml_content)
 
-        validator = DISAConventionsValidator(str(file_path))
+        validator = DISAConventionsValidator(read_xccdf(file_path))
         # Should not raise exception - uses "unknown" as default
         is_valid, errors, warnings = validator.validate()
         assert is_valid is True
@@ -1115,7 +1148,7 @@ class TestEdgeCases:
         file_path = tmp_path / "ident_other_system.xml"
         file_path.write_text(xml_content)
 
-        validator = DISAConventionsValidator(str(file_path))
+        validator = DISAConventionsValidator(read_xccdf(file_path))
         is_valid, errors, warnings = validator.validate()
 
         # Should not report CCI format error for non-CCI idents
@@ -1154,7 +1187,7 @@ class TestEdgeCases:
         file_path = tmp_path / "encoded_vuln_discussion.xml"
         file_path.write_text(xml_content)
 
-        validator = DISAConventionsValidator(str(file_path))
+        validator = DISAConventionsValidator(read_xccdf(file_path))
         is_valid, errors, warnings = validator.validate()
 
         # Should accept entity-encoded VulnDiscussion
@@ -1194,7 +1227,7 @@ class TestEdgeCases:
             file_path = tmp_path / f"severity_{severity}.xml"
             file_path.write_text(xml_content)
 
-            validator = DISAConventionsValidator(str(file_path))
+            validator = DISAConventionsValidator(read_xccdf(file_path))
             is_valid, errors, warnings = validator.validate()
 
             assert is_valid, f"Should accept severity='{severity}'"
@@ -1211,7 +1244,7 @@ class TestValidateMethod:
 
     def test_validate_returns_tuple(self, valid_disa_xccdf):
         """Should return (is_valid, errors, warnings) tuple."""
-        validator = DISAConventionsValidator(str(valid_disa_xccdf))
+        validator = DISAConventionsValidator(read_xccdf(valid_disa_xccdf))
         result = validator.validate()
 
         assert isinstance(result, tuple)
@@ -1222,7 +1255,7 @@ class TestValidateMethod:
 
     def test_validate_resets_errors_on_each_call(self, minimal_xccdf):
         """Should reset errors/warnings on each validate() call."""
-        validator = DISAConventionsValidator(str(minimal_xccdf))
+        validator = DISAConventionsValidator(read_xccdf(minimal_xccdf))
 
         # First validation
         is_valid1, errors1, warnings1 = validator.validate()
@@ -1235,8 +1268,164 @@ class TestValidateMethod:
 
     def test_valid_file_has_empty_errors_list(self, valid_disa_xccdf):
         """Should have empty errors list for valid file."""
-        validator = DISAConventionsValidator(str(valid_disa_xccdf))
+        validator = DISAConventionsValidator(read_xccdf(valid_disa_xccdf))
         is_valid, errors, warnings = validator.validate()
 
         assert is_valid is True
         assert errors == []
+
+
+class TestValidationWarningCountsTheErrors:
+    @pytest.mark.parametrize(("errors", "expected"), [(1, "1 error"), (2, "2 errors")])
+    def test_the_warning_agrees_with_the_number(
+        self, monkeypatch, caplog, minimal_xccdf, errors, expected
+    ):
+        import logging
+
+        from cis_bench.validators import disa_conventions
+
+        monkeypatch.setattr(
+            disa_conventions.DISAConventionsValidator,
+            "validate",
+            lambda self: (False, [f"problem {n}" for n in range(errors)], []),
+        )
+        with caplog.at_level(logging.WARNING, logger="cis_bench.validators.disa_conventions"):
+            disa_conventions.validate_disa_conventions(str(minimal_xccdf))
+
+        assert [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING] == [
+            f"Validation found {expected}"
+        ]
+
+
+class TestGroupRuleCountWarning:
+    _RULE = """
+    <Rule id="R-{n}" severity="medium" weight="10.0">
+      <version>1.0</version>
+      <title>Rule Title</title>
+      <description>&lt;VulnDiscussion&gt;Test&lt;/VulnDiscussion&gt;</description>
+      <fixtext>Fix</fixtext>
+      <check system="test"><check-content>Check</check-content></check>
+    </Rule>"""
+
+    @pytest.mark.parametrize(("rules", "expected"), [(0, "has 0 Rules"), (2, "has 2 Rules")])
+    def test_a_group_without_exactly_one_rule_is_counted(self, tmp_path, rules, expected):
+        body = "".join(self._RULE.format(n=n) for n in range(rules))
+        file_path = tmp_path / "rules.xml"
+        file_path.write_text(
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<Benchmark xmlns="http://checklists.nist.gov/xccdf/1.1" id="test">\n'
+            "  <status>draft</status>\n  <version>1.0</version>\n"
+            f'  <Group id="G-1"><title>T</title><description>D</description>{body}\n  </Group>\n'
+            "</Benchmark>\n"
+        )
+
+        _, _, warnings = DISAConventionsValidator(read_xccdf(file_path)).validate()
+
+        assert f"Group G-1 {expected} (DISA convention: exactly 1)" in warnings
+
+
+def _errors(content: str) -> list[str]:
+    _, errors, _ = DISAConventionsValidator(parse_xccdf(content.encode(), "test")).validate()
+    return errors
+
+
+class TestCciValues:
+    """A CCI is CCI- and exactly six digits; the whole value must match."""
+
+    @pytest.mark.parametrize("value", ["CCI-0000001", "CCI-000001x", "CCI-000001 extra"])
+    def test_a_cci_with_more_after_six_digits_is_an_error(self, valid_disa_xccdf, value):
+        content = valid_disa_xccdf.read_text().replace("CCI-000001", value)
+
+        assert f"Rule R-1 invalid CCI format: {value}" in _errors(content)
+
+    @pytest.mark.parametrize(
+        "value",
+        ["CCI-１２３４５６", "CCI-٠١٢٣٤٥", "CCI-00000١"],
+        ids=["full-width", "arabic-indic", "mixed"],
+    )
+    def test_a_cci_with_digits_other_than_0_to_9_is_an_error(self, valid_disa_xccdf, value):
+        """A CCI number is ASCII digits; other Unicode decimal digits are not a CCI."""
+        content = valid_disa_xccdf.read_text(encoding="utf-8").replace("CCI-000001", value)
+
+        assert f"Rule R-1 invalid CCI format: {value}" in _errors(content)
+
+
+class TestBenchmarkLevelRulesLookAtTheBenchmark:
+    """Benchmark-level rules look only at the Benchmark's own children: an element of the
+    same name inside a Group or Rule does not satisfy them."""
+
+    _BENCHMARK = """<Benchmark xmlns="http://checklists.nist.gov/xccdf/1.1"
+           xmlns:dc="http://purl.org/dc/elements/1.1/" id="test">
+  <status>draft</status>
+  <title>T</title>
+  <notice id="terms-of-use"/>
+  <front-matter/>
+  <rear-matter/>
+  {benchmark_reference}
+  {benchmark_plain_text}
+  {benchmark_version}
+  <Group id="G-1">
+    <title>G</title>
+    <description>D</description>
+    <Rule id="R-1" severity="medium" weight="10.0">
+      <version>1.0</version>
+      <title>R</title>
+      <description>&lt;VulnDiscussion&gt;V&lt;/VulnDiscussion&gt;</description>
+      <reference><dc:publisher>P</dc:publisher><dc:source>S</dc:source></reference>
+      <fixtext fixref="F-1">Fix</fixtext>
+      <check system="C-1"><check-content>Check</check-content></check>
+    </Rule>
+  </Group>
+</Benchmark>
+"""
+    _REFERENCE = (
+        '<reference href="https://example.com">'
+        "<dc:publisher>P</dc:publisher><dc:source>S</dc:source></reference>"
+    )
+    _PLAIN_TEXT = (
+        '<plain-text id="release-info">Release: 1 Benchmark Date: 18 Oct 2025</plain-text>'
+        '<plain-text id="generator">g</plain-text>'
+        '<plain-text id="conventionsVersion">1.10.0</plain-text>'
+    )
+
+    def _document(self, reference=True, plain_text=True, version=True) -> str:
+        return self._BENCHMARK.format(
+            benchmark_reference=self._REFERENCE if reference else "",
+            benchmark_plain_text=self._PLAIN_TEXT if plain_text else "",
+            benchmark_version="<version>1</version>" if version else "",
+        )
+
+    def test_the_document_with_every_benchmark_element_has_no_errors(self):
+        assert _errors(self._document()) == []
+
+    def test_a_rules_version_does_not_stand_in_for_the_benchmarks(self):
+        assert "Missing required element: version" in _errors(self._document(version=False))
+
+    def test_a_rules_reference_does_not_stand_in_for_the_benchmarks(self):
+        errors = _errors(self._document(reference=False))
+
+        assert "Missing required element: reference" in errors
+        assert "Missing required reference element" in errors
+
+    def test_plain_text_inside_a_group_does_not_stand_in_for_the_benchmarks(self):
+        content = self._document(plain_text=False).replace(
+            "<description>D</description>", f"<description>D</description>{self._PLAIN_TEXT}"
+        )
+
+        errors = _errors(content)
+
+        assert "Missing required element: plain-text" in errors
+        assert "Missing required plain-text element: id='release-info'" in errors
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["U_RHEL_9_STIG_V2R5_Manual-xccdf.xml", "U_CAN_Ubuntu_24-04_LTS_STIG_V1R1_Manual-xccdf.xml"],
+)
+def test_an_official_disa_stig_follows_the_conventions(xccdf_fixtures, name):
+    """DISA's own STIGs are what the conventions describe; the check must pass them."""
+    document = read_xccdf(xccdf_fixtures / "official" / "disa" / name)
+
+    is_valid, errors, _ = DISAConventionsValidator(document).validate()
+
+    assert (is_valid, errors) == (True, [])

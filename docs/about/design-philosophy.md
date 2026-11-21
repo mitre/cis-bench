@@ -197,7 +197,8 @@ xmlns:dc="http://purl.org/dc/elements/1.1/">
 ### Compatibility Testing
 
 **Tools to test against:**
-1. **xmllint**: Validate XML structure
+
+1. **cis-bench validate**: XCCDF schema validation with the shipped NIST schemas
 2. **OpenSCAP**: Validate XCCDF 1.2 schema
 3. **CIS-CAT**: Import and assess (if available)
 4. **SCAP Validator**: NIST validation tool
@@ -328,7 +329,7 @@ exporter.export(benchmark, output_path)
 
 **Implementation:**
 
-- `cis-bench auth login` saves to `~/.cis-bench/session.cookies`
+- `cis-bench auth login` saves to `~/.local/state/cis-bench/session.cookies`
 - All commands auto-load saved session
 - Validates on use, prompts to re-auth if expired
 
@@ -351,7 +352,7 @@ exporter.export(benchmark, output_path)
 
 **Implementation:**
 
-- SQLite database at `~/.cis-bench/catalog.db`
+- SQLite database at `~/.local/share/cis-bench/catalog.db`
 - `downloaded_benchmarks` table with full JSON
 - Export command checks database first
 
@@ -365,16 +366,15 @@ exporter.export(benchmark, output_path)
 
 **Why:**
 
-- Catalog scraping is network-bound (66 pages, ~10 min sequential)
-- Threading reduces time to ~2 min (5x faster)
+- Catalog scraping is network-bound: about 80 pages, and the earlier one-page-at-a-time refresh took about 10 minutes for the 66 pages the catalog had then
+- Worker threads behind one shared rate limit bring a full refresh under a minute (77 pages took 34 s on 2026-11-04)
 - Exports are CPU-bound and fast enough (~2 sec/benchmark)
 - No need to complicate with threading overhead
 
 **Implementation:**
 
-- 10 pages per batch
-- 5 concurrent threads
-- Retry logic with exponential backoff
+- Pages fetched in batches by a pool of worker threads (batch size, concurrency and rate are settings)
+- Retry logic with exponential backoff (urllib3 `Retry`)
 - Failure threshold (abort if >10% fail)
 
 **Benefit:** Catalog refresh is fast, code stays simple.
@@ -386,10 +386,11 @@ exporter.export(benchmark, output_path)
 **What we built:** Five-layer validation pipeline.
 
 **Validation layers:**
+
 1. **HTML parsing** - Strategy validates structure
 2. **Pydantic models** - Field validation and type checking
 3. **xsdata models** - XCCDF structure compliance
-4. **XML schema** - Optional xmllint validation
+4. **XML schema** - `cis-bench validate` against the NIST schema
 5. **DISA conventions** - STIG requirement checking
 
 **Rationale:**

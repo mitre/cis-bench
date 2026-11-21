@@ -526,7 +526,7 @@ graph TB
     E -.-> F
 
     subgraph "Validation"
-        J --> K[$ xmllint --schema xccdf_1.2.xsd output.xml]
+        J --> K[$ cis-bench validate output.xml]
         K --> L[output.xml validates ✅]
         L --> M[Compatible with:<br/>OpenSCAP, SCAP Compliance Checker<br/>Nessus, Any XCCDF 1.2 tool]
     end
@@ -777,6 +777,8 @@ cis-benchmark-cli/
 │ │ ├── csv.py # CSV exporter
 │ │ ├── markdown.py # Markdown exporter
 │ │ └── xccdf.py # XCCDF exporter (uses xsdata models)
+│ │
+│ ├── schemas/ # OpenSCAP's XCCDF schema tree; xccdf/, common/ and cpe/ ship in the wheel for cis-bench validate
 │ │
 │ ├── catalog/ # Catalog database system
 │ │ ├── __init__.py

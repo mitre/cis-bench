@@ -5,14 +5,19 @@ import shutil
 import subprocess
 import sys
 import webbrowser
+from gettext import ngettext
 from urllib.parse import urlparse
 
 import click
 from rich.console import Console
+from rich.markup import escape
 
+from cis_bench.cli.helpers.errors import report_unreachable
+from cis_bench.cli.helpers.offline import require_online
 from cis_bench.cli.helpers.output import output_data
-from cis_bench.config import Config
-from cis_bench.fetcher.auth import AuthManager
+from cis_bench.cli.helpers.services import auth_manager, settings_from, settings_with_flags
+from cis_bench.config import BROWSERS, is_cis_domain
+from cis_bench.exceptions import FetchError, TLSVerificationError
 
 console = Console()
 logger = logging.getLogger(__name__)
@@ -37,8 +42,8 @@ def auth():
 @click.option(
     "--browser",
     "-b",
-    type=click.Choice(["chrome", "firefox", "edge", "safari"]),
-    help="Browser to use for authentication",
+    type=click.Choice(list(BROWSERS)),
+    help="Browser to read cookies from (default: the CIS_BENCH_BROWSER setting)",
 )
 @click.option(
     "--cookies",
@@ -70,37 +75,43 @@ def login(browser, cookies, open, no_verify_ssl):
 
     \b
     Examples:
-        cis-bench auth login --browser chrome --open
-        cis-bench auth login --browser firefox
+        cis-bench auth login                       # the CIS_BENCH_BROWSER setting (chrome)
+        cis-bench auth login --browser firefox --open
         cis-bench auth login --cookies cookies.txt
 
     \b
     Windows users: If you get permission errors with Chrome/Edge,
     use Firefox or the --cookies option instead.
     """
-    # Validate that either browser or cookies is specified
-    if not browser and not cookies:
-        console.print("[red]Error: Must specify either --browser or --cookies[/red]")
-        console.print("\n[cyan]Examples:[/cyan]")
-        console.print("  cis-bench auth login --browser chrome")
-        console.print("  cis-bench auth login --cookies cookies.txt")
-        sys.exit(1)
-
     if browser and cookies:
         console.print(
             "[yellow]Warning: Both --browser and --cookies specified, using --cookies[/yellow]"
         )
 
     try:
+        # --no-verify-ssl is a flag on top of CIS_BENCH_VERIFY_SSL; unset, the setting applies.
+        settings = settings_with_flags(verify_ssl=False if no_verify_ssl else None)
+        # Logging in is checking cookies with WorkBench; offline there is nothing to do.
+        require_online(settings, "log in")
+        auth = auth_manager(settings)
+        # Without --browser the configured browser is read (CIS_BENCH_BROWSER, chrome by default).
+        browser = browser or settings.browser
+        workbench_base_url = auth.workbench_url
+        workbench_host = auth.workbench_host
+
         # Open browser if requested
         if open:
             console.print("[cyan]Opening CIS WorkBench login page...[/cyan]")
-            login_url = "https://workbench.cisecurity.org/"
+            login_url = f"{workbench_base_url}/"
 
-            # Security: Validate URL is CIS WorkBench domain
+            # Security: Validate URL is an HTTPS cisecurity.org domain
             parsed = urlparse(login_url)
-            if parsed.netloc != "workbench.cisecurity.org" or parsed.scheme != "https":
-                raise ValueError("Invalid login URL - must be https://workbench.cisecurity.org/")
+            if (
+                parsed.scheme != "https"
+                or not parsed.hostname
+                or not is_cis_domain(parsed.hostname)
+            ):
+                raise ValueError("Invalid login URL - must be an https://*.cisecurity.org/ URL")
 
             try:
                 import platform
@@ -138,94 +149,98 @@ def login(browser, cookies, open, no_verify_ssl):
                     # Fallback to webbrowser module
                     webbrowser.open(login_url)
 
-                console.print(f"[green]✓[/green] Opened {login_url} in {browser}\n")
+                console.print(f"[green]✓[/green] Opened {escape(login_url)} in {browser}\n")
 
             except Exception as e:
-                console.print(f"[yellow]⚠[/yellow] Could not open browser: {e}")
-                console.print(f"[dim]Please open manually: {login_url}[/dim]\n")
+                console.print(f"[yellow]⚠[/yellow] Could not open browser: {escape(str(e))}")
+                console.print(f"[dim]Please open manually: {escape(login_url)}[/dim]\n")
 
             console.print("[yellow]Please log in to CIS WorkBench in your browser...[/yellow]")
             console.print("[dim]Press Enter when you've completed login...[/dim]")
             input()
 
-        # Determine SSL verification setting
-        verify_ssl = not no_verify_ssl if no_verify_ssl else Config.get_verify_ssl()
-
         # Load cookies from file or browser
         if cookies:
             # Load from cookie file
-            console.print(f"[cyan]Loading cookies from {cookies}...[/cyan]")
+            console.print(f"[cyan]Loading cookies from {escape(str(cookies))}...[/cyan]")
             try:
-                session = AuthManager.load_cookies_from_file(cookies, verify_ssl=verify_ssl)
+                session = auth.load_cookies_from_file(cookies)
             except Exception as e:
-                console.print(f"[red]✗ Failed to load cookies: {e}[/red]")
+                console.print(f"[red]✗ Failed to load cookies: {escape(str(e))}[/red]")
                 sys.exit(1)
 
             cookie_count = len(list(session.cookies))
-            console.print(f"[green]✓[/green] Loaded {cookie_count} cookies from file")
+            loaded = ngettext(
+                "Loaded {count} cookie from file", "Loaded {count} cookies from file", cookie_count
+            ).format(count=cookie_count)
+            console.print(f"[green]✓[/green] {loaded}")
         else:
             # Extract cookies from browser
             console.print(f"[cyan]Extracting session cookies from {browser}...[/cyan]")
 
             try:
                 # Try with fallback on Windows for Chromium browsers
-                session = AuthManager.load_cookies_from_browser(
-                    browser, verify_ssl=verify_ssl, try_fallback=True
-                )
+                session = auth.load_cookies_from_browser(browser, try_fallback=True)
             except Exception as e:
                 # Check if this is a Windows permission error
-                if AuthManager._is_windows_permission_error(e):
-                    console.print(f"[red]✗ {e}[/red]\n")
-                    console.print(AuthManager._format_windows_cookie_error(browser, e))
+                if auth._is_windows_permission_error(e):
+                    console.print(f"[red]✗ {escape(str(e))}[/red]\n")
+                    console.print(escape(auth._format_windows_cookie_error(browser, e)))
                     sys.exit(1)
                 raise
 
             if not session or not session.cookies:
                 console.print(f"[red]✗ No cookies found in {browser}[/red]")
                 console.print(
-                    "\n[yellow]Make sure you are logged into workbench.cisecurity.org in your browser[/yellow]"
+                    f"\n[yellow]Make sure you are logged into {escape(workbench_host)} in your browser[/yellow]"
                 )
                 sys.exit(1)
 
             cookie_count = len(list(session.cookies))
-            console.print(f"[green]✓[/green] Extracted {cookie_count} cookies from {browser}")
+            extracted = ngettext(
+                "Extracted {count} cookie from {browser}",
+                "Extracted {count} cookies from {browser}",
+                cookie_count,
+            ).format(count=cookie_count, browser=browser)
+            console.print(f"[green]✓[/green] {extracted}")
 
         # Validate session
         console.print("[cyan]Validating session...[/cyan]")
 
-        # Determine SSL verification: flag overrides config/env
-        verify_ssl = not no_verify_ssl if no_verify_ssl else Config.get_verify_ssl()
-
-        if not AuthManager.validate_session(session, verify_ssl=verify_ssl):
+        if not auth.validate_session(session):
             console.print("[red]✗ Session validation failed[/red]")
             console.print(
-                "\n[yellow]Please ensure you are logged into workbench.cisecurity.org in your browser[/yellow]"
+                f"\n[yellow]Please ensure you are logged into {escape(workbench_host)} in your browser[/yellow]"
             )
-            if verify_ssl:
-                console.print(
-                    "[dim]Tip: Try adding --no-verify-ssl if you're encountering SSL errors[/dim]"
-                )
-                console.print("[dim]Or set: export CIS_BENCH_VERIFY_SSL=false[/dim]")
             sys.exit(1)
 
         console.print("[green]✓[/green] Session is valid")
 
         # Save session
         console.print("[cyan]Saving session...[/cyan]")
-        AuthManager.save_session(session)
+        auth.save_session(session)
 
-        session_path = AuthManager.get_session_file_path()
-        console.print(f"[green]✓[/green] Session saved to {session_path}\n")
+        session_path = auth.session_file
+        console.print(f"[green]✓[/green] Session saved to {escape(str(session_path))}\n")
 
         console.print("[bold green]Login successful![/bold green]")
         console.print("[dim]You can now run commands without --browser flag[/dim]")
 
+    except click.ClickException:
+        raise  # Click reports its own errors (offline mode refuses with one)
+    except TLSVerificationError as e:
+        # The server could not be trusted; the message carries the remediation.
+        console.print(f"[red]✗ {escape(str(e))}[/red]")
+        sys.exit(1)
+    except FetchError as e:
+        report_unreachable(console, e)
+        sys.exit(1)
     except ValueError as e:
-        console.print(f"[red]✗ {e}[/red]")
+        console.print(f"[red]✗ {escape(str(e))}[/red]")
         sys.exit(1)
     except Exception as e:
-        logger.error(f"Login failed: {e}", exc_info=True)
-        console.print(f"[red]✗ Login failed: {e}[/red]")
+        logger.debug("Login failed", exc_info=True)
+        console.print(f"[red]✗ Login failed: {escape(str(e))}[/red]")
         sys.exit(1)
 
 
@@ -247,52 +262,63 @@ def status(output_format):
         cis-bench auth status
     """
     try:
-        session_path = AuthManager.get_session_file_path()
+        settings = settings_from()
+        # The status is WorkBench's answer about the saved session; offline it cannot be asked.
+        require_online(settings, "check the saved session")
+        auth = auth_manager(settings)
+        session_path = auth.session_file
+
+        # Progress and problems go to stderr, so stdout holds only the status itself
+        # (the table, or the JSON/YAML document a script reads).
+        notes = Console(stderr=True)
 
         # Check if session file exists
         if not session_path.exists():
-            console.print("[yellow]Not logged in[/yellow]")
-            console.print(f"\n[dim]No saved session found at {session_path}[/dim]")
-            console.print("\n[cyan]To log in:[/cyan]")
-            console.print("  cis-bench auth login --browser chrome --open")
+            notes.print("[yellow]Not logged in[/yellow]")
+            notes.print(f"\n[dim]No saved session found at {escape(str(session_path))}[/dim]")
+            notes.print("\n[cyan]To log in:[/cyan]")
+            notes.print("  cis-bench auth login --browser chrome --open")
             sys.exit(1)
 
         # Load session
-        console.print("[cyan]Checking saved session...[/cyan]")
-        session = AuthManager.load_saved_session()
+        notes.print("[cyan]Checking saved session...[/cyan]")
+        session = auth.load_saved_session()
 
         if not session:
-            console.print("[red]✗ Could not load saved session[/red]")
-            console.print("\n[cyan]Try logging in again:[/cyan]")
-            console.print("  cis-bench auth login --browser chrome --open")
+            notes.print("[red]✗ Could not load saved session[/red]")
+            notes.print("\n[cyan]Try logging in again:[/cyan]")
+            notes.print("  cis-bench auth login --browser chrome --open")
             sys.exit(1)
 
         cookie_count = len(list(session.cookies))
-        console.print(f"[green]✓[/green] Found saved session with {cookie_count} cookies")
+        found = ngettext(
+            "Found saved session with {count} cookie",
+            "Found saved session with {count} cookies",
+            cookie_count,
+        ).format(count=cookie_count)
+        notes.print(f"[green]✓[/green] {found}")
 
         # Validate session
-        console.print("[cyan]Validating session...[/cyan]")
+        notes.print("[cyan]Validating session...[/cyan]")
 
-        verify_ssl = Config.get_verify_ssl()
-
-        is_valid = AuthManager.validate_session(session, verify_ssl=verify_ssl)
+        is_valid = auth.validate_session(session)
 
         # Create structured data
         status_data = {
             "logged_in": is_valid,
             "session_file": str(session_path),
             "cookie_count": cookie_count,
-            "ssl_verify": verify_ssl,
+            "ssl_verify": auth.verify_ssl,
         }
 
         # Output in requested format
         if output_format != "table":
-            output_data(status_data, output_format)
+            output_data(status_data, output_format, exit_code=0 if is_valid else 1)
 
         # Display for humans
         if is_valid:
             console.print("[bold green]✓ Logged in[/bold green]")
-            console.print(f"\n[dim]Session file: {session_path}[/dim]")
+            console.print(f"\n[dim]Session file: {escape(str(session_path))}[/dim]")
             console.print("[dim]Session is valid and ready to use[/dim]")
         else:
             console.print("[red]✗ Session expired[/red]")
@@ -301,9 +327,14 @@ def status(output_format):
             console.print("  cis-bench auth login --browser chrome")
             sys.exit(1)
 
+    except click.ClickException:
+        raise  # Click reports its own errors (offline mode refuses with one)
+    except FetchError as e:
+        report_unreachable(console, e)
+        sys.exit(1)
     except Exception as e:
-        logger.error(f"Status check failed: {e}", exc_info=True)
-        console.print(f"[red]✗ Status check failed: {e}[/red]")
+        logger.debug("Status check failed", exc_info=True)
+        console.print(f"[red]✗ Status check failed: {escape(str(e))}[/red]")
         sys.exit(1)
 
 
@@ -319,26 +350,27 @@ def logout():
         cis-bench auth logout
     """
     try:
-        session_path = AuthManager.get_session_file_path()
+        auth = auth_manager(settings_from())
+        session_path = auth.session_file
 
         if not session_path.exists():
             console.print("[yellow]No saved session to clear[/yellow]")
-            console.print(f"\n[dim]No session file at {session_path}[/dim]")
+            console.print(f"\n[dim]No session file at {escape(str(session_path))}[/dim]")
             return
 
         # Clear session
         console.print("[cyan]Clearing saved session...[/cyan]")
-        cleared = AuthManager.clear_saved_session()
+        cleared = auth.clear_saved_session()
 
         if cleared:
             console.print("[green]✓ Logged out successfully[/green]")
-            console.print(f"\n[dim]Removed session file: {session_path}[/dim]")
+            console.print(f"\n[dim]Removed session file: {escape(str(session_path))}[/dim]")
             console.print("\n[cyan]To log in again:[/cyan]")
             console.print("  cis-bench auth login --browser chrome --open")
         else:
             console.print("[yellow]No session to clear[/yellow]")
 
     except Exception as e:
-        logger.error(f"Logout failed: {e}", exc_info=True)
-        console.print(f"[red]✗ Logout failed: {e}[/red]")
+        logger.debug("Logout failed", exc_info=True)
+        console.print(f"[red]✗ Logout failed: {escape(str(e))}[/red]")
         sys.exit(1)

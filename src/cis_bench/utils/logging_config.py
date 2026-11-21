@@ -47,6 +47,9 @@ class LoggingConfig:
 
         # Reduce noise from third-party libraries
         logging.getLogger("urllib3").setLevel(logging.WARNING)
+        # urllib3 warns about each connection retry itself, quoting the path and query as
+        # sent. cis_bench.fetcher.http logs every retry once, without what a redirect carried.
+        logging.getLogger("urllib3.connectionpool").setLevel(logging.ERROR)
         logging.getLogger("requests").setLevel(logging.WARNING)
         logging.getLogger("xsdata").setLevel(logging.WARNING)
 

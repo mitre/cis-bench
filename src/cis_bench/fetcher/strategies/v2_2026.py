@@ -21,36 +21,16 @@ Two quirks of the new format are handled here:
 """
 
 import json
-import re
 from typing import Any
 
 from bs4 import BeautifulSoup
 
-from cis_bench.models.benchmark import CISControl, MITREMapping
+from cis_bench.fetcher.strategies.base import ExtractedRecommendation, ScraperStrategy
+from cis_bench.models.benchmark import Artifact, CISControl, MITREMapping
+from cis_bench.utils.html_parser import attribute_text
+from cis_bench.utils.markdown_text import unix_line_breaks
 from cis_bench.utils.parsers import WorkbenchParser
-
-from .base import ScraperStrategy
-
-_UNICODE_ESCAPE_RE = re.compile(r"\\u([0-9a-fA-F]{4})")
-_JSON_PARSE_RE = re.compile(r"^JSON\.parse\('(.+)'\)$", re.DOTALL)
-
-
-def _decode_vue_payload(raw: str | None) -> str | None:
-    """Unwrap ``JSON.parse('...')`` and decode ``\\uXXXX`` escapes.
-
-    Args:
-        raw: The raw attribute value captured from a Vue web component.
-
-    Returns:
-        A JSON string suitable for :func:`json.loads`, or ``None`` when
-        the input is empty.
-    """
-    if not raw:
-        return None
-    stripped = raw.strip()
-    match = _JSON_PARSE_RE.search(stripped)
-    payload = match.group(1) if match else stripped
-    return _UNICODE_ESCAPE_RE.sub(lambda h: chr(int(h.group(1), 16)), payload)
+from cis_bench.utils.vue_payload import decode_vue_payload
 
 
 class WorkbenchV2Strategy(ScraperStrategy):
@@ -94,30 +74,54 @@ class WorkbenchV2Strategy(ScraperStrategy):
                 return True
         return False
 
-    def extract_recommendation(self, html: str) -> dict[str, Any]:
+    def extract_recommendation(self, html: str) -> ExtractedRecommendation:
         """Extract every field the Pydantic ``Recommendation`` model needs."""
         soup = BeautifulSoup(html, "html.parser")
-        data: dict[str, Any] = {}
 
-        for field, attr_value in self._DATA_ATTRIBUTES.items():
-            el = soup.find("wb-recommendation-data", attrs={"attribute": attr_value})
-            data[field] = self._clean_text(el.get("text") if el else None)
+        text = {
+            field: self._markdown_text(soup, attr_value)
+            for field, attr_value in self._DATA_ATTRIBUTES.items()
+        }
+        profiles_text = self._data_text(soup, "profiles")
+        return ExtractedRecommendation(
+            assessment_status=self._normalize_status(
+                self._data_text(soup, "automated_scoring") or ""
+            ),
+            profiles=[profiles_text] if profiles_text else [],
+            cis_controls=self._extract_cis_controls(soup),
+            mitre_mapping=self._extract_mitre(soup),
+            nist_controls=WorkbenchParser.parse_nist_controls(text["references"]),
+            parent=WorkbenchParser.parse_parent_link(html),
+            artifacts=self._extract_artifacts(soup),
+            description=text["description"],
+            rationale=text["rationale"],
+            impact=text["impact"],
+            audit=text["audit"],
+            remediation=text["remediation"],
+            additional_info=text["additional_info"],
+            default_value=text["default_value"],
+            artifact_equation=text["artifact_equation"],
+            references=text["references"],
+        )
 
-        status_el = soup.find("wb-recommendation-data", attrs={"attribute": "automated_scoring"})
-        status_text = self._clean_text(status_el.get("text") if status_el else None) or ""
-        data["assessment_status"] = self._normalize_status(status_text)
+    def _data_text(self, soup: BeautifulSoup, attribute: str) -> str | None:
+        """The text of the ``wb-recommendation-data`` element for one attribute, stripped: a
+        label such as the assessment status or the profile names."""
+        el = soup.find("wb-recommendation-data", attrs={"attribute": attribute})
+        return self._clean_text(attribute_text(el, "text") if el else None)
 
-        profiles_el = soup.find("wb-recommendation-data", attrs={"attribute": "profiles"})
-        profiles_text = self._clean_text(profiles_el.get("text") if profiles_el else None)
-        data["profiles"] = [profiles_text] if profiles_text else []
+    def _markdown_text(self, soup: BeautifulSoup, attribute: str) -> str | None:
+        """A text field's Markdown, exactly as the page writes it, every line break as ``\\n``.
 
-        data["cis_controls"] = self._extract_cis_controls(soup)
-        data["mitre_mapping"] = self._extract_mitre(soup)
-        data["nist_controls"] = WorkbenchParser.parse_nist_controls(data.get("references"))
-        data["artifacts"] = self._extract_artifacts(soup)
-        data["parent"] = WorkbenchParser.parse_parent_link(html)
-
-        return data
+        Nothing is trimmed: the page writes the attribute without whitespace around the text,
+        so a first line's indentation, a blank line inside a fence left open and the final
+        line break all stay. An attribute of only spaces, tabs and line breaks is no text.
+        """
+        el = soup.find("wb-recommendation-data", attrs={"attribute": attribute})
+        if el is None:
+            return None
+        text = unix_line_breaks(attribute_text(el, "text") or "")
+        return text if text.strip(" \t\n") else None
 
     @staticmethod
     def _clean_text(value: str | None) -> str | None:
@@ -137,7 +141,7 @@ class WorkbenchV2Strategy(ScraperStrategy):
 
     @staticmethod
     def _parse_vue_json(raw: str | None) -> Any | None:
-        decoded = _decode_vue_payload(raw)
+        decoded = decode_vue_payload(raw)
         if decoded is None:
             return None
         try:
@@ -152,9 +156,11 @@ class WorkbenchV2Strategy(ScraperStrategy):
 
         # Prefer the Vue ``:controls`` attribute; fall back to the pre-2026
         # ``json-controls`` attr so cached HTML still parses.
-        parsed = self._parse_vue_json(el.get(":controls") or el.get("controls"))
+        parsed = self._parse_vue_json(
+            attribute_text(el, ":controls") or attribute_text(el, "controls")
+        )
         if parsed is None:
-            legacy = el.get("json-controls")
+            legacy = attribute_text(el, "json-controls")
             if legacy:
                 try:
                     parsed = json.loads(legacy)
@@ -192,7 +198,9 @@ class WorkbenchV2Strategy(ScraperStrategy):
         el = soup.find("wb-recommendation-mitre-mappings")
         if not el:
             return None
-        parsed = self._parse_vue_json(el.get(":mappings") or el.get("mappings"))
+        parsed = self._parse_vue_json(
+            attribute_text(el, ":mappings") or attribute_text(el, "mappings")
+        )
         if not isinstance(parsed, dict):
             return None
 
@@ -210,18 +218,18 @@ class WorkbenchV2Strategy(ScraperStrategy):
             mitigations=list(mitigations),
         )
 
-    def _extract_artifacts(self, soup: BeautifulSoup) -> list:
+    def _extract_artifacts(self, soup: BeautifulSoup) -> list[Artifact]:
         el = soup.find("wb-recommendation-artifacts")
         if not el:
             return []
 
         # The legacy ``artifacts-json`` attribute is still served alongside
         # the Vue ``:artifacts`` attribute; prefer it when present.
-        legacy = el.get("artifacts-json")
+        legacy = attribute_text(el, "artifacts-json")
         if legacy:
             return WorkbenchParser.parse_artifacts_json(legacy)
 
-        decoded = _decode_vue_payload(el.get(":artifacts"))
+        decoded = decode_vue_payload(attribute_text(el, ":artifacts"))
         if decoded:
             return WorkbenchParser.parse_artifacts_json(decoded)
 

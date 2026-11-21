@@ -3,9 +3,9 @@
 
 extends: ../../../src/cis_bench/exporters/configs/base.yaml
 
+# PCI-DSS v4.0 mock configuration (for testing)
 metadata:
   style_name: "pci_dss"
-  description: "PCI-DSS v4.0 mock configuration (for testing)"
   xccdf_version: "1.2"
 
 benchmark:
@@ -13,9 +13,9 @@ benchmark:
 
   profiles:
     generate_from_rules: true
+    id_template: "{profile.title|slug:-}"  # every Profile id, from its title
     profile_mappings:
       - match: "SAQ A"
-        id: "saq-a"
         title: "Self-Assessment Questionnaire A"
         description: "Card-not-present merchants"
 
@@ -37,9 +37,3 @@ field_mappings:
     ident_spec:
       system_template: "https://attack.mitre.org/techniques"
       value_template: "{item}"
-
-rule_elements:
-  pci_requirements:
-    xccdf_type: "IdentType"
-  mitre_techniques:
-    xccdf_type: "IdentType"

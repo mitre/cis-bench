@@ -65,86 +65,30 @@ def minimal_recommendation():
 class TestRecommendationFieldTransformer:
     """Tests for RecommendationFieldTransformer class."""
 
-    def test_strip_all_html_converts_html(self, sample_recommendation):
-        """strip_all_html should remove HTML tags from all fields."""
+    def test_stored_text_returns_every_text_field_as_stored(self, sample_recommendation):
+        """The text is the stored Markdown; nothing is parsed, a placeholder stays."""
         from cis_bench.utils.field_transformers import RecommendationFieldTransformer
 
-        fields = RecommendationFieldTransformer.strip_all_html(sample_recommendation)
+        fields = RecommendationFieldTransformer.stored_text(sample_recommendation)
 
-        assert "Test description" in fields["description"]
-        assert "<p>" not in fields["description"]
-        assert "Important" in fields["rationale"]
-        assert "<b>" not in fields["rationale"]
+        assert fields["description"] == sample_recommendation.description
+        assert fields["rationale"] == sample_recommendation.rationale
+        assert set(fields) == set(RecommendationFieldTransformer.CONTENT_FIELDS)
 
-    def test_strip_all_html_handles_none_fields(self, minimal_recommendation):
-        """strip_all_html should return empty strings for None fields."""
+    def test_stored_text_gives_empty_text_for_a_field_with_none(self, minimal_recommendation):
         from cis_bench.utils.field_transformers import RecommendationFieldTransformer
 
-        fields = RecommendationFieldTransformer.strip_all_html(minimal_recommendation)
+        fields = RecommendationFieldTransformer.stored_text(minimal_recommendation)
 
         assert fields["description"] == ""
         assert fields["rationale"] == ""
         assert fields["impact"] == ""
 
-    def test_markdown_all_converts_html(self, sample_recommendation):
-        """markdown_all should convert HTML to markdown."""
+    def test_content_fields_are_the_models_text_fields(self):
+        from cis_bench.models.benchmark import RECOMMENDATION_TEXT_FIELDS
         from cis_bench.utils.field_transformers import RecommendationFieldTransformer
 
-        fields = RecommendationFieldTransformer.markdown_all(sample_recommendation)
-
-        # Bold HTML should become markdown bold
-        assert "**Important**" in fields["rationale"] or "Important" in fields["rationale"]
-
-    def test_markdown_all_handles_none_fields(self, minimal_recommendation):
-        """markdown_all should return empty strings for None fields."""
-        from cis_bench.utils.field_transformers import RecommendationFieldTransformer
-
-        fields = RecommendationFieldTransformer.markdown_all(minimal_recommendation)
-
-        assert fields["description"] == ""
-        assert fields["rationale"] == ""
-
-    def test_transform_field_strip_html(self, sample_recommendation):
-        """transform_field should apply strip_html transformation."""
-        from cis_bench.utils.field_transformers import RecommendationFieldTransformer
-
-        result = RecommendationFieldTransformer.transform_field(
-            sample_recommendation, "description", "strip_html"
-        )
-
-        assert "Test description" in result
-        assert "<p>" not in result
-
-    def test_transform_field_none_value(self, minimal_recommendation):
-        """transform_field should return empty string for None field."""
-        from cis_bench.utils.field_transformers import RecommendationFieldTransformer
-
-        result = RecommendationFieldTransformer.transform_field(
-            minimal_recommendation, "description", "strip_html"
-        )
-
-        assert result == ""
-
-    def test_transform_field_nonexistent_field(self, sample_recommendation):
-        """transform_field should return empty string for nonexistent field."""
-        from cis_bench.utils.field_transformers import RecommendationFieldTransformer
-
-        result = RecommendationFieldTransformer.transform_field(
-            sample_recommendation, "nonexistent_field", "strip_html"
-        )
-
-        assert result == ""
-
-    def test_content_fields_list(self):
-        """CONTENT_FIELDS should contain expected field names."""
-        from cis_bench.utils.field_transformers import RecommendationFieldTransformer
-
-        fields = RecommendationFieldTransformer.CONTENT_FIELDS
-
-        assert "description" in fields
-        assert "rationale" in fields
-        assert "audit" in fields
-        assert "remediation" in fields
+        assert RecommendationFieldTransformer.CONTENT_FIELDS == list(RECOMMENDATION_TEXT_FIELDS)
 
 
 class TestSafeFieldAccessor:

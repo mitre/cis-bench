@@ -24,11 +24,14 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    # Run if: CI succeeded OR manual dispatch
+    # Run if: manual dispatch, or CI succeeded for a push to main (branches: main above matches
+    # the CI run's head branch, which a pull request from a branch named main also has)
     if: >-
       ${{
         github.event_name == 'workflow_dispatch' ||
-        (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+        (github.event_name == 'workflow_run' &&
+         github.event.workflow_run.conclusion == 'success' &&
+         github.event.workflow_run.event == 'push')
       }}
     steps:
       - name: Checkout code
@@ -39,11 +42,13 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.x"
+          python-version: "3.12"
 
-      - name: Install MkDocs and dependencies
+      - name: Install cis-bench, MkDocs and dependencies
+        # The settings table in configuration.md is rendered from cis_bench.config at build
+        # time (scripts/mkdocs_settings_table.py), so the package must be importable.
         run: |
-          pip install mkdocs-material mkdocs-autorefs
+          pip install . mkdocs-material mkdocs-autorefs
 
       - name: Build documentation
         run: mkdocs build

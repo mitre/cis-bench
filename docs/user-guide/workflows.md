@@ -52,7 +52,7 @@ cis-bench catalog refresh
 **Expected:**
 ```
 Logged in
-Session saved to ~/.cis-bench/session.cookies
+Session saved to ~/.local/state/cis-bench/session.cookies
 
 Catalog refresh complete!
 Benchmarks: 1,343
@@ -144,8 +144,8 @@ cis-bench auth login --browser chrome
 
 **Issue:** "OpenSCAP can't parse XCCDF"
 ```bash
-# Verify XCCDF structure
-xmllint --schema schemas/xccdf-1.2.xsd almalinux10-cis.xml
+# Verify XCCDF structure against the NIST schema
+cis-bench validate almalinux10-cis.xml
 
 # Try DISA style instead (XCCDF 1.1.4, more compatible)
 cis-bench export 23598 --format xccdf --style disa -o almalinux10-disa.xml
@@ -231,7 +231,7 @@ mkdir -p xccdf-cloud-benchmarks
 
 # 4. Export all to XCCDF (DISA format for SCC)
 cis-bench list --output-format json | \
-jq -r 'select(.benchmark_id) | .benchmark_id' | \
+jq -r '.downloaded[].benchmark_id' | \
 while read id; do
 cis-bench export "$id" \
 --format xccdf \
@@ -535,38 +535,23 @@ You're importing CIS benchmarks into DISA SCC (SCAP Compliance Checker). SCC is 
 cis-bench download 18208
 cis-bench export 18208 --format xccdf --style disa -o rhel9-disa.xml
 
-# 2. Validate XML syntax
-xmllint --noout rhel9-disa.xml
-if [ $? -eq 0 ]; then
-echo " Valid XML syntax"
-else
-echo " XML syntax error"
-exit 1
-fi
-
-# 3. Validate against XCCDF schema
-xmllint --schema schemas/xccdf-1.1.4.xsd --noout rhel9-disa.xml
-if [ $? -eq 0 ]; then
-echo " Valid XCCDF 1.1.4 structure"
+# 2. Validate against the XCCDF schema (also checks the XML is well-formed)
+if cis-bench validate rhel9-disa.xml; then
+echo " Valid XCCDF 1.1 structure"
 else
 echo " XCCDF schema validation failed"
 exit 1
 fi
 
-# 4. Check DISA conventions
-python3 << EOF
+# 3. Check DISA conventions (prints each error and warning; stops on an error)
+python3 -c "
+import sys
 from cis_bench.validators.disa_conventions import validate_disa_conventions
-issues = validate_disa_conventions('rhel9-disa.xml')
-if not issues:
-print(" DISA conventions validated")
-else:
-print(f"WARNING: {len(issues)} convention issues found:")
-for issue in issues:
-print(f" - {issue}")
-EOF
+sys.exit(0 if validate_disa_conventions('rhel9-disa.xml') else 1)
+" || exit 1
 
 # 5. Verify CCI count (should be reasonable)
-cci_count=$(xmllint --xpath "count(//ident)" rhel9-disa.xml)
+cci_count=$(xmllint --xpath "count(//*[local-name()='ident'])" rhel9-disa.xml)
 echo "Total CCIs: $cci_count"
 
 # Sanity check (should be ~500-1500 for typical benchmark)
@@ -675,7 +660,7 @@ Exported: ubuntu-22-04-cis.xml
 
 **Non-Interactive Mode:**
 ```bash
-# Skip interactive selection, show table instead
+# No menu: take the best match when several benchmarks match
 cis-bench get "ubuntu 22" --format xccdf --style cis --non-interactive
 ```
 
@@ -727,11 +712,11 @@ fi
 # Get all downloaded benchmarks
 cis-bench list --output-format json > inventory.json
 
-# Extract specific fields
-jq -r '.[] | "\(.benchmark_id),\(.title),\(.version)"' inventory.json > inventory.csv
+# Extract specific fields (or: cis-bench list --output-format csv)
+jq -r '.downloaded[] | "\(.benchmark_id),\(.title),\(.version)"' inventory.json > inventory.csv
 
 # Count by platform
-jq -r '.[] | .title' inventory.json | \
+jq -r '.downloaded[] | .title' inventory.json | \
 grep -o "AlmaLinux\|Ubuntu\|RHEL" | \
 sort | uniq -c
 ```
@@ -809,32 +794,55 @@ cis-bench auth status --output-format json | jq '.ssl_verify'
 ## Scenario 14: Offline Mode (Work from Cache)
 
 **Context:**
-You're on a plane without internet. You need to work with benchmarks you've already downloaded.
+You're on a plane or an air-gapped network. You need to work with benchmarks you've already downloaded, and cis-bench must not try to reach CIS WorkBench.
 
 ### Prepare Before Going Offline
 
 ```bash
-# 1. Download everything you'll need
+# 1. Refresh the catalog and download everything you'll need
+cis-bench catalog refresh
 cis-bench download 23598 22162 24008 18208
 
-# 2. Verify cache
+# 2. Verify the cache
 cis-bench list
 ```
 
 ### Work Offline
 
+Turn offline mode on for every run, or for one command:
+
 ```bash
-# All these work offline (use cache):
+export CIS_BENCH_OFFLINE=true     # every run (or offline = true in config.toml)
+cis-bench --offline <command>     # one run
+```
+
+Offline, cis-bench uses the catalog and the downloaded benchmarks, and fails only where a command needs WorkBench:
+
+```bash
+# Work from the cache:
 cis-bench list
 cis-bench info 23598
+cis-bench search "ubuntu"
 cis-bench export 23598 --format xccdf --style cis
-cis-bench export 22162 --format csv
-cis-bench search "ubuntu" # Works if catalog cached
+cis-bench get 23598 --format csv          # a downloaded benchmark
+cis-bench diff 22162 23598                # two downloaded benchmarks
+cis-bench catalog check-updates           # compares versions only
+cis-bench download 23598                  # already cached: reported, exit 0
 
-# These REQUIRE internet (will fail offline):
-cis-bench download 12345 # New download
-cis-bench catalog refresh # Network required
+# Need WorkBench, so they stop with an error (exit 1) and send nothing:
+cis-bench download 28521                  # not downloaded yet
+cis-bench get 28521 --format xccdf        # in the catalog, not downloaded
+cis-bench catalog refresh
+cis-bench auth status
 ```
+
+The error names the command and what it needed:
+
+```text
+Error: cis-bench get needs CIS WorkBench to download benchmark 28521, and offline mode is on (--offline, CIS_BENCH_OFFLINE, or offline = true in config.toml). Nothing was sent to WorkBench.
+```
+
+What each command does offline: [Offline mode](commands-reference.md#offline-mode).
 
 ---
 
@@ -851,7 +859,8 @@ cis-bench catalog refresh # Network required
 | Export cached | `cis-bench export XXXXX --format xccdf --style disa` |
 | List downloaded | `cis-bench list` |
 | Check updates | `cis-bench catalog check-updates` |
-| Batch export | `cis-bench list --output-format json \| jq -r '.[].benchmark_id' \| xargs -I {} cis-bench export {} --format xccdf` |
+| Work offline | `cis-bench --offline <command>` (or `CIS_BENCH_OFFLINE=true`) |
+| Batch export | `cis-bench list --output-format json \| jq -r '.downloaded[].benchmark_id' \| xargs -I {} cis-bench export {} --format xccdf` |
 
 ---
 

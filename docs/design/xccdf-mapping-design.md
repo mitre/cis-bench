@@ -59,18 +59,25 @@ Instead of organization-specific methods, we use 3 generic handlers:
 
 ## metadata_from_config Specification
 
-The most complex handler - builds any nested XML from YAML.
+Builds a Rule's `<metadata>` content from YAML. The content is part of the XCCDF model: each
+element is an xsdata `AnyElement`, held by a `MetadataType` on `Rule.metadata`, so the
+serializer writes it in schema order with the rest of the Rule. Nothing is inserted after
+serialization.
 
-### Capabilities
+### What it writes
 
-1. **Simple nesting:** Parent > Child
-2. **Grouping:** Group items by field (e.g., by version)
-3. **Multiple items per group:** Framework > multiple Safeguards
-4. **Attributes:** Template-based attribute generation
-5. **Content:** Static or template-based content
-6. **Empty handling:** Generate empty element if no data
-7. **Namespace support:** Custom namespace per structure
-8. **Recursive children:** Unlimited nesting depth
+1. **Root element:** one per mapping and Rule (`root_element`); each mapping gives its own
+   `<metadata>` element, in mapping order
+2. **Grouping:** the source list is grouped by `group_by`; groups are written in key order,
+   each as a `group_element`
+3. **Items:** each group's items, in source order, as `item_element`
+4. **Attributes:** template-based; booleans are written as lowercase `true`/`false`
+5. **Content:** static or template-based text
+6. **Children:** nested to any depth under an item
+7. **Empty handling:** with `allow_empty`, an empty root when the source list is empty or no
+   item falls in a group; otherwise no metadata element
+8. **Namespace:** every element is in the namespace `benchmark.namespaces` declares for
+   `namespace_prefix`
 
 ### Config Schema
 
@@ -79,10 +86,8 @@ field_name:
   target_element: "metadata"
   structure: "metadata_from_config"
   source_field: "cis_controls"
-  requires_post_processing: true  # Complex nesting needs lxml injection
   metadata_spec:
     root_element: "cis_controls"
-    namespace: "http://cisecurity.org/controls"
     namespace_prefix: "controls"
     allow_empty: true
 
@@ -114,6 +119,48 @@ field_name:
             content: "Protect"
 ```
 
+The type that holds the content is the one the XCCDF model gives the Rule's target element
+(`MetadataType` for `metadata`), as for every element: a style declares no types.
+
+### Checked when the style loads
+
+The style schema (`MetadataFromConfigMapping` and `StyleConfig` in `style_config.py`)
+refuses a metadata mapping when the style loads, with the path of the key, when it:
+
+- sets a key the builder does not read, at any level (`metadata_spec`, `group_element`,
+  `item_element` and each of its `children`, to any depth)
+- leaves out `source_field`, `metadata_spec`, `root_element`, `namespace_prefix`, `group_by`,
+  `group_element`, or the `element` of the group, the item or a child; or gives an empty
+  `source_field` or `namespace_prefix`
+- names an element or attribute that is not an XML name without a prefix (`xsi:type`,
+  `{uri}name`, `two words` and `xmlns` are refused)
+- sets a removed key: `requires_post_processing`, `metadata_spec.namespace` (the URI comes
+  from `benchmark.namespaces`)
+
+XCCDF allows only elements from another namespace inside `metadata`
+(`xsd:any namespace="##other"`), and XCCDF 1.1.4 Rules have no `metadata` element. These
+checks need the models, which `ConfigLoader` gives the schema as validation context
+(`StyleModels`: the XCCDF models of the style's version, the Recommendation and Benchmark
+models); the same load refuses a metadata mapping that:
+
+- targets an element the XCCDF version's Rule does not have (any metadata mapping on 1.1.4),
+  or one whose type does not repeat and take elements of every namespace but XCCDF's
+  (`title`, `ident`, `signature`, and `dc_status`, whose type takes Dublin Core elements
+  only, even when the mapping's prefix is the Dublin Core one)
+- has a `source_field` that is no list field of the Recommendation, or a `group_by` that is
+  empty or no field of the listed items
+- has a `namespace_prefix` `benchmark.namespaces` does not declare, or one that resolves to
+  the XCCDF namespace
+
+The wildcard of the holder's type is read with the XCCDF namespace as its parent namespace,
+so `##other` means "not the XCCDF namespace" (xsdata resolves it that way only when told the
+parent namespace).
+
+An attribute value comes from the benchmark, so it is checked at export: a value the serializer
+would write as an XML Schema type name (it starts with `{` and names a type, such as
+`{http://www.w3.org/2001/XMLSchema}string`) stops the export with an error naming the
+attribute.
+
 ### Use Cases
 
 **CIS Controls (with grouping):**
@@ -121,19 +168,6 @@ field_name:
 - Group by version → framework elements
 - Multiple safeguards per framework
 - Nested children (implementation_groups, asset_type, etc.)
-
-**check > check-content (simple nesting):**
-
-```yaml
-check:
-  structure: "metadata_from_config"
-  metadata_spec:
-    root_element: "check"
-    children:
-
-      - element: "check-content"
-        source_field: "audit"
-```
 
 ---
 
@@ -159,9 +193,9 @@ def build_cis_controls(self, recommendation):
 
 **After (Generic):**
 ```python
-def generate_metadata_from_config(self, recommendation, field_mapping):
+def generate_metadata_from_config(self, recommendation, field_mapping: MetadataFromConfigMapping):
     """Build ANY nested XML from YAML config."""
-    spec = field_mapping["metadata_spec"]
+    spec = field_mapping.metadata_spec
     # Generic - reads structure from config
 ```
 
@@ -201,10 +235,9 @@ def generate_metadata_from_config(self, recommendation, field_mapping):
 
 ```python
 def test_generate_idents_from_config()    # Generic ident generation
-def test_generate_metadata_from_config()  # Generic metadata generation
 def test_generate_profiles_from_rules()   # Profile generation
-def test_metadata_grouping()              # group_by logic
-def test_metadata_nesting()               # Recursive children
+# Metadata: tests/unit/test_metadata_generation.py (built content, order, the Rule's
+# metadata, the load-time refusals)
 ```
 
 ### Integration Tests

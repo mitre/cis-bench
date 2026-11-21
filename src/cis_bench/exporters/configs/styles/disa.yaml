@@ -3,20 +3,16 @@
 # Version: 1.0.0
 # XCCDF Target: 1.2 (backward compatible with 1.1.4 STIG tools)
 
-# Inherit common configuration (namespaces, transformations, etc.)
+# Inherit common configuration (namespaces, rule defaults, post-processing)
 extends: ../base.yaml
 
+# DISA/DoD STIG-compatible XCCDF export.
+# Conventions: follows DISA STIG XML structure and element naming (conventions v1.10.0).
+# Target tools: DISA SCAP Compliance Checker (SCC), OpenSCAP (DoD configurations), DISA STIG
+# Viewer, Nessus (Government).
 metadata:
   style_name: "disa"
-  description: "DISA/DoD STIG-compatible XCCDF export"
   xccdf_version: "1.1.4"  # STIGs use 1.1.4, not 1.2
-  xccdf_namespace: "http://checklists.nist.gov/xccdf/1.1"
-  target_tools:
-    - "DISA SCAP Compliance Checker (SCC)"
-    - "OpenSCAP (DoD configurations)"
-    - "DISA STIG Viewer"
-    - "Nessus (Government)"
-  conventions: "Follows DISA STIG XML structure and element naming (conventions v1.10.0)"
 
 # Benchmark-level mappings
 benchmark:
@@ -25,47 +21,50 @@ benchmark:
   # Vulcan displays this in the STIG ID column
   id_template: "CIS_{benchmark_id}"
 
-  # Override namespace from base.yaml - DISA uses XCCDF 1.1, not 1.2
+  # The namespaces DISA documents use (prefix -> URI), declared on the root by the
+  # serializer: XCCDF 1.1 as the default namespace (STIG Viewer, Vulcan/HappyMapper read
+  # unprefixed XCCDF) and Dublin Core for the reference metadata
   namespaces:
     default: "http://checklists.nist.gov/xccdf/1.1"
     dc: "http://purl.org/dc/elements/1.1/"
-    xsi: "http://www.w3.org/2001/XMLSchema-instance"
-    cpe: "http://cpe.mitre.org/language/2.0"
-    xhtml: "http://www.w3.org/1999/xhtml"
-    controls: "http://cisecurity.org/controls"
-    enhanced: "http://cisecurity.org/xccdf/enhanced/1.0"
-    cc6: "http://cisecurity.org/20-cc/v6.1"
-    cc7: "http://cisecurity.org/20-cc/v7.0"
-    cc8: "http://cisecurity.org/20-cc/v8.0"
 
   # Profile generation - convert CIS profiles to XCCDF Profile elements
   profiles:
     generate_from_rules: true
+    # Every Profile id, from the profile's title (one rule for defined and named profiles)
+    id_template: "{profile.title|slug:-}"
+    # A profile description is stored as Markdown (converted when the page is read): written as it is
+    description_transform: "none"
+    # Copies saved without the page's profile definitions: per profile name on the rules,
+    # the title, description and the profiles it includes (any other name gets a profile too)
     profile_mappings:
       - match: "Level 1 - Server"
-        id: "level-1-server"
         title: "Level 1 - Server"
         description: "CIS Level 1 recommendations for server environments"
       - match: "Level 1 - Workstation"
-        id: "level-1-workstation"
         title: "Level 1 - Workstation"
         description: "CIS Level 1 recommendations for workstation environments"
       - match: "Level 2 - Server"
-        id: "level-2-server"
         title: "Level 2 - Server"
         description: "CIS Level 2 recommendations for server environments"
+        includes: ["Level 1 - Server"]  # Level 2 extends Level 1 (WorkBench profile definitions)
       - match: "Level 2 - Workstation"
-        id: "level-2-workstation"
         title: "Level 2 - Workstation"
         description: "CIS Level 2 recommendations for workstation environments"
+        includes: ["Level 1 - Workstation"]  # Level 2 extends Level 1 (WorkBench profile definitions)
       - match: "Level 3 - Server"
-        id: "level-3-server"
         title: "Level 3 - Server"
         description: "CIS Level 3 recommendations for server environments (new, not in all benchmarks)"
       - match: "Level 3 - Workstation"
-        id: "level-3-workstation"
         title: "Level 3 - Workstation"
         description: "CIS Level 3 recommendations for workstation environments (new, not in all benchmarks)"
+      - match: "Level 1"
+        title: "Level 1"
+        description: "CIS Level 1 recommendations"
+      - match: "Level 2"
+        title: "Level 2"
+        description: "CIS Level 2 recommendations"
+        includes: ["Level 1"]  # Level 2 extends Level 1 (WorkBench profile definitions)
 
   # Namespaces inherited from base_style.yaml (common + controls/enhanced)
   # Can override here if needed for DISA-specific requirements
@@ -74,45 +73,29 @@ benchmark:
   title:
     source: "title"
     transform: "none"
-    xccdf_type: "TextType"  # Benchmark.title uses TextType (with 'value'), not TextWithSubType
 
   description:
     source: "title"
     transform: "none"
     prepend_text: "CIS Benchmark exported to DISA STIG format. "
-    xccdf_type: "HtmlTextWithSubType"
 
   version:
     source: "version"
     transform: "strip_version_prefix"  # "v4.0.0" → "4.0.0" (Vulcan adds "V" prefix)
-    xccdf_type: "VersionType"
 
-  # STIG-required elements (with types)
+  # STIG-required elements; front-matter and rear-matter are written empty in every style
   notice:
-    element: "notice"
-    xccdf_type: "NoticeType"
-    attributes:
-      id: "terms-of-use"
-      xml:lang: "en"
-    content: ""
-
-  front_matter:
-    element: "front-matter"
-    xccdf_type: "HtmlTextWithSubType"  # XCCDF 1.1.4 schema requires WithSubType
-    attributes:
-      xml:lang: "en"
-    content: ""
-
-  rear_matter:
-    element: "rear-matter"
-    xccdf_type: "HtmlTextWithSubType"  # XCCDF 1.1.4 schema requires WithSubType
-    attributes:
-      xml:lang: "en"
-    content: ""
+    id: "terms-of-use"
+    lang: "en"
+    content: >-
+      This XCCDF file was exported via cis-bench format conversion from
+      "{benchmark.title}" ({benchmark.url}). Source benchmark content is
+      copyright Center for Internet Security, Inc. (CIS) and subject to the CIS
+      WorkBench Terms of Use (https://workbench.cisecurity.org/terms-of-use) and
+      applicable CIS license terms.
 
   # Dublin Core reference (STIG requirement)
   reference:
-    element: "reference"
     attributes:
       href: "{benchmark.url}"
     dc_elements:
@@ -134,21 +117,19 @@ benchmark:
 rule_defaults:
   severity: "medium"  # CIS has no severity → default CAT II equivalent
   weight: "10.0"      # DISA standard
-  selected: "true"
-  role: "full"
 
 # ID Generation - DISA STIG Format
 # DISA STIGs use V-NNNNNN for Groups and SV-NNNNNNrREV_rule for Rules
 # We convert CIS refs (1.1.1) to padded numbers (010101) for STIG-style IDs
-# Variables: {stig_number}, {ref_normalized}, {platform}
+# Variables: {stig_number}, {ref_normalized}
 
+# DISA STIG Group ID format (V-NNNNNN)
 group_id:
   template: "V-{stig_number}"
-  description: "DISA STIG Group ID format (V-NNNNNN)"
 
+# DISA STIG Rule ID format (SV-NNNNNNrREV_rule)
 rule_id:
   template: "SV-{stig_number}r1_rule"
-  description: "DISA STIG Rule ID format (SV-NNNNNNrREV_rule)"
   # Note: r1 = revision 1, would increment on changes
 
 # Field mappings - Order matters for composite fields!
@@ -159,14 +140,19 @@ field_mappings:
     target_element: "version"
     source_field: "ref"
     transform: "none"
-    description: "CIS ref becomes STIG-style version (human-readable ID)"
+    # CIS ref becomes STIG-style version (human-readable ID)
 
   title:
     target_element: "title"
     source_field: "title"
-    transform: "strip_html"
+    transform: "none"
 
   # === DESCRIPTION (Complex - Embedded XML Tags) ===
+  # A STIG rule description carries tags inside its text: VulnDiscussion and the ten tags
+  # after it, in the order DISA writes them, every one present (empty when the rule has no
+  # text for it). Each part's text is the stored Markdown; each tag is built by the XML
+  # library, which escapes its text, so a reader that unescapes the description once and
+  # parses the tags gets the text as stored, a placeholder such as <user> included.
   description:
     target_element: "description"
     structure: "embedded_xml_tags"
@@ -174,59 +160,56 @@ field_mappings:
       - tag: "VulnDiscussion"
         sources:
           - field: "description"
-            transform: "strip_html"
+            transform: "none"
             separator: "\n\n"
           - field: "rationale"
-            transform: "strip_html"
-        combine: "join"  # Join both sources into one VulnDiscussion
+            transform: "none"
 
       - tag: "FalsePositives"
-        content: ""  # Empty - legacy VMS
+        content: ""
 
       - tag: "FalseNegatives"
-        content: ""  # Empty - legacy VMS
+        content: ""
 
       - tag: "Documentable"
-        content: "false"  # Static
+        content: "false"
 
       - tag: "Mitigations"
         sources:
           - field: "additional_info"
-            transform: "strip_html"
-        optional: true  # Only if field present
+            transform: "none"
 
       - tag: "SeverityOverrideGuidance"
-        content: ""  # Empty - legacy VMS
+        content: ""
 
       - tag: "PotentialImpacts"
         sources:
           - field: "impact"
-            transform: "strip_html"
-        optional: true
+            transform: "none"
 
       - tag: "ThirdPartyTools"
-        content: ""  # Empty - legacy VMS
+        content: ""
 
       - tag: "MitigationControl"
-        content: ""  # Empty - legacy VMS
+        content: ""
 
       - tag: "Responsibility"
-        content: ""  # Empty - legacy VMS
+        content: ""
 
       - tag: "IAControls"
-        content: ""  # Empty - legacy VMS
+        content: ""
 
   # === CCI IDENTIFIERS (DoD Standard for NIST Mapping) ===
   ident:
     target_element: "ident"
     multiple: true
     source_logic: "cci_lookup_with_deduplication"
-    cci_lookup:
-      enabled: true
-      mapping_file: "data/cis-cci-mapping.json"
+    cci_lookup:  # used because source_logic is cci_lookup_with_deduplication
+      # mapping_file: the bundled CIS-CCI mapping (src/cis_bench/data/cis-cci-mapping.json)
+      # is read unless a style names its own, relative to that style's file
       source_field: "cis_controls"
-      extract: "primary"  # primary only (key compliance mapping) - use "all" for primary + supporting
-      deduplicate_nist: true
+      cis_controls_version: 8  # the mapping file is keyed by CIS Controls v8 only
+      extract: "all"  # every CCI the mapping gives the safeguard, primary first; "primary" keeps only the first
       fallback_cci: "CCI-000366"  # Ensures every rule has at least one ident (DISA requirement)
     attributes:
       system: "http://cyber.mil/cci"
@@ -234,11 +217,12 @@ field_mappings:
   # === NIST REFERENCES (Extras Not Covered by CCIs) ===
   reference:
     target_element: "reference"
-    multiple: true
-    source_logic: "nist_after_cci_deduplication"
+    source_logic: "nist_after_cci_deduplication"  # one reference per NIST control no CCI states
     source_field: "nist_controls"
     structure: "dublin_core"
     dc_elements:
+      - element: "dc:title"
+        content: "NIST SP 800-53"
       - element: "dc:identifier"
         content: "{nist_control_id}"
     attributes:
@@ -248,13 +232,13 @@ field_mappings:
   fixtext:
     target_element: "fixtext"
     source_field: "remediation"
-    transform: "strip_html_keep_code"
+    transform: "none"
     attributes:
       fixref: "F-{ref_normalized}"
 
   fix:
     target_element: "fix"
-    content: ""  # Empty element
+    # written empty: it has attributes and no source; the fix text is in fixtext
     attributes:
       id: "F-{ref_normalized}"
 
@@ -267,7 +251,7 @@ field_mappings:
     children:
       - element: "check-content"
         source_field: "audit"
-        transform: "strip_html_keep_code"
+        transform: "none"
 
   # === CIS CONTROLS AS IDENT ELEMENTS ===
   # DISA STIGs use <ident> elements (like CCIs), not <metadata>
@@ -305,134 +289,37 @@ field_mappings:
       system_template: "https://attack.mitre.org/mitigations"
       value_template: "{item}"
 
-# Transformation definitions
-# Transformations inherited from base_style.yaml
-# Add DISA-specific transformations here if needed
-
 # CCI Deduplication Configuration
+# What the exporter does when enabled (the algorithm is the exporter's own, not a setting):
+# every mapped CCI is written as an ident; every cited NIST control is written as a
+# reference unless a CCI restates it.
+#   1. Take the recommendation's CIS Controls of the mapping file's version
+#      (cis_controls_version)
+#   2. Look up every CCI of each safeguard (extract: all), primary first, each once
+#   3. Note the control and enhancement each CCI sits under (CM-7 (1) (b) sits under CM-7(1))
+#   4. Add the CCIs as <ident> elements
+#   5. Add every cited NIST control as a <reference>, except one a CCI restates exactly
+# A CCI restates only the control and enhancement it sits under (CM-7 (1) (b) does not
+# stand for CM-7 or for CM-7(2)):
+#   CCI maps to CM-7 (1) (b), CIS cites CM-7(1): restated, not written again
+#   CCI maps to CM-7 (1) (b), CIS cites CM-7:    written (the base control is broader)
+#   CCI maps to CM-7 b,       CIS cites CM-7(5): written (a different enhancement)
 cci_deduplication:
   enabled: true
-  algorithm:
-    description: "Use CCIs where available, NIST references for extras"
-    steps:
-      - "Extract all CIS Controls from recommendation"
-      - "Look up CCIs for each CIS Control (primary + supporting)"
-      - "Determine which NIST controls are covered by those CCIs"
-      - "Add CCIs as <ident> elements"
-      - "Add uncovered NIST controls as <reference> elements"
-
-  matching_rules:
-    description: "How to determine if CCI covers a NIST citation"
-    hierarchical: true  # CM-7.1 covers CM-7
-    examples:
-      - cci_maps_to: "CM-7.1"
-        cis_cites: "CM-7"
-        result: "covered"  # CCI is more specific
-      - cci_maps_to: "CM-7"
-        cis_cites: "CM-7.1"
-        result: "not_covered"  # CCI too broad
-      - cci_maps_to: "CM-7(5)"
-        cis_cites: "CM-7"
-        result: "covered"  # Enhancement covers base
-
-# Legacy VMS tags (keep for compatibility)
-legacy_vms_tags:
-  include: true
-  tags:
-    - "FalsePositives"
-    - "FalseNegatives"
-    - "Documentable"
-    - "SeverityOverrideGuidance"
-    - "ThirdPartyTools"
-    - "MitigationControl"
-    - "Responsibility"
-    - "IAControls"
-  default_content: ""
-  documentable_value: "false"
-
-# Validation rules
-validation:
-  require_cci_for_cis_controls: false  # Warn if missing, don't fail
-  require_nist_controls: false
-  max_cci_per_rule: 50  # Sanity check
-
-# Rule element specifications (xsdata types for each Rule element)
-# Note: A Rule is a security control/recommendation
-# Each Rule has elements (title, description, etc.) with specific xsdata types
-rule_elements:
-  version:
-    xccdf_type: "VersionType"
-    source: "ref"
-
-  title:
-    xccdf_type: "TextWithSubType"
-    source: "title"
-
-  description:
-    xccdf_type: "HtmlTextWithSubType"
-    source: "vuln_discussion"  # Created by engine
-
-  ident:
-    xccdf_type: "IdentType"
-    multiple: true
-
-  fixtext:
-    xccdf_type: "FixTextType"
-    source: "remediation"
-
-  fix:
-    xccdf_type: "FixType"
-    source: "remediation"
-
-  check:
-    xccdf_type: "CheckType"
-    source: "audit"
-
-  # CIS Controls and MITRE ATT&CK as ident elements
-  cis_controls:
-    xccdf_type: "IdentType"
-    description: "CIS Controls as ident elements"
-
-  mitre_techniques:
-    xccdf_type: "IdentType"
-    description: "MITRE ATT&CK techniques as ident elements"
-
-  mitre_tactics:
-    xccdf_type: "IdentType"
-    description: "MITRE ATT&CK tactics as ident elements"
-
-  mitre_mitigations:
-    xccdf_type: "IdentType"
-    description: "MITRE ATT&CK mitigations as ident elements"
 
 # Group element specifications (xsdata types for each Group element)
 # Note: Groups are DISA wrappers - one Group per Rule (STIG convention)
 # Each Group has elements (title, description) with specific xsdata types
 group_elements:
   title:
-    xccdf_type: "TextWithSubType"  # XCCDF 1.1.4 schema requires WithSubType
     source: "ref"  # Use CIS ref (e.g., "6.1.1") - Vulcan displays as SRG ID
     # In DISA STIGs this would be SRG-OS-000xxx, but CIS has no SRG so we use ref
 
   description:
-    xccdf_type: "HtmlTextWithSubType"
     source: "title"  # Use rule title as group description
-    transform: "strip_html"
+    transform: "none"
 
 # Post-processing overrides for DISA/STIG format
-# Vulcan and STIG tools need clean XML without namespace pollution
 post_processing:
-  # Strip ns0:, ns1:, etc. prefixes - Vulcan/HappyMapper requires this
-  strip_namespace_prefixes: true
-
-  # Only declare these namespaces in root element
-  preserve_namespaces:
-    - default
-    - dc
-
   # Remove 'override' attributes (xsdata artifact)
   remove_override_attr: true
-
-  # Handlers to run
-  handlers:
-    - dublin_core_injection

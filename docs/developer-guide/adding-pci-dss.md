@@ -17,7 +17,6 @@ extends: base_style.yaml
 
 metadata:
   style_name: "pci_dss"
-  description: "PCI-DSS v4.0 compliance export"
   xccdf_version: "1.2"
 
 benchmark:
@@ -25,10 +24,10 @@ benchmark:
 
   profiles:
     generate_from_rules: true
+    id_template: "{profile.title|slug:-}"  # every Profile id, from its title
     profile_mappings:
 
       - match: "SAQ A"
-        id: "saq-a"
         title: "Self-Assessment Questionnaire A"
 
 field_mappings:

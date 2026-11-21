@@ -12,86 +12,236 @@ This document provides a complete reference for writing MappingEngine YAML confi
 
 ## Configuration Structure
 
+### The style schema
+
+The schema of a style file is generated from `StyleConfig` when the docs are built and published
+with them: [schemas/style.json](../schemas/style.json)
+(`https://mitre.github.io/cis-bench/schemas/style.json`), JSON Schema Draft 2020-12. Point an
+editor at it to check a style while you write it. With the YAML language server (the VS Code YAML
+extension and other editors that use it), put this comment on the first line of the style:
+
+```yaml
+# yaml-language-server: $schema=https://mitre.github.io/cis-bench/schemas/style.json
+```
+
+or map style files to it in the editor's settings:
+
+```json
+{
+  "yaml.schemas": {
+    "https://mitre.github.io/cis-bench/schemas/style.json": "src/cis_bench/exporters/configs/**/*.yaml"
+  }
+}
+```
+
+The schema covers the keys and values of one file. What needs the XCCDF and Benchmark models (a
+field the style names, an element of its XCCDF version, a registered transform) is checked when
+cis-bench loads the style, and a style that extends another is checked as the merged whole.
+
+A style is checked against one schema (`StyleConfig` in
+`src/cis_bench/exporters/style_config.py`) when it loads. In the sections `metadata`,
+`rule_defaults`, `rule_id`, `group_id`, `cci_deduplication`, `group_elements`,
+`post_processing` and `benchmark`, and at the top level, a key
+the exporter does not read is refused, and so is a value of the wrong kind. The error has
+one line per mistake, each with the file and the dotted path of the key:
+
+```text
+my_style.yaml: rule_defaults.severty: is not a key the exporter reads; the keys here are: severity, weight
+my_style.yaml: cci_deduplication.enabled: Input should be a valid boolean
+```
+
+A key written with no value (`weight:` or `weight: null`) is refused too: leave the key out
+to take the default.
+
+A style takes another style's settings with `extends: <file>`, a file name relative to the
+style's own file (or absolute); an `extends` with no value, one that is not text, or one
+that names a folder is refused, and so is a file that is not valid YAML.
+
+An `extends` chain is loaded from its root, the order compose-go loads compose files in.
+Each file is merged onto the style built so far, and that style is checked; a mistake is
+reported with the file just merged. So a child can change one key of a parent's entry (an
+element's `prepend_text`, say) and the entry is checked whole, and a mistake is named with
+the file that made it: a parent's mistake with the parent, even when the child replaces that
+value; one namespace URI bound in the parent and in the child, with the child. Loading stops
+at the first file with mistakes, and every mistake of that file is reported together. Every
+file a style extends is therefore a valid style on its own.
+
+Before a file is merged it is checked for what would make the merge unsafe. Every key is
+text: YAML reads an unquoted `true`, `1` or `null` as a boolean, a number or nothing, and a
+mapping takes `true` and `1` for one key, so such a key is refused; write it in quotes
+(`"true": ...`). No mapping contains itself through a YAML anchor:
+
+```text
+my_style.yaml: rule_defaults.true: is not text; write the key in quotes
+my_style.yaml: rule_defaults.again: Recursion error - cyclic reference detected
+```
+
+A field mapping takes the keys of its `structure`: `simple` (or no `structure`),
+`composite`, `nested`, `dublin_core`, `embedded_xml_tags`, `ident_from_list` or
+`metadata_from_config`, each with its required keys, at every level of a nested
+specification; an unknown `structure` is refused with the list of known ones, and `null`
+switches off a mapping a style inherits. A mistake there names the structure in its path:
+
+```text
+my_style.yaml: field_mappings.title.composite.source_field: is not a key the exporter reads; the keys here are: attributes, separator, sources, structure, target_element
+my_style.yaml: field_mappings.cis_controls_metadata.metadata_from_config.metadata_spec.group_element.item_element.element: Field required
+```
+
+The required keys of the nested structures:
+
+- `embedded_xml_tags`: `components`, each with a `tag`; a source of a component needs its `field`
+- `ident_from_list`: `source_field` and `ident_spec`; an attribute in `ident_spec.attributes` needs its `name` and `namespace_prefix`
+- `metadata_from_config`: `source_field` and `metadata_spec` with `root_element`, `namespace_prefix`, `group_by` and `group_element`; `group_element` needs its `element` and `item_element`, and the item element and each of its `children` an `element`
+
+Tag, element and attribute names there are XML names without a prefix (the namespace comes
+from `namespace_prefix`), and a `namespace_prefix` is never empty.
+
+Descriptive text (what a style is for, which tools read it) goes in YAML comments.
+
 ```yaml
 # Top-level structure
 metadata: # Style metadata
-style_name: "..."
-description: "..."
-xccdf_version: "..."
+  style_name: "..."
+  xccdf_version: "..."
 
 benchmark: # Benchmark-level mappings
-id_template: "..."
-title: {...}
-description: {...}
-version: {...}
+  id_template: "..."
+  namespaces: {...} # Prefix -> namespace URI the documents declare
+  title: {...}
+  description: {...}
+  version: {...}
 
 rule_defaults: # Default rule attributes
-severity: "..."
-weight: "..."
-selected: "..."
+  severity: "..."
+  weight: "..."
 
 rule_id: # Rule ID generation
-template: "..."
-ref_normalized: "..."
+  template: "..."
+
+group_id: # Group ID generation
+  template: "..."
+
+group_elements: # What each Group element is filled from
+  title: # each element names a source or content; leave an element out to write none
+    source: "ref"
 
 field_mappings: # Field mapping definitions
-field_name:
-target_element: "..."
-source_field: "..."
-transform: "..."
-# ... more options
-
-transformations: # Transform definitions
-transform_name:
-description: "..."
-function: "..."
+  field_name:
+    target_element: "..."
+    source_field: "..."
+    transform: "..."
+    # ... more options
 
 cci_deduplication: # CCI/NIST deduplication config
-enabled: true
-algorithm: {...}
+  enabled: true
 
-validation: # Validation rules
-require_cci_for_cis_controls: false
+post_processing: # On the rendered tree, before it is written
+  remove_override_attr: true
 ```
 
 ## Metadata Section
 
-Describes the export style:
+Names the export style and the XCCDF version it writes:
 
 ```yaml
+# DISA/DoD STIG-compatible XCCDF export
 metadata:
-style_name: "disa" # Unique identifier
-description: "DISA/DoD STIG-compatible XCCDF export"
-xccdf_version: "1.2" # Target XCCDF version
-target_tools: # Compatible tools (optional)
-
-- "DISA SCAP Compliance Checker (SCC)"
-- "OpenSCAP (DoD configurations)"
-conventions: "Follows DISA STIG XML structure" # Notes (optional)
+  style_name: "disa" # Unique identifier
+  xccdf_version: "1.1.4" # Target XCCDF version: "1.1.4" or "1.2"
 ```
+
+These are the only keys. `description`, `conventions` and `target_tools` are refused:
+write them as comments. `xccdf_namespace` is refused: the XCCDF namespace is the one bound
+in `benchmark.namespaces`.
 
 ## Benchmark Section
 
-Benchmark-level field mappings:
+What the Benchmark element is built from. Each entry takes only the keys listed here:
 
 ```yaml
 benchmark:
-# ID template with variables
-id_template: "xccdf_cis_{platform}_benchmark"
+  # The Benchmark id, from {benchmark_id}, {version} and {title_slug}
+  id_template: "xccdf_org.cisecurity.benchmarks_benchmark_{version}_{title_slug}"
 
-# Simple field mapping
-title:
-source: "title"
-transform: "none"
+  namespaces: {...} # see Namespaces below
 
-description:
-source: "title" # Can reuse other fields
-transform: "none"
+  # Any other entry is the Benchmark element of that name, filled from a benchmark field
+  title:
+    source: "title" # the benchmark field; required in the file or a style it extends
+    transform: "none" # optional, a registered transform
+  description:
+    source: "title" # a field can fill more than one element
+    prepend_text: "CIS Benchmark exported to DISA STIG format. " # optional
+  version:
+    source: "version"
 
-version:
-source: "version"
-transform: "none"
+  notice:
+    id: "terms-of-use" # required when the style declares a notice; no notice is written without one
+    lang: "en" # optional; written as xml:lang
+    content: "Exported from {benchmark.title}" # optional; empty when left out
+
+  plain_text: # one plain-text element each
+    - id: "release-info" # required
+      content: "Release: 1 Benchmark Date: {download_date}"
+
+  reference:
+    attributes:
+      href: "{benchmark.url}" # optional; the benchmark's URL when left out
+    dc_elements: # Dublin Core children of the reference
+      - element: "dc:publisher" # required: prefix:name, prefix bound in namespaces
+        content: "CIS Security" # required
+
+  profiles:
+    generate_from_rules: true
+    id_template: "{profile.title|slug:-}"
+    description_transform: "none"
+    profile_mappings:
+      - match: "Level 2 - Server" # required: the profile name on the recommendations
+        title: "Level 2 - Server"
+        description: "CIS Level 2 recommendations for server environments"
+        includes: ["Level 1 - Server"]
 ```
+
+- An element filled from a field needs a `source`, written in the file or in a style it
+  extends: a child may change only an element's `transform` or `prepend_text`.
+  The element's name must be an element of the XCCDF Benchmark for the style's version;
+  that is checked when the engine starts.
+- The notice, front-matter, rear-matter and reference elements come from the XCCDF model:
+  `element` is refused in `notice` and `reference`. Front-matter and rear-matter are
+  written empty in every style, so a style has no entry for them.
+- The notice's id and language are written as `id` and `lang`; `attributes` is refused.
+- A profile mapping sets no `id`: profile ids come from `profiles.id_template`.
+- The prefix of each `dc_elements` element must be bound in `benchmark.namespaces`, by the
+  file itself or a style it extends.
+
+### Namespaces
+
+`benchmark.namespaces` maps each prefix to its namespace URI; `default` is the default
+namespace. It lists exactly the namespaces the style's documents use:
+
+```yaml
+benchmark:
+namespaces:
+default: "http://checklists.nist.gov/xccdf/1.1" # the style's XCCDF version
+dc: "http://purl.org/dc/elements/1.1/"
+```
+
+- The serializer (xsdata) declares every listed namespace on the root and names each
+  element with its namespace's prefix. Nothing changes a prefix or a declaration after
+  serialization.
+- The namespace of the style's XCCDF version must be listed, as `default` or under a prefix,
+  or the export stops. xsdata would otherwise make up a prefix such as `ns0` for it.
+- A prefix is `default` or an XML name without a colon, never `xml` or `xmlns`; a URI is not
+  empty and is not one of the two namespaces XML reserves. Anything else is refused when the
+  style loads.
+- List each URI once (a second binding is refused). xsdata keeps one binding per URI and drops the default namespace when
+  a prefix has the same URI, so a second prefix for the XCCDF namespace would put that
+  prefix on every element.
+- Mappings look their prefixes up here (`dc_elements`, an ident attribute's
+  `namespace_prefix`). A prefix that is not listed stops the export.
+- A style that extends another inherits its namespaces and cannot drop one. So the shipped
+  `base.yaml` declares none: DISA declares XCCDF 1.1 and `dc`; CIS declares XCCDF 1.2 and
+  the namespaces of its CIS Controls metadata and idents.
 
 ## Rule Defaults
 
@@ -99,11 +249,12 @@ Default attributes applied to all rules:
 
 ```yaml
 rule_defaults:
-severity: "medium" # CAT II equivalent
-weight: "10.0" # DISA standard
-selected: "true" # Rule enabled by default
-role: "full" # Full rule (not snippet)
+  severity: "medium" # CAT II equivalent
+  weight: "10.0" # DISA standard; a number, or a number written as text
 ```
+
+These are the only keys. `selected` and `role` are refused: a Rule is written with the
+XCCDF model's default for both.
 
 ## Rule ID Generation
 
@@ -111,9 +262,13 @@ Template for generating rule IDs:
 
 ```yaml
 rule_id:
-template: "xccdf_cis_{platform}_rule_{ref_normalized}"
-ref_normalized: "replace('.', '_')" # 3.1.1 3_1_1
+  template: "xccdf_org.cisecurity.benchmarks_rule_{ref_normalized}"
 ```
+
+`template` is the only key of `rule_id` and of `group_id`. The template sees two values made from the recommendation's ref: `{ref_normalized}`
+(`3_1_1`) and `{stig_number}` (`030101`). The same id names the Rule and every Profile
+`select` of it. A template that names any other variable, or gives no id (an empty
+template, or a filter whose result is not text), stops the export with an error.
 
 ## Field Mappings
 
@@ -128,8 +283,8 @@ field_mappings:
 title:
 target_element: "title" # XCCDF element name
 source_field: "title" # Source field on Recommendation
-transform: "strip_html" # Transform to apply
-description: "Rule title" # Optional documentation
+transform: "none" # Transform to apply
+# Rule title (descriptive text about a mapping goes in a YAML comment)
 ```
 
 ### Field with Attributes
@@ -140,44 +295,53 @@ Add attributes to XCCDF element:
 fixtext:
 target_element: "fixtext"
 source_field: "remediation"
-transform: "strip_html_keep_code"
+transform: "none"
 attributes:
 fixref: "F-{ref_normalized}" # Variable substitution in attributes
 ```
 
-### Static Content Field
+### Empty Element with Attributes
 
-Element with static content (no source):
+A mapping with attributes and no source writes the element empty, with its attributes
+(DISA's `fix`; the fix text itself is the `fixtext` mapping's). A Rule field mapping has no
+`content` key:
 
 ```yaml
 fix:
 target_element: "fix"
-content: "" # Empty element
 attributes:
 id: "F-{ref_normalized}"
 ```
 
 ### Composite Field
 
-Multiple sources joined into one target:
+Multiple sources joined into one target: each source's text after its transform (`none` by
+default), joined by `separator` (a blank line by default); a source with a `label` writes the
+label, the separator and the text; a source without text adds nothing.
 
 ```yaml
-description:
-target_element: "description"
-structure: "composite"
-sources:
+field_mappings:
+  description:
+    target_element: "description"
+    structure: "composite"
+    separator: "\n\n"
+    sources:
 
-- field: "description"
-transform: "strip_html"
-
-- field: "rationale"
-transform: "strip_html"
-separator: "\n\n"
+      - field: "description"
+      - field: "default_value"
+        label: "Default Value:"
 ```
 
 ### Embedded XML Structure
 
-Build nested XML tags within element:
+Tags inside an element's text (a STIG rule description). Every component is one tag, written
+in the order given and always present (empty when the rule has no text for it); its text is
+`content`, or its `sources` joined (`field`, `transform` default `none`, and the `separator`
+that follows a source's text when another's comes after it). Each tag is built and written by
+the XML library (lxml), which escapes its text, so a reader that unescapes the element once and
+parses the tags gets the stored text, placeholders included; a tag name that is no XML name is
+refused when the style loads. A component gives `sources` or `content`, not both; one with
+neither is written empty:
 
 ```yaml
 description:
@@ -190,26 +354,24 @@ components:
 sources:
 
 - field: "description"
-transform: "strip_html"
-separator: "\n\n"
+transform: "none"
+separator: "\n\n" # follows the description when the rationale has text
 
 - field: "rationale"
-transform: "strip_html"
-combine: "join"
+transform: "none"
 
 # Component with static content
 
 - tag: "FalsePositives"
 content: ""
 
-# Optional component (only if source present)
+# Component from one source (written empty when the field has no text)
 
 - tag: "Mitigations"
 sources:
 
 - field: "additional_info"
-transform: "strip_html"
-optional: true
+transform: "none"
 
 # More components...
 
@@ -231,7 +393,7 @@ children:
 
 - element: "check-content"
 source_field: "audit"
-transform: "strip_html_keep_code"
+transform: "none"
 ```
 
 ### Multiple Elements
@@ -242,47 +404,76 @@ Create multiple elements from array:
 ident:
 target_element: "ident"
 multiple: true # Create multiple <ident> elements
-source_logic: "cci_lookup_with_deduplication"
+source_logic: "cci_lookup_with_deduplication" # runs the lookup below
 cci_lookup:
-enabled: true
-mapping_file: "data/cis-cci-mapping.json"
+mapping_file: "my-cci-mapping.json" # optional: relative to this style file
 source_field: "cis_controls"
-extract: "all" # primary + supporting
-deduplicate_nist: true
+cis_controls_version: 8 # the CIS Controls version the mapping file is keyed by
+extract: "all" # every CCI of the safeguard, primary first ("primary": only the first)
 attributes:
 system: "http://cyber.mil/cci"
 ```
 
-### Custom Namespace Elements
+`cis_controls_version` names the CIS Controls version the mapping file is keyed by (the
+shipped `cis-cci-mapping.json` is keyed by v8). Only a rule's controls of that version are
+looked up: v7 reuses the same numbers for unrelated safeguards. A rule with no control of
+that version gets `fallback_cci`. Without the key, every control is looked up.
 
-Elements in custom namespace:
+`mapping_file` names the CIS-CCI mapping file the lookup reads, in the shape of the bundled
+`src/cis_bench/data/cis-cci-mapping.json` (see [XCCDF styles](xccdf-styles.md#the-mapping-file)).
+A relative path is relative to the style file that writes it, as `extends` is; an absolute
+path is used as written. Without the key, the bundled file is read; the shipped styles name
+none. A file that does not exist, or is not a list of safeguard entries, stops the export
+with an error naming the style and the file.
+
+The NIST controls no CCI on the rule covers are written as references by a field with
+`source_logic: "nist_after_cci_deduplication"` (the DISA style's `reference`); each reference carries the `dc_elements` the field names (`dc:title`
+"NIST SP 800-53" and `dc:identifier`). A `dublin_core` field with any other `source_logic`
+stops the export with an error. The CCI lookup runs once per rule for both.
+
+Each `dc_elements` entry becomes a child element of the reference: the engine builds an
+xsdata `AnyElement` in the namespace the style declares for the element's prefix
+(`benchmark.namespaces.dc`), with the filled `content` as its text, and puts it in the
+reference's wildcard content, so xsdata writes it like any other element and a value may
+contain any character. A prefix with no declared namespace stops the export. The same
+applies to the Benchmark's own `reference` (`benchmark.reference.dc_elements`).
+
+### Rule Metadata (metadata_from_config)
+
+A Rule's `<metadata>` content, built as xsdata model content in the namespace the style
+declares for `namespace_prefix` (the type that holds it comes from the XCCDF model):
 
 ```yaml
-metadata:
+cis_controls_metadata:
 target_element: "metadata"
 structure: "metadata_from_config"
-namespace: "http://cisecurity.org/xccdf/metadata/1.0"
-enabled: true
-components:
-
-- element: "cis-control"
 source_field: "cis_controls"
-multiple: true # Create multiple elements
+metadata_spec:
+root_element: "cis_controls"
+namespace_prefix: "controls" # declared in benchmark.namespaces
+allow_empty: true
+group_by: "item.version"
+group_element:
+element: "framework"
 attributes:
-version: "{control.version}"
-id: "{control.control}"
-ig1: "{control.ig1}"
-content: "{control.title}"
-
-- element: "profile"
-source_field: "profiles"
-multiple: true
-content: "{profile}"
+urn: "urn:cisecurity.org:controls:{group_key}"
+item_element:
+element: "safeguard"
+attributes:
+title: "{item.title}"
+children:
+- element: "asset_type"
+content: "Unknown"
 ```
+
+Items are grouped by `group_by` (required); every element is in the prefix's namespace, which
+must not be the XCCDF namespace. An item element's `children` take the same keys as the item
+element (`element`, `content`, `attributes`, `children`), at any depth. XCCDF 1.1.4 Rules have no metadata element, so such a mapping
+is refused there. The full rules: [XCCDF mapping design](../design/xccdf-mapping-design.md#metadata_from_config-specification).
 
 ## Component Mapping Options
 
-Components are used in embedded XML and custom namespace structures:
+Components are used in embedded XML structures (`embedded_xml_tags`):
 
 ```yaml
 components:
@@ -292,113 +483,169 @@ components:
 sources: # Multiple sources
 
 - field: "description" # Source field
-transform: "strip_html" # Transform to apply
-separator: "\n\n" # Separator between sources
+transform: "none" # Transform to apply (default none)
+separator: "\n\n" # Follows this source's text when another source's text comes after it
 
 - field: "rationale"
-transform: "strip_html"
-combine: "join" # How to combine sources
+transform: "none"
 
 # Component with static content
 
 - tag: "FalsePositives"
 content: "" # Static content
 
-# Optional component (skip if source empty)
+# Component from one source (written empty when the field has no text)
 
 - tag: "Mitigations"
 sources:
 
 - field: "additional_info"
-transform: "strip_html"
-optional: true # Skip if source is None/empty
-
-# Component with attributes
-
-- element: "reference" # Element name (custom namespace)
-source_field: "nist_controls"
-multiple: true # Loop over array
-attributes:
-href: "https://csrc.nist.gov/..."
-content: "{nist_control_id}" # Variable substitution
+transform: "none"
 ```
 
-## Transformations Section
+A component takes only `tag`, and `sources` or `content`; a source takes `field`,
+`transform` and `separator`. A reference with Dublin Core elements is a `dublin_core`
+mapping, not a component (Pattern 6 below).
 
-Define available transformations:
+## Transforms
 
-```yaml
-transformations:
-# Pass-through (no transformation)
-none:
-description: "Pass through unchanged"
+A mapping names its transform in `transform` (and a template names one after `|`, as in
+`{title|slug}`). The transforms are the ones registered in `mapping_engine.py`
+(`TransformRegistry.register`): `none`, `strip_version_prefix`, `lines`,
+`dotted_number_path` and `slug`. A style that names a transform that is not registered is
+refused when it loads, with the place that names it. There is no `transformations` section:
+a style that carries one (or any other top-level section the loader does not read) is
+refused when it loads, with the section's name.
 
-# Strip all HTML
-strip_html:
-description: "Remove all HTML tags, return plain text"
-function: "HTMLCleaner.strip_html"
-
-# Strip HTML but keep code/lists
-strip_html_keep_code:
-description: "Strip HTML but preserve code blocks and lists"
-function: "HTMLCleaner.strip_html_keep_code"
-preserve_elements:
-
-- "code"
-- "pre"
-- "ul"
-- "ol"
-- "li"
-
-# Convert to Markdown
-html_to_markdown:
-description: "Convert HTML to Markdown"
-function: "HTMLCleaner.html_to_markdown"
-```
+A benchmark's text fields hold Markdown (see the [data model](data-model.md)) and every export
+writes the text as it is, so the styles name `none` for every text field: the CIS style for
+each rule text field (title, description, rationale, warning, fixtext, check-content) and the
+profile descriptions, the DISA style for its text fields and the description's embedded tags.
+There is no HTML conversion: a text parsed as HTML would read a placeholder such as `<user>` as
+a tag.
 
 ## Variables Reference
 
-Available variables for substitution in templates:
+Every template is filled by one strict substituter. When the style loads, each template's
+variables are checked against the values that template is given (the lists below) and the
+models behind them: a first name the template is not given, a later name that is no field
+of the model before it (`{rec.titel}`, `{item.contrl}` for a list of CIS controls), or an
+empty name (`{item..control}`) is refused with the path of the template:
+
+```text
+my_style.yaml: field_mappings.cis_controls_ident.ident_from_list.ident_spec.value_template: template '{item.contrl}' names 'item.contrl'; 'contrl' is not a field of CISControl
+```
+
+A name after a value with no fields to check (text such as `{ref}`, an item of a list of
+text such as `mitre_mapping.techniques`, an item a transform made, `{group_key}`) is
+checked when the template is filled. There, a name or key a value does not have, or a stray
+or unclosed brace, stops the export with an error naming the template and the variable, so
+a typo in a style cannot write an empty part. A known variable whose value is empty
+substitutes as empty text; a `None` value, met along a dotted path or at its end (a
+recommendation without a MITRE mapping, say), reads as empty text too. `{{` and `}}` write a
+literal brace. Each template sees the variables of its own context:
 
 ### Benchmark-Level Variables
 
 ```yaml
-# Available in benchmark mappings
-{platform} # Extracted from title (e.g., "eks")
+# Available in benchmark.id_template
 {benchmark_id} # CIS WorkBench ID (e.g., "22605")
+{version} # Benchmark version, NCName-safe (e.g., "v1.0.0")
+{title_slug} # Benchmark title, NCName-safe (e.g., "CIS_Ubuntu_Linux_22.04_LTS_Benchmark")
 ```
 
 ### Rule-Level Variables
 
 ```yaml
-# Available in rule mappings
+# In rule templates: rule_id and group_id templates, and the attribute templates of a
+# rule's field mappings (fixref, system, id)
 {ref} # Original ref (e.g., "3.1.1")
 {ref_normalized} # Normalized ref (e.g., "3_1_1")
-{platform} # Same as benchmark level
+{stig_number} # Zero-padded ref for DISA ids (e.g., "030101")
+{rec.title} # Any field of the recommendation, in attribute templates (rec.<field>)
+{benchmark.title} # Any field of the benchmark, in attribute templates (benchmark.<field>)
 ```
 
-### Nested Variables (in loops)
+### Per-Item Variables (ident_from_list, metadata_from_config)
 
 ```yaml
-# When iterating over CIS controls
-{control.version} # CIS Control version (7 or 8)
-{control.control} # Control ID (e.g., "4.8")
-{control.title} # Control title
-{control.ig1} # IG1 boolean
-{control.ig2} # IG2 boolean
-{control.ig3} # IG3 boolean
+# Each item of the source list, e.g. a CISControl or a MITRE technique string; an
+# ident_from_list mapping reads a field holding one value (parent) as one item
+{item} # The item itself, for a list of strings (e.g., "T1068")
+{item.version} # A field of the item (e.g., CIS Controls version 7 or 8)
+{item.control} # Control ID (e.g., "4.8"); filters apply: {item.control|dotted_number_path:subcontrol}
+{item.title} # Control title
+{group_key} # In a metadata group's attributes: the value the items were grouped by
 
-# When iterating over NIST controls
+# In a dublin_core field's dc_elements, one reference per NIST control
 {nist_control_id} # NIST control (e.g., "CM-7")
 
-# When iterating over MITRE mappings
-{technique} # MITRE technique (e.g., "T1068")
-{tactic} # MITRE tactic (e.g., "TA0001")
-{mitigation} # MITRE mitigation (e.g., "M1022")
+# In benchmark.profiles.id_template
+{profile.title} # Profile title (e.g., "Level 1 - Server"); e.g. {profile.title|slug:-}
 
-# When iterating over profiles
-{profile} # Profile name (e.g., "Level 1 - Server")
+# In benchmark.reference, benchmark.notice and benchmark.plain_text
+{benchmark.title} # Any field of the benchmark (benchmark.<field>)
+{benchmark.url}
+{download_date} # plain_text only: the download date ("07 Nov 2026")
 ```
+
+### Filters
+
+A variable can be passed through a registered transform: write the transform's name after
+`|`, and its arguments, if any, after `:` separated by commas. A `|` with no transform name,
+an unknown transform, arguments the transform does not take, or a value the transform
+refuses, stops the export with an error naming it.
+
+```yaml
+# CIS Controls ident in the CIS-CAT form: "8.5" -> control/8/subcontrol/5, "13" -> control/13
+template: "http://cisecurity.org/20-cc/v{item.version}.0/control/{item.control|dotted_number_path:subcontrol}"
+```
+
+`dotted_number_path` turns a dotted number into a path, putting each argument before the
+level after it (`1.2.3` with `section, item` is `1/section/2/item/3`); a value that is not a
+dotted number (ASCII digits between dots), that has more levels than labels, or an empty
+label, is refused.
+
+### Profiles
+
+`benchmark.profiles` writes XCCDF `<Profile>` elements at Benchmark level, each with an
+explicit `<select>` for every rule it contains.
+
+```yaml
+benchmark:
+  profiles:
+    generate_from_rules: true
+    id_template: "{profile.title|slug:-}"   # every Profile id, from its title
+    description_transform: "none"                # the stored Markdown, written as it is
+    profile_mappings:
+
+      - match: "Level 1 - Server"            # a profile name as recommendations give it
+        title: "Level 1 - Server"
+        description: "CIS Level 1 recommendations for server environments"
+
+      - match: "Level 2 - Server"
+        title: "Level 2 - Server"
+        includes: ["Level 1 - Server"]        # also select the rules of these profiles
+```
+
+A download reads the benchmark's profile definitions from its WorkBench page: each profile's
+title, description and the profile it extends (`parent`). With those, there is one Profile
+per definition; it selects the rules that name it or any ancestor, and takes its title and
+description from the page (the description through `description_transform`). A definition
+that selects no rule is left out, and the export logs a warning naming it. A copy saved
+before definitions were read has one Profile per profile name its rules use; a mapping for
+that name gives the title, description and the profiles it `includes` (directly or through
+another mapping), and a name with no mapping gets a Profile with its own rules. A mapping
+that no rule names writes no Profile.
+
+Every Profile id comes from `id_template` (the `slug` filter drops accents, then turns
+"Level 1 - Server" into `level-1-server` with `-`, `level_1_server` with `_`); a mapping
+does not set its own `id`. A recommendation's `profiles` holds one name per entry;
+WorkBench's one-text form ("Level 1 - Server" and "Level 1 - Workstation" on two lines) is
+split when the recommendation is loaded. A parent or `includes` entry that names no
+profile, profiles that include each other, two mappings for one `match`, two profiles that
+get one id, a mapping without `match` or with an `id`, or no `id_template` stops the export
+with an error. Every mapping is checked, whether or not the benchmark's rules use it.
 
 ## Source Field Reference
 
@@ -416,24 +663,24 @@ assessment_status # "Automated" or "Manual"
 ### Classification and Mappings
 
 ```yaml
-profiles # List[str] - Applicable profiles
+profiles # List[str] - Applicable profiles, one name per entry
 cis_controls # List[CISControl] - CIS Controls mappings
 mitre_mapping # MITREMapping - MITRE ATT&CK mappings
 nist_controls # List[str] - NIST control IDs
 ```
 
-### Content Fields (HTML)
+### Content Fields (Markdown)
 
 ```yaml
-description # Detailed description (HTML)
-rationale # Rationale/justification (HTML)
-impact # Impact statement (HTML)
-audit # Audit procedure (HTML)
-remediation # Remediation steps (HTML)
-additional_info # Additional information (HTML)
-default_value # Default config value (HTML)
-artifact_equation # Artifact equation (HTML)
-references # External references (HTML)
+description # Detailed description (Markdown)
+rationale # Rationale/justification (Markdown)
+impact # Impact statement (Markdown)
+audit # Audit procedure (Markdown)
+remediation # Remediation steps (Markdown)
+additional_info # Additional information (Markdown)
+default_value # Default config value (Markdown)
+artifact_equation # Artifact equation (Markdown)
+references # External references (Markdown)
 ```
 
 ### Nested Field Access
@@ -453,102 +700,92 @@ source_field: "mitre_mapping.mitigations" # List of mitigations
 
 ## CCI Deduplication Configuration
 
-Complex logic for CCI/NIST deduplication:
+Switches the CCI/NIST deduplication on or off:
 
 ```yaml
 cci_deduplication:
-enabled: true
-algorithm:
-description: "Use CCIs where available, NIST references for extras"
-steps:
-
-- "Extract all CIS Controls from recommendation"
-- "Look up CCIs for each CIS Control (primary + supporting)"
-- "Determine which NIST controls are covered by those CCIs"
-- "Add CCIs as <ident> elements"
-- "Add uncovered NIST controls as <reference> elements"
-
-matching_rules:
-description: "How to determine if CCI covers a NIST citation"
-hierarchical: true # CM-7.1 covers CM-7
-examples:
-
-- cci_maps_to: "CM-7.1"
-cis_cites: "CM-7"
-result: "covered" # CCI is more specific
-
-- cci_maps_to: "CM-7"
-cis_cites: "CM-7.1"
-result: "not_covered" # CCI too broad
-
-- cci_maps_to: "CM-7(5)"
-cis_cites: "CM-7"
-result: "covered" # Enhancement covers base
+  enabled: true # true or false, not text
 ```
 
-## Validation Section
+`enabled` is the only key. The deduplication itself is the exporter's own and no style
+changes it; `algorithm` and `matching_rules` are refused. When it is on:
 
-Validation rules for export:
+1. The recommendation's CIS Controls of the mapping file's version are taken.
+2. Every CCI of each safeguard is looked up, primary first, each once.
+3. The CCIs are written as `<ident>` elements.
+4. Every cited NIST control is written as a `<reference>`, except one a CCI restates
+   exactly. A CCI restates only the control and enhancement it sits under:
+
+| The CCI maps to | CIS cites | The cited control is |
+|---|---|---|
+| CM-7 (1) (b) | CM-7(1) | not written again (same control and enhancement) |
+| CM-7 (1) (b) | CM-7 | written (the base control is broader) |
+| CM-7 b | CM-7(5) | written (a different enhancement) |
+
+## Post-processing Section
+
+What runs on the rendered tree, before it is written:
 
 ```yaml
-validation:
-require_cci_for_cis_controls: false # Warn if CCI missing
-require_nist_controls: false # Warn if NIST missing
-max_cci_per_rule: 50 # Sanity check limit
+post_processing:
+remove_override_attr: true # remove xsdata's override attributes (default true)
 ```
+
+This is the only setting; any other key is refused when the style loads. The settings
+`strip_namespace_prefixes` and `preserve_namespaces` are gone: a style's namespaces are the
+ones it lists in `benchmark.namespaces`, declared by the serializer. `handlers` is gone too: a
+Rule's metadata is model content (`metadata_from_config`), written by the serializer.
+
+A style has no `validation` section: nothing checks an export against limits a style
+sets, and the section is refused. `cis-bench validate` checks an exported file against the
+XCCDF schema.
 
 ## Complete Example
 
 Minimal working configuration:
 
 ```yaml
-# minimal_style.yaml
+# minimal_style.yaml: minimal XCCDF export
 metadata:
-style_name: "minimal"
-description: "Minimal XCCDF export"
-xccdf_version: "1.2"
+  style_name: "minimal"
+  xccdf_version: "1.2"
 
 benchmark:
-id_template: "xccdf_cis_{platform}_benchmark"
-title:
-source: "title"
-transform: "none"
-version:
-source: "version"
-transform: "none"
+  id_template: "xccdf_org.cisecurity.benchmarks_benchmark_{version}_{title_slug}"
+  namespaces:
+    default: "http://checklists.nist.gov/xccdf/1.2"
+  title:
+    source: "title"
+    transform: "none"
+  version:
+    source: "version"
+    transform: "none"
 
 rule_defaults:
-severity: "medium"
-weight: "10.0"
-selected: "true"
+  severity: "medium"
+  weight: "10.0"
 
 rule_id:
-template: "xccdf_cis_{platform}_rule_{ref_normalized}"
-ref_normalized: "replace('.', '_')"
+  template: "xccdf_org.cisecurity.benchmarks_rule_{ref_normalized}"
+
+group_id:
+  template: "xccdf_org.cisecurity.benchmarks_group_{ref_normalized}"
 
 field_mappings:
-title:
-target_element: "title"
-source_field: "title"
-transform: "strip_html"
+  title:
+    target_element: "title"
+    source_field: "title"
+    transform: "none"
 
-description:
-target_element: "description"
-source_field: "description"
-transform: "strip_html"
+  description:
+    target_element: "description"
+    source_field: "description"
+    transform: "none"
 
-rationale:
-target_element: "rationale"
-source_field: "rationale"
-transform: "strip_html"
-
-transformations:
-none:
-description: "Pass through unchanged"
-
-strip_html:
-description: "Remove all HTML tags"
-function: "HTMLCleaner.strip_html"
+  rationale:
+    target_element: "rationale"
+    source_field: "rationale"
+    transform: "none"
 ```
 
 ## Best Practices
@@ -560,7 +797,7 @@ function: "HTMLCleaner.strip_html"
 field_mappings:
 vuln_discussion:
 target_element: "VulnDiscussion"
-description: "Combined description and rationale for DISA compliance"
+# Combined description and rationale for DISA compliance
 
 # Bad
 field_mappings:
@@ -608,7 +845,7 @@ ident:
 ```yaml
 # Be consistent with ID templates
 rule_id:
-template: "xccdf_cis_{platform}_rule_{ref_normalized}"
+template: "xccdf_org.cisecurity.benchmarks_rule_{ref_normalized}"
 
 # Use same pattern for other IDs
 check:
@@ -624,25 +861,22 @@ attributes:
 fixref: "F-{ref_normalized}"
 ```
 
-### 5. Handle Optional Fields Gracefully
+### 5. Write Every Embedded Tag
 
 ```yaml
-# Mark optional fields explicitly
+# Every component is written, in order, empty when the rule has no text for it
+# (official STIGs write all eleven tags of a description)
 components:
 
 - tag: "Mitigations"
 sources:
 
 - field: "additional_info"
-transform: "strip_html"
-optional: true # Skip if field is empty
 
 - tag: "PotentialImpacts"
 sources:
 
 - field: "impact"
-transform: "strip_html"
-optional: true # Skip if field is empty
 ```
 
 ### 6. Validate Your Config
@@ -664,7 +898,7 @@ config = ConfigLoader.load('your_config.yaml')
 
 4. **Validate XCCDF output**: Check against NIST schema
 ```bash
-xmllint --schema xccdf_1.2.xsd output.xml --noout
+cis-bench validate output.xml
 ```
 
 ## Common Patterns
@@ -675,7 +909,7 @@ xmllint --schema xccdf_1.2.xsd output.xml --noout
 title:
 target_element: "title"
 source_field: "title"
-transform: "strip_html"
+transform: "none"
 ```
 
 ### Pattern 2: Field with Static Attributes
@@ -684,7 +918,7 @@ transform: "strip_html"
 fixtext:
 target_element: "fixtext"
 source_field: "remediation"
-transform: "strip_html_keep_code"
+transform: "none"
 attributes:
 fixref: "F-{ref_normalized}"
 ```
@@ -693,8 +927,7 @@ fixref: "F-{ref_normalized}"
 
 ```yaml
 fix:
-target_element: "fix"
-content: ""
+target_element: "fix" # written empty: attributes and no source
 attributes:
 id: "F-{ref_normalized}"
 ```
@@ -708,10 +941,10 @@ structure: "composite"
 sources:
 
 - field: "description"
-transform: "strip_html"
+transform: "none"
 
 - field: "rationale"
-transform: "strip_html"
+transform: "none"
 separator: "\n\n"
 ```
 
@@ -727,75 +960,87 @@ components:
 sources:
 
 - field: "description"
-transform: "strip_html"
+separator: "\n\n" # follows the description when the rationale has text
 
 - field: "rationale"
-transform: "strip_html"
-separator: "\n\n"
 
 - tag: "FalsePositives"
 content: ""
 
-- tag: "Mitigations"
+- tag: "Mitigations" # written empty when the rule has no additional_info
 sources:
 
 - field: "additional_info"
-transform: "strip_html"
-optional: true
 ```
 
-### Pattern 6: Multiple Elements from Array
+### Pattern 6: One Element per Item of a List
 
 ```yaml
 reference:
 target_element: "reference"
-multiple: true
+structure: "dublin_core" # one reference per NIST control
 source_field: "nist_controls"
+dc_elements:
+- element: "dc:identifier"
+content: "{nist_control_id}"
 attributes:
 href: "https://csrc.nist.gov/Projects/risk-management/sp800-53-controls"
-content: "{nist_control_id}"
 ```
 
-### Pattern 7: Custom Namespace Metadata
+### Pattern 7: Rule Metadata in Another Namespace
 
 ```yaml
-metadata:
+cis_controls_metadata:
 target_element: "metadata"
 structure: "metadata_from_config"
-namespace: "http://cisecurity.org/xccdf/metadata/1.0"
-components:
-
-- element: "cis-control"
 source_field: "cis_controls"
-multiple: true
+metadata_spec:
+root_element: "cis_controls"
+namespace_prefix: "controls" # declared in benchmark.namespaces
+allow_empty: true
+group_by: "item.version"
+group_element:
+element: "framework"
 attributes:
-version: "{control.version}"
-id: "{control.control}"
-content: "{control.title}"
+urn: "urn:cisecurity.org:controls:{group_key}"
+item_element:
+element: "safeguard"
+attributes:
+title: "{item.title}"
+children:
+- element: "asset_type"
+content: "Unknown"
 ```
 
 ## Troubleshooting
 
 ### Issue: Transform Not Found
 
-```yaml
-Error: Transform 'unknown_transform' not found
+```text
+ValueError: Unknown transformation: unknown_transform
 ```
 
-**Solution**: Check `transformations` section. Available transforms:
+**Solution**: Use a transform registered in `mapping_engine.py` (`TransformRegistry.register`):
 
 - none
-- strip_html
-- strip_html_keep_code
-- html_to_markdown
+- strip_version_prefix
+- lines (a text field as its non-empty stripped lines; an `ident_from_list` mapping with `transform: "lines"` writes one ident per line)
+- dotted_number_path (with arguments; see [Filters](#filters))
+- slug (with the separator as argument; see [Profiles](#profiles))
 
 ### Issue: Source Field Not Found
 
-```yaml
-Error: Source field 'nonexistent_field' not found on Recommendation
+Loading a style refuses a `source_field` (in `field_mappings` and their `children`) or a
+`source` (in `group_elements` and the benchmark elements) that names no field:
+
+```text
+ValueError: field_mappings.title names 'titel', which is not a field of Recommendation
 ```
 
-**Solution**: Check field name spelling. Available fields:
+A dotted path (`mitre_mapping.techniques`) is read only by the `ident_from_list` and
+`metadata_from_config` structures; anywhere else the name must be one field.
+
+**Solution**: Check the name against the available fields:
 
 - ref, title, url, assessment_status
 - description, rationale, impact, audit, remediation
@@ -804,24 +1049,35 @@ Error: Source field 'nonexistent_field' not found on Recommendation
 
 ### Issue: Variable Not Resolved
 
-```yaml
-Error: Variable 'unknown_var' not found in template
+Any template naming a variable its context does not have, or an attribute a value does
+not have, stops the export; so does a stray brace:
+
+```text
+ValueError: template 'SV-{platform}-{stig_number}' names 'platform'; 'platform' is not a value this template can use (it can use ref, ref_normalized, stig_number)
+ValueError: template 'SV-{stig_number_rule': expected '}' before end of string
 ```
 
-**Solution**: Check variable name. Available variables:
+Check the variable against the context of that template (see "Variables Reference"):
 
-- {ref}, {ref_normalized}, {platform}
-- {control.version}, {control.control}
-- {nist_control_id}, {technique}, {tactic}
-- See "Variables Reference" section
+- rule id and group id templates: {ref}, {ref_normalized}, {stig_number}
+- a rule's attribute templates: those three, {rec.<field>} and {benchmark.<field>}
+- ident_from_list and metadata_from_config: {item}, {item.<field>}; group attributes: {group_key}
+- dublin_core dc_elements: {nist_control_id}
+- benchmark.profiles.id_template: {profile.title}
+- benchmark.id_template: {benchmark_id}, {version}, {title_slug}
+- benchmark.reference, notice and plain_text: {benchmark.<field>}; plain_text also {download_date}
 
 ### Issue: Invalid YAML Syntax
 
-```yaml
-Error: YAML parsing failed
+PyYAML's error names the file, line and column:
+
+```text
+yaml.scanner.ScannerError: while scanning a quoted scalar
+  in "my-style.yaml", line 2, column 13
+found unexpected end of stream
 ```
 
-**Solution**: Validate YAML syntax:
+**Solution**: Check the YAML syntax at that line:
 
 - Consistent indentation (spaces, not tabs)
 - Proper quoting of strings with special characters
@@ -830,7 +1086,7 @@ Error: YAML parsing failed
 ## Related Documents
 
 - [Mapping Engine Design](mapping-engine-design.md) - Complete design
-- [DISA Style Example](https://github.com/aaronlippold/cis-benchmark-cli/blob/main/src/cis_bench/exporters/configs/disa_style.yaml) - Complete YAML example
+- [DISA Style Example](https://github.com/mitre/cis-bench/blob/main/src/cis_bench/exporters/configs/styles/disa.yaml) - Complete YAML example
 
 ---
 

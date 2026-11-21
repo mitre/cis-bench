@@ -6,7 +6,7 @@
 [![Python Version](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![CI](https://github.com/mitre/cis-bench/actions/workflows/ci.yml/badge.svg)](https://github.com/mitre/cis-bench/actions/workflows/ci.yml)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/mitre/cis-bench/blob/main/LICENSE.md)
 
 ---
 
@@ -35,7 +35,7 @@ pip install cis-bench     # Not recommended - may have PATH issues
 # 2. Login (one-time)
 cis-bench auth login --browser chrome
 
-# 3. Build catalog (one-time, ~2 minutes)
+# 3. Build catalog (one-time, under a minute)
 cis-bench catalog refresh
 
 # 4. Get a benchmark
@@ -67,10 +67,12 @@ cis-bench search --platform-type database --latest
 ```
 
 ### Unified Get Command
-Search + download + export in one step.
+Search + download + export in one step. Several matches: a menu, best match first (`--non-interactive` takes the best match). A catalog ID or a version names a benchmark or a release directly.
 
 ```bash
 cis-bench get "ubuntu 22" --format xccdf --style cis
+cis-bench get 23598 --format xccdf --style cis
+cis-bench get "kubernetes v2.0.1" --format xccdf
 ```
 
 ### Database Caching
@@ -80,6 +82,24 @@ Downloaded benchmarks cached in SQLite for instant re-export.
 cis-bench export 23598 --format xccdf # Instant (from cache)
 ```
 
+### Work Offline
+`--offline` (or `CIS_BENCH_OFFLINE=true`) keeps cis-bench off the network: commands use the catalog and downloaded benchmarks, and fail only where they need CIS WorkBench.
+
+```bash
+cis-bench --offline get 23598 --format xccdf   # A downloaded benchmark
+cis-bench --offline diff 22605 23598
+```
+
+See [Offline mode](https://mitre.github.io/cis-bench/user-guide/commands-reference/#offline-mode).
+
+### Compare Versions
+What changed between two releases: added, removed, modified (with the fields that changed) and renumbered recommendations.
+
+```bash
+cis-bench diff 22605 23598                     # Two downloaded benchmarks
+cis-bench diff old.json new.json --format markdown
+```
+
 ### Multiple Export Formats
 
 - **YAML** - Human-readable structured data
@@ -87,6 +107,8 @@ cis-bench export 23598 --format xccdf # Instant (from cache)
 - **Markdown** - Documentation
 - **JSON** - Machine-readable
 - **XCCDF** - SCAP compliance (DISA STIG or CIS native)
+
+Check an XCCDF export against the NIST schema with `cis-bench validate benchmark_23598.xml` (the schemas ship with cis-bench).
 
 ### Platform Filtering
 Two-level taxonomy: category (cloud/os/database) + specific platform (aws/ubuntu/oracle).
@@ -105,7 +127,7 @@ cis-bench search oracle --output-format json | jq -r '.[].benchmark_id'
 
 ### Performance
 
-- Parallel catalog scraping (~2 min for 1,300+ benchmarks)
+- Parallel catalog refresh (under a minute for 1,500+ benchmarks) and paced parallel benchmark downloads
 - Retry logic with exponential backoff
 - Progress bars on long operations
 
@@ -168,9 +190,9 @@ jq -r '.[].benchmark_id' | \
 head -5 | \
 xargs -I {} cis-bench download {}
 
-# Export all to DISA STIG format
+# Export all downloaded benchmarks to DISA STIG format
 cis-bench list --output-format json | \
-jq -r '.[].file' | \
+jq -r '.downloaded[].benchmark_id' | \
 xargs -I {} cis-bench export {} --format xccdf --style disa
 ```
 
@@ -375,7 +397,7 @@ pytest tests/ -v
 
 ## License
 
-Apache License 2.0 - See [LICENSE](LICENSE) for details
+Apache License 2.0 - See [LICENSE.md](https://github.com/mitre/cis-bench/blob/main/LICENSE.md) for details
 
 **Acknowledgments:**
 

@@ -1,12 +1,45 @@
 #!/usr/bin/env python3
 """Fix markdown list formatting issues.
 
-Markdown requires a blank line before bullet lists for proper rendering.
-This script finds and fixes instances where lists are missing the blank line.
+Python-Markdown, which builds the docs, reads a list that follows a text line with no blank
+line between them as part of that paragraph. This script puts the blank line in.
+
+Fenced code is left as it is, at any indentation: the docs use SuperFences, which finds
+fences inside admonitions and tabs (a CommonMark parser such as markdown-it-py reads a fence
+indented four spaces as indented code, so it cannot be used to find them). YAML front matter
+at the start of a file is left as it is too.
 """
 
+import re
 import sys
 from pathlib import Path
+
+# A bullet (-, *, +) or a number followed by . or ), then a space: the start of a list item.
+LIST_ITEM = re.compile(r"[ \t]*(?:[-*+]|\d{1,9}[.)])[ \t]")
+# An opening fence: three or more backticks or tildes, at any indentation.
+FENCE = re.compile(r"[ \t]*(`{3,}|~{3,})")
+
+
+def _closes(line: str, fence: str) -> bool:
+    """Whether ``line`` closes a block opened with ``fence``: the same character, at least
+    as many of it, and nothing after but whitespace."""
+    match = FENCE.match(line)
+    return (
+        match is not None
+        and match.group(1)[0] == fence[0]
+        and len(match.group(1)) >= len(fence)
+        and line[match.end() :].strip() == ""
+    )
+
+
+def _front_matter_end(lines: list[str]) -> int:
+    """The index of the first line after YAML front matter (0 when there is none)."""
+    if not lines or lines[0].strip() != "---":
+        return 0
+    for index, line in enumerate(lines[1:], start=1):
+        if line.strip() in ("---", "..."):
+            return index + 1
+    return 0
 
 
 def fix_list_formatting(content: str) -> tuple[str, int]:
@@ -19,28 +52,32 @@ def fix_list_formatting(content: str) -> tuple[str, int]:
         Tuple of (fixed_content, number_of_fixes)
     """
     lines = content.split("\n")
-    fixed_lines = []
+    start = _front_matter_end(lines)
+    fixed_lines = lines[:start]
     fixes = 0
+    fence: str | None = None  # the opening fence of the code block we are in
+    # Whether the run of lines since the last blank line began with a list item (None: no
+    # run yet). The wrapped lines of an item, code fenced inside it and lazy continuation
+    # lines all belong to the list, so an item after them needs no blank line.
+    run_is_list: bool | None = None
 
-    for i, line in enumerate(lines):
-        # Check if current line is a bullet list item
-        is_list_item = line.strip().startswith(("- ", "* ", "+ "))
-
-        # Check if previous line exists and is not blank
-        if i > 0:
-            prev_line = lines[i - 1].strip()
-            prev_is_blank = prev_line == ""
-
-            # If this is a list item and previous line is not blank and not a list item
-            if is_list_item and not prev_is_blank:
-                # Check if previous line is not also a list item
-                prev_is_list = prev_line.startswith(("- ", "* ", "+ "))
-
-                if not prev_is_list:
-                    # Add blank line before this list
-                    fixed_lines.append("")
-                    fixes += 1
-
+    for line in lines[start:]:
+        if fence is not None:
+            if _closes(line, fence):
+                fence = None
+        elif not line.strip():
+            run_is_list = None
+        elif (opening := FENCE.match(line)) is not None:
+            fence = opening.group(1)
+            if run_is_list is None:
+                run_is_list = False
+        elif LIST_ITEM.match(line):
+            if run_is_list is False:
+                fixed_lines.append("")
+                fixes += 1
+            run_is_list = True
+        elif run_is_list is None:
+            run_is_list = False
         fixed_lines.append(line)
 
     return "\n".join(fixed_lines), fixes

@@ -7,6 +7,8 @@ import pytest
 from cis_bench.catalog.parser import WorkBenchCatalogParser
 from cis_bench.exceptions import AuthenticationError
 
+BASE = "https://workbench.cisecurity.org"
+
 
 @pytest.fixture
 def sample_catalog_html():
@@ -29,14 +31,14 @@ class TestCatalogPageParsing:
 
     def test_parse_catalog_page(self, sample_catalog_html):
         """Test parsing returns list of benchmarks."""
-        benchmarks = WorkBenchCatalogParser.parse_catalog_page(sample_catalog_html)
+        benchmarks = WorkBenchCatalogParser.parse_catalog_page(sample_catalog_html, base_url=BASE)
 
         assert isinstance(benchmarks, list)
         assert len(benchmarks) > 0
 
     def test_benchmark_has_required_fields(self, sample_catalog_html):
         """Test parsed benchmarks have all required fields."""
-        benchmarks = WorkBenchCatalogParser.parse_catalog_page(sample_catalog_html)
+        benchmarks = WorkBenchCatalogParser.parse_catalog_page(sample_catalog_html, base_url=BASE)
 
         bench = benchmarks[0]
 
@@ -51,7 +53,7 @@ class TestCatalogPageParsing:
 
     def test_benchmark_id_extraction(self, sample_catalog_html):
         """Test benchmark ID is correctly extracted from URL."""
-        benchmarks = WorkBenchCatalogParser.parse_catalog_page(sample_catalog_html)
+        benchmarks = WorkBenchCatalogParser.parse_catalog_page(sample_catalog_html, base_url=BASE)
 
         # Check IDs are numeric strings
         for bench in benchmarks:
@@ -60,7 +62,7 @@ class TestCatalogPageParsing:
 
     def test_title_cleaning(self, sample_catalog_html):
         """Test title is cleaned (removes org prefix, [imported] suffix)."""
-        benchmarks = WorkBenchCatalogParser.parse_catalog_page(sample_catalog_html)
+        benchmarks = WorkBenchCatalogParser.parse_catalog_page(sample_catalog_html, base_url=BASE)
 
         for bench in benchmarks:
             # Should not have pipe prefix
@@ -69,24 +71,42 @@ class TestCatalogPageParsing:
             assert "[imported]" not in bench["title"]
 
     def test_status_values(self, sample_catalog_html):
-        """Test status values are valid."""
-        benchmarks = WorkBenchCatalogParser.parse_catalog_page(sample_catalog_html)
+        """Test all five WorkBench status values are exercised by the catalog fixture."""
+        benchmarks = WorkBenchCatalogParser.parse_catalog_page(sample_catalog_html, base_url=BASE)
 
         valid_statuses = {"Published", "Draft", "Archived", "Rejected", "Accepted"}
 
-        for bench in benchmarks:
-            assert bench["status"] in valid_statuses
+        assert {bench["status"] for bench in benchmarks} == valid_statuses
+
+    def test_sample_catalog_fixture_is_compact_synthetic_html(self, sample_catalog_html):
+        """Catalog HTML fixture must be clean synthetic markup covering parser edge cases."""
+        lowered = sample_catalog_html.lower()
+        assert "<script" not in lowered
+        assert "googletagmanager" not in lowered
+        assert "csrf-token" not in lowered
+        assert "livewirescriptconfig" not in lowered
+
+        benchmarks = WorkBenchCatalogParser.parse_catalog_page(sample_catalog_html, base_url=BASE)
+        assert len(benchmarks) == 6
+        assert any(len(b["collections"]) >= 2 for b in benchmarks)
+        assert any(b["collections"] == [] for b in benchmarks)
+        assert any(b["community"] is not None for b in benchmarks)
+        assert any(b["owner"] is not None for b in benchmarks)
+
+        pagination = WorkBenchCatalogParser.extract_pagination_info(sample_catalog_html)
+        assert pagination["current_page"] == 1
+        assert pagination["total_pages"] == 66
 
     def test_collections_is_list(self, sample_catalog_html):
         """Test collections field is always a list."""
-        benchmarks = WorkBenchCatalogParser.parse_catalog_page(sample_catalog_html)
+        benchmarks = WorkBenchCatalogParser.parse_catalog_page(sample_catalog_html, base_url=BASE)
 
         for bench in benchmarks:
             assert isinstance(bench["collections"], list)
 
     def test_url_format(self, sample_catalog_html):
         """Test URLs are properly formatted."""
-        benchmarks = WorkBenchCatalogParser.parse_catalog_page(sample_catalog_html)
+        benchmarks = WorkBenchCatalogParser.parse_catalog_page(sample_catalog_html, base_url=BASE)
 
         for bench in benchmarks:
             assert bench["url"].startswith("https://workbench.cisecurity.org")
@@ -208,13 +228,13 @@ class TestEdgeCases:
 
     def test_empty_html(self):
         """Test parsing empty HTML returns empty list."""
-        benchmarks = WorkBenchCatalogParser.parse_catalog_page("")
+        benchmarks = WorkBenchCatalogParser.parse_catalog_page("", base_url=BASE)
         assert benchmarks == []
 
     def test_html_without_table(self):
         """Test HTML without table returns empty list."""
         html = "<html><body><p>No table here</p></body></html>"
-        benchmarks = WorkBenchCatalogParser.parse_catalog_page(html)
+        benchmarks = WorkBenchCatalogParser.parse_catalog_page(html, base_url=BASE)
         assert benchmarks == []
 
     def test_malformed_row(self):
@@ -234,7 +254,7 @@ class TestEdgeCases:
         </table>
         """
 
-        benchmarks = WorkBenchCatalogParser.parse_catalog_page(html)
+        benchmarks = WorkBenchCatalogParser.parse_catalog_page(html, base_url=BASE)
 
         # Should parse the valid row, skip the malformed one
         assert len(benchmarks) == 1
@@ -256,7 +276,7 @@ class TestEdgeCases:
         </table>
         """
 
-        benchmarks = WorkBenchCatalogParser.parse_catalog_page(html)
+        benchmarks = WorkBenchCatalogParser.parse_catalog_page(html, base_url=BASE)
 
         assert len(benchmarks) == 1
         assert benchmarks[0]["community"] is None
@@ -278,7 +298,7 @@ class TestEdgeCases:
             </tr>
         </table>
         """
-        benchmarks = WorkBenchCatalogParser.parse_catalog_page(html)
+        benchmarks = WorkBenchCatalogParser.parse_catalog_page(html, base_url=BASE)
         assert benchmarks == []
 
     def test_link_without_benchmarks_path(self):
@@ -296,7 +316,7 @@ class TestEdgeCases:
             </tr>
         </table>
         """
-        benchmarks = WorkBenchCatalogParser.parse_catalog_page(html)
+        benchmarks = WorkBenchCatalogParser.parse_catalog_page(html, base_url=BASE)
         assert benchmarks == []
 
     def test_malformed_benchmark_url_extraction(self):
@@ -314,7 +334,7 @@ class TestEdgeCases:
             </tr>
         </table>
         """
-        benchmarks = WorkBenchCatalogParser.parse_catalog_page(html)
+        benchmarks = WorkBenchCatalogParser.parse_catalog_page(html, base_url=BASE)
         # Empty string ID would be falsy, so row is skipped
         assert benchmarks == []
 
@@ -333,7 +353,7 @@ class TestEdgeCases:
             </tr>
         </table>
         """
-        benchmarks = WorkBenchCatalogParser.parse_catalog_page(html)
+        benchmarks = WorkBenchCatalogParser.parse_catalog_page(html, base_url=BASE)
 
         assert len(benchmarks) == 1
         # After split and strip, should be empty string
@@ -354,10 +374,30 @@ class TestEdgeCases:
             </tr>
         </table>
         """
-        benchmarks = WorkBenchCatalogParser.parse_catalog_page(html)
+        benchmarks = WorkBenchCatalogParser.parse_catalog_page(html, base_url=BASE)
 
         assert len(benchmarks) == 1
         assert benchmarks[0]["collections"] == ["Collection A", "Collection B", "Collection C"]
+
+    def test_collections_deduplicates_and_strips_empty_entries(self):
+        """Comma-separated collections strip empty items and preserve unique order."""
+        html = """
+        <table>
+            <tr><th>Header</th></tr>
+            <tr>
+                <td><a href="/benchmarks/123">Test Benchmark</a></td>
+                <td>v1.0.0</td>
+                <td>Published</td>
+                <td>Community</td>
+                <td>Collection A, , Collection B, Collection A,   </td>
+                <td>Owner</td>
+            </tr>
+        </table>
+        """
+        benchmarks = WorkBenchCatalogParser.parse_catalog_page(html, base_url=BASE)
+
+        assert len(benchmarks) == 1
+        assert benchmarks[0]["collections"] == ["Collection A", "Collection B"]
 
     def test_absolute_url_in_href(self):
         """Test handling of absolute URLs in href (coverage: line 172-173)."""
@@ -374,19 +414,19 @@ class TestEdgeCases:
             </tr>
         </table>
         """
-        benchmarks = WorkBenchCatalogParser.parse_catalog_page(html)
+        benchmarks = WorkBenchCatalogParser.parse_catalog_page(html, base_url=BASE)
 
         assert len(benchmarks) == 1
         assert benchmarks[0]["url"] == "https://workbench.cisecurity.org/benchmarks/456"
         assert benchmarks[0]["benchmark_id"] == "456"
 
     def test_url_with_query_params(self):
-        """Test URL parsing handles query parameters correctly."""
+        """Test URL parsing handles query parameters and fragments by stripping them cleanly."""
         html = """
         <table>
             <tr><th>Header</th></tr>
             <tr>
-                <td><a href="/benchmarks/789?version=1&sort=asc">With Query Params</a></td>
+                <td><a href="/benchmarks/789?version=1&sort=asc#overview">With Query Params</a></td>
                 <td>v1.0.0</td>
                 <td>Published</td>
                 <td>Community</td>
@@ -395,10 +435,46 @@ class TestEdgeCases:
             </tr>
         </table>
         """
-        benchmarks = WorkBenchCatalogParser.parse_catalog_page(html)
+        benchmarks = WorkBenchCatalogParser.parse_catalog_page(html, base_url=BASE)
 
         assert len(benchmarks) == 1
         assert benchmarks[0]["benchmark_id"] == "789"
+        assert benchmarks[0]["url"] == "https://workbench.cisecurity.org/benchmarks/789"
+
+    @pytest.mark.parametrize(
+        "malicious_href",
+        [
+            "@attacker.example/benchmarks/23598",
+            "https://workbench.cisecurity.org@attacker.example/benchmarks/23598",
+            "//attacker.example/benchmarks/23598",
+            "https://attacker.example/benchmarks/23598",
+            "https://portal.cisecurity.org/benchmarks/23598",
+            "http://workbench.cisecurity.org/benchmarks/23598",
+            "/\\attacker.example/benchmarks/23598",
+            "/benchmarks/23598/../../admin",
+            "https://workbench.cisecurity.org/benchmarks/23598/../../admin",
+            "/benchmarks/not-numeric",
+            "/benchmarks/٢٣٥٩٨",
+        ],
+    )
+    def test_rejects_off_origin_userinfo_and_non_numeric_benchmark_urls(self, malicious_href):
+        """Catalog parser rejects @attacker userinfo tricks, off-origin hosts, HTTP, traversal, and non-ASCII IDs."""
+        html = f"""
+        <table>
+            <tr><th>Title</th><th>Version</th><th>Status</th><th>Community</th><th>Collections</th><th>Owner</th></tr>
+            <tr>
+                <td><a href="{malicious_href}">Malicious Benchmark</a></td>
+                <td>v1.0.0</td>
+                <td>Published</td>
+                <td>Community</td>
+                <td>Collection</td>
+                <td>Owner</td>
+            </tr>
+        </table>
+        """
+        benchmarks = WorkBenchCatalogParser.parse_catalog_page(html, base_url=BASE)
+
+        assert benchmarks == []
 
     def test_url_with_trailing_path(self):
         """Test URL parsing handles trailing path segments correctly."""
@@ -415,7 +491,7 @@ class TestEdgeCases:
             </tr>
         </table>
         """
-        benchmarks = WorkBenchCatalogParser.parse_catalog_page(html)
+        benchmarks = WorkBenchCatalogParser.parse_catalog_page(html, base_url=BASE)
 
         assert len(benchmarks) == 1
         assert benchmarks[0]["benchmark_id"] == "555"
@@ -451,14 +527,14 @@ class TestEdgeCases:
         call_count = [0]
         original_parse_row = WorkBenchCatalogParser._parse_table_row
 
-        def mock_parse_row(row):
+        def mock_parse_row(row, base_url):
             call_count[0] += 1
             if call_count[0] == 1:
                 raise ValueError("Test exception on first row")
-            return original_parse_row(row)
+            return original_parse_row(row, base_url)
 
         with patch.object(WorkBenchCatalogParser, "_parse_table_row", side_effect=mock_parse_row):
-            benchmarks = WorkBenchCatalogParser.parse_catalog_page(html)
+            benchmarks = WorkBenchCatalogParser.parse_catalog_page(html, base_url=BASE)
 
         # First row fails, second succeeds
         assert len(benchmarks) == 1
@@ -523,7 +599,7 @@ class TestEdgeCases:
         with patch.object(
             WorkBenchCatalogParser, "_parse_table_row", side_effect=mock_parse_row_with_broken_href
         ):
-            benchmarks = WorkBenchCatalogParser.parse_catalog_page(html)
+            benchmarks = WorkBenchCatalogParser.parse_catalog_page(html, base_url=BASE)
 
         # Row should be skipped due to exception
         assert benchmarks == []
@@ -533,7 +609,13 @@ class TestAuthenticationDetection:
     """Test detection of unauthenticated responses (login page)."""
 
     def test_is_login_page_with_login_html(self, login_page_html):
-        """Test that login page HTML is correctly identified."""
+        """Test that compact synthetic login page HTML is correctly identified."""
+        lowered = login_page_html.lower()
+        assert "<script" not in lowered
+        assert "googletagmanager" not in lowered
+        assert "csrf-token" not in lowered
+        assert 'name="_token"' not in lowered
+
         is_login = WorkBenchCatalogParser.is_login_page(login_page_html)
         assert is_login is True
 
@@ -550,7 +632,7 @@ class TestAuthenticationDetection:
     def test_parse_catalog_page_raises_on_login_page(self, login_page_html):
         """Test parsing login page raises AuthenticationError."""
         with pytest.raises(AuthenticationError, match="Not authenticated.*login"):
-            WorkBenchCatalogParser.parse_catalog_page(login_page_html)
+            WorkBenchCatalogParser.parse_catalog_page(login_page_html, base_url=BASE)
 
     def test_is_login_page_with_login_form(self):
         """Test detection of login form indicator."""
@@ -623,8 +705,8 @@ class TestPlatformInference:
             ("CIS Microsoft SQL Server 2022 Benchmark", "database", "mssql"),
             # Containers & Kubernetes
             ("CIS Amazon Elastic Kubernetes Service (EKS) Benchmark", "container", "aws-eks"),
-            # Note: AKS matches "azure" before "aks" due to pattern order, so it returns cloud/azure
-            ("CIS Azure Kubernetes Service (AKS) Benchmark", "cloud", "azure"),
+            ("CIS Azure Kubernetes Service (AKS) Benchmark", "container", "azure-aks"),
+            ("CIS AKS Optimized Azure Linux Benchmark", "container", "azure-aks"),
             ("CIS Google Kubernetes Engine (GKE) Benchmark", "container", "google-gke"),
             ("CIS Kubernetes V1.27 Benchmark", "container", "kubernetes"),
             ("CIS Docker Benchmark", "container", "docker"),
@@ -683,185 +765,45 @@ class TestPlatformInference:
         assert platform == "oracle-oke"
 
 
-class TestBenchmarkDetailPageParsing:
-    """Test parsing individual benchmark detail pages (coverage: lines 315-345)."""
+class TestCatalogRowHrefs:
+    """Catalog row links resolve against the WorkBench origin the caller passes."""
 
-    def test_parse_benchmark_detail_basic(self):
-        """Test basic benchmark detail page parsing."""
+    def test_relative_href_resolves_against_the_given_origin(self):
+        """Relative catalog row hrefs resolve against the origin the caller passes."""
         html = """
-        <html>
-        <body>
-            <h1>CIS Ubuntu 22.04 Benchmark</h1>
-            <p>Published 3 months ago on Aug 1st 2025</p>
-            <h2>Overview</h2>
-            <p>This benchmark provides security guidance.</p>
-            <p>It covers essential hardening steps.</p>
-            <p>Use this for compliance.</p>
-            <h2>Recommendations</h2>
-            <p>Different section content.</p>
-        </body>
-        </html>
+        <table>
+            <tr><th>Title</th><th>Version</th><th>Status</th><th>Community</th><th>Collections</th><th>Owner</th></tr>
+            <tr>
+                <td><a href="/benchmarks/61">CIS Ubuntu Benchmark</a></td>
+                <td>v1.0.0</td>
+                <td>Published</td>
+                <td>Ubuntu</td>
+                <td>OS</td>
+                <td>cis</td>
+            </tr>
+        </table>
         """
-        metadata = WorkBenchCatalogParser.parse_benchmark_detail_page(html)
+        rows = WorkBenchCatalogParser.parse_catalog_page(
+            html, base_url="https://workbench-staging.cisecurity.org"
+        )
 
-        assert metadata["published_date"] == "Aug 1st 2025"
-        assert "3 months ago" in metadata["published_relative"]
-        assert "security guidance" in metadata["description"]
-        assert "hardening steps" in metadata["description"]
+        assert len(rows) == 1
+        assert rows[0]["url"] == "https://workbench-staging.cisecurity.org/benchmarks/61"
 
-    def test_parse_benchmark_detail_no_published_date(self):
-        """Test parsing when no published date is present."""
-        html = """
-        <html>
-        <body>
-            <h2>Overview</h2>
-            <p>Some description text.</p>
-        </body>
-        </html>
-        """
-        metadata = WorkBenchCatalogParser.parse_benchmark_detail_page(html)
 
-        assert "published_date" not in metadata
-        assert "published_relative" not in metadata
-        assert "description" in metadata
+class TestParsingLogsPerPageDetailAtDebug:
+    """Per-page detail is DEBUG; the default INFO output stays free of it."""
 
-    def test_parse_benchmark_detail_no_overview(self):
-        """Test parsing when no Overview section is present."""
-        html = """
-        <html>
-        <body>
-            <p>Published 1 month ago on Dec 15th 2025</p>
-            <h2>Recommendations</h2>
-            <p>Some recommendations.</p>
-        </body>
-        </html>
-        """
-        metadata = WorkBenchCatalogParser.parse_benchmark_detail_page(html)
+    def test_parsing_a_page_logs_at_debug_not_info(self, sample_catalog_html, caplog):
+        with caplog.at_level("INFO", logger="cis_bench.catalog.parser"):
+            WorkBenchCatalogParser.parse_catalog_page(sample_catalog_html, base_url=BASE)
+        assert [r.getMessage() for r in caplog.records if r.levelname == "INFO"] == []
 
-        assert metadata["published_date"] == "Dec 15th 2025"
-        assert "description" not in metadata
-
-    def test_parse_benchmark_detail_empty_html(self):
-        """Test parsing empty HTML returns empty metadata."""
-        metadata = WorkBenchCatalogParser.parse_benchmark_detail_page("")
-        assert metadata == {}
-
-    def test_parse_benchmark_detail_empty_overview_section(self):
-        """Test parsing when Overview heading exists but no content follows."""
-        html = """
-        <html>
-        <body>
-            <h2>Overview</h2>
-            <h2>Next Section</h2>
-            <p>Content in next section.</p>
-        </body>
-        </html>
-        """
-        metadata = WorkBenchCatalogParser.parse_benchmark_detail_page(html)
-
-        # Overview exists but siblings are empty before next heading
-        assert "description" not in metadata
-
-    def test_parse_benchmark_detail_published_without_specific_date(self):
-        """Test parsing when Published text exists but no 'on DATE' portion.
-
-        The parser only sets both published_date and published_relative when
-        the full pattern "Published X ago on DATE" is matched. If just
-        "Published X ago" without a date, neither field is set.
-        """
-        html = """
-        <html>
-        <body>
-            <p>Published 2 weeks ago</p>
-            <h2>Overview</h2>
-            <p>Description text.</p>
-        </body>
-        </html>
-        """
-        metadata = WorkBenchCatalogParser.parse_benchmark_detail_page(html)
-
-        # Neither published_date nor published_relative is set because
-        # the date pattern "on DATE" is required for any published fields
-        assert "published_date" not in metadata
-        assert "published_relative" not in metadata
-        # But description should still be parsed
-        assert "description" in metadata
-
-    def test_parse_benchmark_detail_multiple_paragraphs_limited(self):
-        """Test description is limited to first 3 paragraphs."""
-        html = """
-        <html>
-        <body>
-            <h2>Overview</h2>
-            <p>First paragraph.</p>
-            <p>Second paragraph.</p>
-            <p>Third paragraph.</p>
-            <p>Fourth paragraph should not be included.</p>
-            <p>Fifth paragraph should not be included.</p>
-        </body>
-        </html>
-        """
-        metadata = WorkBenchCatalogParser.parse_benchmark_detail_page(html)
-
-        assert "First paragraph" in metadata["description"]
-        assert "Second paragraph" in metadata["description"]
-        assert "Third paragraph" in metadata["description"]
-        assert "Fourth paragraph" not in metadata["description"]
-        assert "Fifth paragraph" not in metadata["description"]
-
-    def test_parse_benchmark_detail_stops_at_next_heading(self):
-        """Test description stops at next heading."""
-        html = """
-        <html>
-        <body>
-            <h2>Overview</h2>
-            <p>First overview paragraph.</p>
-            <h3>Subsection</h3>
-            <p>Should not be included.</p>
-            <h2>Recommendations</h2>
-            <p>Different section.</p>
-        </body>
-        </html>
-        """
-        metadata = WorkBenchCatalogParser.parse_benchmark_detail_page(html)
-
-        assert "First overview paragraph" in metadata["description"]
-        # h3 is also a heading, so it should stop there
-        assert "Should not be included" not in metadata["description"]
-
-    def test_parse_benchmark_detail_with_various_date_formats(self):
-        """Test parsing various date formats in published text.
-
-        Note: The regex requires 'ago' in the text to match at all.
-        """
-        test_cases = [
-            ("Published 1 day ago on Jan 1st 2026", "Jan 1st 2026"),
-            ("Published 2 months ago on Feb 22nd 2025", "Feb 22nd 2025"),
-            ("Published 1 year ago on Mar 3rd 2024", "Mar 3rd 2024"),
-            # "recently" doesn't contain "ago", so it won't match the regex
-            ("Published just now ago on Apr 4th 2025", "Apr 4th 2025"),
+        caplog.clear()
+        with caplog.at_level("DEBUG", logger="cis_bench.catalog.parser"):
+            benchmarks = WorkBenchCatalogParser.parse_catalog_page(
+                sample_catalog_html, base_url=BASE
+            )
+        assert f"Parsed {len(benchmarks)} benchmarks from catalog page" in [
+            r.getMessage() for r in caplog.records if r.levelname == "DEBUG"
         ]
-
-        for published_text, expected_date in test_cases:
-            html = f"<html><body><p>{published_text}</p></body></html>"
-            metadata = WorkBenchCatalogParser.parse_benchmark_detail_page(html)
-            assert metadata["published_date"] == expected_date, f"Failed for: {published_text}"
-
-    def test_parse_benchmark_detail_overview_with_empty_paragraphs(self):
-        """Test description handles empty paragraph elements."""
-        html = """
-        <html>
-        <body>
-            <h2>Overview</h2>
-            <p></p>
-            <p>   </p>
-            <p>Actual content.</p>
-            <p>More content.</p>
-        </body>
-        </html>
-        """
-        metadata = WorkBenchCatalogParser.parse_benchmark_detail_page(html)
-
-        # Empty paragraphs are stripped/skipped
-        assert "Actual content" in metadata["description"]
-        assert "More content" in metadata["description"]

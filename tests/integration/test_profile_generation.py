@@ -8,9 +8,9 @@ from cis_bench.models.benchmark import Benchmark
 
 
 @pytest.fixture
-def sample_benchmark(almalinux_complete_file):
-    """Load sample benchmark for testing."""
-    return Benchmark.from_json_file(str(almalinux_complete_file))
+def sample_benchmark(synthetic_complete_file):
+    """Load sample synthetic benchmark for testing."""
+    return Benchmark.from_json_file(str(synthetic_complete_file))
 
 
 class TestDISAProfileGeneration:
@@ -26,8 +26,7 @@ class TestDISAProfileGeneration:
         root = tree.getroot()
 
         profiles = root.xpath('.//*[local-name()="Profile"]')
-        assert len(profiles) > 0, "No Profile elements generated"
-        assert len(profiles) >= 2, f"Expected at least 2 profiles, found {len(profiles)}"
+        assert len(profiles) == 4, f"Expected all 4 CIS profiles, found {len(profiles)}"
 
     def test_disa_profile_structure(self, sample_benchmark, tmp_path):
         """Test Profile elements have correct structure (id, title, description, select)."""
@@ -94,5 +93,5 @@ class TestDISAProfileGeneration:
         profile = level1_server[0]
         selects = profile.xpath('.//*[local-name()="select"]')
 
-        # Level 1 Server should have significant number of rules
-        assert len(selects) > 200, f"Level 1 Server should have >200 rules, found {len(selects)}"
+        # Level 1 Server should match exact deterministic synthetic profile count
+        assert len(selects) == 14, f"Level 1 Server should have 14 rules, found {len(selects)}"

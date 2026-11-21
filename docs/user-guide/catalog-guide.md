@@ -42,18 +42,19 @@ A local SQLite database with full-text search containing metadata for all CIS be
 # Login (one-time)
 cis-bench auth login --browser chrome
 
-# Build catalog (one-time, ~2 minutes)
+# Build catalog (one-time, under a minute)
 cis-bench catalog refresh
 ```
 
 **What catalog refresh does:**
 
-- Scrapes ~66 pages from CIS WorkBench
+- Scrapes about 80 pages from CIS WorkBench
 - Parallel processing (10 pages/batch, 5 threads)
 - Builds searchable database
 - Infers platform taxonomy automatically
-- Takes ~2 minutes (vs ~10 min sequential)
-- Stored in: `~/.cis-bench/catalog.db`
+- Marks benchmarks WorkBench no longer lists `Withdrawn` (only when every page was fetched; see [catalog refresh](commands-reference.md#cis-bench-catalog-refresh))
+- Takes under a minute
+- Stored in: `~/.local/share/cis-bench/catalog.db`
 
 ### 2. Search and Use
 
@@ -79,14 +80,16 @@ Use the top-level `search` command (recommended):
 cis-bench search "ubuntu"
 cis-bench search "oracle cloud"
 cis-bench search "kubernetes"
+cis-bench search "kubernetes v2.1.0"
 ```
 
 **Search features:**
 
 - Full-text search with FTS5
-- Fuzzy matching
+- Word matching: every word must match the start of a word in the title, platform or community (`ubunt` finds Ubuntu); no typo tolerance
 - Searches titles, platforms, communities
-- Returns up to 1000 results by default
+- A version in the query (`v2.1.0`, `2.1`) picks the release; see [How a query matches](commands-reference.md#cis-bench-search)
+- Returns up to `CIS_BENCH_SEARCH_LIMIT` results (100 by default); `--limit` changes it for one run
 
 ### Platform Filtering
 
@@ -153,6 +156,51 @@ cis-bench search "ubuntu" --latest --output-format csv > ubuntu_benchmarks.csv
 # YAML
 cis-bench search "aws" --output-format yaml
 ```
+
+---
+
+## Searching Inside Downloaded Benchmarks
+
+`search` finds benchmarks in the catalog by title, platform and community. `find` searches the recommendations of the benchmarks you have downloaded: their titles, descriptions, rationales, audits and remediations. Each benchmark is indexed when it is downloaded, so `find` needs no refresh and works offline. A benchmark that is only in the catalog is not searched until you download it.
+
+Every word of the query must be found as the start of a word, and punctuation is part of the search, not syntax. The output below comes from a data folder holding the synthetic benchmarks the tests use (IDs 90001 to 90005).
+
+One benchmark's recommendations:
+
+```console
+$ cis-bench find ssh --benchmark 90003
+                                    Recommendations matching ssh
+┏━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Benchmark ┃ Ref   ┃ Title                                ┃ Found in                              ┃
+┡━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ 90003     │ 4.1.1 │ Limit who can change the SSH server  │ title, description, audit,            │
+│           │       │ configuration file                   │ remediation                           │
+│ 90003     │ 4.1.4 │ Turn off graphical session           │ title, audit, remediation             │
+│           │       │ forwarding over SSH                  │                                       │
+│ 90003     │ 4.1.2 │ Allow no more than four sign-in      │ title, audit, remediation             │
+│           │       │ attempts per SSH connection          │                                       │
+│ 90003     │ 4.1.3 │ Show a warning notice before SSH     │ title, audit, remediation             │
+│           │       │ sign-in                              │                                       │
+└───────────┴───────┴──────────────────────────────────────┴───────────────────────────────────────┘
+
+Showing 4 of 4 results
+```
+
+An address with dots and a slash, run in offline mode:
+
+```console
+$ cis-bench --offline find 0.0.0.0/0
+                            Recommendations matching 0.0.0.0/0
+┏━━━━━━━━━━━┳━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Benchmark ┃ Ref ┃ Title                                     ┃ Found in                 ┃
+┡━━━━━━━━━━━╇━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ 90004     │ 4.1 │ Close SSH (port 22) to the whole internet │ description, remediation │
+└───────────┴─────┴───────────────────────────────────────────┴──────────────────────────┘
+
+Showing 1 of 1 result
+```
+
+`--profile`, `--limit` and the json and yaml formats are in the [find reference](commands-reference.md#cis-bench-find).
 
 ---
 
@@ -251,13 +299,31 @@ cis-bench catalog refresh
 
 **Note:** Downloaded benchmarks are cached separately. Refreshing catalog updates metadata only, not downloaded content.
 
+**What a refresh gives you:** every benchmark WorkBench lists, with the fields of the listing (title, version, status, platform, community, owner, collections). What a benchmark's own WorkBench page adds, such as its publish date and description, comes one benchmark at a time, when you download it (see [Check for Updates](#check-for-updates)); no command reads every benchmark's page. To download several benchmarks, pass their IDs to `download`, or a file of IDs made from a search:
+
+```bash
+cis-bench search "almalinux" --latest --output-format json | jq -r '.[].benchmark_id' > ids.txt
+cis-bench download --file ids.txt
+```
+
+A download reads the benchmark's page and every recommendation, many requests per benchmark, so download the benchmarks you need rather than the whole catalog.
+
 ### Check for Updates
 
 See which downloaded benchmarks have updates:
 
 ```bash
-cis-bench catalog check-updates
+cis-bench catalog check-updates            # reads each downloaded benchmark's page first
+cis-bench catalog check-updates --offline  # compares what is already recorded, no network
 ```
+
+Offline mode (`cis-bench --offline`, `CIS_BENCH_OFFLINE`) compares versions only, as `--offline` does.
+
+A benchmark is listed when the catalog carries a newer version than you downloaded, or when the publish date WorkBench shows for it is later than your copy's. Refresh the catalog first so the version comparison sees the current listing.
+
+**Publish dates and descriptions:** the catalog listing carries neither. Each benchmark's own WorkBench page does; cis-bench reads it whenever it downloads the benchmark (`download`, `get`, `diff`, `catalog download`) and when `catalog check-updates` runs online, and records the publish date and description on the benchmark's catalog row (`catalog info` shows them). A benchmark nobody has downloaded has neither.
+
+**About `--latest`:** the catalog page lists no dates, so "latest" is decided by version: within one title and status, the highest parseable version (`v2.0.1` beats `v1.0.0`; `v10` beats `v9`) is latest. Labels without a number such as `vNext` are latest only when every version in the group is unnumbered.
 
 ---
 
@@ -265,23 +331,22 @@ cis-bench catalog check-updates
 
 ### Parallel Scraping
 
-**Default behavior:**
+**Behavior** (each value is a setting; see [Configuration](configuration.md#settings)):
 
-- Batches: 10 pages per batch
-- Threads: 5 concurrent per batch
-- Rate limit: 2 seconds between batches
-- Retry: 3 attempts with exponential backoff
+- Batches: `CIS_BENCH_BATCH_SIZE` pages per batch, saved before the next batch starts
+- Threads: `CIS_BENCH_MAX_CONCURRENT_REQUESTS` requests at a time
+- Rate limit: at most `CIS_BENCH_REQUESTS_PER_SECOND` requests per second to WorkBench, shared by every thread and counting retries
+- Retry: `CIS_BENCH_REQUEST_RETRIES` retries on timeouts, dropped connections and 429/502/503/504 (the first as soon as the rate limit allows, the next after `CIS_BENCH_RETRY_BACKOFF_FACTOR` × 2 s plus jitter; WorkBench's `Retry-After` is honored up to 60 s); a missing page is not retried
 - Failure threshold: Aborts if >10% of pages fail
 
 **Performance:**
 
-- Full 66 pages: ~2 minutes
-- Per page: ~2 seconds (with parallelism)
-- Respectful to CIS servers
+- Full refresh (about 80 pages): under a minute (77 pages took 34 s on 2026-11-04)
+- Respectful to CIS servers: never more than `CIS_BENCH_REQUESTS_PER_SECOND` requests per second
 
 **Tuning:**
 ```bash
-# Faster (less polite)
+# Gentler: one request per second for this run
 cis-bench catalog refresh --rate-limit 1.0
 
 # Test with few pages
@@ -297,17 +362,26 @@ cis-bench catalog refresh --max-pages 5
 **catalog_benchmarks:**
 
 - Metadata for all benchmarks
-- Fields: id, title, version, status, platform_type, platform, etc.
+- Fields: id, title, version, status, platform_type, platform, etc. from the listing; published_date and description from the benchmark's page, once it has been read
+- Columns for more of the page: release_type, parent_benchmark_id, parent_benchmark_url, intended_audience, acknowledgements, milestone_name and milestone_url. cis-bench does not read these from the page yet, so they are empty
+
+**benchmark_contributors, benchmark_assets, revision_history:**
+
+- The lists on a benchmark's page, one row per entry in the page's order: its contributors, the products it applies to (title and CPE name), and its revision history (time, author, number of changes)
+- Empty: cis-bench does not read them from the page yet
+
+A catalog an earlier version of cis-bench wrote gains new columns and tables the first time a command opens it; no refresh is needed.
 
 **downloaded_benchmarks:**
 
 - Full benchmark JSON content
 - Cached for instant re-export
+- The copy's version and publish date, which check-updates compares with the catalog row
 
 **benchmarks_fts:**
 
 - FTS5 virtual table for full-text search
-- Indexes: title, platform, community, description
+- Indexes: title, platform, community, version (the fields every catalog row has)
 
 ### Platform Inference
 
@@ -338,6 +412,7 @@ cis-bench catalog refresh
 ### Search Returns No Results
 
 **Check:**
+
 1. Is query too specific? Try broader terms
 2. Use `--status Archived` to see archived benchmarks
 3. Remove `--latest` to see all versions
@@ -366,7 +441,7 @@ cis-bench search --platform-type os --platform ubuntu
 
 **Retry logic:**
 
-- Automatically retries failed pages (3 attempts)
+- Automatically retries a page that timed out, dropped its connection or got 429/502/503/504 (`CIS_BENCH_REQUEST_RETRIES` retries, two by default)
 - Continues if failure rate is low (<10%)
 - Aborts if too many failures (indicates bigger issue)
 
@@ -396,10 +471,9 @@ cis-bench search ubuntu --latest --output-format json | \
 jq -r '.[].benchmark_id' | \
 xargs -I {} cis-bench download {}
 
-# Export all downloaded to XCCDF
+# Export all downloaded to XCCDF (by catalog ID, from the cache)
 cis-bench list --output-format json | \
-jq -r '.[].file' | \
-xargs -I {} basename {} .json | \
+jq -r '.downloaded[].benchmark_id' | \
 xargs -I {} cis-bench export {} --format xccdf --style cis
 ```
 
@@ -409,19 +483,16 @@ xargs -I {} cis-bench export {} --format xccdf --style cis
 
 **Production:**
 
-- `~/.cis-bench/catalog.db`
+- `~/.local/share/cis-bench/catalog.db` (the XDG data folder)
 
-**Development:**
+**One folder for everything (for example for development):**
 ```bash
-export CIS_BENCH_ENV=dev
+export CIS_BENCH_HOME=~/cis-bench-dev
 cis-bench catalog refresh
-# Stored in: ~/.cis-bench-dev/catalog.db
+# Stored in: ~/cis-bench-dev/catalog.db
 ```
 
-**Test:**
-
-- Automatic test isolation
-- `/tmp/cis-bench-test/catalog.db`
+**Tests:** pytest uses a temporary folder for each run.
 
 ---
 
@@ -431,3 +502,4 @@ cis-bench catalog refresh
 - [Commands Reference](commands-reference.md) - All commands
 - [Configuration](configuration.md) - Environment settings
 - [Search Command](commands-reference.md#cis-bench-search) - Detailed search docs
+- [Find Command](commands-reference.md#cis-bench-find) - Search inside downloaded benchmarks

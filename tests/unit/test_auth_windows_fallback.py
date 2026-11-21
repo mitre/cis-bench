@@ -11,6 +11,24 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from cis_bench.config import RequestPolicy
+
+POLICY = RequestPolicy(requests_per_second=3.0, retries=2, backoff_factor=1.0, jitter_seconds=0.5)
+
+
+@pytest.fixture
+def auth(tmp_path):
+    """An AuthManager for production WorkBench that verifies TLS and saves to a temp file."""
+    from cis_bench.fetcher.auth import AuthManager
+
+    return AuthManager(
+        workbench_url="https://workbench.cisecurity.org",
+        verify_ssl=True,
+        session_file=tmp_path / "session.cookies",
+        request_policy=POLICY,
+        timeout=(10.0, 30.0),
+    )
+
 
 class TestWindowsCookieFallback:
     """Test automatic Firefox fallback on Windows when Chrome/Edge fails."""
@@ -82,10 +100,10 @@ class TestWindowsCookieFallback:
         assert fallback is None
 
     @patch("cis_bench.fetcher.auth.browser_cookie3")
-    def test_load_cookies_tries_fallback_on_windows_error(self, mock_bc3, mock_windows_platform):
+    def test_load_cookies_tries_fallback_on_windows_error(
+        self, mock_bc3, mock_windows_platform, auth
+    ):
         """Should try Firefox when Chrome fails with permission error on Windows."""
-        from cis_bench.fetcher.auth import AuthManager
-
         # Chrome fails with permission error
         mock_bc3.chrome.side_effect = Exception(
             "This operation requires admin. Please run as admin."
@@ -95,36 +113,32 @@ class TestWindowsCookieFallback:
         mock_firefox_jar.__iter__ = lambda self: iter([])
         mock_bc3.firefox.return_value = mock_firefox_jar
 
-        session = AuthManager.load_cookies_from_browser("chrome", try_fallback=True)
+        session = auth.load_cookies_from_browser("chrome", try_fallback=True)
 
         # Should have tried Firefox after Chrome failed
         mock_bc3.firefox.assert_called_once()
         assert session is not None
 
     @patch("cis_bench.fetcher.auth.browser_cookie3")
-    def test_load_cookies_no_fallback_on_linux(self, mock_bc3, mock_linux_platform):
+    def test_load_cookies_no_fallback_on_linux(self, mock_bc3, mock_linux_platform, auth):
         """Should NOT try fallback on non-Windows platforms."""
-        from cis_bench.fetcher.auth import AuthManager
-
         # Chrome fails with permission error
         mock_bc3.chrome.side_effect = PermissionError("Permission denied")
 
         # Should raise, not try fallback
         with pytest.raises(Exception) as exc_info:
-            AuthManager.load_cookies_from_browser("chrome", try_fallback=True)
+            auth.load_cookies_from_browser("chrome", try_fallback=True)
 
         # Firefox should NOT have been called
         mock_bc3.firefox.assert_not_called()
 
     @patch("cis_bench.fetcher.auth.browser_cookie3")
-    def test_load_cookies_fallback_disabled_by_default(self, mock_bc3, mock_windows_platform):
+    def test_load_cookies_fallback_disabled_by_default(self, mock_bc3, mock_windows_platform, auth):
         """Fallback should be opt-in to avoid surprising behavior."""
-        from cis_bench.fetcher.auth import AuthManager
-
         mock_bc3.chrome.side_effect = Exception("requires admin")
 
         with pytest.raises(Exception, match="requires admin"):
-            AuthManager.load_cookies_from_browser("chrome")  # No try_fallback
+            auth.load_cookies_from_browser("chrome")  # No try_fallback
 
         mock_bc3.firefox.assert_not_called()
 
@@ -132,12 +146,10 @@ class TestWindowsCookieFallback:
 class TestWindowsErrorMessages:
     """Test helpful error messages for Windows users."""
 
-    def test_format_windows_cookie_error_includes_workarounds(self):
+    def test_format_windows_cookie_error_includes_workarounds(self, auth):
         """Error message should include actionable workarounds."""
-        from cis_bench.fetcher.auth import AuthManager
-
         error = Exception("requires admin")
-        message = AuthManager._format_windows_cookie_error("chrome", error)
+        message = auth._format_windows_cookie_error("chrome", error)
 
         # Should suggest Firefox
         assert "firefox" in message.lower()
@@ -148,15 +160,29 @@ class TestWindowsErrorMessages:
         # Should mention cookie file option
         assert "cookie" in message.lower()
 
-    def test_format_windows_cookie_error_mentions_app_bound_encryption(self):
+    def test_format_windows_cookie_error_mentions_app_bound_encryption(self, auth):
         """Error should explain WHY this happens."""
-        from cis_bench.fetcher.auth import AuthManager
-
         error = Exception("requires admin")
-        message = AuthManager._format_windows_cookie_error("edge", error)
+        message = auth._format_windows_cookie_error("edge", error)
 
         # Should explain the root cause
         assert "chrome" in message.lower() or "encrypt" in message.lower()
+
+    def test_the_workarounds_name_this_managers_host_and_a_real_command(self, tmp_path):
+        from cis_bench.fetcher.auth import AuthManager
+
+        staging = AuthManager(
+            workbench_url="https://workbench-staging.cisecurity.org",
+            verify_ssl=True,
+            session_file=tmp_path / "session.cookies",
+            request_policy=POLICY,
+            timeout=(10.0, 30.0),
+        )
+        message = staging._format_windows_cookie_error("chrome", Exception("requires admin"))
+        assert "Export cookies for workbench-staging.cisecurity.org" in message
+        # download takes no --cookies option; a cookie file goes through auth login
+        assert "cis-bench auth login --cookies cookies.txt" in message
+        assert "download <id> --cookies" not in message
 
 
 class TestAuthLoginCookiesOption:
