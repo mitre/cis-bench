@@ -120,6 +120,23 @@ def test_sections_whose_parents_form_a_loop_are_refused_not_dropped():
         section_tree(_benchmark(sections, recommendations))
 
 
+@pytest.mark.parametrize(
+    "duplicate",
+    [
+        # Two top-level sections with one id would each take the other's recommendations
+        _section(10, "9", None, 9),
+        # A child reusing its own top-level ancestor's id would make the tree endless
+        _section(10, "1.3", 10, 3),
+    ],
+    ids=["second-root", "child-of-itself"],
+)
+def test_a_section_id_recorded_twice_is_refused(duplicate):
+    sections = [*SECTIONS, duplicate]
+
+    with pytest.raises(ExportError, match=r"12345.*section id 10.*more than once"):
+        section_tree(_benchmark(sections, RECOMMENDATIONS))
+
+
 def test_a_section_whose_parent_is_not_recorded_is_refused():
     sections = [*SECTIONS, _section(40, "4.1", 41, 4)]
 

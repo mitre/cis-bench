@@ -27,15 +27,25 @@ def section_tree(benchmark: Benchmark) -> tuple[SectionNode, ...]:
 
     Raises:
         ExportError: The copy records no sections (saved before sections were recorded), a
-            recommendation's section is not one of them, or a section's parent is not one
-            of them; the message names the benchmark and the id.
+            section id is recorded twice, a recommendation's section or a section's parent
+            is not one of them, or sections' parents form a loop; the message names the
+            benchmark and the id.
     """
     if benchmark.sections is None:
         raise ExportError(
             f"Benchmark {benchmark.benchmark_id} has no sections: the copy was saved before "
             "sections were recorded"
         )
-    known = {section.id for section in benchmark.sections}
+    known: set[int] = set()
+    for section in benchmark.sections:
+        if section.id in known:
+            # Each copy of the id would take the same recommendations and sub-sections, or,
+            # reused below itself, make the tree endless
+            raise ExportError(
+                f"Benchmark {benchmark.benchmark_id}: section id {section.id} (section "
+                f"{section.number}) is recorded more than once"
+            )
+        known.add(section.id)
 
     children: defaultdict[int | None, list[Section]] = defaultdict(list)
     for section in benchmark.sections:
