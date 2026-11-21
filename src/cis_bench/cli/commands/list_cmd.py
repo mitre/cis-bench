@@ -13,7 +13,11 @@ from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
 
-from cis_bench.catalog.database import CatalogDatabase, deserialize_benchmark_json
+from cis_bench.catalog.database import (
+    SAVED_BEFORE_SECTIONS,
+    CatalogDatabase,
+    deserialize_benchmark_json,
+)
 from cis_bench.cli.helpers.output import display_time, output_data
 from cis_bench.cli.helpers.services import settings_from
 
@@ -28,6 +32,7 @@ CSV_FIELDS = [
     "cis_v8",
     "mitre",
     "nist",
+    "predates_section_tree",
     "downloaded_at",
     "error",
 ]
@@ -76,6 +81,7 @@ def list_benchmarks(output_dir, output_format):
 
     if downloaded:
         console.print(_downloaded_table(downloaded))
+        _explain_old_copies(downloaded)
     else:
         console.print("No benchmarks are downloaded.")
         console.print("[dim]Download one first:[/dim]")
@@ -130,6 +136,7 @@ def _downloaded_benchmarks(catalog_db_path) -> list[dict]:
                     ),
                     mitre=sum(1 for r in benchmark.recommendations if r.mitre_mapping),
                     nist=sum(len(r.nist_controls) for r in benchmark.recommendations),
+                    predates_section_tree=benchmark.predates_section_tree,
                 )
             rows.append(item)
         return rows
@@ -165,8 +172,9 @@ def _downloaded_table(downloaded: list[dict]) -> Table:
                 display_time(item["downloaded_at"]),
             )
             continue
+        marker = " *" if item["predates_section_tree"] else ""
         table.add_row(
-            escape(item["benchmark_id"]),
+            escape(item["benchmark_id"]) + marker,
             escape(item["title"]),
             escape(item["version"] or ""),
             str(item["recommendations"]),
@@ -176,3 +184,13 @@ def _downloaded_table(downloaded: list[dict]) -> Table:
             display_time(item["downloaded_at"]),
         )
     return table
+
+
+def _explain_old_copies(downloaded: list[dict]) -> None:
+    """Under the table: what the * marks and how to update those copies."""
+    old = [item["benchmark_id"] for item in downloaded if item.get("predates_section_tree")]
+    if not old:
+        return
+    console.print(f"[yellow]* {SAVED_BEFORE_SECTIONS}: download again to update[/yellow]")
+    for benchmark_id in old:
+        console.print(f"  cis-bench download {escape(benchmark_id)}")

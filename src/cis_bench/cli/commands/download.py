@@ -113,7 +113,7 @@ def _open_workbench(settings: Settings, benchmark_id: str) -> WorkbenchScraper:
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose (DEBUG level) logging")
 @click.option("--debug", "-d", is_flag=True, help="Enable debug logging (same as --verbose)")
 @click.option("--quiet", "-q", is_flag=True, help="Quiet mode (warnings and errors only)")
-@click.option("--force", is_flag=True, help="Force re-download even if already cached in database")
+@click.option("--force", is_flag=True, help="Download again even if the cached copy is current")
 def download(
     benchmark_ids,
     urls_file,
@@ -184,7 +184,7 @@ def download(
         prefix = f"[{idx}/{len(targets)}]"
         logger.debug(f"Processing benchmark {idx}/{len(targets)}: {url}")
 
-        # Check if already cached (unless --force)
+        # A cached copy is skipped unless the update rule says it is out of date (or --force)
         if not force:
             catalog_db_path = settings.catalog_db_path
             if catalog_db_path.exists():
@@ -193,8 +193,14 @@ def download(
 
                     with closing(CatalogDatabase(catalog_db_path)) as db:
                         existing = db.get_downloaded(benchmark_id)
+                        reason = db.update_reason_of(benchmark_id) if existing else None
 
-                    if existing:
+                    if reason is not None:
+                        console.print(
+                            f"{prefix} [yellow]Cached copy of {benchmark_id} is out of date "
+                            f"({escape(reason)}); downloading it again[/yellow]"
+                        )
+                    elif existing:
                         console.print(
                             f"{prefix} [yellow]Benchmark {benchmark_id} already cached[/yellow]"
                         )

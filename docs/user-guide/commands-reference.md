@@ -473,7 +473,7 @@ cis-bench download <BENCHMARK_ID> [BENCHMARK_ID...] [OPTIONS]
 
 **Behavior Options:**
 
-- `--force` - Force re-download even if already cached
+- `--force` - Download again even if the cached copy is current
 - `-v, --verbose` - Verbose logging
 - `-d, --debug` - Debug logging
 - `-q, --quiet` - Quiet mode
@@ -498,7 +498,7 @@ cis-bench download --file urls.txt
 
 **What it does:**
 
-1. Checks if already cached (shows message if yes, unless --force)
+1. Checks the cached copy, unless `--force`: a current copy is skipped ("already cached"); one that is out of date by the rule `catalog check-updates` uses (see [How it decides](#cis-bench-catalog-check-updates)) is downloaded again, and the line says why
 2. Uses saved session from `cis-bench auth login`
 3. Downloads benchmark from WorkBench with progress bar (see "How recommendations are fetched" below)
 4. Saves to the cache (`catalog.db`) with the benchmark's version and the catalog's revision date for it, when there is a catalog; `get` and `diff` cache the same way
@@ -652,6 +652,8 @@ cis-bench list --output-format csv > inventory.csv
 **Output Fields:**
 
 Downloaded benchmarks: ID, title, version, recommendations count, CIS Controls v8 count, MITRE mappings count, NIST controls count, and when it was downloaded. Exported files: the folder and the file names.
+
+A `*` after the ID marks a copy saved before sections were recorded: it lacks data only WorkBench has (the section tree), so it is out of date, and the table is followed by the `cis-bench download <ID>` command that updates it. `json`, `yaml` and `csv` carry this as `predates_section_tree` (true or false).
 
 **Times:** a download is recorded once, in UTC. The table shows it in your zone and names the zone (`2026-11-06 21:05:58 EST`; set `TZ` to choose another); `json`, `yaml` and `csv` carry it in ISO 8601 with its offset (`2026-11-07T02:05:58+00:00`). A time written by an earlier version carries no zone; it is shown as it was written, marked `(zone not recorded)` in tables, and never guessed into a zone. `info`, `catalog stats` and `catalog check-updates` show times the same way.
 
@@ -964,7 +966,7 @@ cis-bench catalog download [OPTIONS] BENCHMARK_ID_OR_NAME
 - `--force` - Download again even if the cached copy is current
 - `--interactive` - Choose from a list when several benchmarks match
 
-A benchmark that is already cached is downloaded again only when `catalog check-updates` would list it (a newer catalog version, or a later WorkBench publish date than the cached copy's), or with `--force`.
+A benchmark that is already cached is downloaded again only when `catalog check-updates` would list it (a newer catalog version, a later WorkBench publish date than the cached copy's, a copy saved before sections were recorded, or a cached copy that cannot be read), or with `--force`.
 
 **Examples:**
 ```bash
@@ -997,20 +999,24 @@ cis-bench catalog platforms --output-format json
 
 ### `cis-bench catalog check-updates`
 
-Report downloaded benchmarks that WorkBench has moved past.
+Report downloaded benchmarks whose cached copy is out of date.
 
 **Options:**
 
 - `--offline` - Compare versions only; do not contact WorkBench (offline mode, `cis-bench --offline` or `CIS_BENCH_OFFLINE`, does the same)
 
-**How it decides:** a benchmark is listed when the catalog now carries a newer version than the one you downloaded, or when the publish date WorkBench shows for it is later than the publish date of your copy (for a copy cached before publish dates were recorded, later than the day you downloaded it). Online (the default) it first reads each downloaded benchmark's WorkBench page and records its publish date and description in the catalog; `--offline` compares what is already recorded. A catalog that lists an older version than your copy never makes it an update. Only downloaded benchmarks are fetched, one page each, so run `cis-bench catalog refresh` first if the catalog itself is stale. With nothing downloaded it says so and contacts nothing. A downloaded benchmark whose WorkBench page answers 404 is reported as no longer on WorkBench and the others are still checked.
+**How it decides:** a benchmark is listed when the catalog now carries a newer version than the one you downloaded, or when the publish date WorkBench shows for it is later than the publish date of your copy (for a copy cached before publish dates were recorded, later than the day you downloaded it). Online (the default) it first reads each downloaded benchmark's WorkBench page and records its publish date and description in the catalog; `--offline` compares what is already recorded. A catalog that lists an older version than your copy never makes it an update.
+
+A copy saved before sections were recorded (before cis-bench recorded each benchmark's sections and their descriptions) is listed as well, as `Saved before sections were recorded`, whatever the catalog says: it lacks data only WorkBench has, and downloading it again records it. A cached copy that cannot be read is listed as `Cached copy cannot be read`, and the others are still checked. These two are the only cases that also list a copy of a benchmark the catalog does not list.
+
+Only downloaded benchmarks are fetched, one page each, so run `cis-bench catalog refresh` first if the catalog itself is stale. With nothing downloaded it says so and contacts nothing. A downloaded benchmark whose WorkBench page answers 404 is reported as no longer on WorkBench and the others are still checked.
 
 ```bash
 cis-bench catalog check-updates
 cis-bench catalog check-updates --offline
 ```
 
-`cis-bench catalog download <id>` then downloads the update.
+`cis-bench download <id>` then downloads the update (`cis-bench catalog download <id>` does the same for a benchmark the catalog lists).
 
 ### `cis-bench catalog stats`
 

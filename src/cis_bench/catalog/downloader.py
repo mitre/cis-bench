@@ -11,7 +11,6 @@ from typing import NamedTuple
 from cis_bench.catalog.database import (
     CatalogDatabase,
     serialize_benchmark_json,
-    update_reason,
 )
 from cis_bench.catalog.search import CatalogSearch
 from cis_bench.fetcher.workbench import WorkbenchScraper
@@ -133,13 +132,7 @@ class CatalogDownloader:
         existing = self.db.get_downloaded(benchmark_id)
 
         if existing and not force:
-            reason = update_reason(
-                catalog_version=catalog_entry.get("version"),
-                catalog_published=catalog_entry.get("published_date"),
-                copy_version=existing.get("version"),
-                copy_published=existing.get("published_date"),
-                downloaded_at=existing["downloaded_at"],
-            )
+            reason = self.db.update_reason_of(benchmark_id)
             if reason is None:
                 logger.debug(f"Benchmark {benchmark_id} is cached and up to date")
                 return {

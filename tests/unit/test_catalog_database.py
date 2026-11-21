@@ -10,6 +10,23 @@ from cis_bench.catalog.database import CatalogDatabase, serialize_benchmark_json
 from cis_bench.models.benchmark import Benchmark, BenchmarkPage
 
 
+def _saved_copy(benchmark_id: str, *, predates_section_tree: bool = False) -> str:
+    """A cached copy's JSON as cis-bench saves it: a current copy records its section tree
+    (sections and their descriptions); one that predates the tree has no sections."""
+    data = {
+        "title": f"CIS Benchmark {benchmark_id}",
+        "benchmark_id": benchmark_id,
+        "url": f"https://workbench.cisecurity.org/benchmarks/{benchmark_id}",
+        "version": "v1.0.0",
+        "scraper_version": "v1_2025_10",
+        "total_recommendations": 0,
+        "recommendations": [],
+    }
+    if not predates_section_tree:
+        data |= {"sections": [], "section_descriptions_recorded": True}
+    return Benchmark.model_validate(data).model_dump_json()
+
+
 @pytest.fixture
 def temp_db():
     """Create temporary database for testing."""
@@ -1130,7 +1147,7 @@ class TestDownloadedBenchmarks:
     def test_check_updates_reports_a_newer_catalog_version(self, temp_db):
         """The catalog now lists v2.0.0 for a benchmark downloaded at v1.0.0."""
         self._insert(temp_db, "301", "v2.0.0")
-        temp_db.save_downloaded("301", "{}", "h", 1, version="v1.0.0")
+        temp_db.save_downloaded("301", _saved_copy("301"), "h", 1, version="v1.0.0")
 
         updates = temp_db.check_updates_available()
 
@@ -1141,7 +1158,7 @@ class TestDownloadedBenchmarks:
 
     def test_check_updates_is_silent_when_versions_match_and_no_newer_date_is_known(self, temp_db):
         self._insert(temp_db, "302", "v1.0.0")
-        temp_db.save_downloaded("302", "{}", "h", 1, version="v1.0.0")
+        temp_db.save_downloaded("302", _saved_copy("302"), "h", 1, version="v1.0.0")
 
         assert temp_db.check_updates_available() == []
 
@@ -1150,7 +1167,7 @@ class TestDownloadedBenchmarks:
         from datetime import date
 
         self._insert(temp_db, "303", "v1.0.0")
-        temp_db.save_downloaded("303", "{}", "h", 1, version="v1.0.0")
+        temp_db.save_downloaded("303", _saved_copy("303"), "h", 1, version="v1.0.0")
         temp_db.record_page(
             "303", BenchmarkPage(title="CIS Benchmark", published_date=date(2999, 1, 1))
         )
@@ -1165,7 +1182,7 @@ class TestDownloadedBenchmarks:
         from datetime import date
 
         self._insert(temp_db, "304", "v1.0.0")
-        temp_db.save_downloaded("304", "{}", "h", 1, version="v1.0.0")
+        temp_db.save_downloaded("304", _saved_copy("304"), "h", 1, version="v1.0.0")
         temp_db.record_page(
             "304", BenchmarkPage(title="CIS Benchmark", published_date=date(2000, 1, 1))
         )
@@ -1178,7 +1195,7 @@ class TestDownloadedBenchmarks:
         from sqlalchemy import text
 
         self._insert(temp_db, "307", "v1.0.0")
-        temp_db.save_downloaded("307", "{}", "h", 1, version="v1.0.0")
+        temp_db.save_downloaded("307", _saved_copy("307"), "h", 1, version="v1.0.0")
         with temp_db.engine.begin() as connection:
             connection.execute(
                 text("ALTER TABLE downloaded_benchmarks ADD COLUMN workbench_last_modified VARCHAR")
@@ -1196,7 +1213,7 @@ class TestDownloadedBenchmarks:
         from datetime import date
 
         self._insert(temp_db, "308", "v1.0.0")
-        temp_db.save_downloaded("308", "{}", "h", 1, version="v2.0.0")
+        temp_db.save_downloaded("308", _saved_copy("308"), "h", 1, version="v2.0.0")
         temp_db.record_page(
             "308", BenchmarkPage(title="CIS Benchmark", published_date=date(2999, 1, 1))
         )
@@ -1205,11 +1222,81 @@ class TestDownloadedBenchmarks:
 
     def test_check_updates_never_reports_an_unversioned_or_older_catalog_entry(self, temp_db):
         self._insert(temp_db, "305", "vNext")
-        temp_db.save_downloaded("305", "{}", "h", 1, version="v1.0.0")
+        temp_db.save_downloaded("305", _saved_copy("305"), "h", 1, version="v1.0.0")
         self._insert(temp_db, "306", "v1.0.0")
-        temp_db.save_downloaded("306", "{}", "h", 1, version="v2.0.0")
+        temp_db.save_downloaded("306", _saved_copy("306"), "h", 1, version="v2.0.0")
 
         assert temp_db.check_updates_available() == []
+
+    def test_check_updates_reports_a_copy_saved_before_sections_were_recorded(self, temp_db):
+        """Same version as the catalog, but the copy lacks the section tree."""
+        self._insert(temp_db, "309", "v1.0.0")
+        temp_db.save_downloaded(
+            "309", _saved_copy("309", predates_section_tree=True), "h", 1, version="v1.0.0"
+        )
+
+        (update,) = temp_db.check_updates_available()
+
+        assert (update["benchmark_id"], update["reason"]) == (
+            "309",
+            "saved before sections were recorded",
+        )
+        assert update["title"] == "CIS Benchmark 309"
+
+    def test_an_unreadable_copy_is_listed_beside_the_others(self, temp_db):
+        """A copy that cannot be read is out of date (only a new download repairs it); it
+        neither stops the check nor hides the other copies, in the catalog or not."""
+        self._insert(temp_db, "310", "v1.0.0")
+        temp_db.save_downloaded("310", "{not json", "h", 1, version="v1.0.0")
+        temp_db.save_downloaded("6469", '{"title": 3}', "h", 1, version="v1.0.0")
+        # Worked out before field validation: the wrong type must still be a copy that
+        # cannot be read, not an error that stops the check
+        temp_db.save_downloaded("6470", '{"scraper_version": []}', "h", 1, version="v1.0.0")
+        self._insert(temp_db, "311", "v1.0.0")
+        temp_db.save_downloaded(
+            "311", _saved_copy("311", predates_section_tree=True), "h", 1, version="v1.0.0"
+        )
+
+        updates = temp_db.check_updates_available()
+
+        assert [(u["benchmark_id"], u["title"], u["reason"]) for u in updates] == [
+            ("310", "CIS Benchmark 310", "cached copy cannot be read"),
+            ("311", "CIS Benchmark 311", "saved before sections were recorded"),
+            ("6469", None, "cached copy cannot be read"),
+            ("6470", None, "cached copy cannot be read"),
+        ]
+        assert temp_db.update_reason_of("310") == "cached copy cannot be read"
+        assert temp_db.update_reason_of("6470") == "cached copy cannot be read"
+
+    def test_check_updates_lists_by_id_as_a_number(self, temp_db):
+        """As list orders them: 7111 before 15287."""
+        for bid in ("15287", "7111"):
+            self._insert(temp_db, bid, "v1.0.0")
+            temp_db.save_downloaded(
+                bid, _saved_copy(bid, predates_section_tree=True), "h", 1, version="v1.0.0"
+            )
+
+        assert [u["benchmark_id"] for u in temp_db.check_updates_available()] == [
+            "7111",
+            "15287",
+        ]
+
+    def test_check_updates_reports_such_a_copy_the_catalog_does_not_list(self, temp_db):
+        """A copy downloaded while the catalog did not list it is out of date all the same;
+        its title comes from the copy, and a current copy outside the catalog is not listed."""
+        temp_db.save_downloaded(
+            "6467", _saved_copy("6467", predates_section_tree=True), "h", 1, version="v1.0.0"
+        )
+        temp_db.save_downloaded("6468", _saved_copy("6468"), "h", 1, version="v1.0.0")
+
+        (update,) = temp_db.check_updates_available()
+
+        assert (update["benchmark_id"], update["title"], update["catalog_version"]) == (
+            "6467",
+            "CIS Benchmark 6467",
+            None,
+        )
+        assert update["reason"] == "saved before sections were recorded"
 
 
 class TestStatistics:
@@ -2315,6 +2402,38 @@ class TestPublishDatesAndTheUpdateRule:
             copy_version=copy_version,
             copy_published=as_date(copy_date),
             downloaded_at=datetime(2025, 11, 1, 12, tzinfo=UTC),
+            copy_predates_section_tree=False,
+        )
+
+        assert reason == expected
+
+    @pytest.mark.parametrize(
+        ("catalog_version", "catalog_date", "copy_version", "expected"),
+        [
+            # Nothing else is behind: the copy is out of date because it predates the tree
+            ("v4.0.0", None, "v4.0.0", "saved before sections were recorded"),
+            (None, None, None, "saved before sections were recorded"),
+            # A catalog behind the copy says nothing about the copy's sections
+            ("v3.0.0", "2026-01-01", "v4.0.0", "saved before sections were recorded"),
+            # A newer release is reported first; downloading it records the sections too
+            ("v4.1.0", None, "v4.0.0", "newer version in catalog"),
+            ("v4.0.0", "2026-01-01", "v4.0.0", "published after download"),
+        ],
+    )
+    def test_a_copy_that_predates_the_section_tree_is_out_of_date(
+        self, catalog_version, catalog_date, copy_version, expected
+    ):
+        from datetime import UTC, date, datetime
+
+        from cis_bench.catalog.database import update_reason
+
+        reason = update_reason(
+            catalog_version=catalog_version,
+            catalog_published=date.fromisoformat(catalog_date) if catalog_date else None,
+            copy_version=copy_version,
+            copy_published=date(2025, 8, 28),
+            downloaded_at=datetime(2025, 11, 1, 12, tzinfo=UTC),
+            copy_predates_section_tree=True,
         )
 
         assert reason == expected
@@ -2323,7 +2442,12 @@ class TestPublishDatesAndTheUpdateRule:
         from datetime import date
 
         db.save_downloaded(
-            "23598", "{}", "h", 1, version="v4.0.0", published_date=date(2025, 8, 28)
+            "23598",
+            _saved_copy("23598"),
+            "h",
+            1,
+            version="v4.0.0",
+            published_date=date(2025, 8, 28),
         )
         db.record_page(
             "23598", BenchmarkPage(title="CIS Benchmark", published_date=date(2026, 1, 5))

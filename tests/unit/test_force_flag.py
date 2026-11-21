@@ -77,6 +77,7 @@ class TestForceFlag:
                 "downloaded_at": datetime.now(),
                 "recommendation_count": 100,
             }
+            mock_db.update_reason_of.return_value = None  # the copy is current
 
             with patch("cis_bench.fetcher.auth.AuthManager.get_or_create_session") as mock_auth:
                 mock_session = Mock()

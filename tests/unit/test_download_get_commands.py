@@ -343,6 +343,7 @@ class TestDownloadCacheSkip:
                         "downloaded_at": datetime(2026, 11, 7, 2, 5, 58, tzinfo=UTC),
                         "recommendation_count": 10,
                     }
+                    mock_db.update_reason_of.return_value = None  # the copy is current
 
                     result = runner.invoke(cli, ["download", "12345"])
 
@@ -352,6 +353,74 @@ class TestDownloadCacheSkip:
                     assert "Use --force to re-download" in result.output
                     # Should NOT have called download
                     mock_scraper.download_benchmark.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("cached_copy", "catalog_version", "downloads_again", "says"),
+        [
+            ({"sections": None}, "v1.0.0", True, "saved before sections were recorded"),
+            (
+                {"sections": [], "section_descriptions_recorded": True},
+                "v1.1.0",
+                True,
+                "newer version in catalog",
+            ),
+            (
+                {"sections": [], "section_descriptions_recorded": True},
+                "v1.0.0",
+                False,
+                "already cached",
+            ),
+            # None: a cached copy that cannot be read
+            (None, "v1.0.0", True, "cached copy cannot be read"),
+        ],
+        ids=["copy-saved-before-sections", "newer-catalog-version", "current-copy", "unreadable"],
+    )
+    def test_download_applies_the_update_rule_to_a_cached_copy(
+        self,
+        runner,
+        sample_benchmark,
+        tmp_path,
+        monkeypatch,
+        cached_copy,
+        catalog_version,
+        downloads_again,
+        says,
+    ):
+        """A plain download (no --force) fetches a cached copy again when the update rule says
+        it is out of date, saying why, and skips a current one."""
+        from cis_bench.catalog.database import CatalogDatabase, serialize_benchmark_json
+
+        monkeypatch.setenv("CIS_BENCH_HOME", str(tmp_path))
+        db = CatalogDatabase(tmp_path / "catalog.db")
+        db.initialize_schema()
+        db.insert_benchmark(
+            {
+                "benchmark_id": "12345",
+                "title": sample_benchmark.title,
+                "version": catalog_version,
+                "url": "https://workbench.cisecurity.org/benchmarks/12345",
+                "status": "Published",
+            }
+        )
+        content_json, content_hash = (
+            ("{not json", "h")
+            if cached_copy is None
+            else serialize_benchmark_json(sample_benchmark.model_copy(update=cached_copy))
+        )
+        db.save_downloaded("12345", content_json, content_hash, 2, version="v1.0.0")
+        db.close()
+
+        with (
+            patch("cis_bench.fetcher.auth.AuthManager.get_or_create_session"),
+            patch("cis_bench.fetcher.workbench.WorkbenchScraper") as mock_scraper_class,
+        ):
+            mock_scraper_class.return_value.download_benchmark.return_value = sample_benchmark
+
+            result = runner.invoke(cli, ["download", "12345", "-o", str(tmp_path / "out")])
+
+        assert result.exit_code == 0, result.output
+        assert says in " ".join(result.output.split())
+        assert mock_scraper_class.return_value.download_benchmark.called is downloads_again
 
     def test_the_files_a_download_writes_carry_the_catalogs_status(
         self, runner, sample_benchmark, tmp_path, monkeypatch
