@@ -1249,6 +1249,9 @@ class TestDownloadedBenchmarks:
         self._insert(temp_db, "310", "v1.0.0")
         temp_db.save_downloaded("310", "{not json", "h", 1, version="v1.0.0")
         temp_db.save_downloaded("6469", '{"title": 3}', "h", 1, version="v1.0.0")
+        # Worked out before field validation: the wrong type must still be a copy that
+        # cannot be read, not an error that stops the check
+        temp_db.save_downloaded("6470", '{"scraper_version": []}', "h", 1, version="v1.0.0")
         self._insert(temp_db, "311", "v1.0.0")
         temp_db.save_downloaded(
             "311", _saved_copy("311", predates_section_tree=True), "h", 1, version="v1.0.0"
@@ -1260,8 +1263,10 @@ class TestDownloadedBenchmarks:
             ("310", "CIS Benchmark 310", "cached copy cannot be read"),
             ("311", "CIS Benchmark 311", "saved before sections were recorded"),
             ("6469", None, "cached copy cannot be read"),
+            ("6470", None, "cached copy cannot be read"),
         ]
         assert temp_db.update_reason_of("310") == "cached copy cannot be read"
+        assert temp_db.update_reason_of("6470") == "cached copy cannot be read"
 
     def test_check_updates_lists_by_id_as_a_number(self, temp_db):
         """As list orders them: 7111 before 15287."""
