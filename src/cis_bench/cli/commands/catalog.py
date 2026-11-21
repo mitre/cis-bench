@@ -14,7 +14,7 @@ from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
 
-from cis_bench.catalog.database import CatalogDatabase
+from cis_bench.catalog.database import NEWER_VERSION, SAVED_BEFORE_SECTIONS, CatalogDatabase
 from cis_bench.catalog.search import CatalogSearch
 from cis_bench.cli.helpers.errors import report_unreachable
 from cis_bench.cli.helpers.output import display_time, output_data, showing_line
@@ -629,7 +629,8 @@ def check_updates(offline):
 
     Compares each downloaded benchmark's version with the catalog, and (unless
     --offline) fetches its WorkBench page to see whether it was published again
-    after you downloaded it.
+    after you downloaded it. A copy saved before sections were recorded is listed
+    too: downloading it again records them.
 
     \b
     Example:
@@ -672,18 +673,18 @@ def check_updates(offline):
 
             for u in updates:
                 console.print(f"  [{u['benchmark_id']}] {escape(str(u['title']))}")
-                if u["reason"] == "newer version in catalog":
+                if u["reason"] == NEWER_VERSION:
                     console.print(
                         f"      Version: {escape(str(u['downloaded_version'] or '?'))} -> {escape(str(u['catalog_version']))}"
                     )
+                elif u["reason"] == SAVED_BEFORE_SECTIONS:
+                    console.print(f"      {SAVED_BEFORE_SECTIONS.capitalize()}")
                 else:
                     console.print(f"      WorkBench published {escape(str(u['published_date']))}")
                 console.print(f"      Downloaded: {display_time(u['downloaded_at'])}")
                 console.print()
 
-            console.print(
-                "[cyan]Use 'cis-bench catalog download <id>' to download the update.[/cyan]"
-            )
+            console.print("[cyan]Use 'cis-bench download <id>' to download the update.[/cyan]")
 
     except (click.Abort, click.ClickException):
         raise  # Click reports its own errors (offline mode refuses with one)

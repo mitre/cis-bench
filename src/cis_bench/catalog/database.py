@@ -12,7 +12,7 @@ from collections.abc import Callable, Iterable
 from datetime import date, datetime
 from gettext import ngettext
 from pathlib import Path
-from typing import NamedTuple, TypeVar
+from typing import Final, NamedTuple, TypeVar
 
 from sqlalchemy import (
     Integer,
@@ -226,6 +226,12 @@ class _PendingUpgrades(NamedTuple):
         )
 
 
+# The reasons update_reason gives, as check-updates shows them
+NEWER_VERSION: Final = "newer version in catalog"
+PUBLISHED_AFTER_DOWNLOAD: Final = "published after download"
+SAVED_BEFORE_SECTIONS: Final = "saved before sections were recorded"
+
+
 def update_reason(
     *,
     catalog_version: str | None,
@@ -233,21 +239,42 @@ def update_reason(
     copy_version: str | None,
     copy_published: date | None,
     downloaded_at: datetime,
+    copy_predates_section_tree: bool,
 ) -> str | None:
     """Why a cached copy is behind WorkBench, or None when it is not.
 
-    - "newer version in catalog": the catalog's version parses as newer than the copy's;
-    - "published after download": the date WorkBench shows the release as published is after
+    - NEWER_VERSION: the catalog's version parses as newer than the copy's;
+    - PUBLISHED_AFTER_DOWNLOAD: the date WorkBench shows the release as published is after
       the date the copy was published (or, for a copy cached before dates were recorded,
-      after the day it was downloaded).
-    A catalog whose version is behind the copy never makes it an update, whatever its date.
+      after the day it was downloaded);
+    - SAVED_BEFORE_SECTIONS: the copy predates the section tree
+      (Benchmark.predates_section_tree), so it lacks data only WorkBench has.
+    A catalog whose version is behind the copy never makes the release newer, whatever its
+    date; a copy that predates the section tree is out of date all the same. A newer release
+    is named first: downloading it records the sections too.
     """
     if is_newer_version(catalog_version, copy_version):
-        return "newer version in catalog"
-    if is_newer_version(copy_version, catalog_version) or catalog_published is None:
-        return None
-    copy_date = copy_published if copy_published is not None else downloaded_at.date()
-    return "published after download" if catalog_published > copy_date else None
+        return NEWER_VERSION
+    if not is_newer_version(copy_version, catalog_version) and catalog_published is not None:
+        copy_date = copy_published if copy_published is not None else downloaded_at.date()
+        if catalog_published > copy_date:
+            return PUBLISHED_AFTER_DOWNLOAD
+    return SAVED_BEFORE_SECTIONS if copy_predates_section_tree else None
+
+
+def _cached_copy_update_reason(
+    downloaded: DownloadedBenchmark, catalog: CatalogBenchmark | None, copy: Benchmark
+) -> str | None:
+    """update_reason for a cached copy: its row, its catalog row (None when the catalog does
+    not list it) and the copy itself."""
+    return update_reason(
+        catalog_version=catalog.version if catalog else None,
+        catalog_published=catalog.published_date if catalog else None,
+        copy_version=downloaded.version,
+        copy_published=downloaded.published_date,
+        downloaded_at=downloaded.downloaded_at,
+        copy_predates_section_tree=copy.predates_section_tree,
+    )
 
 
 def normalize_status_filter(status: str | None) -> str | None:
@@ -1343,15 +1370,30 @@ class CatalogDatabase:
             session.add(benchmark)
             session.commit()
 
+    def update_reason_of(self, benchmark_id: str) -> str | None:
+        """Why the cached copy of benchmark_id is out of date (update_reason), or None when it
+        is current or not downloaded. A copy the catalog does not list is compared with
+        nothing but its own section tree."""
+        with Session(self.engine) as session:
+            downloaded = session.get(DownloadedBenchmark, benchmark_id)
+            if downloaded is None:
+                return None
+            catalog = session.get(CatalogBenchmark, benchmark_id)
+            copy = deserialize_benchmark_json(downloaded.content_json)
+            return _cached_copy_update_reason(downloaded, catalog, copy)
+
     def check_updates_available(self) -> list[dict]:
-        """Downloaded benchmarks that WorkBench has moved past, by ``update_reason``.
+        """Downloaded benchmarks that are out of date, by ``update_reason``.
 
         The catalog row carries WorkBench's current version and (once a command has read the
-        release's page) its publish date; the cached row carries the copy's.
+        release's page) its publish date; the cached row carries the copy's, and the copy
+        itself says whether it predates the section tree. A copy the catalog does not list
+        is checked too (only the section tree can make it out of date); its title is the
+        copy's.
         """
         with Session(self.engine) as session:
             rows = session.exec(
-                select(DownloadedBenchmark, CatalogBenchmark).join(
+                select(DownloadedBenchmark, CatalogBenchmark).outerjoin(
                     CatalogBenchmark,
                     col(CatalogBenchmark.benchmark_id) == col(DownloadedBenchmark.benchmark_id),
                 )
@@ -1359,27 +1401,22 @@ class CatalogDatabase:
 
             updates: list[dict] = []
             for downloaded, catalog in rows:
-                reason = update_reason(
-                    catalog_version=catalog.version,
-                    catalog_published=catalog.published_date,
-                    copy_version=downloaded.version,
-                    copy_published=downloaded.published_date,
-                    downloaded_at=downloaded.downloaded_at,
-                )
+                copy = deserialize_benchmark_json(downloaded.content_json)
+                reason = _cached_copy_update_reason(downloaded, catalog, copy)
                 if reason is None:
                     continue
                 updates.append(
                     {
                         "benchmark_id": downloaded.benchmark_id,
-                        "title": catalog.title,
+                        "title": catalog.title if catalog else copy.title,
                         "downloaded_version": downloaded.version,
-                        "catalog_version": catalog.version,
+                        "catalog_version": catalog.version if catalog else None,
                         "downloaded_at": downloaded.downloaded_at,
-                        "published_date": catalog.published_date,
+                        "published_date": catalog.published_date if catalog else None,
                         "reason": reason,
                     }
                 )
-            updates.sort(key=lambda u: u["benchmark_id"])
+            updates.sort(key=lambda u: int(u["benchmark_id"]))  # as list orders them
             return updates
 
     def get_catalog_stats(self) -> dict[str, int]:

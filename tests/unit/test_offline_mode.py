@@ -110,7 +110,13 @@ def catalog(data_dir, sample_recommendation_complete, no_network, auth_manager_c
             }
         )
 
-    def cached(benchmark_id: str, version: str = "v2.0.1", rec_title: str | None = None):
+    def cached(
+        benchmark_id: str,
+        version: str = "v2.0.1",
+        rec_title: str | None = None,
+        *,
+        predates_section_tree: bool = False,
+    ):
         title = dict((UBUNTU, RHEL, DEBIAN))[benchmark_id]
         recommendation = sample_recommendation_complete.model_copy(
             update={"title": rec_title or sample_recommendation_complete.title}
@@ -122,6 +128,8 @@ def catalog(data_dir, sample_recommendation_complete, no_network, auth_manager_c
             version=version,
             downloaded_at=datetime(2026, 11, 1, 12, 0, tzinfo=UTC),
             published_date=date(2026, 10, 1),
+            sections=None if predates_section_tree else [],
+            section_descriptions_recorded=not predates_section_tree,
             scraper_version="v1_2025_10",
             total_recommendations=1,
             recommendations=[recommendation],
@@ -233,6 +241,19 @@ class TestWorksFromTheCache:
         result = runner.invoke(cli, ["--offline", "download", UBUNTU[0]])
         assert result.exit_code == 0, result.output
         assert f"Benchmark {UBUNTU[0]} already cached" in result.output
+        auth_manager_class.assert_not_called()
+
+    def test_download_of_an_out_of_date_copy_is_refused_without_contacting_workbench(
+        self, runner, catalog, auth_manager_class
+    ):
+        """The copy was saved before sections were recorded: a plain download would fetch it
+        again, which offline mode refuses, as it does for catalog download."""
+        catalog.cached(UBUNTU[0], predates_section_tree=True)
+        result = runner.invoke(cli, ["--offline", "download", UBUNTU[0]])
+        assert result.exit_code == 1, result.output
+        flat = " ".join(result.output.split())
+        assert "out of date (saved before sections were recorded)" in flat
+        assert f"needs CIS WorkBench to download benchmark {UBUNTU[0]}" in flat
         auth_manager_class.assert_not_called()
 
     def test_download_of_a_cached_and_a_missing_benchmark_fails_only_the_missing_one(

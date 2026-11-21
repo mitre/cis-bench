@@ -52,6 +52,8 @@ def mock_scraper(sample_recommendation_minimal):
         url="https://workbench.cisecurity.org/benchmarks/23598",
         published_date=date(2025, 8, 28),
         description="Hardening guidance.",
+        sections=[],
+        section_descriptions_recorded=True,
         scraper_version="v1_2025_10",
         total_recommendations=len(recs),
         recommendations=recs,
@@ -148,6 +150,24 @@ class TestDownloadByID:
         downloader.download_by_id("23598")
 
         assert mock_scraper.download_benchmark.call_count == 2
+
+    @pytest.mark.parametrize(
+        "saved",
+        [{"sections": None}, {"section_descriptions_recorded": False}],
+        ids=["saved-before-sections", "saved-before-section-descriptions"],
+    )
+    def test_a_copy_that_predates_the_section_tree_is_downloaded_again(
+        self, downloader, mock_scraper, saved
+    ):
+        """Same version and date as the catalog, but the copy lacks the section tree: a plain
+        download (no --force) fetches the benchmark again instead of reporting it current."""
+        current = mock_scraper.download_benchmark.return_value
+        downloader.cache("23598", current.model_copy(update=saved))
+
+        result = downloader.download_by_id("23598")
+
+        assert result["status"] == "updated"
+        assert mock_scraper.download_benchmark.call_count == 1
 
     def test_download_force_redownloads(self, downloader, mock_scraper):
         """Test force flag re-downloads."""

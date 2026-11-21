@@ -18,12 +18,18 @@ def runner():
     return CliRunner()
 
 
-def _benchmark(benchmark_id: str, title: str, version: str) -> Benchmark:
+def _benchmark(
+    benchmark_id: str, title: str, version: str, *, predates_section_tree: bool = False
+) -> Benchmark:
+    """A copy as a download saves it now (its section tree recorded), or one saved before
+    sections were recorded."""
     return Benchmark(
         title=title,
         benchmark_id=benchmark_id,
         url=f"https://workbench.cisecurity.org/benchmarks/{benchmark_id}",
         version=version,
+        sections=None if predates_section_tree else [],
+        section_descriptions_recorded=not predates_section_tree,
         downloaded_at=datetime(2026, 11, 6, 12, 0, 0),
         scraper_version="1.0.0",
         total_recommendations=1,
@@ -141,6 +147,49 @@ class TestListShowsTheCacheAndTheExportedFiles:
         lines = result.output.strip().splitlines()
         assert lines[0].startswith("benchmark_id,title,version,recommendations")
         assert lines[1].startswith("201,CIS Cached Benchmark,v2.0.1,1")
+
+
+class TestListMarksCopiesSavedBeforeSections:
+    """A copy saved before sections were recorded is out of date; list says so and how to
+    update it."""
+
+    @pytest.fixture
+    def with_an_old_copy(self, home):
+        db = CatalogDatabase(home / "catalog.db")
+        try:
+            content_json, content_hash = serialize_benchmark_json(
+                _benchmark("202", "CIS Old Copy Benchmark", "v1.0.0", predates_section_tree=True)
+            )
+            db.save_downloaded("202", content_json, content_hash, 1, version="v1.0.0")
+        finally:
+            db.close()
+        return home
+
+    def test_the_table_marks_only_the_old_copy_and_says_how_to_update_it(
+        self, runner, with_an_old_copy
+    ):
+        result = runner.invoke(cli, ["list"])
+
+        assert result.exit_code == 0, result.output
+        cache = result.output.partition("Exported files in")[0]
+        rows = {line.split()[1]: line for line in cache.splitlines() if line.startswith("│ 20")}
+        assert "*" in rows["202"]
+        assert "*" not in rows["201"]
+        assert "* saved before sections were recorded" in cache
+        assert "cis-bench download 202" in " ".join(cache.split())
+        assert unusable_command_hints(result.output) == []
+
+    def test_structured_output_says_which_copies_predate_the_section_tree(
+        self, runner, with_an_old_copy
+    ):
+        result = runner.invoke(cli, ["list", "--output-format", "json"])
+
+        assert result.exit_code == 0, result.output
+        downloaded = json.loads(result.output)["downloaded"]
+        assert {b["benchmark_id"]: b["predates_section_tree"] for b in downloaded} == {
+            "201": False,
+            "202": True,
+        }
 
 
 class TestListCopesWithWhatTheCacheMayHold:
