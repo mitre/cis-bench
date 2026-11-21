@@ -352,6 +352,36 @@ class TestRecommendation:
 
         assert [s.model_dump() for s in deserialize_benchmark_json(stored).sections] == [section]
 
+    @pytest.mark.parametrize(
+        ("saved", "predates"),
+        [
+            ({}, True),
+            ({"section_descriptions_recorded": True}, True),
+            ({"sections": []}, True),
+            ({"sections": [], "section_descriptions_recorded": False}, True),
+            ({"sections": [], "section_descriptions_recorded": True}, False),
+        ],
+        ids=[
+            "no-sections",
+            "marker-without-sections",
+            "sections-without-the-marker",
+            "sections-marked-not-recorded",
+            "sections-and-descriptions",
+        ],
+    )
+    def test_a_copy_predates_the_section_tree_until_both_were_recorded(
+        self, minimal_benchmark_data, saved, predates
+    ):
+        """A copy saved after sections but before their descriptions were recorded has
+        descriptions that are all None, as a current copy of a benchmark whose section pages
+        have no overview does; only the marker tells them apart."""
+        section = {"id": 7, "number": "1", "title": "Section one", "order": 1}
+        if "sections" in saved:
+            saved = {**saved, "sections": [section]}
+        stored = json.dumps({**minimal_benchmark_data, **saved})
+
+        assert deserialize_benchmark_json(stored).predates_section_tree is predates
+
     def test_a_benchmark_defines_each_profile_title_once(self, minimal_benchmark_data):
         # Profile titles are what rules name; two definitions of one title are ambiguous.
         definition = {"title": "Level 1 - Alpha"}

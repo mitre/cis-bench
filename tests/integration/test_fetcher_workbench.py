@@ -2238,6 +2238,8 @@ class TestTheSectionDescriptions:
             (3511916, "    echo <path>\n\n" + OVERVIEW_MARKDOWN),
             (3511923, None),
         ]
+        assert benchmark.section_descriptions_recorded is True
+        assert benchmark.predates_section_tree is False
 
     @patch("cis_bench.fetcher.workbench.StrategyDetector.detect_strategy")
     def test_a_section_page_that_keeps_failing_fails_the_download(

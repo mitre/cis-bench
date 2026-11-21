@@ -384,6 +384,13 @@ class Benchmark(BaseModel):
         "copy is told apart from one that records them",
     )
 
+    section_descriptions_recorded: bool = Field(
+        default=False,
+        description="Whether each section's description was fetched from its WorkBench page when "
+        "the copy was saved. False on a copy saved before descriptions were recorded, whose "
+        "sections all have no description whatever their pages say",
+    )
+
     workbench_status: str | None = Field(
         default=None,
         description="The benchmark's status on CIS WorkBench (e.g. 'Published', 'Draft', "
@@ -417,6 +424,13 @@ class Benchmark(BaseModel):
 
     total_recommendations: int = Field(..., ge=0)
     recommendations: list[Recommendation] = Field(...)
+
+    @property
+    def predates_section_tree(self) -> bool:
+        """Whether the copy was saved before the section tree was recorded in full: without
+        sections, or with sections but before their descriptions were fetched. Such a copy is
+        out of date wherever sections are needed; this is the one rule that says so."""
+        return self.sections is None or not self.section_descriptions_recorded
 
     @model_validator(mode="before")
     @classmethod
