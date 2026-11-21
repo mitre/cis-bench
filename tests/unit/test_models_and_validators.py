@@ -382,6 +382,19 @@ class TestRecommendation:
 
         assert deserialize_benchmark_json(stored).predates_section_tree is predates
 
+    @pytest.mark.parametrize("scraper_version", [[], {}, 1, None], ids=type)
+    def test_a_stored_copy_with_a_wrong_typed_scraper_version_is_a_validation_error(
+        self, minimal_benchmark_data, scraper_version
+    ):
+        """A copy saved without text_format has its form worked out from scraper_version; a
+        value that is not a string is rejected by the field's own validation, never by a
+        TypeError from working out the form (readers treat a ValidationError as a copy that
+        cannot be read)."""
+        stored = json.dumps({**minimal_benchmark_data, "scraper_version": scraper_version})
+
+        with pytest.raises(ValidationError, match="scraper_version"):
+            deserialize_benchmark_json(stored)
+
     def test_a_benchmark_defines_each_profile_title_once(self, minimal_benchmark_data):
         # Profile titles are what rules name; two definitions of one title are ambiguous.
         definition = {"title": "Level 1 - Alpha"}
