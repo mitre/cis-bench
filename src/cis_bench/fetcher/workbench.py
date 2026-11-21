@@ -637,6 +637,7 @@ class WorkbenchScraper:
             description=page.description,
             profile_definitions=page.profile_definitions,
             sections=sections,
+            section_descriptions_recorded=True,
             scraper_version=scraper_version,
             text_format="html" if scraper_version in HTML_ERA_SCRAPER_VERSIONS else "markdown",
             artifact_title_format="markdown",
