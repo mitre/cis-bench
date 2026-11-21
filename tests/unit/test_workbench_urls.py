@@ -9,6 +9,7 @@ from cis_bench.utils.workbench_urls import (
     normalize_benchmark_url,
     recommendation_url,
     resolve_benchmark_reference,
+    section_url,
 )
 
 BASE = "https://workbench.cisecurity.org"
@@ -134,6 +135,12 @@ class TestWorkBenchPageUrls:
             == f"{STAGING}/sections/4567/recommendations/374956"
         )
 
+    def test_section_url_names_the_benchmark_and_section(self):
+        assert (
+            section_url(23598, 4462273, base_url=STAGING)
+            == f"{STAGING}/benchmarks/23598/sections/4462273"
+        )
+
     @pytest.mark.parametrize("bad", ["1/../2", "abc", "", " 1", "١٢", -1, None, 1.5])
     def test_page_urls_refuse_ids_that_are_not_ascii_digits(self, bad):
         with pytest.raises(ValueError):
@@ -142,6 +149,10 @@ class TestWorkBenchPageUrls:
             recommendation_url(bad, 1, base_url=STAGING)
         with pytest.raises(ValueError):
             recommendation_url(1, bad, base_url=STAGING)
+        with pytest.raises(ValueError):
+            section_url(bad, 1, base_url=STAGING)
+        with pytest.raises(ValueError):
+            section_url(1, bad, base_url=STAGING)
 
 
 class TestTheOriginComesFromTheCaller:

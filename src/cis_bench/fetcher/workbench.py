@@ -36,7 +36,7 @@ from cis_bench.utils.html_parser import attribute_text
 from cis_bench.utils.markdown_text import html_to_markdown, unix_line_breaks
 from cis_bench.utils.parallel import parallel_execute_batched
 from cis_bench.utils.vue_payload import decode_vue_payload
-from cis_bench.utils.workbench_urls import navtree_url, recommendation_url
+from cis_bench.utils.workbench_urls import navtree_url, recommendation_url, section_url
 
 # Suppress SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -214,16 +214,12 @@ def _description(soup: BeautifulSoup) -> str | None:
 
     WorkBench renders it as <wb-recommendation-data attribute="overview" text="...">, whose
     text is Markdown like a recommendation's text fields. It is kept exactly as written,
-    every line break as \\n: nothing is trimmed, so a placeholder such as <path>, the
-    indentation of a first line and the blank lines inside a fence left open all stay (the
-    page writes the attribute without whitespace around the text). Text of only spaces, tabs
-    and line breaks is no overview. A page written with an "Overview" heading instead gives
-    the text of its first paragraphs up to the next heading.
+    every line break as \\n (_overview_text). A page written with an "Overview" heading instead
+    gives the text of its first paragraphs up to the next heading.
     """
-    component = soup.find("wb-recommendation-data", attrs={"attribute": "overview"})
-    if isinstance(component, Tag):
-        text = unix_line_breaks(attribute_text(component, "text") or "")
-        return text if text.strip(" \t\n") else None
+    component = _overview_component(soup)
+    if component is not None:
+        return _overview_text(component)
 
     heading = soup.find(
         lambda tag: isinstance(tag, Tag)
@@ -240,6 +236,32 @@ def _description(soup: BeautifulSoup) -> str | None:
         if text:
             paragraphs.append(text)
     return " ".join(paragraphs[:_OVERVIEW_PARAGRAPHS]) or None
+
+
+def _overview_component(soup: BeautifulSoup) -> Tag | None:
+    """The page's <wb-recommendation-data attribute="overview"> component, the one WorkBench
+    renders a benchmark's and a section's overview with; None when the page has none."""
+    component = soup.find("wb-recommendation-data", attrs={"attribute": "overview"})
+    return component if isinstance(component, Tag) else None
+
+
+def _overview_text(component: Tag) -> str | None:
+    """The Markdown in an overview component's text attribute, exactly as written.
+
+    Every line break becomes \\n and nothing is trimmed, so a placeholder such as <path>, the
+    indentation of a first line and the blank lines inside a fence left open all stay (the
+    page writes the attribute without whitespace around the text). Text of only spaces, tabs
+    and line breaks is no overview.
+    """
+    text = unix_line_breaks(attribute_text(component, "text") or "")
+    return text if text.strip(" \t\n") else None
+
+
+def parse_section_description(html: str) -> str | None:
+    """The overview on a section's WorkBench page, as the Markdown the page gives (read as
+    the benchmark page's overview is); None for a page without the overview component."""
+    component = _overview_component(BeautifulSoup(html, "html.parser"))
+    return _overview_text(component) if component is not None else None
 
 
 def _login_page_error(url: str) -> AuthenticationError:
@@ -474,6 +496,44 @@ class WorkbenchScraper:
         strategy = self._get_strategy(html)
         return strategy.extract_recommendation(html)
 
+    def fetch_section_description(self, url: str) -> str | None:
+        """Fetch a section's page and read its overview (parse_section_description)."""
+        return parse_section_description(self.fetch_html(url))
+
+    def _fetch_every_page[T, R](
+        self,
+        benchmark_url: str,
+        items: list[T],
+        fetch: Callable[[T], R],
+        page_url: Callable[[T], str],
+        progress_callback: Callable[[int, int, T], None] | None = None,
+    ) -> list[R]:
+        """fetch every item's page concurrently, paced by the session's adapter; the results
+        come back in the items' order.
+
+        Raises:
+            AuthenticationError: A page was WorkBench's login page; no batch starts after the
+                one that saw it, since every further fetch would get the login page too
+            IncompleteDownloadError: A page still failed (a copy without it would be
+                incomplete); it names every page that failed
+        """
+        fetched = parallel_execute_batched(
+            items,
+            fetch,
+            batch_size=self.batch_size,
+            max_workers=self.max_workers,
+            progress_callback=progress_callback,
+            stop_on=(AuthenticationError,),
+        )
+        for _, error in fetched.failed:
+            if isinstance(error, AuthenticationError):
+                raise error
+        if fetched.failed:
+            raise IncompleteDownloadError(
+                benchmark_url, [(page_url(item), str(error)) for item, error in fetched.failed]
+            )
+        return fetched.results
+
     def download_benchmark(
         self, benchmark_url: str, progress_callback: Callable[[str], None] | None = None
     ) -> Benchmark:
@@ -489,6 +549,7 @@ class WorkbenchScraper:
         Raises:
             ValueError: If data validation fails
             AuthenticationError: If the session expires during the download
+            IncompleteDownloadError: If a section or recommendation page still fails
             FetchError: If the benchmark page or navigation tree cannot be fetched
             requests.HTTPError: For a non-retryable HTTP status on those requests
         """
@@ -547,27 +608,22 @@ class WorkbenchScraper:
                 level="debug",
             )
 
-        # Fetch recommendations concurrently; the session's adapter paces the requests and
-        # results come back in navtree order. An expired session stops the run after the
-        # batch that saw it.
-        fetched = parallel_execute_batched(
+        def page_of(section: Section) -> str:
+            return section_url(benchmark_id, section.id, base_url=self.base_url)
+
+        def describe(section: Section) -> Section:
+            description = self.fetch_section_description(page_of(section))
+            return Section.model_validate({**section.model_dump(), "description": description})
+
+        # Each section's page, then each recommendation's, in WorkBench's order
+        sections = self._fetch_every_page(benchmark_url, navtree.sections, describe, page_of)
+        recommendations = self._fetch_every_page(
+            benchmark_url,
             recommendations_list,
             build_recommendation,
-            batch_size=self.batch_size,
-            max_workers=self.max_workers,
+            lambda rec_meta: rec_meta.url,
             progress_callback=report_completion,
-            stop_on=(AuthenticationError,),
         )
-        for _, error in fetched.failed:
-            if isinstance(error, AuthenticationError):
-                # Every further fetch would get the login page too.
-                raise error
-        if fetched.failed:
-            # A copy without a page would be incomplete: the benchmark is not downloaded
-            raise IncompleteDownloadError(
-                benchmark_url, [(rec_meta.url, str(error)) for rec_meta, error in fetched.failed]
-            )
-        recommendations = fetched.results
 
         # Create Benchmark (Pydantic validates automatically). A strategy that copied the
         # page's HTML says so, and the model turns that text into Markdown.
@@ -580,7 +636,7 @@ class WorkbenchScraper:
             published_date=page.published_date,
             description=page.description,
             profile_definitions=page.profile_definitions,
-            sections=navtree.sections,
+            sections=sections,
             scraper_version=scraper_version,
             text_format="html" if scraper_version in HTML_ERA_SCRAPER_VERSIONS else "markdown",
             artifact_title_format="markdown",

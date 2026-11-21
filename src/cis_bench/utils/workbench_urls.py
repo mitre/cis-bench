@@ -135,6 +135,14 @@ def navtree_url(benchmark_id: object, *, base_url: str) -> str:
     return f"{base_url}/api/v1/benchmarks/{benchmark}/navtree"
 
 
+def section_url(benchmark_id: object, section_id: object, *, base_url: str) -> str:
+    """One section's page of a benchmark, from the benchmark id and the section id in the
+    navtree."""
+    benchmark = _workbench_id(benchmark_id, "benchmark id")
+    section = _workbench_id(section_id, "section id")
+    return f"{base_url}/benchmarks/{benchmark}/sections/{section}"
+
+
 def recommendation_url(section_id: object, recommendation_id: object, *, base_url: str) -> str:
     """One recommendation's page, from the section and recommendation ids in the navtree."""
     section = _workbench_id(section_id, "section id")

@@ -2188,6 +2188,132 @@ class TestTheSectionTree:
         ]
 
 
+def _section_page_url(section_id: int) -> str:
+    return f"{BASE}/benchmarks/18528/sections/{section_id}"
+
+
+class TestTheSectionDescriptions:
+    """Each section's description is the overview on its own WorkBench page."""
+
+    @patch("cis_bench.fetcher.workbench.StrategyDetector.detect_strategy")
+    def test_each_section_carries_its_page_overview_unchanged(
+        self,
+        mock_detector,
+        mock_strategy,
+        sample_benchmark_title_html,
+        sample_benchmark_navtree,
+        sample_recommendation_html,
+        stub_session,
+    ):
+        """The overview is the Markdown the section page gives, as the benchmark page's is; a
+        section page without the overview component gives the section no description."""
+        mock_detector.return_value = mock_strategy
+        indented = OVERVIEW_COMPONENT_HTML.replace(
+            'text="Run', 'text="    echo &lt;path&gt;\n\nRun'
+        )
+        pages = {
+            _section_page_url(3511915): OVERVIEW_COMPONENT_HTML,
+            _section_page_url(3511916): indented,
+            _section_page_url(3511923): "<html><body><wb-page-title></wb-page-title></body></html>",
+        }
+
+        def handler(requested):
+            if requested in pages:
+                return pages[requested]
+            if "navtree" in requested:
+                return sample_benchmark_navtree
+            if "/benchmarks/" in requested:
+                return sample_benchmark_title_html
+            return sample_recommendation_html
+
+        session, _ = stub_session(handler)
+        scraper = WorkbenchScraper(
+            session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
+
+        benchmark = scraper.download_benchmark(f"{BASE}/benchmarks/18528")
+
+        assert [(s.id, s.description) for s in benchmark.sections] == [
+            (3511915, OVERVIEW_MARKDOWN),
+            (3511916, "    echo <path>\n\n" + OVERVIEW_MARKDOWN),
+            (3511923, None),
+        ]
+
+    @patch("cis_bench.fetcher.workbench.StrategyDetector.detect_strategy")
+    def test_a_section_page_that_keeps_failing_fails_the_download(
+        self,
+        mock_detector,
+        mock_strategy,
+        sample_benchmark_title_html,
+        sample_benchmark_navtree,
+        stub_session,
+    ):
+        """A copy without a section's description would be incomplete, as one without a
+        recommendation would: the download fails and names the section page."""
+        from cis_bench.exceptions import IncompleteDownloadError
+
+        mock_detector.return_value = mock_strategy
+        failing = _section_page_url(3511916)
+
+        def handler(requested):
+            if requested == failing:
+                raise requests.Timeout("Read timed out")
+            if "navtree" in requested:
+                return sample_benchmark_navtree
+            if "/benchmarks/" in requested:
+                return sample_benchmark_title_html
+            return "<html>recommendation</html>"
+
+        session, _ = stub_session(handler)
+        scraper = WorkbenchScraper(
+            session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
+
+        with pytest.raises(IncompleteDownloadError) as refused:
+            scraper.download_benchmark(f"{BASE}/benchmarks/18528")
+
+        assert [url for url, _ in refused.value.failures] == [failing]
+        assert "timed out" in str(refused.value)
+
+    @patch("cis_bench.fetcher.workbench.StrategyDetector.detect_strategy")
+    def test_a_login_page_at_a_section_page_stops_the_download(
+        self,
+        mock_detector,
+        mock_strategy,
+        sample_benchmark_title_html,
+        sample_benchmark_navtree,
+        stub_session,
+    ):
+        """An expired session at a section page stops the download as it does at a
+        recommendation page: no recommendation page is requested after it."""
+        from cis_bench.exceptions import AuthenticationError
+
+        mock_detector.return_value = mock_strategy
+        login_html = (
+            '<html><body><div class="index-signin-wrapper"><form action="/login">'
+            '<input name="login"><input name="password"></form></div></body></html>'
+        )
+
+        def handler(requested):
+            if "/sections/" in requested and "/benchmarks/" in requested:
+                return login_html
+            if "navtree" in requested:
+                return sample_benchmark_navtree
+            if "/benchmarks/" in requested:
+                return sample_benchmark_title_html
+            return "<html>recommendation</html>"
+
+        session, transport = stub_session(handler)
+        scraper = WorkbenchScraper(
+            session, base_url=BASE, timeout=TIMEOUT, max_workers=WORKERS, batch_size=BATCH
+        )
+
+        with pytest.raises(AuthenticationError):
+            scraper.download_benchmark(f"{BASE}/benchmarks/18528")
+
+        assert not [url for url in transport.urls if "/recommendations/" in url]
+
+
 class TestTheProfileDefinitions:
     """The benchmark page's profiles are read with their descriptions and parents."""
 

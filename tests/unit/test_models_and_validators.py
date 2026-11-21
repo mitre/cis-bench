@@ -340,7 +340,14 @@ class TestRecommendation:
         assert {rec.section_id for rec in copy.recommendations} == {None}
 
     def test_a_copy_that_records_sections_loads_them_as_saved(self, minimal_benchmark_data):
-        section = {"id": 7, "number": "1", "title": "Section one", "parent_id": None, "order": 1}
+        section = {
+            "id": 7,
+            "number": "1",
+            "title": "Section one",
+            "parent_id": None,
+            "order": 1,
+            "description": "  Section *one*: <path>\n",
+        }
         stored = json.dumps({**minimal_benchmark_data, "sections": [section]})
 
         assert [s.model_dump() for s in deserialize_benchmark_json(stored).sections] == [section]
