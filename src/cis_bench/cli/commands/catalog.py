@@ -14,7 +14,12 @@ from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
 
-from cis_bench.catalog.database import NEWER_VERSION, SAVED_BEFORE_SECTIONS, CatalogDatabase
+from cis_bench.catalog.database import (
+    NEWER_VERSION,
+    SAVED_BEFORE_SECTIONS,
+    UNREADABLE_COPY,
+    CatalogDatabase,
+)
 from cis_bench.catalog.search import CatalogSearch
 from cis_bench.cli.helpers.errors import report_unreachable
 from cis_bench.cli.helpers.output import display_time, output_data, showing_line
@@ -672,13 +677,13 @@ def check_updates(offline):
             console.print(f"\n[yellow]{available}[/yellow]\n")
 
             for u in updates:
-                console.print(f"  [{u['benchmark_id']}] {escape(str(u['title']))}")
+                console.print(f"  [{u['benchmark_id']}] {escape(u['title'] or '')}")
                 if u["reason"] == NEWER_VERSION:
                     console.print(
                         f"      Version: {escape(str(u['downloaded_version'] or '?'))} -> {escape(str(u['catalog_version']))}"
                     )
-                elif u["reason"] == SAVED_BEFORE_SECTIONS:
-                    console.print(f"      {SAVED_BEFORE_SECTIONS.capitalize()}")
+                elif u["reason"] in (SAVED_BEFORE_SECTIONS, UNREADABLE_COPY):
+                    console.print(f"      {u['reason'].capitalize()}")
                 else:
                     console.print(f"      WorkBench published {escape(str(u['published_date']))}")
                 console.print(f"      Downloaded: {display_time(u['downloaded_at'])}")

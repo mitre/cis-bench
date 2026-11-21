@@ -14,6 +14,7 @@ from gettext import ngettext
 from pathlib import Path
 from typing import Final, NamedTuple, TypeVar
 
+from pydantic import ValidationError
 from sqlalchemy import (
     Integer,
     Select,
@@ -230,6 +231,7 @@ class _PendingUpgrades(NamedTuple):
 NEWER_VERSION: Final = "newer version in catalog"
 PUBLISHED_AFTER_DOWNLOAD: Final = "published after download"
 SAVED_BEFORE_SECTIONS: Final = "saved before sections were recorded"
+UNREADABLE_COPY: Final = "cached copy cannot be read"
 
 
 def update_reason(
@@ -262,11 +264,24 @@ def update_reason(
     return SAVED_BEFORE_SECTIONS if copy_predates_section_tree else None
 
 
+def _readable_copy(downloaded: DownloadedBenchmark) -> Benchmark | None:
+    """The cached copy a row holds, or None when it cannot be read (not JSON, or not a valid
+    copy)."""
+    try:
+        return deserialize_benchmark_json(downloaded.content_json)
+    except ValidationError:
+        logger.debug(f"Cached copy of {downloaded.benchmark_id} cannot be read", exc_info=True)
+        return None
+
+
 def _cached_copy_update_reason(
-    downloaded: DownloadedBenchmark, catalog: CatalogBenchmark | None, copy: Benchmark
+    downloaded: DownloadedBenchmark, catalog: CatalogBenchmark | None, copy: Benchmark | None
 ) -> str | None:
     """update_reason for a cached copy: its row, its catalog row (None when the catalog does
-    not list it) and the copy itself."""
+    not list it) and the copy itself (None when it cannot be read: UNREADABLE_COPY, which only
+    a new download repairs)."""
+    if copy is None:
+        return UNREADABLE_COPY
     return update_reason(
         catalog_version=catalog.version if catalog else None,
         catalog_published=catalog.published_date if catalog else None,
@@ -1379,8 +1394,7 @@ class CatalogDatabase:
             if downloaded is None:
                 return None
             catalog = session.get(CatalogBenchmark, benchmark_id)
-            copy = deserialize_benchmark_json(downloaded.content_json)
-            return _cached_copy_update_reason(downloaded, catalog, copy)
+            return _cached_copy_update_reason(downloaded, catalog, _readable_copy(downloaded))
 
     def check_updates_available(self) -> list[dict]:
         """Downloaded benchmarks that are out of date, by ``update_reason``.
@@ -1401,14 +1415,14 @@ class CatalogDatabase:
 
             updates: list[dict] = []
             for downloaded, catalog in rows:
-                copy = deserialize_benchmark_json(downloaded.content_json)
+                copy = _readable_copy(downloaded)
                 reason = _cached_copy_update_reason(downloaded, catalog, copy)
                 if reason is None:
                     continue
                 updates.append(
                     {
                         "benchmark_id": downloaded.benchmark_id,
-                        "title": catalog.title if catalog else copy.title,
+                        "title": catalog.title if catalog else copy.title if copy else None,
                         "downloaded_version": downloaded.version,
                         "catalog_version": catalog.version if catalog else None,
                         "downloaded_at": downloaded.downloaded_at,

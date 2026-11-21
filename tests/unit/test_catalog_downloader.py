@@ -169,6 +169,14 @@ class TestDownloadByID:
         assert result["status"] == "updated"
         assert mock_scraper.download_benchmark.call_count == 1
 
+    def test_an_unreadable_copy_is_downloaded_again(self, downloader, mock_scraper, temp_db):
+        temp_db.save_downloaded("23598", "{not json", "h", 1, version="v2.0.1")
+
+        result = downloader.download_by_id("23598")
+
+        assert result["status"] == "updated"
+        assert mock_scraper.download_benchmark.call_count == 1
+
     def test_download_force_redownloads(self, downloader, mock_scraper):
         """Test force flag re-downloads."""
         # Download first time

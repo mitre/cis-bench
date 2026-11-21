@@ -1663,21 +1663,34 @@ class TestCatalogCheckUpdatesCommand:
         assert "Downloaded: 2024-07-15 08:00:00 EDT" in flat
         assert "cis-bench download <id>' to download the update" in flat
 
+    @pytest.mark.parametrize(
+        ("reason", "title", "shown"),
+        [
+            (
+                "saved before sections were recorded",
+                "CIS Ubuntu Linux 20.04 LTS Benchmark",
+                "Saved before sections were recorded",
+            ),
+            # A copy the catalog does not list and that cannot be read has no title
+            ("cached copy cannot be read", None, "Cached copy cannot be read"),
+        ],
+        ids=["saved-before-sections", "unreadable"],
+    )
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
-    def test_check_updates_names_a_copy_saved_before_sections_were_recorded(
-        self, mock_get_db, runner
+    def test_check_updates_names_a_reason_about_the_copy_itself(
+        self, mock_get_db, runner, reason, title, shown
     ):
         mock_db = MagicMock()
         mock_db.db_path.exists.return_value = True
         mock_db.check_updates_available.return_value = [
             {
                 "benchmark_id": "23598",
-                "title": "CIS Ubuntu Linux 20.04 LTS Benchmark",
+                "title": title,
                 "downloaded_version": "v2.0.1",
                 "catalog_version": "v2.0.1",
                 "downloaded_at": datetime(2024, 7, 15, 12, 0, 0, tzinfo=UTC),
                 "published_date": None,
-                "reason": "saved before sections were recorded",
+                "reason": reason,
             }
         ]
         mock_get_db.return_value = mock_db
@@ -1686,8 +1699,9 @@ class TestCatalogCheckUpdatesCommand:
 
         assert result.exit_code == 0, result.output
         flat = " ".join(result.output.split())
-        assert "23598" in flat and "Saved before sections were recorded" in flat
+        assert "23598" in flat and shown in flat
         assert "WorkBench published" not in flat
+        assert "None" not in flat
 
     @patch("cis_bench.cli.commands.catalog.get_catalog_db")
     def test_check_updates_prints_titles_versions_and_dates_verbatim(self, mock_get_db, runner):

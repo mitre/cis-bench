@@ -966,7 +966,7 @@ cis-bench catalog download [OPTIONS] BENCHMARK_ID_OR_NAME
 - `--force` - Download again even if the cached copy is current
 - `--interactive` - Choose from a list when several benchmarks match
 
-A benchmark that is already cached is downloaded again only when `catalog check-updates` would list it (a newer catalog version, a later WorkBench publish date than the cached copy's, or a copy saved before sections were recorded), or with `--force`.
+A benchmark that is already cached is downloaded again only when `catalog check-updates` would list it (a newer catalog version, a later WorkBench publish date than the cached copy's, a copy saved before sections were recorded, or a cached copy that cannot be read), or with `--force`.
 
 **Examples:**
 ```bash
@@ -1007,7 +1007,7 @@ Report downloaded benchmarks whose cached copy is out of date.
 
 **How it decides:** a benchmark is listed when the catalog now carries a newer version than the one you downloaded, or when the publish date WorkBench shows for it is later than the publish date of your copy (for a copy cached before publish dates were recorded, later than the day you downloaded it). Online (the default) it first reads each downloaded benchmark's WorkBench page and records its publish date and description in the catalog; `--offline` compares what is already recorded. A catalog that lists an older version than your copy never makes it an update.
 
-A copy saved before sections were recorded (before cis-bench recorded each benchmark's sections and their descriptions) is listed as well, as `Saved before sections were recorded`, whatever the catalog says: it lacks data only WorkBench has, and downloading it again records it. This is the one case that also lists a copy of a benchmark the catalog does not list.
+A copy saved before sections were recorded (before cis-bench recorded each benchmark's sections and their descriptions) is listed as well, as `Saved before sections were recorded`, whatever the catalog says: it lacks data only WorkBench has, and downloading it again records it. A cached copy that cannot be read is listed as `Cached copy cannot be read`, and the others are still checked. These two are the only cases that also list a copy of a benchmark the catalog does not list.
 
 Only downloaded benchmarks are fetched, one page each, so run `cis-bench catalog refresh` first if the catalog itself is stale. With nothing downloaded it says so and contacts nothing. A downloaded benchmark whose WorkBench page answers 404 is reported as no longer on WorkBench and the others are still checked.
 

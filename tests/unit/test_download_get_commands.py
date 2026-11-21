@@ -370,8 +370,10 @@ class TestDownloadCacheSkip:
                 False,
                 "already cached",
             ),
+            # None: a cached copy that cannot be read
+            (None, "v1.0.0", True, "cached copy cannot be read"),
         ],
-        ids=["copy-saved-before-sections", "newer-catalog-version", "current-copy"],
+        ids=["copy-saved-before-sections", "newer-catalog-version", "current-copy", "unreadable"],
     )
     def test_download_applies_the_update_rule_to_a_cached_copy(
         self,
@@ -400,8 +402,10 @@ class TestDownloadCacheSkip:
                 "status": "Published",
             }
         )
-        content_json, content_hash = serialize_benchmark_json(
-            sample_benchmark.model_copy(update=cached_copy)
+        content_json, content_hash = (
+            ("{not json", "h")
+            if cached_copy is None
+            else serialize_benchmark_json(sample_benchmark.model_copy(update=cached_copy))
         )
         db.save_downloaded("12345", content_json, content_hash, 2, version="v1.0.0")
         db.close()
